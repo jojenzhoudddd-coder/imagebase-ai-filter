@@ -225,15 +225,8 @@ const DESCS: string[] = [
 ];
 
 // ─── Option arrays ───
-const STATUSES = ["项目完成", "方案设计阶段", "待排期"];
-const MODULES = ["基础架构", "产品体验", "数据分析"];
 const PRIORITIES = ["P0", "P1", "P2"];
-const TYPES = ["功能需求", "性能优化", "Bug修复", "技术重构", "用户体验"];
-const TAGS = ["前端", "后端", "移动端", "AI", "数据库", "API", "安全", "性能"];
-const SPRINTS = ["Sprint 1", "Sprint 2", "Sprint 3", "Sprint 4", "Sprint 5"];
 const SOURCES = ["产品规划", "用户反馈", "技术债务", "竞品分析"];
-const VERSIONS = ["v1.0", "v1.1", "v1.2", "v2.0", "v2.1", "v3.0"];
-const TEST_STATUSES = ["未测试", "测试中", "测试通过", "测试失败"];
 
 const REMARKS: (string | null)[] = [
   "需要与设计团队对齐方案",
@@ -258,70 +251,23 @@ function pick<T>(arr: T[], i: number, offset = 0): T {
   return arr[(i * 7 + offset * 13 + 3) % arr.length];
 }
 
-function pickTags(i: number): string[] {
-  const count = (i % 3) + 1; // 1-3 tags
-  const result: string[] = [];
-  for (let k = 0; k < count; k++) {
-    const tag = TAGS[(i * 5 + k * 11 + 2) % TAGS.length];
-    if (!result.includes(tag)) result.push(tag);
-  }
-  // Ensure at least 1
-  if (result.length === 0) result.push(TAGS[i % TAGS.length]);
-  return result;
-}
-
 function genRecords(): TableRecord[] {
   return NAMES.map((name, i) => {
     const idx = i + 1;
     const id = `rec_${String(idx).padStart(3, "0")}`;
 
-    const status = pick(STATUSES, i);
-    const module = pick(MODULES, i, 1);
     const priority = pick(PRIORITIES, i, 2);
-    const type = pick(TYPES, i, 3);
-    const sprint = pick(SPRINTS, i, 4);
     const source = pick(SOURCES, i, 5);
-    const version = pick(VERSIONS, i, 6);
-    const testStatus = pick(TEST_STATUSES, i, 7);
     const remark = pick(REMARKS, i, 8);
-    const tags = pickTags(i);
 
-    // Assignee and reviewer must differ
     const assigneeIdx = (i * 3 + 1) % USERS.length;
-    let reviewerIdx = (i * 7 + 4) % USERS.length;
-    if (reviewerIdx === assigneeIdx) reviewerIdx = (reviewerIdx + 1) % USERS.length;
     const assignee = USERS[assigneeIdx].id;
-    const reviewer = USERS[reviewerIdx].id;
-
-    // Progress correlates with status
-    let progress: number;
-    if (status === "项目完成") {
-      progress = 80 + (i % 21); // 80-100
-    } else if (status === "方案设计阶段") {
-      progress = 20 + (i % 41); // 20-60
-    } else {
-      progress = i % 11; // 0-10
-    }
 
     // Dates
     const createdDaysAgo = 180 - Math.floor((i * 179) / 99); // spread 180..1
     const createdAt = daysAgo(createdDaysAgo);
     const updatedAt = daysAgo(Math.max(1, createdDaysAgo - 3 - (i % 10)));
     const deadlineFutureDays = -1 * (5 + (i * 7) % 90); // -5 to -94 (future)
-
-    // Hours
-    const estimatedHours = 8 + ((i * 17 + 5) % 193); // 8-200
-    let actualHours: number | null;
-    if (status === "待排期") {
-      actualHours = null;
-    } else {
-      // slightly above or below estimated
-      const variance = ((i * 11) % 31) - 15; // -15 to +15
-      actualHours = Math.max(1, estimatedHours + variance);
-    }
-
-    // Is urgent: ~20% true
-    const isUrgent = i % 5 === 0;
 
     // 工作量 PD 预估: integer 1-30
     const pdEstimate = 1 + ((i * 13 + 3) % 30);
@@ -331,24 +277,12 @@ function genRecords(): TableRecord[] {
       tableId: "tbl_requirements",
       cells: {
         fld_name: name,
-        fld_status: status,
         fld_created: createdAt,
         fld_assignee: assignee,
-        fld_module: module,
         fld_desc: DESCS[i],
         fld_priority: priority,
-        fld_type: type,
-        fld_progress: progress,
-        fld_tags: tags,
         fld_deadline: daysAgo(deadlineFutureDays),
-        fld_reviewer: reviewer,
-        fld_estimated_hours: estimatedHours,
-        fld_actual_hours: actualHours,
-        fld_is_urgent: isUrgent,
-        fld_sprint: sprint,
         fld_source: source,
-        fld_version: version,
-        fld_test_status: testStatus,
         fld_remark: remark,
         fld_pd_estimate: pdEstimate,
       },
@@ -372,20 +306,6 @@ export const mockTable: Table = {
       config: {},
     },
     {
-      id: "fld_status",
-      tableId: "tbl_requirements",
-      name: "设计状态",
-      type: "SingleSelect",
-      isPrimary: false,
-      config: {
-        options: [
-          { id: "opt_done", name: "项目完成", color: "#02312A" },
-          { id: "opt_design", name: "方案设计阶段", color: "#002270" },
-          { id: "opt_pending", name: "待排期", color: "#3B1A02" },
-        ],
-      },
-    },
-    {
       id: "fld_created",
       tableId: "tbl_requirements",
       name: "创建时间",
@@ -400,20 +320,6 @@ export const mockTable: Table = {
       type: "User",
       isPrimary: false,
       config: { users: USERS },
-    },
-    {
-      id: "fld_module",
-      tableId: "tbl_requirements",
-      name: "业务模块",
-      type: "SingleSelect",
-      isPrimary: false,
-      config: {
-        options: [
-          { id: "opt_infra", name: "基础架构", color: "#002270" },
-          { id: "opt_product", name: "产品体验", color: "#002270" },
-          { id: "opt_data", name: "数据分析", color: "#02312A" },
-        ],
-      },
     },
     {
       id: "fld_desc",
@@ -438,103 +344,12 @@ export const mockTable: Table = {
       },
     },
     {
-      id: "fld_type",
-      tableId: "tbl_requirements",
-      name: "需求类型",
-      type: "SingleSelect",
-      isPrimary: false,
-      config: {
-        options: [
-          { id: "opt_feat", name: "功能需求", color: "#002270" },
-          { id: "opt_perf", name: "性能优化", color: "#02312A" },
-          { id: "opt_bug", name: "Bug修复", color: "#D83931" },
-          { id: "opt_refactor", name: "技术重构", color: "#3B1A02" },
-          { id: "opt_ux", name: "用户体验", color: "#002270" },
-        ],
-      },
-    },
-    {
-      id: "fld_progress",
-      tableId: "tbl_requirements",
-      name: "完成进度",
-      type: "Number",
-      isPrimary: false,
-      config: {},
-    },
-    {
-      id: "fld_tags",
-      tableId: "tbl_requirements",
-      name: "技术标签",
-      type: "MultiSelect",
-      isPrimary: false,
-      config: {
-        options: [
-          { id: "opt_tag_fe", name: "前端", color: "#002270" },
-          { id: "opt_tag_be", name: "后端", color: "#02312A" },
-          { id: "opt_tag_mobile", name: "移动端", color: "#3B1A02" },
-          { id: "opt_tag_ai", name: "AI", color: "#D83931" },
-          { id: "opt_tag_db", name: "数据库", color: "#002270" },
-          { id: "opt_tag_api", name: "API", color: "#02312A" },
-          { id: "opt_tag_sec", name: "安全", color: "#F77234" },
-          { id: "opt_tag_perf", name: "性能", color: "#3B1A02" },
-        ],
-      },
-    },
-    {
       id: "fld_deadline",
       tableId: "tbl_requirements",
       name: "截止日期",
       type: "DateTime",
       isPrimary: false,
       config: { format: "yyyy-MM-dd", includeTime: false },
-    },
-    {
-      id: "fld_reviewer",
-      tableId: "tbl_requirements",
-      name: "评审人",
-      type: "User",
-      isPrimary: false,
-      config: { users: USERS },
-    },
-    {
-      id: "fld_estimated_hours",
-      tableId: "tbl_requirements",
-      name: "预估工时",
-      type: "Number",
-      isPrimary: false,
-      config: {},
-    },
-    {
-      id: "fld_actual_hours",
-      tableId: "tbl_requirements",
-      name: "实际工时",
-      type: "Number",
-      isPrimary: false,
-      config: {},
-    },
-    {
-      id: "fld_is_urgent",
-      tableId: "tbl_requirements",
-      name: "是否紧急",
-      type: "Checkbox",
-      isPrimary: false,
-      config: {},
-    },
-    {
-      id: "fld_sprint",
-      tableId: "tbl_requirements",
-      name: "迭代周期",
-      type: "SingleSelect",
-      isPrimary: false,
-      config: {
-        options: [
-          { id: "opt_sp1", name: "Sprint 1", color: "#002270" },
-          { id: "opt_sp2", name: "Sprint 2", color: "#02312A" },
-          { id: "opt_sp3", name: "Sprint 3", color: "#3B1A02" },
-          { id: "opt_sp4", name: "Sprint 4", color: "#002270" },
-          { id: "opt_sp5", name: "Sprint 5", color: "#02312A" },
-        ],
-      },
     },
     {
       id: "fld_source",
@@ -548,29 +363,6 @@ export const mockTable: Table = {
           { id: "opt_src_feedback", name: "用户反馈", color: "#02312A" },
           { id: "opt_src_debt", name: "技术债务", color: "#3B1A02" },
           { id: "opt_src_comp", name: "竞品分析", color: "#002270" },
-        ],
-      },
-    },
-    {
-      id: "fld_version",
-      tableId: "tbl_requirements",
-      name: "目标版本",
-      type: "Text",
-      isPrimary: false,
-      config: {},
-    },
-    {
-      id: "fld_test_status",
-      tableId: "tbl_requirements",
-      name: "测试状态",
-      type: "SingleSelect",
-      isPrimary: false,
-      config: {
-        options: [
-          { id: "opt_test_none", name: "未测试", color: "#8F959E" },
-          { id: "opt_test_ing", name: "测试中", color: "#F77234" },
-          { id: "opt_test_pass", name: "测试通过", color: "#02312A" },
-          { id: "opt_test_fail", name: "测试失败", color: "#D83931" },
         ],
       },
     },

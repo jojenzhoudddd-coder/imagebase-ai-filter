@@ -9,6 +9,7 @@ interface Props {
   records: TableRecord[];
   onCellChange: (recordId: string, fieldId: string, value: CellValue) => void;
   onDeleteField?: (fieldId: string) => void;
+  onFieldOrderChange?: (orderedFields: Field[]) => void;
 }
 
 interface EditingState {
@@ -506,35 +507,21 @@ function EditableCell({
 // ─────────── Default column widths ───────────
 const DEFAULT_COL_WIDTHS: Record<string, number> = {
   fld_name: 220,
-  fld_status: 130,
   fld_created: 120,
   fld_assignee: 100,
-  fld_module: 100,
   fld_desc: 240,
   fld_priority: 80,
-  fld_type: 100,
-  fld_progress: 90,
-  fld_tags: 160,
   fld_deadline: 120,
-  fld_reviewer: 100,
-  fld_estimated_hours: 90,
-  fld_actual_hours: 90,
-  fld_is_urgent: 80,
-  fld_sprint: 100,
   fld_source: 100,
-  fld_version: 90,
-  fld_test_status: 100,
   fld_remark: 160,
+  fld_pd_estimate: 90,
 };
 const MIN_COL_WIDTH = 60;
 
 // ─────────── Main TableView ───────────
 const DEFAULT_FIELD_IDS = [
-  "fld_name", "fld_status", "fld_priority", "fld_type", "fld_created",
-  "fld_deadline", "fld_assignee", "fld_reviewer", "fld_module", "fld_source",
-  "fld_tags", "fld_progress", "fld_estimated_hours", "fld_actual_hours",
-  "fld_is_urgent", "fld_sprint", "fld_version", "fld_test_status", "fld_desc", "fld_remark",
-  "fld_pd_estimate",
+  "fld_name", "fld_created", "fld_assignee", "fld_desc", "fld_priority",
+  "fld_deadline", "fld_source", "fld_remark", "fld_pd_estimate",
 ];
 
 const FIELD_ORDER_KEY = "field_order_v1";
@@ -564,7 +551,7 @@ function loadColWidths(): Record<string, number> {
   return { ...DEFAULT_COL_WIDTHS };
 }
 
-export default function TableView({ fields, records, onCellChange, onDeleteField }: Props) {
+export default function TableView({ fields, records, onCellChange, onDeleteField, onFieldOrderChange }: Props) {
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [selectedColId, setSelectedColId] = useState<string | null>(null);
@@ -617,6 +604,11 @@ export default function TableView({ fields, records, onCellChange, onDeleteField
   const visibleFields = fieldOrder
     .map((id) => fields.find((f) => f.id === id))
     .filter(Boolean) as Field[];
+
+  // Notify parent of field display order changes
+  useEffect(() => {
+    onFieldOrderChange?.(visibleFields);
+  }, [fieldOrder, fields]);
 
   const startEdit = useCallback((recordId: string, fieldId: string) => {
     setEditing({ recordId, fieldId });

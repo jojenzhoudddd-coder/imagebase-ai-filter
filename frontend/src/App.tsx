@@ -111,6 +111,13 @@ export default function App() {
     }
   }, []);
 
+  // Track field display order from TableView (for FilterPanel dropdown consistency)
+  const [orderedFields, setOrderedFields] = useState<Field[]>([]);
+
+  const handleFieldOrderChange = useCallback((ordered: Field[]) => {
+    setOrderedFields(ordered);
+  }, []);
+
   const isFiltered = filter.conditions.length > 0;
 
   // Dirty = local filter differs from the saved (backend) filter
@@ -142,12 +149,12 @@ export default function App() {
             filterBtnRef={filterBtnRef}
           />
           <div className="app-content">
-            <TableView fields={fields} records={displayRecords} onCellChange={handleCellChange} onDeleteField={handleDeleteField} />
+            <TableView fields={fields} records={displayRecords} onCellChange={handleCellChange} onDeleteField={handleDeleteField} onFieldOrderChange={handleFieldOrderChange} />
             {filterPanelOpen && (
               <FilterPanel
                 ref={filterPanelRef}
                 tableId={TABLE_ID}
-                fields={fields}
+                fields={orderedFields.length > 0 ? orderedFields : fields}
                 filter={filter}
                 onFilterChange={handleFilterChange}
                 onClose={() => setFilterPanelOpen(false)}
