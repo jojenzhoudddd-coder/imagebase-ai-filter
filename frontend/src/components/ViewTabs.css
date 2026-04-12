@@ -1,0 +1,162 @@
+/* ViewTabs: matches real Lark Base — h=44, gray bg, active tab white */
+.view-tabs {
+  display: flex;
+  align-items: stretch;
+  background: #F5F6F7;
+  padding: 0;
+  flex-shrink: 0;
+  height: 44px;
+  overflow-x: auto;
+  position: relative;
+}
+
+.view-tabs-list {
+  display: flex;
+  align-items: flex-end;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Inactive tabs: h=40, transparent */
+.view-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 0 10px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
+  position: relative;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  height: 40px;
+  cursor: pointer;
+}
+
+.view-tab:hover {
+  color: var(--color-text-primary);
+}
+
+/* Active tab: h=44, white bg, no border, rounded top */
+.view-tab.active {
+  color: var(--color-primary);
+  background: var(--color-white);
+  font-weight: 500;
+  border: none;
+  border-radius: 6px 6px 0 0;
+  z-index: 1;
+  height: 44px;
+  padding: 0 14px 0 24px;
+}
+
+/* Three-dot menu on active tab */
+.view-tab-menu {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-s);
+  color: var(--color-text-muted);
+  margin-left: 2px;
+}
+
+.view-tab-menu:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.view-tab-icon {
+  color: currentColor;
+  flex-shrink: 0;
+}
+
+.view-tab-filter-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
+/* ─── Figma: Apply pill — rect x=354 y=74 w=156 h=24 rx=12 fill=#E0E9FF ─── */
+.view-tab-apply-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px 0 8px;
+  border-radius: 12px;
+  background: #E0E9FF;
+  margin-left: 8px;
+  align-self: center;
+  white-space: nowrap;
+  color: #1456F0;
+}
+
+.view-tab-apply-text {
+  font-size: 12px;
+  color: #646A73;
+  line-height: 24px;
+}
+
+.view-tab-apply-btn {
+  font-size: 12px;
+  color: #1456F0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 2px;
+  font-family: var(--font-family);
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.view-tab-apply-btn:hover {
+  text-decoration: underline;
+}
+
+/* Tab dividers: 1x14 between inactive tabs */
+.view-tab-divider {
+  width: 1px;
+  height: 14px;
+  background: rgba(31, 35, 41, 0.15);
+  align-self: center;
+  flex-shrink: 0;
+}
+
+/* "+ Add View" button */
+.view-tab-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  align-self: center;
+  height: 28px;
+  border-radius: var(--radius-s);
+  white-space: nowrap;
+  margin-left: 8px;
+}
+
+.view-tab-add:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.view-tab-add-label {
+  font-size: 14px;
+}
+
+/* Right side action buttons area (hidden) */
+.view-tabs-right {
+  display: none;
+}

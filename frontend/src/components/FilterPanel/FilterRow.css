@@ -1,0 +1,168 @@
+/* Figma: condition row h=32, gap=8 between selectors */
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+}
+
+/* Figma: text inputs h=32, border=1px #D0D3D6, rounded=6px */
+.fr-input {
+  height: 32px;
+  border: 1px solid var(--color-border-component);
+  border-radius: var(--radius-m);
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--color-text-primary);
+  background: var(--color-white);
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: var(--font-family);
+}
+
+/* CustomSelect wrapper: strip outer styling, let .cs-trigger handle it */
+.fr-select {
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+.fr-select:focus,
+.fr-input:focus {
+  border-color: var(--color-primary);
+}
+
+.fr-select:hover,
+.fr-input:hover {
+  border-color: #C0C4CC;
+}
+
+/* Field selector: fixed width */
+.fr-field {
+  flex: 0 0 140px;
+}
+
+/* Dropdown lists: auto-width based on content, min 160px */
+.fr-select .cs-list {
+  min-width: 160px;
+  width: max-content;
+}
+
+/* ─── Custom operator dropdown ─── */
+.fr-operator-dropdown {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.fr-operator-trigger {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  border: 1px solid var(--color-border-component);
+  border-radius: var(--radius-m);
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--color-text-primary);
+  background: var(--color-white);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  white-space: nowrap;
+  font-family: var(--font-family);
+  width: 100%;
+}
+
+.fr-operator-trigger:hover {
+  border-color: #C0C4CC;
+}
+
+.fr-operator-trigger:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.fr-operator-label {
+  flex: 1;
+  text-align: left;
+}
+
+.fr-operator-arrow {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.fr-operator-list {
+  position: fixed;
+  z-index: 1000;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-dropdown);
+  padding: 4px;
+  min-width: 160px;
+  width: max-content;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.fr-operator-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-family);
+  white-space: nowrap;
+}
+
+.fr-operator-option:hover {
+  background: var(--color-bg-hover);
+}
+
+.fr-operator-option.active {
+  color: var(--color-primary);
+}
+
+.fr-operator-check {
+  flex-shrink: 0;
+}
+
+/* Value input: fill remaining space */
+.fr-value {
+  flex: 1;
+  min-width: 0;
+}
+.fr-value.fr-select .cs-list {
+  min-width: 160px;
+  width: max-content;
+}
+
+/* Figma: delete button 24x24 */
+.fr-delete {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-s);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.fr-delete:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}

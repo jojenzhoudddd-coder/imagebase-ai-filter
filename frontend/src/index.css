@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Figma design tokens */
+  --color-primary: #1456F0;
+  --color-primary-hover: #0D45D6;
+  --color-primary-light: #F0F4FF;
+  --color-text-primary: #1F2329;
+  --color-text-title: #1F2329;
+  --color-text-secondary: #646A73;
+  --color-text-muted: #8F959E;
+  --color-text-placeholder: #BBBFC4;
+  --color-icon-n1: #2B2F36;
+  --color-icon-n2: #646A73;
+  --color-border: #DEE0E3;
+  --color-border-component: #D0D3D6;
+  --color-border-light: #EFF0F1;
+  --color-bg: #F5F6F7;
+  --color-bg-secondary: #F8F9FA;
+  --color-bg-hover: #F0F1F3;
+  --color-bg-float: #FFFFFF;
+  --color-white: #FFFFFF;
+  /* Status tags from Figma */
+  --color-tag-done-bg: #CAEFFC;
+  --color-tag-done-text: #02312A;
+  --color-tag-design-bg: #E0E9FF;
+  --color-tag-design-text: #002270;
+  --color-tag-pending-bg: #FEE7CD;
+  --color-tag-pending-text: #3B1A02;
+  /* Palette */
+  --palette-blue-100: #E0E9FF;
+  --palette-blue-900: #002270;
+  /* Typography - PingFang SC from Figma */
+  --font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  /* Spacing / Radius from Figma */
+  --radius-s: 4px;
+  --radius-m: 6px;
+  --radius-l: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 11px;
+  /* Shadows from Figma */
+  --shadow-panel: 0px 6px 12px -10px rgba(31, 35, 41, 0.06), 0px 8px 24px 0px rgba(31, 35, 41, 0.04), 0px 10px 36px 10px rgba(31, 35, 41, 0.04);
+  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-family);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--color-text-primary);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  font-family: var(--font-family);
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+input, select, textarea {
+  font-family: var(--font-family);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+select {
+  cursor: pointer;
+}

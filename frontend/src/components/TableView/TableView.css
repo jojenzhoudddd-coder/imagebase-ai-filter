@@ -1,0 +1,534 @@
+.table-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  background: var(--color-white);
+}
+
+.table-container {
+  flex: 1;
+  overflow: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  min-width: 800px;
+}
+
+.data-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* Figma: header row h=36 */
+.data-table th {
+  background: #F7F8FA;
+  border-bottom: 1px solid #DEE0E3;
+  border-right: 1px solid rgba(31, 35, 41, 0.15);
+  padding: 0 8px;
+  height: 36px;
+  text-align: left;
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  user-select: none;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+/* Header hover → gray background */
+.data-table th:hover {
+  background: #ECEDF0;
+}
+
+/* Header selected state */
+.data-table th.col-selected {
+  background: #E0E9FF;
+  color: var(--color-primary);
+}
+
+/* Figma: data row h=32 */
+.data-table td {
+  border-bottom: 1px solid rgba(31, 35, 41, 0.15);
+  border-right: 1px solid rgba(31, 35, 41, 0.15);
+  height: 32px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  overflow: visible;
+  padding: 0;
+  position: relative;
+}
+
+/* Column selected highlight on data cells */
+.data-table td.col-selected {
+  background: rgba(20, 86, 240, 0.04);
+}
+
+/* Hover: light gray background on hovered row */
+.data-row.row-hovered td {
+  background: #F5F6F7;
+}
+
+/* Hovered row + selected col intersection */
+.data-row.row-hovered td.col-selected {
+  background: rgba(20, 86, 240, 0.08);
+}
+
+.td-editing {
+  background: white !important;
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+  z-index: 5;
+}
+
+.th-inner {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.field-icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+/* ── Column resize handle ── */
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 3;
+}
+
+.col-resize-handle:hover,
+.col-resize-handle:active {
+  background: var(--color-primary);
+  opacity: 0.4;
+}
+
+/* Figma: first column 44px — header shows checkbox, data rows show row number (hover → checkbox) */
+.col-index {
+  width: 44px !important;
+  text-align: center !important;
+  padding: 0 !important;
+  cursor: default;
+}
+
+.col-index:hover {
+  background: #F7F8FA !important;
+}
+
+.row-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 12px;
+  color: var(--color-text-placeholder);
+  user-select: none;
+}
+
+/* Figma columns: name column has stronger divider #BBBFC4 */
+.col-fld_name {
+  border-right-color: #BBBFC4 !important;
+}
+
+.col-add {
+  width: 136px;
+  border-right: none !important;
+  cursor: default;
+}
+
+.col-add:hover {
+  background: #F7F8FA !important;
+}
+
+.col-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-s);
+  color: var(--color-text-secondary);
+  margin-left: 12px;
+}
+
+.col-add-btn:hover {
+  background: var(--color-bg-hover);
+}
+
+/* Figma: checkbox 16x16 */
+.row-checkbox {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  display: block;
+  margin: auto;
+}
+
+/* ─── Cell wrapper: Figma h=32, padding-left=8 ─── */
+.cell-wrap {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 8px;
+  overflow: hidden;
+}
+
+.cell-wrap.editable {
+  cursor: pointer;
+}
+
+.cell-wrap.editable:hover {
+  background: rgba(20, 86, 240, 0.04);
+}
+
+.cell-wrap.editing {
+  overflow: visible;
+  padding: 0;
+}
+
+/* ─── Status tags: Figma h=22, rx=11, px=8 ─── */
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 11px;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  height: 22px;
+  line-height: 22px;
+}
+
+.cell-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* ─── User cells: Figma avatar 20x20 + gap 8px ─── */
+.cell-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-avatar-img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.user-avatar-fallback {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.user-name {
+  font-size: 14px;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Text / checkbox ─── */
+.cell-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  width: 100%;
+}
+
+.cell-checkbox {
+  display: flex;
+  align-items: center;
+}
+
+.cell-empty {
+  display: block;
+  height: 16px;
+}
+
+/* ─── Text / Number inline editor ─── */
+.cell-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+}
+
+/* ─── Select / User dropdown editor ─── */
+.cell-editor-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 8px;
+  width: 100%;
+}
+
+.cell-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: -1px;
+  min-width: 160px;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-dropdown);
+  z-index: 50;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cell-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+  width: 100%;
+}
+
+.cell-dropdown-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.cell-dropdown-item.selected {
+  background: var(--color-primary-light);
+}
+
+.check-icon {
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.option-dot-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Date picker calendar popup ─── */
+.date-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 50;
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-dropdown);
+  padding: 12px;
+  width: 260px;
+}
+
+.date-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.date-picker-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.date-picker-nav {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.date-picker-nav:hover {
+  background: var(--color-bg-hover);
+}
+
+.date-picker-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-bottom: 4px;
+}
+
+.date-picker-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.date-picker-day {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-family);
+}
+
+.date-picker-day:hover {
+  background: var(--color-bg-hover);
+}
+
+.date-picker-day.other-month {
+  color: var(--color-text-placeholder);
+}
+
+.date-picker-day.selected {
+  background: var(--color-primary);
+  color: white;
+}
+
+.date-picker-day.selected:hover {
+  background: var(--color-primary);
+}
+
+.date-picker-day.today {
+  border: 1px solid var(--color-primary);
+}
+
+/* ─── Context menu for field headers ─── */
+.field-context-menu {
+  position: fixed;
+  z-index: 100;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-dropdown);
+  padding: 4px;
+  min-width: 160px;
+}
+
+.field-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 32px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  font-family: var(--font-family);
+}
+
+.field-context-menu-item:hover {
+  background: var(--color-bg-hover);
+}
+
+/* ─── Column drag-to-reorder ─── */
+.col-drag-over {
+  box-shadow: inset 2px 0 0 0 var(--color-primary) !important;
+}
+
+.data-table th[style*="translateX"] {
+  transition: none !important;
+}
+
+.data-table th {
+  transition: box-shadow 0.15s ease;
+}
+
+/* ─── Add row / footer: Figma add-record h=36, footer h=36 ─── */
+.add-row td {
+  border-bottom: none;
+  padding: 0 8px;
+  height: 36px;
+}
+
+.add-record-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+}
+
+.add-record-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.table-footer {
+  height: 36px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  background: var(--color-white);
+  flex-shrink: 0;
+}

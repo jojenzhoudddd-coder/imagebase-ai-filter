@@ -1,0 +1,283 @@
+/* FilterPanel: Figma w=520, border=1px #DEE0E3, rounded=12px, shadow=3-layer */
+.filter-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 520px;
+  background: var(--color-bg-float);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-panel);
+  border: 1px solid var(--color-border);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Figma: px=24, py=17, gap=16 */
+  padding: 17px 24px;
+  gap: 16px;
+  animation: fp-enter 0.15s ease-out;
+}
+
+@keyframes fp-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Title: Figma "设置筛选条件" 14px/22px Medium #646A73 */
+.fp-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  line-height: 22px;
+}
+
+/* AI Input: Figma h=32, border=1px #D0D3D6, rounded=6px */
+.fp-ai-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--color-border-component);
+  border-radius: var(--radius-m);
+  background: var(--color-white);
+  overflow: hidden;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.fp-ai-row:focus-within {
+  border-color: var(--color-primary);
+}
+
+.fp-ai-row.generating {
+  background: var(--color-border-light);
+  border-color: var(--color-border-component);
+}
+
+.fp-ai-row.error {
+  border-color: #EF4444;
+  background: #FEF2F2;
+}
+
+/* Figma: AI icon at left x=4, y=4, 22x22 button */
+.fp-ai-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  flex-shrink: 0;
+  color: var(--color-icon-n1);
+}
+
+.sparkle-icon {
+  transition: transform 0.3s;
+}
+
+.sparkle-icon.spinning {
+  animation: sparkle-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes sparkle-pulse {
+  0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  50% { transform: scale(1.2) rotate(15deg); opacity: 0.8; }
+}
+
+/* Figma: input text area at x=31 */
+.fp-ai-input-wrap {
+  flex: 1;
+  min-width: 0;
+  margin-left: 3px;
+}
+
+.fp-ai-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+}
+
+.fp-ai-input::placeholder {
+  color: var(--color-text-placeholder);
+}
+
+.fp-ai-input.echo::placeholder {
+  color: var(--color-text-secondary);
+}
+
+/* Loading state */
+.fp-ai-loading {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  margin-left: 3px;
+}
+
+.fp-ai-loading-text {
+  font-size: 14px;
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  line-height: 22px;
+}
+
+.loading-dots span {
+  animation: dot-blink 1.2s ease-in-out infinite;
+  font-weight: bold;
+}
+
+.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dot-blink {
+  0%, 80%, 100% { opacity: 0; }
+  40% { opacity: 1; }
+}
+
+.fp-ai-clear,
+.fp-ai-send {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-s);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.fp-ai-clear {
+  color: var(--color-text-secondary);
+}
+.fp-ai-clear:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.fp-ai-send {
+  background: var(--color-primary);
+  color: white;
+}
+.fp-ai-send:hover {
+  background: var(--color-primary-hover);
+}
+
+/* AI Error */
+.fp-ai-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #EF4444;
+  line-height: 22px;
+}
+
+/* Logic row: Figma "已生成筛选条件" + "符合以下" [所有 ▾] "条件" */
+.fp-logic-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--color-text-muted);
+  line-height: 22px;
+}
+
+.fp-logic-left {
+  white-space: nowrap;
+}
+
+.fp-logic-right {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.fp-logic-label {
+  white-space: nowrap;
+}
+
+/* Figma: logic select h=22, w=auto */
+.fp-logic-select {
+  margin: 0 4px;
+}
+.fp-logic-select .cs-trigger {
+  height: 22px;
+  padding: 0 4px 0 8px;
+  font-size: 14px;
+  line-height: 20px;
+  gap: 2px;
+}
+.fp-logic-select .cs-arrow {
+  width: 10px;
+  height: 10px;
+}
+
+/* Conditions list: scrollbar only when panel nears viewport bottom */
+.fp-conditions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: 2px;
+}
+
+.fp-conditions::-webkit-scrollbar {
+  width: 6px;
+}
+.fp-conditions::-webkit-scrollbar-thumb {
+  background: rgba(31, 35, 41, 0.2);
+  border-radius: 3px;
+}
+.fp-conditions::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Actions: "+ 添加条件" text button */
+.fp-actions {
+  display: flex;
+  align-items: center;
+}
+
+.fp-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  padding: 2px 8px;
+  border-radius: var(--radius-s);
+  line-height: 22px;
+}
+
+.fp-add-btn:hover {
+  background: var(--color-bg-hover);
+}
+
+/* Footer: "另存为新视图" text button */
+.fp-footer {
+  display: flex;
+  align-items: center;
+}
+
+.fp-save-view {
+  font-size: 14px;
+  color: var(--color-primary);
+  padding: 2px 8px;
+  border-radius: var(--radius-s);
+  line-height: 22px;
+}
+
+.fp-save-view:hover {
+  background: var(--color-primary-light);
+}
+
+/* ─── No longer used sections from old design ─── */
+.fp-header { display: none; }
