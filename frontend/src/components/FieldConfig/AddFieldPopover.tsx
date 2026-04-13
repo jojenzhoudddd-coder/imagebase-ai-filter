@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Field,
   FieldType,
@@ -60,15 +60,22 @@ const EMPTY_LOOKUP: LookupConfig = {
 export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onCancel, onConfirm }: Props) {
   const [title, setTitle] = useState("");
   const [fieldType, setFieldType] = useState<FieldType>("Text");
-  const [typePickerOpen, setTypePickerOpen] = useState(false);
+  const [typePickerRect, setTypePickerRect] = useState<DOMRect | null>(null);
   const [lookupConfig, setLookupConfig] = useState<LookupConfig>(EMPTY_LOOKUP);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; path?: string } | null>(null);
   const [allTables, setAllTables] = useState<TableBrief[]>([]);
+  const fieldTypeCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchTables().then(setAllTables);
   }, []);
+
+  const toggleTypePicker = () => {
+    if (typePickerRect) { setTypePickerRect(null); return; }
+    const r = fieldTypeCardRef.current?.getBoundingClientRect();
+    if (r) setTypePickerRect(r);
+  };
 
   // Popover geometry: anchor right edge to anchor button's right edge, below it
   const width = fieldType === "Lookup" ? 484 : 340;
@@ -130,11 +137,12 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
             />
           </div>
 
-          <div className="form-row" style={{ position: "relative" }}>
+          <div className="form-row">
             <label>Field type</label>
             <div
               className="field-type-card"
-              onClick={() => setTypePickerOpen(v => !v)}
+              ref={fieldTypeCardRef}
+              onClick={toggleTypePicker}
             >
               <div className="field-type-row">
                 <span className="label">
@@ -148,12 +156,6 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
                 <span className="chevron">›</span>
               </div>
             </div>
-            {typePickerOpen && (
-              <TypePicker
-                current={fieldType}
-                onSelect={(t) => { setFieldType(t); setTypePickerOpen(false); }}
-              />
-            )}
           </div>
 
           {fieldType === "Lookup" && (
@@ -179,15 +181,52 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
           </button>
         </div>
       </div>
+
+      {typePickerRect && (
+        <TypePicker
+          anchorRect={typePickerRect}
+          current={fieldType}
+          onSelect={(t) => { setFieldType(t); setTypePickerRect(null); }}
+          onClose={() => setTypePickerRect(null)}
+        />
+      )}
     </div>
   );
 }
 
 // ─── Type picker menu ───
 
-function TypePicker({ current, onSelect }: { current: FieldType; onSelect: (t: FieldType) => void }) {
+interface TypePickerProps {
+  anchorRect: DOMRect;
+  current: FieldType;
+  onSelect: (t: FieldType) => void;
+  onClose: () => void;
+}
+
+function TypePicker({ anchorRect, current, onSelect, onClose }: TypePickerProps) {
+  // Position to the right of the field-type card; align top edges
+  const MENU_W = 204;
+  const GAP = 8;
+  const left = Math.min(window.innerWidth - MENU_W - 16, anchorRect.right + GAP);
+  const top = Math.max(16, Math.min(window.innerHeight - 480, anchorRect.top));
+
+  // Close on outside click
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
   return (
-    <div className="type-picker-menu" onMouseDown={(e) => e.stopPropagation()}>
+    <div
+      ref={ref}
+      className="type-picker-menu floating"
+      style={{ position: "fixed", left, top, width: MENU_W }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
       {FIELD_TYPE_GROUPS.map(g => (
         <div key={g.group}>
           <div className="type-picker-section">{g.group}</div>
