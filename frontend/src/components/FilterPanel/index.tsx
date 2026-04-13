@@ -162,7 +162,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
               className={`fp-ai-input ${echoQuery && !query ? "echo" : ""}`}
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { setQuery(e.target.value); if (!e.target.value) setEchoQuery(""); }}
               onKeyDown={handleKeyDown}
               placeholder={echoQuery || placeholder}
             />
