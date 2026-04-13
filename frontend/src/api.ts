@@ -1,6 +1,18 @@
-import { Field, TableRecord, View, ViewFilter } from "./types";
+import { Field, FieldConfig, FieldType, TableRecord, View, ViewFilter } from "./types";
 
 const BASE = "/api";
+
+export interface TableBrief {
+  id: string;
+  name: string;
+  fieldCount: number;
+  recordCount: number;
+}
+
+export async function fetchTables(): Promise<TableBrief[]> {
+  const res = await fetch(`${BASE}/tables`);
+  return res.json();
+}
 
 export async function fetchFields(tableId: string): Promise<Field[]> {
   const res = await fetch(`${BASE}/tables/${tableId}/fields`);
@@ -9,6 +21,33 @@ export async function fetchFields(tableId: string): Promise<Field[]> {
 
 export async function fetchRecords(tableId: string): Promise<TableRecord[]> {
   const res = await fetch(`${BASE}/tables/${tableId}/records`);
+  return res.json();
+}
+
+export interface CreateFieldDTO {
+  name: string;
+  type: FieldType;
+  config?: FieldConfig;
+}
+
+export interface ApiError extends Error {
+  code?: string;
+  path?: string;
+}
+
+export async function createField(tableId: string, dto: CreateFieldDTO): Promise<Field> {
+  const res = await fetch(`${BASE}/tables/${tableId}/fields`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dto),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.message || body.error || `HTTP ${res.status}`) as ApiError;
+    err.code = body.error;
+    err.path = body.path;
+    throw err;
+  }
   return res.json();
 }
 

@@ -5,6 +5,7 @@ import ViewTabs from "./components/ViewTabs";
 import Toolbar from "./components/Toolbar";
 import TableView from "./components/TableView/index";
 import FilterPanel from "./components/FilterPanel/index";
+import { AddFieldPopover } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
 import { fetchFields, fetchRecords, fetchViews, updateViewFilter, deleteField } from "./api";
@@ -118,6 +119,21 @@ export default function App() {
     setOrderedFields(ordered);
   }, []);
 
+  // Add-field popover state
+  const [addFieldAnchor, setAddFieldAnchor] = useState<DOMRect | null>(null);
+
+  const handleOpenAddField = useCallback((rect: DOMRect) => {
+    setAddFieldAnchor(rect);
+  }, []);
+
+  const handleCreateFieldConfirm = useCallback(async (newField: Field) => {
+    setFields((prev) => [...prev, newField]);
+    // Refetch records so Lookup fields get their materialized values from the backend
+    const r = await fetchRecords(TABLE_ID);
+    setAllRecords(r);
+    setAddFieldAnchor(null);
+  }, []);
+
   const isFiltered = filter.conditions.length > 0;
 
   // Dirty = local filter differs from the saved (backend) filter
@@ -149,7 +165,14 @@ export default function App() {
             filterBtnRef={filterBtnRef}
           />
           <div className="app-content">
-            <TableView fields={fields} records={displayRecords} onCellChange={handleCellChange} onDeleteField={handleDeleteField} onFieldOrderChange={handleFieldOrderChange} />
+            <TableView
+              fields={fields}
+              records={displayRecords}
+              onCellChange={handleCellChange}
+              onDeleteField={handleDeleteField}
+              onFieldOrderChange={handleFieldOrderChange}
+              onAddField={handleOpenAddField}
+            />
             {filterPanelOpen && (
               <FilterPanel
                 ref={filterPanelRef}
@@ -159,6 +182,15 @@ export default function App() {
                 onFilterChange={handleFilterChange}
                 onClose={() => setFilterPanelOpen(false)}
                 anchorRef={filterBtnRef}
+              />
+            )}
+            {addFieldAnchor && (
+              <AddFieldPopover
+                currentTableId={TABLE_ID}
+                currentFields={fields}
+                anchorRect={addFieldAnchor}
+                onCancel={() => setAddFieldAnchor(null)}
+                onConfirm={handleCreateFieldConfirm}
               />
             )}
           </div>

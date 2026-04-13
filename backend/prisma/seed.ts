@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { mockTable } from "../src/mockData.js";
+import { mockTable, mockHistoryTable } from "../src/mockData.js";
 import { connectDB, loadTable, disconnectDB } from "../src/services/dbStore.js";
 
 async function main() {
@@ -8,8 +8,10 @@ async function main() {
 
   console.log("Seeding mock data...");
   await loadTable(mockTable);
+  console.log(`  ✓ ${mockTable.name}: ${mockTable.fields.length} fields, ${mockTable.records.length} records`);
 
-  console.log(`Seeded table "${mockTable.name}" with ${mockTable.fields.length} fields and ${mockTable.records.length} records.`);
+  await loadTable(mockHistoryTable);
+  console.log(`  ✓ ${mockHistoryTable.name}: ${mockHistoryTable.fields.length} fields, ${mockHistoryTable.records.length} records`);
 
   await disconnectDB();
   console.log("Done.");

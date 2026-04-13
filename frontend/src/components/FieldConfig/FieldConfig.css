@@ -1,0 +1,346 @@
+/* ── Popover backdrop ── */
+.field-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: transparent;
+}
+
+.field-popover {
+  position: absolute;
+  background: #fff;
+  border: 1px solid #e5e6e8;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.02);
+  max-height: calc(100vh - 120px);
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+}
+
+.field-popover-body {
+  padding: 18px 20px 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field-popover-footer {
+  padding: 12px 20px 14px;
+  border-top: 1px solid #eef0f2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.field-popover-error {
+  padding: 8px 20px;
+  border-top: 1px solid #fadcde;
+  background: #fff5f5;
+  color: #c23b3b;
+  font-size: 12px;
+}
+
+.field-popover-divider {
+  height: 1px;
+  background: #eef0f2;
+  margin: 2px 0;
+}
+
+/* ── Form layout ── */
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+
+.form-row > label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2329;
+}
+
+.form-row-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.form-row-pair {
+  display: flex;
+  gap: 16px;
+}
+
+.form-row-pair > .form-row {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Inputs / Selects ── */
+.fc-input,
+.fc-select {
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #dee0e3;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  color: #1f2329;
+  box-sizing: border-box;
+  outline: none;
+  font-family: inherit;
+}
+
+.fc-input:focus,
+.fc-select:focus {
+  border-color: #1456f0;
+  box-shadow: 0 0 0 2px rgba(20, 86, 240, 0.15);
+}
+
+.fc-input:disabled,
+.fc-select:disabled {
+  background: #f5f6f7;
+  color: #8f959e;
+  cursor: not-allowed;
+}
+
+/* ── Field type card ── */
+.field-type-card {
+  background: #f7f8fa;
+  border: 1px solid #e5e6e8;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.field-type-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.field-type-row.sub {
+  padding: 9px 12px;
+  border-top: 1px solid #e5e6e8;
+  color: #51565d;
+  font-size: 13px;
+}
+
+.field-type-row .label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.field-type-row .chevron {
+  color: #8f959e;
+  font-size: 16px;
+}
+
+/* ── Type picker menu ── */
+.type-picker-menu {
+  position: absolute;
+  top: 22px;
+  left: calc(100% + 6px);
+  width: 204px;
+  background: #fff;
+  border: 1px solid #e5e6e8;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+  padding: 6px 0;
+  z-index: 1100;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.type-picker-section {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #8f959e;
+}
+
+.type-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  cursor: pointer;
+  gap: 8px;
+}
+
+.type-picker-item:hover {
+  background: #f4f6f9;
+}
+
+.type-picker-item.active {
+  background: #eef4ff;
+  color: #1456f0;
+}
+
+.type-picker-item .left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.type-picker-item .left .icon {
+  width: 16px;
+  color: #51565d;
+  font-family: monospace;
+}
+
+.type-picker-item.active .left .icon {
+  color: #1456f0;
+}
+
+/* ── Conditions ── */
+.conditions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.conditions-header > label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2329;
+}
+
+.logic-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #51565d;
+}
+
+.logic-wrap .fc-select {
+  width: 80px;
+  height: 28px;
+  padding: 0 8px;
+}
+
+.cond-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cond-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cond-row .fc-select {
+  min-width: 0;
+  flex: 1;
+}
+
+.cond-row .fc-select.narrow {
+  flex: 0 0 88px;
+}
+
+.cond-row .cond-delete {
+  width: 20px;
+  flex: 0 0 20px;
+  background: none;
+  border: none;
+  color: #8f959e;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+}
+
+.cond-row .cond-delete:hover {
+  color: #c23b3b;
+}
+
+.add-condition-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 8px;
+  color: #1456f0;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.add-condition-btn:disabled {
+  color: #b7bbc0;
+  cursor: not-allowed;
+}
+
+/* ── Buttons ── */
+.btn {
+  padding: 0 16px;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-family: inherit;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.btn-secondary {
+  background: #fff;
+  border-color: #dee0e3;
+  color: #1f2329;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #f4f6f9;
+}
+
+.btn-primary {
+  background: #1456f0;
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #0f47cc;
+}
+
+.btn-primary:disabled {
+  background: #b7bbc0;
+  color: #fff;
+}
+
+/* ── Lookup cell display ── */
+.lookup-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.lookup-cell.error {
+  color: #c23b3b;
+  font-weight: 500;
+}
+
+.lookup-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: #f0f2f5;
+  color: #1f2329;
+  font-size: 12px;
+}
