@@ -100,8 +100,8 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
     const newCond: FilterCondition = {
       id: uuidv4(),
       fieldId: firstField.id,
-      operator: "contains",
-      value: "",
+      operator: "eq",
+      value: null,
     };
     onFilterChange({ ...filter, conditions: [...filter.conditions, newCond] });
   };

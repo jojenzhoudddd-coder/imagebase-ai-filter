@@ -1,0 +1,169 @@
+/* FieldConfigPanel — dropdown panel anchored to Customize Field button */
+.field-config-panel {
+  position: fixed;
+  z-index: 120;
+  background: #fff;
+  border: 1px solid #DEE0E3;
+  border-radius: 6px;
+  box-shadow: 0 4px 8px rgba(31,35,41,0.06), 0 6px 12px rgba(31,35,41,0.04), 0 8px 24px rgba(31,35,41,0.04);
+  width: 280px;
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.field-config-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #646A73;
+  border-bottom: 1px solid #F0F1F3;
+  flex-shrink: 0;
+}
+
+.field-config-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 4px;
+}
+
+/* Each field row */
+.field-config-item {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 4px;
+  cursor: default;
+  gap: 8px;
+  user-select: none;
+  transition: background 0.12s;
+}
+
+.field-config-item:hover {
+  background: #F5F6F7;
+}
+
+.field-config-item.is-dragging {
+  background: #EFF4FF;
+  box-shadow: 0 2px 8px rgba(31,35,41,0.1);
+  opacity: 0.9;
+  z-index: 10;
+}
+
+.field-config-item.drag-over-above {
+  box-shadow: inset 0 2px 0 0 #3370FF;
+}
+
+.field-config-item.drag-over-below {
+  box-shadow: inset 0 -2px 0 0 #3370FF;
+}
+
+/* Drag handle */
+.field-config-drag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: grab;
+  color: #C0C3C9;
+  transition: color 0.12s;
+}
+
+.field-config-item:hover .field-config-drag {
+  color: #8F959E;
+}
+
+.field-config-drag.disabled {
+  cursor: default;
+  color: #DEE0E3;
+}
+
+/* Field icon */
+.field-config-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: #646A73;
+}
+
+/* Field name */
+.field-config-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: #1F2329;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 22px;
+}
+
+.field-config-name.is-hidden {
+  color: #8F959E;
+}
+
+/* Lock icon (for primary field) — same box as visibility toggle for alignment */
+.field-config-lock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: #C0C3C9;
+}
+
+/* Visibility toggle button */
+.field-config-visibility {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #646A73;
+  transition: color 0.12s, background 0.12s;
+}
+
+.field-config-visibility:hover {
+  background: #EBEBED;
+  color: #2B2F36;
+}
+
+.field-config-visibility.is-hidden {
+  color: #C0C3C9;
+}
+
+.field-config-visibility.is-hidden:hover {
+  color: #646A73;
+  background: #EBEBED;
+}
+
+/* Scrollbar styling */
+.field-config-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.field-config-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.field-config-list::-webkit-scrollbar-thumb {
+  background: #DEE0E3;
+  border-radius: 3px;
+}
+
+.field-config-list::-webkit-scrollbar-thumb:hover {
+  background: #C0C3C9;
+}

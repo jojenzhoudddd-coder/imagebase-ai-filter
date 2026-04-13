@@ -55,6 +55,18 @@ export async function updateViewFilter(
   return res.json();
 }
 
+export async function updateView(
+  viewId: string,
+  data: { fieldOrder?: string[]; hiddenFields?: string[] }
+): Promise<View> {
+  const res = await fetch(`${BASE}/tables/views/${viewId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 export interface AIGenerateOptions {
   tableId: string;
   query: string;

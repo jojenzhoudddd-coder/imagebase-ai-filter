@@ -8,6 +8,9 @@ interface Props {
   onFilterClick: () => void;
   onClearFilter: () => void;
   filterBtnRef: RefObject<HTMLButtonElement | null>;
+  fieldConfigOpen: boolean;
+  onCustomizeFieldClick: () => void;
+  customizeFieldBtnRef: RefObject<HTMLButtonElement | null>;
 }
 
 export default function Toolbar({
@@ -17,6 +20,9 @@ export default function Toolbar({
   onFilterClick,
   onClearFilter,
   filterBtnRef,
+  fieldConfigOpen,
+  onCustomizeFieldClick,
+  customizeFieldBtnRef,
 }: Props) {
   return (
     <div className="toolbar">
@@ -31,7 +37,13 @@ export default function Toolbar({
           </svg>
         </button>
         <span className="toolbar-sep" />
-        <ToolbarBtn icon={<CustomizeFieldIcon />} label="Customize Field" />
+        <ToolbarBtn
+          icon={<CustomizeFieldIcon />}
+          label="Customize Field"
+          active={fieldConfigOpen}
+          onClick={onCustomizeFieldClick}
+          btnRef={customizeFieldBtnRef}
+        />
         <ToolbarBtn icon={<ViewSettingsIcon />} label="View Settings" />
         <ToolbarBtn
           icon={<FilterIcon />}

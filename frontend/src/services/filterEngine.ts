@@ -209,8 +209,19 @@ export function filterRecords(
     fieldMap.set(f.id, f);
   }
 
+  // Skip conditions whose value is not yet assigned (unless operator needs no value)
+  const NO_VALUE_OPS: Set<FilterOperator> = new Set(["isEmpty", "isNotEmpty", "checked", "unchecked"]);
+  const activeConditions = filter.conditions.filter((cond) => {
+    if (NO_VALUE_OPS.has(cond.operator)) return true;
+    if (cond.value === null || cond.value === undefined) return false;
+    if (typeof cond.value === "string" && cond.value.trim() === "") return false;
+    return true;
+  });
+
+  if (!activeConditions.length) return records;
+
   return records.filter((record) => {
-    const results = filter.conditions.map((cond) => {
+    const results = activeConditions.map((cond) => {
       const field = fieldMap.get(cond.fieldId);
       if (!field) return false;
       return evaluateCondition(record, cond, field);

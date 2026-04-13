@@ -94,6 +94,8 @@ export interface View {
   tableId: string;
   name: string;
   filter: ViewFilter;
+  fieldOrder?: string[];
+  hiddenFields?: string[];
 }
 
 export type AIGenerateStatus = "idle" | "generating" | "done" | "error";

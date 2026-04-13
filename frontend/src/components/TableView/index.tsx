@@ -5,11 +5,13 @@ import "./TableView.css";
 type CellValue = string | number | boolean | string[] | null;
 
 interface Props {
-  fields: Field[];
+  fields: Field[];              // Already ordered & filtered visible fields from App.tsx
   records: TableRecord[];
   onCellChange: (recordId: string, fieldId: string, value: CellValue) => void;
   onDeleteField?: (fieldId: string) => void;
-  onFieldOrderChange?: (orderedFields: Field[]) => void;
+  onFieldOrderChange?: (newOrder: string[]) => void;   // Full fieldOrder (including hidden)
+  onHideField?: (fieldId: string) => void;
+  fieldOrder?: string[];         // Full fieldOrder from App.tsx (including hidden fields)
 }
 
 interface EditingState {
@@ -519,24 +521,7 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
 const MIN_COL_WIDTH = 60;
 
 // ─────────── Main TableView ───────────
-const DEFAULT_FIELD_IDS = [
-  "fld_name", "fld_created", "fld_assignee", "fld_desc", "fld_priority",
-  "fld_deadline", "fld_source", "fld_remark", "fld_pd_estimate",
-];
-
-const FIELD_ORDER_KEY = "field_order_v1";
 const COL_WIDTHS_KEY = "col_widths_v1";
-
-function loadFieldOrder(): string[] {
-  try {
-    const stored = localStorage.getItem(FIELD_ORDER_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {}
-  return DEFAULT_FIELD_IDS;
-}
 
 function loadColWidths(): Record<string, number> {
   try {
@@ -551,13 +536,12 @@ function loadColWidths(): Record<string, number> {
   return { ...DEFAULT_COL_WIDTHS };
 }
 
-export default function TableView({ fields, records, onCellChange, onDeleteField, onFieldOrderChange }: Props) {
+export default function TableView({ fields, records, onCellChange, onDeleteField, onFieldOrderChange, onHideField, fieldOrder }: Props) {
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [selectedColId, setSelectedColId] = useState<string | null>(null);
   const [colWidths, setColWidths] = useState<Record<string, number>>(loadColWidths);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [fieldOrder, setFieldOrder] = useState<string[]>(loadFieldOrder);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = useState<string | null>(null);
 
@@ -572,43 +556,13 @@ export default function TableView({ fields, records, onCellChange, onDeleteField
   const dragRef = useRef<DragState | null>(null);
   const justDraggedRef = useRef(false);
 
-  // Sync fieldOrder with actual fields: remove stale/duplicate, append new
-  useEffect(() => {
-    if (fields.length === 0) return; // wait for fields to load
-    const validIds = new Set(fields.map((f) => f.id));
-    const seen = new Set<string>();
-    // Keep only valid, unique entries
-    const cleaned = fieldOrder.filter((id) => {
-      if (!validIds.has(id) || seen.has(id)) return false;
-      seen.add(id);
-      return true;
-    });
-    // Append any new fields not yet in the order
-    const newIds = fields.filter((f) => !seen.has(f.id)).map((f) => f.id);
-    const updated = [...cleaned, ...newIds];
-    if (JSON.stringify(updated) !== JSON.stringify(fieldOrder)) {
-      setFieldOrder(updated);
-    }
-  }, [fields]);
-
-  // Persist field order to localStorage
-  useEffect(() => {
-    localStorage.setItem(FIELD_ORDER_KEY, JSON.stringify(fieldOrder));
-  }, [fieldOrder]);
-
   // Persist column widths to localStorage
   useEffect(() => {
     localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(colWidths));
   }, [colWidths]);
 
-  const visibleFields = fieldOrder
-    .map((id) => fields.find((f) => f.id === id))
-    .filter(Boolean) as Field[];
-
-  // Notify parent of field display order changes
-  useEffect(() => {
-    onFieldOrderChange?.(visibleFields);
-  }, [fieldOrder, fields]);
+  // fields is already ordered and filtered by App.tsx
+  const visibleFields = fields;
 
   const startEdit = useCallback((recordId: string, fieldId: string) => {
     setEditing({ recordId, fieldId });
@@ -685,11 +639,17 @@ export default function TableView({ fields, records, onCellChange, onDeleteField
     const fieldId = contextMenu.fieldId;
     setContextMenu(null);
     onDeleteField?.(fieldId);
-    // Remove from field order
-    setFieldOrder((prev) => prev.filter((id) => id !== fieldId));
     // If this column was selected, deselect
     setSelectedColId((prev) => (prev === fieldId ? null : prev));
   }, [contextMenu, onDeleteField]);
+
+  const handleHideFieldClick = useCallback(() => {
+    if (!contextMenu) return;
+    const fieldId = contextMenu.fieldId;
+    setContextMenu(null);
+    onHideField?.(fieldId);
+    setSelectedColId((prev) => (prev === fieldId ? null : prev));
+  }, [contextMenu, onHideField]);
 
   // ── Drag-to-reorder columns ──
   const dragOverRef = useRef<string | null>(null);
@@ -741,25 +701,23 @@ export default function TableView({ fields, records, onCellChange, onDeleteField
       const finalOverId = dragOverRef.current;
       const finalCurrentX = dragRef.current?.currentX ?? startX;
 
-      if (finalOverId && finalOverId !== fieldId) {
-        setFieldOrder((prev) => {
-          const arr = [...prev];
-          const fromIdx = arr.indexOf(fieldId);
-          if (fromIdx === -1) return prev;
+      if (finalOverId && finalOverId !== fieldId && fieldOrder) {
+        // Reorder using the full fieldOrder (including hidden fields)
+        const arr = [...fieldOrder];
+        const fromIdx = arr.indexOf(fieldId);
+        if (fromIdx !== -1) {
           arr.splice(fromIdx, 1);
-
           let toIdx = arr.indexOf(finalOverId);
-          if (toIdx === -1) return prev;
-
-          // If dragging past the target's center, insert after
-          const targetRect = rects.get(finalOverId);
-          if (targetRect && finalCurrentX > targetRect.left + targetRect.width / 2) {
-            toIdx += 1;
+          if (toIdx !== -1) {
+            // If dragging past the target's center, insert after
+            const targetRect = rects.get(finalOverId);
+            if (targetRect && finalCurrentX > targetRect.left + targetRect.width / 2) {
+              toIdx += 1;
+            }
+            arr.splice(toIdx, 0, fieldId);
+            onFieldOrderChange?.(arr);
           }
-
-          arr.splice(toIdx, 0, fieldId);
-          return arr;
-        });
+        }
       }
 
       dragRef.current = null;
@@ -922,6 +880,13 @@ export default function TableView({ fields, records, onCellChange, onDeleteField
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >
+          <button className="field-context-menu-item" onClick={handleHideFieldClick}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M2.03133 8.17212C2.48854 7.86232 3.11033 7.98182 3.42013 8.43903C5.2629 11.1586 8.63638 13 11.9999 13C15.3634 13 18.7369 11.1586 20.5797 8.43903C20.8895 7.98182 21.5112 7.86232 21.9685 8.17212C22.4257 8.48193 22.5452 9.10371 22.2354 9.56092C21.6739 10.3896 20.9972 11.1486 20.2338 11.8197L22.2425 13.8284C22.633 14.2189 22.633 14.8521 22.2425 15.2426C21.852 15.6331 21.2188 15.6331 20.8283 15.2426L18.707 13.1213C18.6764 13.0907 18.6482 13.0586 18.6224 13.0252C17.8775 13.4967 17.0823 13.8942 16.2549 14.2062L16.967 16.8637C17.1099 17.3972 16.7933 17.9455 16.2599 18.0884C15.7264 18.2314 15.1781 17.9148 15.0351 17.3813L14.3332 14.7617C13.5658 14.9178 12.7838 15 11.9999 15C11.289 15 10.5796 14.9324 9.88128 14.8033L9.1905 17.3813C9.04756 17.9148 8.49922 18.2314 7.96576 18.0884C7.43229 17.9455 7.11571 17.3972 7.25865 16.8637L7.95049 14.2817C7.0364 13.9548 6.15936 13.5237 5.34339 13.0036C5.31329 13.0448 5.27966 13.0841 5.24249 13.1213L3.12117 15.2426C2.73064 15.6332 2.09748 15.6332 1.70696 15.2426C1.31643 14.8521 1.31643 14.219 1.70696 13.8284L3.73924 11.7961C2.98679 11.1308 2.31937 10.3799 1.76442 9.56092C1.45462 9.10371 1.57412 8.48193 2.03133 8.17212Z" fill="currentColor"/>
+            </svg>
+            Hide field
+          </button>
+          <div className="field-context-menu-divider" />
           <button className="field-context-menu-item" onClick={handleDeleteFieldClick}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M4.5 3V2.5C4.5 1.67 5.17 1 6 1h4c.83 0 1.5.67 1.5 1.5V3M2 3.5h12M3.5 3.5v10c0 .83.67 1.5 1.5 1.5h6c.83 0 1.5-.67 1.5-1.5v-10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>

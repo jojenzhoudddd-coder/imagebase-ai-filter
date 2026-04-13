@@ -486,6 +486,20 @@
   background: var(--color-bg-hover);
 }
 
+.field-context-menu-item.danger {
+  color: #F54A45;
+}
+
+.field-context-menu-item.danger:hover {
+  background: #FEE2E2;
+}
+
+.field-context-menu-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 8px;
+}
+
 /* ─── Column drag-to-reorder ─── */
 .col-drag-over {
   box-shadow: inset 2px 0 0 0 var(--color-primary) !important;

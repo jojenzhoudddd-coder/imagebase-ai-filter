@@ -911,7 +911,7 @@ async function callResponsesAPI(
     max_output_tokens: 4096,
     temperature: 0.1,
     stream: false,
-    thinking: { type: "enabled", budget_tokens: 16000 },
+    thinking: { type: "disabled" },
   };
 
   if (withTools) {
@@ -1043,7 +1043,7 @@ export async function generateFilter(
         max_output_tokens: 4096,
         temperature: 0.1,
         stream: false,
-        thinking: { type: "enabled", budget_tokens: 16000 },
+        thinking: { type: "disabled" },
         tools: TOOL_DEFINITIONS,
       },
     });
@@ -1068,7 +1068,7 @@ export async function generateFilter(
           max_output_tokens: 4096,
           temperature: 0.1,
           stream: false,
-          thinking: { type: "enabled", budget_tokens: 16000 },
+          thinking: { type: "disabled" },
           tools: TOOL_DEFINITIONS,
         },
       });
