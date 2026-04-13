@@ -50,7 +50,6 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
     setAiStatus("generating");
     setAiThinking("");
     setAiError("");
-    setQuery("");
 
     abortRef.current = generateFilter({
       tableId,
