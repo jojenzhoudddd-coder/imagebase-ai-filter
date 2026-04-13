@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import * as store from "../services/dataStore.js";
+import * as store from "../services/dbStore.js";
 import { generateFilter } from "../services/aiService.js";
 import { FilterGenerateRequest } from "../types.js";
 
@@ -14,7 +14,7 @@ router.post("/filter/generate", async (req: Request, res: Response) => {
     return;
   }
 
-  const table = store.getTable(body.tableId);
+  const table = await store.getTable(body.tableId);
   if (!table) {
     res.status(404).json({ error: "Table not found" });
     return;

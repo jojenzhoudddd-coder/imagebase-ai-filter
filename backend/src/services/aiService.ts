@@ -2,7 +2,7 @@ import { Field, FilterCondition, FilterGenerateRequest, FilterOperator, ViewFilt
 import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
 import path from "path";
-import * as store from "./dataStore.js";
+import * as store from "./dbStore.js";
 
 const ARK_BASE_URL = process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 const ARK_MODEL = process.env.ARK_MODEL || "ep-20260412192731-vwdh7";
@@ -541,16 +541,16 @@ const TOOL_DEFINITIONS = [
 
 // ─── Execute a tool call ───
 
-function executeTool(
+async function executeTool(
   name: string,
   args: Record<string, unknown>,
   existingFilter?: ViewFilter,
   fields?: Field[]
-): string {
+): Promise<string> {
   try {
     if (name === "get_table_brief_info") {
       const tableId = String(args.table_id || "");
-      const info = store.getTableBriefInfo(tableId);
+      const info = await store.getTableBriefInfo(tableId);
       if (!info) return JSON.stringify({ error: "表不存在" });
       return JSON.stringify(info);
     }
@@ -558,7 +558,7 @@ function executeTool(
       const tableId = String(args.table_id || "");
       const keyword = String(args.keyword || "");
       const fieldId = args.field_id ? String(args.field_id) : undefined;
-      const results = store.searchRecord(tableId, keyword, fieldId);
+      const results = await store.searchRecord(tableId, keyword, fieldId);
       return JSON.stringify(results);
     }
     if (name === "get_view_filter") {
@@ -911,7 +911,7 @@ async function callResponsesAPI(
     max_output_tokens: 4096,
     temperature: 0.1,
     stream: false,
-    thinking: { type: "disabled" },
+    thinking: { type: "enabled", budget_tokens: 16000 },
   };
 
   if (withTools) {
@@ -1043,7 +1043,7 @@ export async function generateFilter(
         max_output_tokens: 4096,
         temperature: 0.1,
         stream: false,
-        thinking: { type: "disabled" },
+        thinking: { type: "enabled", budget_tokens: 16000 },
         tools: TOOL_DEFINITIONS,
       },
     });
@@ -1068,7 +1068,7 @@ export async function generateFilter(
           max_output_tokens: 4096,
           temperature: 0.1,
           stream: false,
-          thinking: { type: "disabled" },
+          thinking: { type: "enabled", budget_tokens: 16000 },
           tools: TOOL_DEFINITIONS,
         },
       });
@@ -1107,7 +1107,7 @@ export async function generateFilter(
           args = JSON.parse(fc.arguments);
         } catch {}
 
-        const toolResult = executeTool(fc.name, args, req.existingFilter, fields);
+        const toolResult = await executeTool(fc.name, args, req.existingFilter, fields);
         let parsedResult: unknown;
         try { parsedResult = JSON.parse(toolResult); } catch { parsedResult = toolResult; }
 

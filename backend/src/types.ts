@@ -162,6 +162,8 @@ export interface View {
   sort?: ViewSort;
   group?: ViewGroup;
   kanbanFieldId?: string;
+  fieldOrder?: string[];    // 字段显示顺序（fieldId 数组），未设置时按 fields 数组顺序
+  hiddenFields?: string[];  // 隐藏的字段 ID 列表
 }
 
 // ─── Field Config ───
@@ -333,4 +335,6 @@ export interface UpdateViewDTO {
   sort?: ViewSort;
   group?: ViewGroup;
   kanbanFieldId?: string;
+  fieldOrder?: string[];
+  hiddenFields?: string[];
 }

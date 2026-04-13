@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── 用户（Phase 2 实现，Phase 1 仅 seed 默认用户） ───
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaces WorkspaceMember[]
+  documents  Document[]
+
+  @@map("users")
+}
+
+// ─── 工作空间（Phase 2 实现） ───
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members   WorkspaceMember[]
+  documents Document[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String   @default("editor")
+  joinedAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+// ─── 文档（Phase 2 实现） ───
+
+model Document {
+  id          String   @id @default(cuid())
+  workspaceId String
+  createdById String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id])
+  tables    Table[]
+
+  @@index([workspaceId])
+  @@map("documents")
+}
+
+// ─── 数据表（fields + views 作为 JSONB 存储） ───
+
+model Table {
+  id                 String   @id @default(cuid())
+  documentId         String
+  name               String
+  order              Int      @default(0)
+  fields             Json     @default("[]")
+  views              Json     @default("[]")
+  autoNumberCounters Json     @default("{}")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  records  Record[]
+
+  @@index([documentId])
+  @@map("tables")
+}
+
+// ─── 记录（独立表，通过 tableId 关联） ───
+
+model Record {
+  id         String   @id @default(cuid())
+  tableId    String
+  cells      Json     @default("{}")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String?
+  modifiedBy String?
+
+  table Table @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  @@index([tableId])
+  @@index([cells(ops: JsonbPathOps)], type: Gin)
+  @@map("records")
+}
