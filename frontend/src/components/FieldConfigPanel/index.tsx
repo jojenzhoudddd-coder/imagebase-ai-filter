@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, RefObject } from "react";
 import { Field } from "../../types";
 import SearchInput from "../SearchInput/index";
+import { pinyinMatch } from "../../utils/pinyinMatch";
 import "./FieldConfigPanel.css";
 
 interface Props {
@@ -41,12 +42,12 @@ export default function FieldConfigPanel({
 
   const hiddenSet = new Set(hiddenFields);
 
-  // Filter fields by search query
+  // Filter fields by search query (supports pinyin fuzzy match)
   const isSearching = searchQuery.trim().length > 0;
   const filteredFields = useMemo(() => {
     if (!isSearching) return fields;
-    const q = searchQuery.trim().toLowerCase();
-    return fields.filter(f => f.name.toLowerCase().includes(q));
+    const q = searchQuery.trim();
+    return fields.filter(f => pinyinMatch(f.name, q));
   }, [fields, searchQuery, isSearching]);
 
   // Position the panel below the anchor button
