@@ -118,6 +118,14 @@ router.delete("/:tableId/fields/:fieldId", async (req: Request, res: Response) =
 router.get("/:tableId/records", async (req: Request, res: Response) => {
   const table = await store.getTable(req.params.tableId);
   if (!table) { res.status(404).json({ error: "Table not found" }); return; }
+  const hasLookup = table.fields.some(f => f.type === "Lookup");
+  if (hasLookup) {
+    const { materializeLookups } = await import("../services/lookupEngine.js");
+    const allTables = await store.listTables();
+    const { records } = materializeLookups(table, table.records, allTables);
+    res.json(records);
+    return;
+  }
   res.json(table.records);
 });
 
@@ -284,7 +292,14 @@ router.post("/:tableId/views/:viewId/query", async (req: Request, res: Response)
   if (!view) { res.status(404).json({ error: "View not found" }); return; }
 
   const fieldMap = new Map<string, Field>(table.fields.map(f => [f.id, f]));
-  const result = queryView(table.records, view, fieldMap);
+  const hasLookup = table.fields.some(f => f.type === "Lookup");
+  const allTables = hasLookup ? await store.listTables() : [];
+  const result = queryView(
+    table.records,
+    view,
+    fieldMap,
+    hasLookup ? { currentTable: table, allTables } : undefined,
+  );
   res.json(result);
 });
 
