@@ -67,11 +67,26 @@ export type FormulaOutputType = "text" | "singleSelect" | "dateTime" | "number";
 // ─── Lookup ───
 export type LookupCalcMethod = "original" | "deduplicate" | "deduplicateCount" | "count" | "sum" | "average" | "max" | "min";
 
+export type LookupOutputFormat = "default" | "text" | "number" | "date" | "currency" | "autoNumber";
+
+// Date constant used on the RHS of a Lookup condition when the LHS is a date/time field.
+// Only static constants allowed — no last7Days / thisWeek / etc.
+export type LookupDateConstant =
+  | "yesterday"
+  | "today"
+  | "tomorrow"
+  | { type: "absolute"; value: string /* yyyy/MM/dd */ };
+
 export interface LookupCondition {
+  /** Left-hand side: a field on the referenced table. */
   refFieldId: string;
   operator: FilterOperator;
-  value?: CellValue;
+  /** "field" = compare to a field on the CURRENT table; "constant" = compare to a literal. */
   valueType: "field" | "constant";
+  /** Required when valueType === "field": the field id on the current table. */
+  currentFieldId?: string;
+  /** Required when valueType === "constant": the literal value (or LookupDateConstant for date fields). */
+  value?: CellValue | LookupDateConstant;
 }
 
 export interface LookupConfig {
@@ -80,6 +95,8 @@ export interface LookupConfig {
   conditions: LookupCondition[];
   conditionLogic: "and" | "or";
   calcMethod: LookupCalcMethod;
+  /** Output format; required. See §3.6 of the design doc for the whitelist by calc method. */
+  lookupOutputFormat: LookupOutputFormat;
 }
 
 // ─── Link Range ───

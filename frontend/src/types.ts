@@ -1,3 +1,5 @@
+// Keep in sync with backend/src/types.ts (only the subset the frontend uses).
+
 export type FieldType =
   | "Text"
   | "Number"
@@ -6,7 +8,8 @@ export type FieldType =
   | "User"
   | "DateTime"
   | "Checkbox"
-  | "AutoNumber";
+  | "AutoNumber"
+  | "Lookup";
 
 export interface SelectOption {
   id: string;
@@ -20,11 +23,56 @@ export interface UserOption {
   avatar: string;
 }
 
+// ─── Lookup ───
+
+export type LookupCalcMethod =
+  | "original"
+  | "deduplicate"
+  | "deduplicateCount"
+  | "count"
+  | "sum"
+  | "average"
+  | "max"
+  | "min";
+
+export type LookupOutputFormat =
+  | "default"
+  | "text"
+  | "number"
+  | "date"
+  | "currency"
+  | "autoNumber";
+
+export type LookupDateConstant =
+  | "yesterday"
+  | "today"
+  | "tomorrow"
+  | { type: "absolute"; value: string };
+
+export interface LookupCondition {
+  refFieldId: string;
+  operator: FilterOperator;
+  valueType: "field" | "constant";
+  currentFieldId?: string;
+  value?: CellValue | LookupDateConstant;
+}
+
+export interface LookupConfig {
+  refTableId: string;
+  refFieldId: string;
+  conditions: LookupCondition[];
+  conditionLogic: "and" | "or";
+  calcMethod: LookupCalcMethod;
+  lookupOutputFormat: LookupOutputFormat;
+}
+
 export interface FieldConfig {
   options?: SelectOption[];
   users?: UserOption[];
   format?: string;
   includeTime?: boolean;
+  // Lookup
+  lookup?: LookupConfig;
 }
 
 export interface Field {
@@ -67,7 +115,9 @@ export type RelativeDateValue =
   | "last30Days"
   | "next30Days";
 
-export type FilterValue = string | number | boolean | string[] | RelativeDateValue | null;
+export type CellValue = string | number | boolean | string[] | null;
+
+export type FilterValue = CellValue | RelativeDateValue;
 
 export interface FilterCondition {
   id: string;
@@ -84,7 +134,7 @@ export interface ViewFilter {
 export interface TableRecord {
   id: string;
   tableId: string;
-  cells: Record<string, string | number | boolean | string[] | null>;
+  cells: Record<string, CellValue>;
   createdAt: number;
   updatedAt: number;
 }

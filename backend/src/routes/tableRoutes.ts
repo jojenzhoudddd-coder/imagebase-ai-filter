@@ -4,7 +4,8 @@ import { filterRecords } from "../services/filterEngine.js";
 import { sortRecords } from "../services/sortEngine.js";
 import { queryView } from "../services/viewEngine.js";
 import { validateCellValue } from "../services/fieldValidator.js";
-import { Field, ViewFilter, ViewSort } from "../types.js";
+import { validateLookupConfig } from "../services/lookupValidator.js";
+import { Field, ViewFilter, ViewSort, LookupConfig } from "../types.js";
 
 const router = Router();
 
@@ -57,6 +58,21 @@ router.post("/:tableId/fields", async (req: Request, res: Response) => {
     res.status(400).json({ error: "字段名和类型不能为空" });
     return;
   }
+  if (type === "Lookup") {
+    const tables = await store.listTables();
+    const currentTable = tables.find(t => t.id === req.params.tableId) ?? null;
+    const r = validateLookupConfig(
+      (config as { lookup?: LookupConfig } | undefined)?.lookup,
+      req.params.tableId,
+      currentTable,
+      tables,
+      null,
+    );
+    if (!r.valid) {
+      res.status(400).json({ error: "LOOKUP_CONFIG_INVALID", message: r.error, path: r.path });
+      return;
+    }
+  }
   const field = await store.createField(req.params.tableId, { name, type, config });
   if (!field) { res.status(404).json({ error: "Table not found" }); return; }
   res.status(201).json(field);
@@ -65,6 +81,23 @@ router.post("/:tableId/fields", async (req: Request, res: Response) => {
 // PUT /api/tables/:tableId/fields/:fieldId — update field
 router.put("/:tableId/fields/:fieldId", async (req: Request, res: Response) => {
   const { name, config } = req.body;
+  // Re-validate if this field is a Lookup and config is being updated
+  const existing = (await store.getTable(req.params.tableId))?.fields.find(f => f.id === req.params.fieldId);
+  if (existing && existing.type === "Lookup" && config) {
+    const tables = await store.listTables();
+    const currentTable = tables.find(t => t.id === req.params.tableId) ?? null;
+    const r = validateLookupConfig(
+      (config as { lookup?: LookupConfig }).lookup,
+      req.params.tableId,
+      currentTable,
+      tables,
+      req.params.fieldId,
+    );
+    if (!r.valid) {
+      res.status(400).json({ error: "LOOKUP_CONFIG_INVALID", message: r.error, path: r.path });
+      return;
+    }
+  }
   const field = await store.updateField(req.params.tableId, req.params.fieldId, { name, config });
   if (!field) { res.status(404).json({ error: "Field not found" }); return; }
   res.json(field);
