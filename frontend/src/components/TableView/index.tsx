@@ -672,12 +672,21 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     e.preventDefault();
     let ids: string[];
     if (selectedRowIds.has(recordId)) {
+      // Row checkbox selection: use all checked rows
       ids = [...selectedRowIds];
+    } else if (cellRange) {
+      // Cell range selection: collect all rows covered by the range
+      const minRow = Math.min(cellRange.startRowIdx, cellRange.endRowIdx);
+      const maxRow = Math.max(cellRange.startRowIdx, cellRange.endRowIdx);
+      ids = [];
+      for (let r = minRow; r <= maxRow; r++) {
+        if (r < records.length) ids.push(records[r].id);
+      }
     } else {
       ids = [recordId];
     }
     setRowContextMenu({ x: e.clientX, y: e.clientY, recordIds: ids });
-  }, [selectedRowIds]);
+  }, [selectedRowIds, cellRange, records]);
 
   const handleDeleteRowsClick = useCallback(() => {
     if (!rowContextMenu) return;
