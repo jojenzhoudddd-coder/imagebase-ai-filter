@@ -149,6 +149,25 @@
   width: max-content;
 }
 
+/* Exact date split: two selects sharing the value space */
+.fr-date-exact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.fr-date-mode {
+  flex: 1;
+  min-width: 0;
+}
+
+.fr-date-picker {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Figma: delete button 24x24 */
 .fr-delete {
   width: 24px;

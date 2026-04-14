@@ -1,0 +1,128 @@
+/* Toast container: fixed top center, 40px from page top */
+.toast-container {
+  position: fixed;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+/* Toast base: Figma rounded=8px, border=1px, shadow, min-h=54px */
+.toast {
+  display: inline-flex;
+  align-items: center;
+  min-height: 54px;
+  padding: 0 20px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  pointer-events: auto;
+  white-space: nowrap;
+  box-shadow:
+    0 8px 24px 8px #1F23290A,
+    0 6px 12px 0 #1F23290A,
+    0 4px 8px -8px #1F23290F;
+}
+
+/* Enter / Leave animation */
+.toast-enter {
+  animation: toast-in 0.2s ease-out;
+}
+.toast-leave {
+  animation: toast-out 0.2s ease-in forwards;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-8px); }
+}
+
+/* ── Type variants (Figma color specs) ── */
+
+.toast-info {
+  background: #F0F4FF;
+  border-color: #1456F0;
+}
+
+.toast-success {
+  background: #E4FAE1;
+  border-color: #32A645;
+}
+
+.toast-warning {
+  background: #FFF3E5;
+  border-color: #ED6D0C;
+}
+
+.toast-error {
+  background: #FEF0F0;
+  border-color: #F54A45;
+}
+
+/* Icon: 16px, margin-right 12px to text */
+.toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-right: 12px;
+}
+
+/* Message text: 14px, #1F2329 */
+.toast-message {
+  font-size: 14px;
+  line-height: 22px;
+  color: #1F2329;
+}
+
+/* Text button (Figma: colored text, no border) */
+.toast-action {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  background: none;
+  border: none;
+  padding: 0 4px;
+  margin-left: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.toast-info .toast-action { color: #1456F0; }
+.toast-success .toast-action { color: #32A645; }
+.toast-warning .toast-action { color: #ED6D0C; }
+.toast-error .toast-action { color: #F54A45; }
+
+.toast-action:hover { opacity: 0.8; }
+
+/* Close button */
+.toast-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 8px;
+  border-radius: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #646A73;
+  flex-shrink: 0;
+  padding: 0;
+}
+.toast-close:hover {
+  background: rgba(31, 35, 41, 0.08);
+  color: #1F2329;
+}

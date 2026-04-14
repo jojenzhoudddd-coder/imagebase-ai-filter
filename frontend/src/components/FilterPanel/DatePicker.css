@@ -1,0 +1,137 @@
+.dp-dropdown {
+  position: relative;
+}
+
+.dp-trigger {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  border: 1px solid var(--color-border-component);
+  border-radius: var(--radius-m);
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--color-text-primary);
+  background: var(--color-white);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  white-space: nowrap;
+  font-family: var(--font-family);
+  width: 100%;
+}
+
+.dp-trigger:hover { border-color: #C0C4CC; }
+.dp-trigger:focus { border-color: var(--color-primary); outline: none; }
+
+.dp-label {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dp-placeholder {
+  color: var(--color-text-muted);
+}
+
+.dp-arrow {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+/* Calendar popup */
+.dp-calendar {
+  z-index: 1000;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-dropdown);
+  padding: 12px;
+  width: 252px;
+}
+
+.dp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.dp-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+
+.dp-nav:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.dp-month-year {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.dp-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 4px;
+}
+
+.dp-weekday {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-align: center;
+  height: 28px;
+  line-height: 28px;
+}
+
+.dp-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.dp-day {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+  padding: 0;
+}
+
+.dp-day:hover:not(.empty):not(.selected) {
+  background: var(--color-bg-hover);
+}
+
+.dp-day.empty {
+  cursor: default;
+}
+
+.dp-day.today {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.dp-day.selected {
+  background: var(--color-primary);
+  color: white;
+  font-weight: 500;
+}

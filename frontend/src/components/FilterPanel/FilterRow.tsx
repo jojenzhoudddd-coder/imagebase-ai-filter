@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Field, FilterCondition, FilterOperator, FilterValue } from "../../types";
 import CustomSelect from "./CustomSelect";
+import DatePicker from "./DatePicker";
 import "./FilterRow.css";
 
 interface Props {
@@ -75,6 +76,7 @@ OPERATORS_BY_TYPE.CreatedTime = OPERATORS_BY_TYPE.DateTime;
 OPERATORS_BY_TYPE.ModifiedTime = OPERATORS_BY_TYPE.DateTime;
 
 const DATE_VALUE_OPTIONS = [
+  { value: "exactDate", label: "Exact date" },
   { value: "today", label: "Today" },
   { value: "yesterday", label: "Yesterday" },
   { value: "tomorrow", label: "Tomorrow" },
@@ -87,6 +89,10 @@ const DATE_VALUE_OPTIONS = [
   { value: "thisMonth", label: "This month" },
   { value: "lastMonth", label: "Last month" },
 ];
+
+function isExactDateMode(value: FilterValue): boolean {
+  return value === "exactDate" || (typeof value === "string" && /^\d{4}\/\d{2}\/\d{2}$/.test(value));
+}
 
 const NO_VALUE_OPERATORS: FilterOperator[] = [
   "isEmpty", "isNotEmpty",
@@ -237,12 +243,39 @@ interface ValueInputProps {
 function ValueInput({ field, operator, value, onChange }: ValueInputProps) {
   const type = field?.type ?? "Text";
 
-  if (type === "DateTime") {
+  if (type === "DateTime" || type === "CreatedTime" || type === "ModifiedTime") {
+    const exact = isExactDateMode(value);
+    const modeValue = exact ? "exactDate" : String(value ?? "today");
+    const dateStr = typeof value === "string" && /^\d{4}\/\d{2}\/\d{2}$/.test(value) ? value : "";
+
+    const handleModeChange = (v: string) => {
+      if (v === "exactDate") onChange("exactDate");
+      else onChange(v);
+    };
+
+    if (exact) {
+      return (
+        <div className="fr-date-exact">
+          <CustomSelect
+            value="exactDate"
+            options={DATE_VALUE_OPTIONS}
+            onChange={handleModeChange}
+            className="fr-select fr-date-mode"
+          />
+          <DatePicker
+            value={dateStr}
+            onChange={(v) => onChange(v)}
+            className="fr-date-picker"
+          />
+        </div>
+      );
+    }
+
     return (
       <CustomSelect
-        value={String(value ?? "today")}
+        value={modeValue}
         options={DATE_VALUE_OPTIONS}
-        onChange={(v) => onChange(v)}
+        onChange={handleModeChange}
         className="fr-select fr-value"
       />
     );

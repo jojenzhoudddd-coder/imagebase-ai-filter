@@ -3,6 +3,7 @@ import CustomSelect from "./CustomSelect";
 import { Field, FilterCondition, FilterLogic, FilterOperator, FilterValue, ViewFilter, AIGenerateStatus } from "../../types";
 import { generateFilter } from "../../api";
 import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
+import { useToast } from "../Toast/index";
 import FilterRow from "./FilterRow";
 import "./FilterPanel.css";
 import { v4 as uuidv4 } from "./uuid";
@@ -17,6 +18,7 @@ interface Props {
 }
 
 const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tableId, fields, filter, onFilterChange, onClose, anchorRef }, ref) {
+  const toast = useToast();
   const [query, setQuery] = useState("");
   const [echoQuery, setEchoQuery] = useState("");
   const [aiStatus, setAiStatus] = useState<AIGenerateStatus>("idle");
@@ -120,11 +122,17 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
         setEchoQuery(q);
         setAiGenerated(true);
         onFilterChange(newFilter);
+        if (newFilter.conditions.length === 0) {
+          toast.info("Filter conditions generated, but no match has been found");
+        } else {
+          toast.success("Filter conditions generated");
+        }
       },
       onError(_code, message) {
         setAiStatus("error");
         setAiError(message);
         setEchoQuery(q);
+        toast.error(message || "Failed to generate filter");
       },
       onDone() {
         // Stream closed
