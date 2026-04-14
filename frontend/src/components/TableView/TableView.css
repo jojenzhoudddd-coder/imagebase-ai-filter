@@ -70,6 +70,11 @@
   background: rgba(20, 86, 240, 0.04);
 }
 
+/* Cell range selection highlight (drag to select) */
+.data-table td.cell-range-selected {
+  background: rgba(20, 86, 240, 0.10) !important;
+}
+
 /* Hover: light gray background on hovered row */
 .data-row.row-hovered td {
   background: #F5F6F7;

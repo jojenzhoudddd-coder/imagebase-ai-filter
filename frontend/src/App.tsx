@@ -16,9 +16,12 @@ import { filterRecords } from "./services/filterEngine";
 const TABLE_ID = "tbl_requirements";
 
 const MAX_UNDO = 20;
+type CellValue = string | number | boolean | string[] | null;
 type UndoItem =
   | { type: "records"; records: TableRecord[]; indices: number[] }
-  | { type: "fields"; fieldDefs: Field[]; snapshot: any; removedConditions: ViewFilter["conditions"]; removedSavedConditions: ViewFilter["conditions"]; removedHiddenIds: string[]; fieldOrderBefore: string[] };
+  | { type: "fields"; fieldDefs: Field[]; snapshot: any; removedConditions: ViewFilter["conditions"]; removedSavedConditions: ViewFilter["conditions"]; removedHiddenIds: string[]; fieldOrderBefore: string[] }
+  | { type: "cellEdit"; recordId: string; fieldId: string; oldValue: CellValue; newValue: CellValue }
+  | { type: "cellBatchClear"; changes: Array<{ recordId: string; fieldId: string; oldValue: CellValue }> };
 
 export default function App() {
   const [fields, setFields] = useState<Field[]>([]);
@@ -49,10 +52,11 @@ export default function App() {
   }, []);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
-    type: "records" | "fields";
+    type: "records" | "fields" | "cells";
     recordIds: string[];
     fieldIds: string[];
-  }>({ open: false, type: "records", recordIds: [], fieldIds: [] });
+    cellsToClear: Array<{ recordId: string; fieldId: string }>;
+  }>({ open: false, type: "records", recordIds: [], fieldIds: [], cellsToClear: [] });
   const undoStackRef = useRef<UndoItem[]>([]);
   const pushUndo = useCallback((item: UndoItem) => {
     undoStackRef.current.push(item);
@@ -249,12 +253,21 @@ export default function App() {
   }, [activeViewId, filter]);
 
   const handleCellChange = useCallback((recordId: string, fieldId: string, value: string | number | boolean | string[] | null) => {
+    // Capture old value for undo
+    const record = allRecords.find(r => r.id === recordId);
+    const oldValue = (record?.cells[fieldId] ?? null) as CellValue;
+    // Skip if value unchanged
+    if (oldValue === value) return;
+    if (Array.isArray(oldValue) && Array.isArray(value) && JSON.stringify(oldValue) === JSON.stringify(value)) return;
+
+    pushUndo({ type: "cellEdit", recordId, fieldId, oldValue, newValue: value });
+
     setAllRecords((prev) =>
       prev.map((r) =>
         r.id === recordId ? { ...r, cells: { ...r.cells, [fieldId]: value } } : r
       )
     );
-  }, []);
+  }, [allRecords, pushUndo]);
 
   // ── Undo helper (multi-step stack, max 20) ──
   const performUndo = useCallback(() => {
@@ -300,10 +313,47 @@ export default function App() {
       persistFieldOrder(item.fieldOrderBefore);
       batchRestoreFields(TABLE_ID, item.snapshot)
         .catch(err => console.warn("Failed to restore fields:", err));
+    } else if (item.type === "cellEdit") {
+      // Restore cell to old value (skip if record no longer exists)
+      setAllRecords(prev => {
+        const exists = prev.some(r => r.id === item.recordId);
+        if (!exists) return prev;
+        return prev.map(r =>
+          r.id === item.recordId
+            ? { ...r, cells: { ...r.cells, [item.fieldId]: item.oldValue } }
+            : r
+        );
+      });
+    } else if (item.type === "cellBatchClear") {
+      // Restore all cleared cells to their old values
+      setAllRecords(prev =>
+        prev.map(r => {
+          const cellChanges = item.changes.filter(c => c.recordId === r.id);
+          if (cellChanges.length === 0) return r;
+          const newCells = { ...r.cells };
+          for (const c of cellChanges) newCells[c.fieldId] = c.oldValue;
+          return { ...r, cells: newCells };
+        })
+      );
     }
 
     setCanUndo(undoStackRef.current.length > 0);
   }, [persistFieldOrder]);
+
+  // ── Ctrl+Z / ⌘+Z global undo shortcut ──
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
+        // Don't intercept when user is typing in an input/textarea (let browser native undo work)
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        performUndo();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [performUndo]);
 
   // ── Delete records ──
   const executeDelete = useCallback((recordIds: string[]) => {
@@ -395,7 +445,7 @@ export default function App() {
 
   const handleDeleteFields = useCallback((fieldIds: string[]) => {
     if (deleteProtection) {
-      setConfirmDialog({ open: true, type: "fields", recordIds: [], fieldIds });
+      setConfirmDialog({ open: true, type: "fields", recordIds: [], fieldIds, cellsToClear: [] });
     } else {
       executeDeleteFields(fieldIds);
     }
@@ -419,23 +469,72 @@ export default function App() {
 
   const handleDeleteRecords = useCallback((recordIds: string[]) => {
     if (deleteProtection) {
-      setConfirmDialog({ open: true, type: "records", recordIds, fieldIds: [] });
+      setConfirmDialog({ open: true, type: "records", recordIds, fieldIds: [], cellsToClear: [] });
     } else {
       executeDelete(recordIds);
     }
   }, [deleteProtection, executeDelete]);
 
+  // ── Batch clear cells (Delete key on selected cells) ──
+  const executeClearCells = useCallback((cells: Array<{ recordId: string; fieldId: string }>) => {
+    const recordMap = new Map(allRecords.map(r => [r.id, r]));
+    const changes: Array<{ recordId: string; fieldId: string; oldValue: CellValue }> = [];
+    for (const cell of cells) {
+      const record = recordMap.get(cell.recordId);
+      const oldValue = (record?.cells[cell.fieldId] ?? null) as CellValue;
+      if (oldValue !== null && oldValue !== "" && !(Array.isArray(oldValue) && oldValue.length === 0)) {
+        changes.push({ recordId: cell.recordId, fieldId: cell.fieldId, oldValue });
+      }
+    }
+    if (changes.length === 0) return;
+
+    pushUndo({ type: "cellBatchClear", changes });
+
+    setAllRecords(prev => {
+      const clearMap = new Map<string, Set<string>>();
+      for (const c of changes) {
+        if (!clearMap.has(c.recordId)) clearMap.set(c.recordId, new Set());
+        clearMap.get(c.recordId)!.add(c.fieldId);
+      }
+      return prev.map(r => {
+        const fieldsToClear = clearMap.get(r.id);
+        if (!fieldsToClear) return r;
+        const newCells = { ...r.cells };
+        for (const fId of fieldsToClear) newCells[fId] = null;
+        return { ...r, cells: newCells };
+      });
+    });
+
+    toast.success(
+      `Cleared ${changes.length} cell${changes.length > 1 ? "s" : ""}`,
+      { duration: 5000, action: { label: "Undo", onClick: () => performUndo() } },
+    );
+  }, [allRecords, pushUndo, toast, performUndo]);
+
+  const handleClearCells = useCallback((cells: Array<{ recordId: string; fieldId: string }>) => {
+    if (deleteProtection) {
+      setConfirmDialog({ open: true, type: "cells", recordIds: [], fieldIds: [], cellsToClear: cells });
+    } else {
+      executeClearCells(cells);
+    }
+  }, [deleteProtection, executeClearCells]);
+
   const handleConfirmDelete = useCallback(() => {
+    const reset = { open: false, type: "records" as const, recordIds: [] as string[], fieldIds: [] as string[], cellsToClear: [] as Array<{ recordId: string; fieldId: string }> };
     if (confirmDialog.type === "records") {
       const ids = confirmDialog.recordIds;
-      setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [] });
+      setConfirmDialog(reset);
       executeDelete(ids);
-    } else {
+    } else if (confirmDialog.type === "fields") {
       const ids = confirmDialog.fieldIds;
-      setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [] });
+      setConfirmDialog(reset);
       executeDeleteFields(ids);
+    } else if (confirmDialog.type === "cells") {
+      const cells = confirmDialog.cellsToClear;
+      setConfirmDialog(reset);
+      executeClearCells(cells);
     }
-  }, [confirmDialog, executeDelete, executeDeleteFields]);
+  }, [confirmDialog, executeDelete, executeDeleteFields, executeClearCells]);
 
   const isFiltered = filter.conditions.length > 0;
 
@@ -489,6 +588,7 @@ export default function App() {
               onHideFields={handleHideFields}
               fieldOrder={viewFieldOrder}
               onDeleteRecords={handleDeleteRecords}
+              onClearCells={handleClearCells}
             />
             {filterPanelOpen && (
               <FilterPanel
@@ -517,17 +617,23 @@ export default function App() {
       </div>
       <ConfirmDialog
         open={confirmDialog.open}
-        title={confirmDialog.type === "fields" ? "Delete Fields" : "Delete Records"}
+        title={
+          confirmDialog.type === "fields" ? "Delete Fields"
+          : confirmDialog.type === "cells" ? "Clear Cells"
+          : "Delete Records"
+        }
         message={
           confirmDialog.type === "fields"
             ? `Are you sure you want to delete ${confirmDialog.fieldIds.length} field${confirmDialog.fieldIds.length > 1 ? "s" : ""}? All data in ${confirmDialog.fieldIds.length > 1 ? "these fields" : "this field"} will be removed. This action can be undone.`
+            : confirmDialog.type === "cells"
+            ? `Are you sure you want to clear ${confirmDialog.cellsToClear.length} cell${confirmDialog.cellsToClear.length > 1 ? "s" : ""}? This action can be undone.`
             : `Are you sure you want to delete ${confirmDialog.recordIds.length} record${confirmDialog.recordIds.length > 1 ? "s" : ""}? This action can be undone.`
         }
-        confirmLabel="Delete"
+        confirmLabel={confirmDialog.type === "cells" ? "Clear" : "Delete"}
         cancelLabel="Cancel"
         variant="danger"
         onConfirm={handleConfirmDelete}
-        onCancel={() => setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [] })}
+        onCancel={() => setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [], cellsToClear: [] })}
       />
     </div>
   );

@@ -15,6 +15,14 @@ interface Props {
   onHideFields?: (fieldIds: string[]) => void;
   fieldOrder?: string[];         // Full fieldOrder from App.tsx (including hidden fields)
   onDeleteRecords?: (recordIds: string[]) => void;
+  onClearCells?: (cells: Array<{ recordId: string; fieldId: string }>) => void;
+}
+
+interface CellRange {
+  startRowIdx: number;
+  startColIdx: number;
+  endRowIdx: number;
+  endColIdx: number;
 }
 
 interface RowContextMenuState {
@@ -462,8 +470,15 @@ function EditableCell({
   const value = record.cells[field.id] ?? null;
   const isEditable = field.type !== "AutoNumber";
 
+  const handleDoubleClick = () => {
+    if (isEditable && !editing && field.type !== "Checkbox") onStartEdit();
+  };
+
   const handleClick = () => {
-    if (isEditable && !editing) onStartEdit();
+    // Checkbox: toggle on single click
+    if (field.type === "Checkbox" && !editing) {
+      onCommit(!value);
+    }
   };
 
   const renderEditor = () => {
@@ -509,6 +524,7 @@ function EditableCell({
     <div
       className={`cell-wrap ${isEditable ? "editable" : ""} ${editing ? "editing" : ""}`}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
     >
       {editing ? renderEditor() : <CellDisplay field={field} value={value} />}
     </div>
@@ -549,7 +565,9 @@ function loadColWidths(): Record<string, number> {
   return { ...DEFAULT_COL_WIDTHS };
 }
 
-const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords }, ref) {
+const CELL_DRAG_THRESHOLD = 4;
+
+const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords, onClearCells }, ref) {
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [selectedColIds, setSelectedColIds] = useState<Set<string>>(new Set());
@@ -559,6 +577,17 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = useState<string | null>(null);
+
+  // ── Cell range selection (drag to select) ──
+  const [cellRange, setCellRange] = useState<CellRange | null>(null);
+  const cellDragRef = useRef<{
+    startRowIdx: number;
+    startColIdx: number;
+    startX: number;
+    startY: number;
+    dragging: boolean;
+  } | null>(null);
+  const justCellDraggedRef = useRef(false);
 
   // Track last-clicked row for Shift+Click range selection
   const lastClickedRowRef = useRef<string | null>(null);
@@ -665,7 +694,9 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   const visibleFields = fields;
 
   const startEdit = useCallback((recordId: string, fieldId: string) => {
+    if (justCellDraggedRef.current) return;
     setEditing({ recordId, fieldId });
+    setCellRange(null);
   }, []);
 
   const commitEdit = useCallback((recordId: string, fieldId: string, value: CellValue) => {
@@ -684,6 +715,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       if (tableRef.current && !tableRef.current.contains(e.target as Node)) {
         if (editing) setEditing(null);
         if (selectedColIds.size > 0) setSelectedColIds(new Set());
+        if (cellRange) setCellRange(null);
       }
       // Close context menus on any click
       setContextMenu(null);
@@ -692,6 +724,122 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [editing, selectedColIds]);
+
+  // ── Cell range selection: drag to select ──
+  const isCellInRange = useCallback((rowIdx: number, colIdx: number) => {
+    if (!cellRange) return false;
+    const minRow = Math.min(cellRange.startRowIdx, cellRange.endRowIdx);
+    const maxRow = Math.max(cellRange.startRowIdx, cellRange.endRowIdx);
+    const minCol = Math.min(cellRange.startColIdx, cellRange.endColIdx);
+    const maxCol = Math.max(cellRange.startColIdx, cellRange.endColIdx);
+    return rowIdx >= minRow && rowIdx <= maxRow && colIdx >= minCol && colIdx <= maxCol;
+  }, [cellRange]);
+
+  const handleCellMouseDown = useCallback((e: React.MouseEvent, rowIdx: number, colIdx: number) => {
+    if (e.button !== 0) return;
+    // If currently editing, exit edit mode first, then proceed to select the new cell
+    if (editing) setEditing(null);
+
+    // Check if clicking on an already-selected single cell (for "click again to edit")
+    const wasAlreadySelected = cellRange &&
+      cellRange.startRowIdx === cellRange.endRowIdx &&
+      cellRange.startColIdx === cellRange.endColIdx &&
+      cellRange.startRowIdx === rowIdx &&
+      cellRange.startColIdx === colIdx;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    cellDragRef.current = { startRowIdx: rowIdx, startColIdx: colIdx, startX, startY, dragging: false };
+    justCellDraggedRef.current = false;
+
+    // Set initial selection to this single cell; clear column selection
+    setCellRange({ startRowIdx: rowIdx, startColIdx: colIdx, endRowIdx: rowIdx, endColIdx: colIdx });
+    setSelectedColIds(new Set());
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!cellDragRef.current) return;
+      const dx = ev.clientX - cellDragRef.current.startX;
+      const dy = ev.clientY - cellDragRef.current.startY;
+
+      if (!cellDragRef.current.dragging && (Math.abs(dx) > CELL_DRAG_THRESHOLD || Math.abs(dy) > CELL_DRAG_THRESHOLD)) {
+        cellDragRef.current.dragging = true;
+        justCellDraggedRef.current = true;
+        setEditing(null); // cancel any pending edit
+        document.body.style.userSelect = "none";
+      }
+
+      if (cellDragRef.current.dragging) {
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        const td = el?.closest("td[data-row-idx][data-col-idx]") as HTMLElement | null;
+        if (td) {
+          const endRowIdx = parseInt(td.getAttribute("data-row-idx")!, 10);
+          const endColIdx = parseInt(td.getAttribute("data-col-idx")!, 10);
+          if (!isNaN(endRowIdx) && !isNaN(endColIdx)) {
+            setCellRange(prev => prev ? { ...prev, endRowIdx, endColIdx } : null);
+          }
+        }
+      }
+    };
+
+    const onMouseUp = () => {
+      if (cellDragRef.current?.dragging) {
+        // Suppress clicks that might follow the drag (e.g. checkbox toggle)
+        requestAnimationFrame(() => { justCellDraggedRef.current = false; });
+      } else {
+        justCellDraggedRef.current = false;
+        // Click (no drag) on an already-selected single cell → enter edit
+        if (wasAlreadySelected) {
+          const field = visibleFields[colIdx];
+          if (field && field.type !== "AutoNumber" && field.type !== "Checkbox") {
+            startEdit(records[rowIdx]?.id, field.id);
+          }
+        }
+      }
+      cellDragRef.current = null;
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [editing, cellRange, records, visibleFields, startEdit]);
+
+  // ── Keyboard: Delete/Backspace clears selected cells, Escape clears selection ──
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't intercept when typing in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if ((e.key === "Delete" || e.key === "Backspace") && cellRange && !editing) {
+        e.preventDefault();
+        const minRow = Math.min(cellRange.startRowIdx, cellRange.endRowIdx);
+        const maxRow = Math.max(cellRange.startRowIdx, cellRange.endRowIdx);
+        const minCol = Math.min(cellRange.startColIdx, cellRange.endColIdx);
+        const maxCol = Math.max(cellRange.startColIdx, cellRange.endColIdx);
+
+        const cells: Array<{ recordId: string; fieldId: string }> = [];
+        const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime"]);
+        for (let r = minRow; r <= maxRow; r++) {
+          for (let c = minCol; c <= maxCol; c++) {
+            if (r < records.length && c < visibleFields.length) {
+              const field = visibleFields[c];
+              if (readOnlyTypes.has(field.type)) continue;
+              cells.push({ recordId: records[r].id, fieldId: field.id });
+            }
+          }
+        }
+        if (cells.length > 0) onClearCells?.(cells);
+      }
+
+      if (e.key === "Escape" && cellRange && !editing) {
+        setCellRange(null);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [cellRange, editing, records, visibleFields, onClearCells]);
 
   // ── Column resize handlers ──
   const handleResizeStart = useCallback((e: React.MouseEvent, fieldId: string) => {
@@ -724,6 +872,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
 
   // ── Header click → select column (Shift+Click = add to selection) ──
   const handleHeaderClick = useCallback((fieldId: string, shiftKey = false) => {
+    setCellRange(null); // Clear cell selection when selecting columns
     setSelectedColIds(prev => {
       if (shiftKey) {
         // Shift+Click: toggle this column in the multi-selection
@@ -989,13 +1138,17 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                       >{idx + 1}</span>
                     )}
                   </td>
-                  {visibleFields.map((f) => {
+                  {visibleFields.map((f, fIdx) => {
                     const isEditing = editing?.recordId === record.id && editing?.fieldId === f.id;
                     const isColSelected = selectedColIds.has(f.id);
+                    const isCellSel = isCellInRange(idx, fIdx);
                     return (
                       <td
                         key={f.id}
-                        className={`col-${f.id} ${isEditing ? "td-editing" : ""} ${isColSelected ? "col-selected" : ""}`}
+                        data-row-idx={idx}
+                        data-col-idx={fIdx}
+                        className={`col-${f.id} ${isEditing ? "td-editing" : ""} ${isColSelected ? "col-selected" : ""} ${isCellSel ? "cell-range-selected" : ""}`}
+                        onMouseDown={(e) => handleCellMouseDown(e, idx, fIdx)}
                       >
                         <EditableCell
                           field={f}
