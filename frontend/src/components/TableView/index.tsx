@@ -805,32 +805,41 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     document.addEventListener("mouseup", onMouseUp);
   }, [editing, cellRange, records, visibleFields, startEdit]);
 
-  // ── Keyboard: Delete/Backspace clears selected cells, Escape clears selection ──
+  // ── Keyboard: Delete/Backspace on selected rows or cells, Escape clears selection ──
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // Don't intercept when typing in an input/textarea
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
 
-      if ((e.key === "Delete" || e.key === "Backspace") && cellRange && !editing) {
-        e.preventDefault();
-        const minRow = Math.min(cellRange.startRowIdx, cellRange.endRowIdx);
-        const maxRow = Math.max(cellRange.startRowIdx, cellRange.endRowIdx);
-        const minCol = Math.min(cellRange.startColIdx, cellRange.endColIdx);
-        const maxCol = Math.max(cellRange.startColIdx, cellRange.endColIdx);
+      if ((e.key === "Delete" || e.key === "Backspace") && !editing) {
+        // Priority 1: rows selected via checkbox → delete rows (goes through safety delete)
+        if (selectedRowIds.size > 0) {
+          e.preventDefault();
+          onDeleteRecords?.([...selectedRowIds]);
+          return;
+        }
+        // Priority 2: cell range selected → clear cells directly (no confirmation)
+        if (cellRange) {
+          e.preventDefault();
+          const minRow = Math.min(cellRange.startRowIdx, cellRange.endRowIdx);
+          const maxRow = Math.max(cellRange.startRowIdx, cellRange.endRowIdx);
+          const minCol = Math.min(cellRange.startColIdx, cellRange.endColIdx);
+          const maxCol = Math.max(cellRange.startColIdx, cellRange.endColIdx);
 
-        const cells: Array<{ recordId: string; fieldId: string }> = [];
-        const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime"]);
-        for (let r = minRow; r <= maxRow; r++) {
-          for (let c = minCol; c <= maxCol; c++) {
-            if (r < records.length && c < visibleFields.length) {
-              const field = visibleFields[c];
-              if (readOnlyTypes.has(field.type)) continue;
-              cells.push({ recordId: records[r].id, fieldId: field.id });
+          const cells: Array<{ recordId: string; fieldId: string }> = [];
+          const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime"]);
+          for (let r = minRow; r <= maxRow; r++) {
+            for (let c = minCol; c <= maxCol; c++) {
+              if (r < records.length && c < visibleFields.length) {
+                const field = visibleFields[c];
+                if (readOnlyTypes.has(field.type)) continue;
+                cells.push({ recordId: records[r].id, fieldId: field.id });
+              }
             }
           }
+          if (cells.length > 0) onClearCells?.(cells);
         }
-        if (cells.length > 0) onClearCells?.(cells);
       }
 
       if (e.key === "Escape" && cellRange && !editing) {
@@ -839,7 +848,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [cellRange, editing, records, visibleFields, onClearCells]);
+  }, [cellRange, editing, records, visibleFields, onClearCells, selectedRowIds, onDeleteRecords]);
 
   // ── Column resize handlers ──
   const handleResizeStart = useCallback((e: React.MouseEvent, fieldId: string) => {

@@ -540,12 +540,9 @@ export default function App() {
     );
   }, [allRecords, pushUndo, toast, performUndo]);
 
+  // Cell clearing always executes directly (no safety delete confirmation), undo is sufficient
   const handleClearCells = useCallback((cells: Array<{ recordId: string; fieldId: string }>) => {
-    if (deleteProtection) {
-      setConfirmDialog({ open: true, type: "cells", recordIds: [], fieldIds: [], cellsToClear: cells });
-    } else {
-      executeClearCells(cells);
-    }
+    executeClearCells(cells);
   }, [deleteProtection, executeClearCells]);
 
   const handleConfirmDelete = useCallback(() => {
