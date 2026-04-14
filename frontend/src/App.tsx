@@ -8,12 +8,17 @@ import FilterPanel from "./components/FilterPanel/index";
 import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields } from "./api";
 import { useToast } from "./components/Toast/index";
 import ConfirmDialog from "./components/ConfirmDialog/index";
 import { filterRecords } from "./services/filterEngine";
 
 const TABLE_ID = "tbl_requirements";
+
+const MAX_UNDO = 20;
+type UndoItem =
+  | { type: "records"; records: TableRecord[]; indices: number[] }
+  | { type: "fields"; fieldDefs: Field[]; snapshot: any; removedConditions: ViewFilter["conditions"]; removedSavedConditions: ViewFilter["conditions"]; removedHiddenIds: string[]; fieldOrderBefore: string[] };
 
 export default function App() {
   const [fields, setFields] = useState<Field[]>([]);
@@ -31,8 +36,20 @@ export default function App() {
 
   // Delete protection & undo
   const [deleteProtection, setDeleteProtection] = useState(true);
-  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; recordIds: string[] }>({ open: false, recordIds: [] });
-  const undoCacheRef = useRef<{ records: TableRecord[]; indices: number[] } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    type: "records" | "fields";
+    recordIds: string[];
+    fieldIds: string[];
+  }>({ open: false, type: "records", recordIds: [], fieldIds: [] });
+  const undoStackRef = useRef<UndoItem[]>([]);
+  const pushUndo = useCallback((item: UndoItem) => {
+    undoStackRef.current.push(item);
+    if (undoStackRef.current.length > MAX_UNDO) {
+      undoStackRef.current.shift();
+    }
+    setCanUndo(true);
+  }, []);
   const [canUndo, setCanUndo] = useState(false);
   const toast = useToast();
 
@@ -100,8 +117,15 @@ export default function App() {
     setViewHiddenFields(view.hiddenFields ?? []);
   }, []);
 
+  // Skip sync flag — set during undo to prevent useEffect from overriding restored fieldOrder
+  const skipFieldSyncRef = useRef(false);
+
   // When fields change (add/delete), sync fieldOrder
   useEffect(() => {
+    if (skipFieldSyncRef.current) {
+      skipFieldSyncRef.current = false;
+      return;
+    }
     if (fields.length === 0 || viewFieldOrder.length === 0) return;
     const allFieldIds = new Set(fields.map(f => f.id));
     const seen = new Set<string>();
@@ -221,47 +245,54 @@ export default function App() {
     );
   }, []);
 
-  const handleDeleteField = useCallback(async (fieldId: string) => {
-    try {
-      await deleteField(TABLE_ID, fieldId);
-      setFields((prev) => prev.filter((f) => f.id !== fieldId));
-      // Also remove from filter conditions if present
-      setFilter((prev) => ({
-        ...prev,
-        conditions: prev.conditions.filter((c) => c.fieldId !== fieldId),
-      }));
-      setSavedFilter((prev) => ({
-        ...prev,
-        conditions: prev.conditions.filter((c) => c.fieldId !== fieldId),
-      }));
-    } catch (err) {
-      console.error("Failed to delete field:", err);
-      alert((err as Error).message);
-    }
-  }, []);
-
-  // ── Undo helper ──
+  // ── Undo helper (multi-step stack, max 20) ──
   const performUndo = useCallback(() => {
-    const cache = undoCacheRef.current;
-    if (!cache) return;
-    // Restore at original positions
-    setAllRecords(prev => {
-      const arr = [...prev];
-      cache.indices.forEach((idx, i) => {
-        arr.splice(Math.min(idx, arr.length), 0, cache.records[i]);
+    const item = undoStackRef.current.pop();
+    if (!item) return;
+
+    if (item.type === "records") {
+      // Restore records at original positions
+      setAllRecords(prev => {
+        const arr = [...prev];
+        item.indices.forEach((idx, i) => {
+          arr.splice(Math.min(idx, arr.length), 0, item.records[i]);
+        });
+        return arr;
       });
-      return arr;
-    });
-    // API restore (silent — UI already restored)
-    batchCreateRecords(TABLE_ID, cache.records.map(r => ({
-      id: r.id,
-      cells: r.cells as Record<string, any>,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    }))).catch(err => console.warn("Failed to restore records:", err));
-    undoCacheRef.current = null;
-    setCanUndo(false);
-  }, []);
+      batchCreateRecords(TABLE_ID, item.records.map(r => ({
+        id: r.id,
+        cells: r.cells as Record<string, any>,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      }))).catch(err => console.warn("Failed to restore records:", err));
+    } else if (item.type === "fields") {
+      // Restore fields — skip the fieldOrder sync effect
+      skipFieldSyncRef.current = true;
+      setFields(prev => [...prev, ...item.fieldDefs]);
+      // Incremental filter restore: add back removed conditions
+      setFilter(prev => ({
+        ...prev,
+        conditions: [...prev.conditions, ...item.removedConditions],
+      }));
+      setSavedFilter(prev => ({
+        ...prev,
+        conditions: [...prev.conditions, ...item.removedSavedConditions],
+      }));
+      // Incremental hiddenFields restore: add back removed hidden ids
+      setViewHiddenFields(prev => {
+        const nextSet = new Set(prev);
+        for (const id of item.removedHiddenIds) nextSet.add(id);
+        return Array.from(nextSet);
+      });
+      // Full snapshot restore for fieldOrder
+      setViewFieldOrder(item.fieldOrderBefore);
+      persistFieldOrder(item.fieldOrderBefore);
+      batchRestoreFields(TABLE_ID, item.snapshot)
+        .catch(err => console.warn("Failed to restore fields:", err));
+    }
+
+    setCanUndo(undoStackRef.current.length > 0);
+  }, [persistFieldOrder]);
 
   // ── Delete records ──
   const executeDelete = useCallback((recordIds: string[]) => {
@@ -275,23 +306,22 @@ export default function App() {
         snapIndices.push(i);
       }
     });
-    undoCacheRef.current = { records: snapRecords, indices: snapIndices };
-    setCanUndo(true);
+    pushUndo({ type: "records", records: snapRecords, indices: snapIndices });
 
     // Optimistic removal
     setAllRecords(prev => prev.filter(r => !idSet.has(r.id)));
 
     // API call
     deleteRecords(TABLE_ID, recordIds).catch(() => {
-      // Revert on failure
+      // Revert on failure — pop the item we just pushed
+      undoStackRef.current.pop();
+      setCanUndo(undoStackRef.current.length > 0);
       setAllRecords(prev => {
         const arr = [...prev];
         snapIndices.forEach((idx, i) => arr.splice(idx, 0, snapRecords[i]));
         return arr;
       });
       toast.error("Failed to delete records");
-      undoCacheRef.current = null;
-      setCanUndo(false);
     });
 
     // Toast with undo
@@ -305,21 +335,96 @@ export default function App() {
         },
       }
     );
-  }, [allRecords, toast, performUndo]);
+  }, [allRecords, toast, performUndo, pushUndo]);
+
+  // ── Batch delete fields with undo ──
+  const executeDeleteFields = useCallback(async (fieldIds: string[]) => {
+    const fieldOrderBefore = [...viewFieldOrder];
+    const deletedFieldDefs = fields.filter(f => fieldIds.includes(f.id));
+
+    try {
+      const result = await batchDeleteFields(TABLE_ID, fieldIds);
+      const deletedIds = new Set(result.snapshot.fieldDefs.map((f: Field) => f.id));
+
+      // Compute incremental data for undo
+      const removedConditions = filter.conditions.filter(c => deletedIds.has(c.fieldId));
+      const removedSavedConditions = savedFilter.conditions.filter(c => deletedIds.has(c.fieldId));
+      const removedHiddenIds = viewHiddenFields.filter(id => deletedIds.has(id));
+
+      pushUndo({
+        type: "fields",
+        fieldDefs: deletedFieldDefs.filter(f => deletedIds.has(f.id)),
+        snapshot: result.snapshot,
+        removedConditions,
+        removedSavedConditions,
+        removedHiddenIds,
+        fieldOrderBefore,
+      });
+
+      setFields(prev => prev.filter(f => !deletedIds.has(f.id)));
+      setFilter(prev => ({
+        ...prev,
+        conditions: prev.conditions.filter(c => !deletedIds.has(c.fieldId)),
+      }));
+      setSavedFilter(prev => ({
+        ...prev,
+        conditions: prev.conditions.filter(c => !deletedIds.has(c.fieldId)),
+      }));
+
+      const count = result.deleted;
+      toast.success(
+        `Deleted ${count} field${count > 1 ? "s" : ""}`,
+        { duration: 5000, action: { label: "Undo", onClick: () => performUndo() } },
+      );
+    } catch (err) {
+      console.error("Failed to delete fields:", err);
+      toast.error((err as Error).message || "Failed to delete fields");
+    }
+  }, [fields, filter, savedFilter, viewHiddenFields, viewFieldOrder, toast, performUndo, pushUndo]);
+
+  const handleDeleteFields = useCallback((fieldIds: string[]) => {
+    if (deleteProtection) {
+      setConfirmDialog({ open: true, type: "fields", recordIds: [], fieldIds });
+    } else {
+      executeDeleteFields(fieldIds);
+    }
+  }, [deleteProtection, executeDeleteFields]);
+
+  // ── Batch hide fields ──
+  const handleHideFields = useCallback((fieldIds: string[]) => {
+    setViewHiddenFields(prev => {
+      const nextSet = new Set(prev);
+      for (const id of fieldIds) nextSet.add(id);
+      const next = Array.from(nextSet);
+      persistHiddenFields(next);
+      return next;
+    });
+  }, [persistHiddenFields]);
+
+  // Legacy single-field delete (keep for backward compat)
+  const handleDeleteField = useCallback((fieldId: string) => {
+    handleDeleteFields([fieldId]);
+  }, [handleDeleteFields]);
 
   const handleDeleteRecords = useCallback((recordIds: string[]) => {
     if (deleteProtection) {
-      setConfirmDialog({ open: true, recordIds });
+      setConfirmDialog({ open: true, type: "records", recordIds, fieldIds: [] });
     } else {
       executeDelete(recordIds);
     }
   }, [deleteProtection, executeDelete]);
 
   const handleConfirmDelete = useCallback(() => {
-    const ids = confirmDialog.recordIds;
-    setConfirmDialog({ open: false, recordIds: [] });
-    executeDelete(ids);
-  }, [confirmDialog.recordIds, executeDelete]);
+    if (confirmDialog.type === "records") {
+      const ids = confirmDialog.recordIds;
+      setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [] });
+      executeDelete(ids);
+    } else {
+      const ids = confirmDialog.fieldIds;
+      setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [] });
+      executeDeleteFields(ids);
+    }
+  }, [confirmDialog, executeDelete, executeDeleteFields]);
 
   const isFiltered = filter.conditions.length > 0;
 
@@ -367,8 +472,10 @@ export default function App() {
               records={displayRecords}
               onCellChange={handleCellChange}
               onDeleteField={handleDeleteField}
+              onDeleteFields={handleDeleteFields}
               onFieldOrderChange={handleFieldOrderChange}
               onHideField={handleHideField}
+              onHideFields={handleHideFields}
               fieldOrder={viewFieldOrder}
               onDeleteRecords={handleDeleteRecords}
             />
@@ -399,13 +506,17 @@ export default function App() {
       </div>
       <ConfirmDialog
         open={confirmDialog.open}
-        title="Delete Records"
-        message={`Are you sure you want to delete ${confirmDialog.recordIds.length} record${confirmDialog.recordIds.length > 1 ? "s" : ""}? This action can be undone.`}
+        title={confirmDialog.type === "fields" ? "Delete Fields" : "Delete Records"}
+        message={
+          confirmDialog.type === "fields"
+            ? `Are you sure you want to delete ${confirmDialog.fieldIds.length} field${confirmDialog.fieldIds.length > 1 ? "s" : ""}? All data in ${confirmDialog.fieldIds.length > 1 ? "these fields" : "this field"} will be removed. This action can be undone.`
+            : `Are you sure you want to delete ${confirmDialog.recordIds.length} record${confirmDialog.recordIds.length > 1 ? "s" : ""}? This action can be undone.`
+        }
         confirmLabel="Delete"
         cancelLabel="Cancel"
         variant="danger"
         onConfirm={handleConfirmDelete}
-        onCancel={() => setConfirmDialog({ open: false, recordIds: [] })}
+        onCancel={() => setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [] })}
       />
     </div>
   );

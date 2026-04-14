@@ -79,6 +79,36 @@ router.delete("/:tableId/fields/:fieldId", async (req: Request, res: Response) =
   res.json({ ok: true });
 });
 
+// POST /api/tables/:tableId/fields/batch-delete — batch delete fields (returns snapshot for undo)
+router.post("/:tableId/fields/batch-delete", async (req: Request, res: Response) => {
+  const { fieldIds } = req.body;
+  if (!Array.isArray(fieldIds) || fieldIds.length === 0) {
+    res.status(400).json({ error: "fieldIds must be a non-empty array" });
+    return;
+  }
+  const snapshot = await store.batchDeleteFields(req.params.tableId, fieldIds);
+  if (!snapshot) {
+    res.status(400).json({ error: "No fields could be deleted (primary fields or not found)" });
+    return;
+  }
+  res.json({ deleted: snapshot.fieldDefs.length, snapshot });
+});
+
+// POST /api/tables/:tableId/fields/batch-restore — restore fields from snapshot (undo)
+router.post("/:tableId/fields/batch-restore", async (req: Request, res: Response) => {
+  const { snapshot } = req.body;
+  if (!snapshot) {
+    res.status(400).json({ error: "snapshot is required" });
+    return;
+  }
+  const ok = await store.batchRestoreFields(req.params.tableId, snapshot);
+  if (!ok) {
+    res.status(400).json({ error: "Failed to restore fields" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
 // ═══════ Record CRUD ═══════
 
 // GET /api/tables/:tableId/records

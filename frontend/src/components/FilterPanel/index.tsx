@@ -32,7 +32,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
 
   // ── Voice input ──
   const queryBeforeVoiceRef = useRef("");
-  const { isSupported: speechSupported, isListening, start: startSpeech, stop: stopSpeech } = useSpeechRecognition({
+  const { isSupported: speechSupported, isListening, isStopping, start: startSpeech, stop: stopSpeech } = useSpeechRecognition({
     lang: "zh-CN",
     onResult(text) {
       setQuery(queryBeforeVoiceRef.current + text);
@@ -221,7 +221,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
               className={`fp-ai-input ${echoQuery && !query ? "echo" : ""}`}
               type="text"
               value={query}
-              readOnly={isListening}
+              readOnly={isListening || isStopping}
               onChange={(e) => { setQuery(e.target.value); if (!e.target.value) setEchoQuery(""); }}
               onKeyDown={handleInputKeyDown}
               onKeyUp={handleInputKeyUp}
@@ -231,12 +231,14 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
         </div>
         {speechSupported && !showGenerating && (
           <button
-            className={`fp-ai-mic ${isListening ? "listening" : ""}`}
+            className={`fp-ai-mic ${isListening ? (isStopping ? "stopping" : "listening") : ""}`}
             onClick={toggleVoice}
-            title={isListening ? "Stop recording" : "Voice input"}
+            title={isStopping ? "Finishing up..." : isListening ? "Stop recording" : "Voice input"}
+            disabled={isStopping}
           >
             <MicIcon />
-            {isListening && <span className="fp-mic-pulse" />}
+            {isListening && !isStopping && <span className="fp-mic-pulse" />}
+            {isStopping && <span className="fp-mic-stopping" />}
           </button>
         )}
         {(query || echoQuery) && !showGenerating && (
@@ -246,7 +248,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
             </svg>
           </button>
         )}
-        {query.trim() && !showGenerating && !isListening && (
+        {query.trim() && !showGenerating && !isListening && !isStopping && (
           <button className="fp-ai-send" onClick={handleSubmit} title="Submit">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <path d="M12 20V4M5 11l7-7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

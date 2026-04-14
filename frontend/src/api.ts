@@ -67,6 +67,38 @@ export async function updateView(
   return res.json();
 }
 
+export async function batchDeleteFields(
+  tableId: string,
+  fieldIds: string[]
+): Promise<{ deleted: number; snapshot: any }> {
+  const res = await fetch(`${BASE}/tables/${tableId}/fields/batch-delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fieldIds }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || "Failed to delete fields");
+  }
+  return res.json();
+}
+
+export async function batchRestoreFields(
+  tableId: string,
+  snapshot: any
+): Promise<{ ok: boolean }> {
+  const res = await fetch(`${BASE}/tables/${tableId}/fields/batch-restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ snapshot }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || "Failed to restore fields");
+  }
+  return res.json();
+}
+
 export async function deleteRecords(
   tableId: string,
   recordIds: string[]

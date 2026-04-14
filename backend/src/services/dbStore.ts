@@ -286,6 +286,150 @@ export async function deleteField(tableId: string, fieldId: string): Promise<boo
   return true;
 }
 
+// ─── Batch Field operations ───
+
+export interface FieldDeleteSnapshot {
+  fieldDefs: Field[];
+  cellData: Record<string, Record<string, CellValue>>; // recordId → { fieldId → value }
+  fieldOrderSnapshot: Record<string, string[]>;  // viewId → fieldOrder before delete
+  counters: Record<string, number>;  // autoNumber counters for deleted fields
+}
+
+export async function batchDeleteFields(tableId: string, fieldIds: string[]): Promise<FieldDeleteSnapshot | null> {
+  const row = await prisma.table.findUnique({ where: { id: tableId } });
+  if (!row) return null;
+
+  const fields = (row.fields ?? []) as Field[];
+  const views = (row.views ?? []) as View[];
+  const counters = (row.autoNumberCounters ?? {}) as Record<string, number>;
+  const deleteSet = new Set(fieldIds);
+
+  // Validate: filter out primary fields and non-existent ones
+  const toDelete = fields.filter(f => deleteSet.has(f.id) && !f.isPrimary);
+  if (toDelete.length === 0) return null;
+  const toDeleteIds = new Set(toDelete.map(f => f.id));
+
+  // Build snapshot before deletion
+  const snapshot: FieldDeleteSnapshot = {
+    fieldDefs: toDelete,
+    cellData: {},
+    fieldOrderSnapshot: {},
+    counters: {},
+  };
+
+  // Save fieldOrder snapshot per view
+  for (const view of views) {
+    if (view.fieldOrder) {
+      snapshot.fieldOrderSnapshot[view.id] = [...view.fieldOrder];
+    }
+  }
+
+  // Save autoNumber counters
+  for (const fid of toDeleteIds) {
+    if (counters[fid] !== undefined) {
+      snapshot.counters[fid] = counters[fid];
+    }
+  }
+
+  // Collect cell data and remove from records
+  const records = await prisma.record.findMany({ where: { tableId } });
+  for (const rec of records) {
+    const cells = (rec.cells ?? {}) as Record<string, CellValue>;
+    const savedCells: Record<string, CellValue> = {};
+    let changed = false;
+    for (const fid of toDeleteIds) {
+      if (fid in cells) {
+        savedCells[fid] = cells[fid];
+        delete cells[fid];
+        changed = true;
+      }
+    }
+    if (Object.keys(savedCells).length > 0) {
+      snapshot.cellData[rec.id] = savedCells;
+    }
+    if (changed) {
+      await prisma.record.update({ where: { id: rec.id }, data: { cells: cells as any } });
+    }
+  }
+
+  // Remove fields from table
+  const remainingFields = fields.filter(f => !toDeleteIds.has(f.id));
+
+  // Clean views
+  for (const view of views) {
+    view.filter.conditions = view.filter.conditions.filter(c => !toDeleteIds.has(c.fieldId));
+    if (view.sort) {
+      view.sort.rules = view.sort.rules.filter(r => !toDeleteIds.has(r.fieldId));
+    }
+    if (view.group) {
+      view.group.rules = view.group.rules.filter(r => !toDeleteIds.has(r.fieldId));
+    }
+    if (view.fieldOrder) {
+      view.fieldOrder = view.fieldOrder.filter(id => !toDeleteIds.has(id));
+    }
+    if (view.hiddenFields) {
+      view.hiddenFields = view.hiddenFields.filter(id => !toDeleteIds.has(id));
+    }
+  }
+
+  // Remove auto number counters
+  for (const fid of toDeleteIds) {
+    delete counters[fid];
+  }
+
+  await prisma.table.update({
+    where: { id: tableId },
+    data: { fields: remainingFields as any, views: views as any, autoNumberCounters: counters as any },
+  });
+
+  return snapshot;
+}
+
+export async function batchRestoreFields(
+  tableId: string,
+  snapshot: FieldDeleteSnapshot,
+): Promise<boolean> {
+  const row = await prisma.table.findUnique({ where: { id: tableId } });
+  if (!row) return false;
+
+  const fields = (row.fields ?? []) as Field[];
+  const views = (row.views ?? []) as View[];
+  const counters = (row.autoNumberCounters ?? {}) as Record<string, number>;
+
+  // Restore field definitions
+  fields.push(...snapshot.fieldDefs);
+
+  // Restore autoNumber counters
+  for (const [fid, counter] of Object.entries(snapshot.counters)) {
+    counters[fid] = counter;
+  }
+
+  // Restore fieldOrder from snapshot
+  for (const view of views) {
+    if (snapshot.fieldOrderSnapshot[view.id]) {
+      view.fieldOrder = snapshot.fieldOrderSnapshot[view.id];
+    }
+  }
+
+  await prisma.table.update({
+    where: { id: tableId },
+    data: { fields: fields as any, views: views as any, autoNumberCounters: counters as any },
+  });
+
+  // Restore cell data
+  for (const [recordId, savedCells] of Object.entries(snapshot.cellData)) {
+    const rec = await prisma.record.findUnique({ where: { id: recordId } });
+    if (!rec) continue;
+    const cells = (rec.cells ?? {}) as Record<string, CellValue>;
+    for (const [fid, val] of Object.entries(savedCells)) {
+      cells[fid] = val;
+    }
+    await prisma.record.update({ where: { id: recordId }, data: { cells: cells as any } });
+  }
+
+  return true;
+}
+
 // ─── Record ───
 
 export async function getRecords(tableId: string): Promise<TableRecord[]> {

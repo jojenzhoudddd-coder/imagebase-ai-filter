@@ -9,8 +9,10 @@ interface Props {
   records: TableRecord[];
   onCellChange: (recordId: string, fieldId: string, value: CellValue) => void;
   onDeleteField?: (fieldId: string) => void;
+  onDeleteFields?: (fieldIds: string[]) => void;
   onFieldOrderChange?: (newOrder: string[]) => void;   // Full fieldOrder (including hidden)
   onHideField?: (fieldId: string) => void;
+  onHideFields?: (fieldIds: string[]) => void;
   fieldOrder?: string[];         // Full fieldOrder from App.tsx (including hidden fields)
   onDeleteRecords?: (recordIds: string[]) => void;
 }
@@ -29,7 +31,7 @@ interface EditingState {
 interface ContextMenuState {
   x: number;
   y: number;
-  fieldId: string;
+  fieldIds: string[];
 }
 
 interface DragState {
@@ -547,16 +549,19 @@ function loadColWidths(): Record<string, number> {
   return { ...DEFAULT_COL_WIDTHS };
 }
 
-const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onFieldOrderChange, onHideField, fieldOrder, onDeleteRecords }, ref) {
+const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords }, ref) {
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
-  const [selectedColId, setSelectedColId] = useState<string | null>(null);
+  const [selectedColIds, setSelectedColIds] = useState<Set<string>>(new Set());
   const [colWidths, setColWidths] = useState<Record<string, number>>(loadColWidths);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [rowContextMenu, setRowContextMenu] = useState<RowContextMenuState | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = useState<string | null>(null);
+
+  // Track last-clicked row for Shift+Click range selection
+  const lastClickedRowRef = useRef<string | null>(null);
 
   // Header checkbox ref for indeterminate state
   const headerCheckRef = useRef<HTMLInputElement>(null);
@@ -575,7 +580,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   // Expose imperative methods to parent
   useImperativeHandle(ref, () => ({
     selectAndScrollToField(fieldId: string) {
-      setSelectedColId(fieldId);
+      setSelectedColIds(new Set([fieldId]));
       // Scroll the column header into view
       const th = headerRefs.current.get(fieldId);
       if (th) {
@@ -596,14 +601,30 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     else setSelectedRowIds(new Set(records.map(r => r.id)));
   }, [allSelected, records]);
 
-  const handleRowCheckChange = useCallback((recordId: string) => {
+  const handleRowCheckChange = useCallback((recordId: string, shiftKey = false) => {
     setSelectedRowIds(prev => {
+      // Shift+Click: select range from last-clicked row to this row
+      if (shiftKey && lastClickedRowRef.current && lastClickedRowRef.current !== recordId) {
+        const ids = records.map(r => r.id);
+        const anchorIdx = ids.indexOf(lastClickedRowRef.current);
+        const targetIdx = ids.indexOf(recordId);
+        if (anchorIdx !== -1 && targetIdx !== -1) {
+          const from = Math.min(anchorIdx, targetIdx);
+          const to = Math.max(anchorIdx, targetIdx);
+          const rangeIds = ids.slice(from, to + 1);
+          const next = new Set(prev);
+          for (const id of rangeIds) next.add(id);
+          return next;
+        }
+      }
+      // Normal click: toggle single row
       const next = new Set(prev);
       if (next.has(recordId)) next.delete(recordId);
       else next.add(recordId);
+      lastClickedRowRef.current = recordId;
       return next;
     });
-  }, []);
+  }, [records]);
 
   // Clear selection when records change (e.g. after delete)
   useEffect(() => {
@@ -662,7 +683,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     const handler = (e: MouseEvent) => {
       if (tableRef.current && !tableRef.current.contains(e.target as Node)) {
         if (editing) setEditing(null);
-        if (selectedColId) setSelectedColId(null);
+        if (selectedColIds.size > 0) setSelectedColIds(new Set());
       }
       // Close context menus on any click
       setContextMenu(null);
@@ -670,7 +691,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [editing, selectedColId]);
+  }, [editing, selectedColIds]);
 
   // ── Column resize handlers ──
   const handleResizeStart = useCallback((e: React.MouseEvent, fieldId: string) => {
@@ -701,35 +722,69 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     document.addEventListener("mouseup", onMouseUp);
   }, [colWidths]);
 
-  // ── Header click → select column ──
-  const handleHeaderClick = useCallback((fieldId: string) => {
-    setSelectedColId((prev) => (prev === fieldId ? null : fieldId));
+  // ── Header click → select column (Shift+Click = add to selection) ──
+  const handleHeaderClick = useCallback((fieldId: string, shiftKey = false) => {
+    setSelectedColIds(prev => {
+      if (shiftKey) {
+        // Shift+Click: toggle this column in the multi-selection
+        const next = new Set(prev);
+        if (next.has(fieldId)) next.delete(fieldId);
+        else next.add(fieldId);
+        return next;
+      }
+      // Normal click: single-select toggle
+      if (prev.size === 1 && prev.has(fieldId)) return new Set();
+      return new Set([fieldId]);
+    });
   }, []);
 
   // ── Context menu (right-click on header) ──
   const handleHeaderContextMenu = useCallback((e: React.MouseEvent, fieldId: string) => {
     e.preventDefault();
-    // Don't allow deleting the primary field (fld_name)
-    if (fieldId === "fld_name") return;
-    setContextMenu({ x: e.clientX, y: e.clientY, fieldId });
-  }, []);
+    let ids: string[];
+    if (selectedColIds.has(fieldId) && selectedColIds.size > 0) {
+      // Use entire selection, but exclude primary field (fld_name)
+      ids = [...selectedColIds].filter(id => id !== "fld_name");
+    } else {
+      if (fieldId === "fld_name") return;
+      ids = [fieldId];
+    }
+    if (ids.length === 0) return;
+    setContextMenu({ x: e.clientX, y: e.clientY, fieldIds: ids });
+  }, [selectedColIds]);
 
   const handleDeleteFieldClick = useCallback(() => {
     if (!contextMenu) return;
-    const fieldId = contextMenu.fieldId;
+    const ids = contextMenu.fieldIds;
     setContextMenu(null);
-    onDeleteField?.(fieldId);
-    // If this column was selected, deselect
-    setSelectedColId((prev) => (prev === fieldId ? null : prev));
-  }, [contextMenu, onDeleteField]);
+    if (ids.length === 1) {
+      onDeleteField?.(ids[0]);
+    } else {
+      onDeleteFields?.(ids);
+    }
+    // Remove deleted columns from selection
+    setSelectedColIds(prev => {
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  }, [contextMenu, onDeleteField, onDeleteFields]);
 
   const handleHideFieldClick = useCallback(() => {
     if (!contextMenu) return;
-    const fieldId = contextMenu.fieldId;
+    const ids = contextMenu.fieldIds;
     setContextMenu(null);
-    onHideField?.(fieldId);
-    setSelectedColId((prev) => (prev === fieldId ? null : prev));
-  }, [contextMenu, onHideField]);
+    if (ids.length === 1) {
+      onHideField?.(ids[0]);
+    } else {
+      onHideFields?.(ids);
+    }
+    setSelectedColIds(prev => {
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  }, [contextMenu, onHideField, onHideFields]);
 
   // ── Drag-to-reorder columns ──
   const dragOverRef = useRef<string | null>(null);
@@ -741,8 +796,8 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     const rect = th.getBoundingClientRect();
     if (e.clientX > rect.right - 8) return;
 
-    // Only allow drag if the column is already selected
-    if (selectedColId !== fieldId) return;
+    // Only allow drag if the column is already selected (and it's the only selected one)
+    if (!selectedColIds.has(fieldId) || selectedColIds.size !== 1) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -815,7 +870,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [selectedColId]);
+  }, [selectedColIds]);
 
   // Compute drag offset for the dragged column header
   const getDragTransform = (fieldId: string): React.CSSProperties => {
@@ -863,18 +918,18 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                   key={f.id}
                   ref={(el) => { if (el) headerRefs.current.set(f.id, el); else headerRefs.current.delete(f.id); }}
                   data-field-id={f.id}
-                  className={`col-${f.id} ${selectedColId === f.id ? "col-selected" : ""} ${getDropIndicatorStyle(f.id)}`}
+                  className={`col-${f.id} ${selectedColIds.has(f.id) ? "col-selected" : ""} ${getDropIndicatorStyle(f.id)}`}
                   style={{
                     ...(getDragTransform(f.id)),
-                    cursor: selectedColId === f.id && !resizeRef.current ? "grab" : undefined,
+                    cursor: selectedColIds.has(f.id) && selectedColIds.size === 1 && !resizeRef.current ? "grab" : undefined,
                   }}
-                  onClick={() => {
+                  onClick={(e) => {
                     // Don't toggle selection if we just finished a drag
-                    if (!dragRef.current && !justDraggedRef.current) handleHeaderClick(f.id);
+                    if (!dragRef.current && !justDraggedRef.current) handleHeaderClick(f.id, e.shiftKey);
                   }}
                   onContextMenu={(e) => handleHeaderContextMenu(e, f.id)}
                   onMouseDown={(e) => {
-                    if (e.button === 0 && selectedColId === f.id) {
+                    if (e.button === 0 && selectedColIds.has(f.id) && selectedColIds.size === 1) {
                       handleDragStart(e, f.id);
                     }
                   }}
@@ -911,6 +966,13 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                   onMouseEnter={() => setHoveredRowId(record.id)}
                   onMouseLeave={() => setHoveredRowId(null)}
                   onContextMenu={(e) => handleRowContextMenu(e, record.id)}
+                  onClick={(e) => {
+                    // Shift+Click on a row selects range (skip if click originated from checkbox)
+                    if (e.shiftKey && !(e.target instanceof HTMLInputElement)) {
+                      e.preventDefault();
+                      handleRowCheckChange(record.id, true);
+                    }
+                  }}
                 >
                   <td className="col-index">
                     {showCheckbox ? (
@@ -918,15 +980,18 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                         type="checkbox"
                         className="row-checkbox"
                         checked={isRowSelected}
-                        onChange={() => handleRowCheckChange(record.id)}
+                        onChange={(e) => handleRowCheckChange(record.id, (e.nativeEvent as MouseEvent).shiftKey)}
                       />
                     ) : (
-                      <span className="row-number">{idx + 1}</span>
+                      <span
+                        className="row-number"
+                        onClick={(e) => { e.stopPropagation(); handleRowCheckChange(record.id, e.shiftKey); }}
+                      >{idx + 1}</span>
                     )}
                   </td>
                   {visibleFields.map((f) => {
                     const isEditing = editing?.recordId === record.id && editing?.fieldId === f.id;
-                    const isColSelected = selectedColId === f.id;
+                    const isColSelected = selectedColIds.has(f.id);
                     return (
                       <td
                         key={f.id}
@@ -978,7 +1043,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <path d="M2.03133 8.17212C2.48854 7.86232 3.11033 7.98182 3.42013 8.43903C5.2629 11.1586 8.63638 13 11.9999 13C15.3634 13 18.7369 11.1586 20.5797 8.43903C20.8895 7.98182 21.5112 7.86232 21.9685 8.17212C22.4257 8.48193 22.5452 9.10371 22.2354 9.56092C21.6739 10.3896 20.9972 11.1486 20.2338 11.8197L22.2425 13.8284C22.633 14.2189 22.633 14.8521 22.2425 15.2426C21.852 15.6331 21.2188 15.6331 20.8283 15.2426L18.707 13.1213C18.6764 13.0907 18.6482 13.0586 18.6224 13.0252C17.8775 13.4967 17.0823 13.8942 16.2549 14.2062L16.967 16.8637C17.1099 17.3972 16.7933 17.9455 16.2599 18.0884C15.7264 18.2314 15.1781 17.9148 15.0351 17.3813L14.3332 14.7617C13.5658 14.9178 12.7838 15 11.9999 15C11.289 15 10.5796 14.9324 9.88128 14.8033L9.1905 17.3813C9.04756 17.9148 8.49922 18.2314 7.96576 18.0884C7.43229 17.9455 7.11571 17.3972 7.25865 16.8637L7.95049 14.2817C7.0364 13.9548 6.15936 13.5237 5.34339 13.0036C5.31329 13.0448 5.27966 13.0841 5.24249 13.1213L3.12117 15.2426C2.73064 15.6332 2.09748 15.6332 1.70696 15.2426C1.31643 14.8521 1.31643 14.219 1.70696 13.8284L3.73924 11.7961C2.98679 11.1308 2.31937 10.3799 1.76442 9.56092C1.45462 9.10371 1.57412 8.48193 2.03133 8.17212Z" fill="currentColor"/>
             </svg>
-            Hide field
+            {contextMenu.fieldIds.length > 1 ? `Hide ${contextMenu.fieldIds.length} fields` : "Hide field"}
           </button>
           <div className="field-context-menu-divider" />
           <button className="field-context-menu-item" onClick={handleDeleteFieldClick}>
@@ -986,7 +1051,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
               <path d="M4.5 3V2.5C4.5 1.67 5.17 1 6 1h4c.83 0 1.5.67 1.5 1.5V3M2 3.5h12M3.5 3.5v10c0 .83.67 1.5 1.5 1.5h6c.83 0 1.5-.67 1.5-1.5v-10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M6.5 6.5v4.5M9.5 6.5v4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
             </svg>
-            Delete field
+            {contextMenu.fieldIds.length > 1 ? `Delete ${contextMenu.fieldIds.length} fields` : "Delete field"}
           </button>
         </div>
       )}
