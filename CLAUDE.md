@@ -72,6 +72,38 @@ pm2 restart ai-filter
 ```
 Domain: http://www.baseimage.cn
 
+## Project Documentation
+- `docs/design.md` - 系统设计文档（产品设计、PRD、技术方案、Edge Cases）
+- `docs/test-plan.md` - 测试计划与测试用例（P0 功能可用性 + P1 产品体验）
+- `docs/design-resources.md` - 设计资源（色彩、排版、间距、组件规范、交互规范）
+- `docs/changelog.md` - 更新日志（所有发布部署记录）
+- `.claude/skills/ux-frontend-design.md` - UX & 前端设计 Skill
+
+## Deployment Checklist (发布部署检查清单)
+每次发布部署前，必须完成以下检查项：
+
+### 必选项（阻断发布）
+- [ ] **P0 用例全部通过** — 跑一遍 `docs/test-plan.md` 中所有 P0 用例，全部通过才可部署
+- [ ] **更新 CLAUDE.md** — 如有架构/结构/命令变更，同步更新本文件
+- [ ] **更新设计文档** — `docs/design.md` 中对应功能模块的 PRD、技术方案、Edge Cases
+- [ ] **更新测试用例** — `docs/test-plan.md` 中新增/修改的功能对应的 P0 和 P1 用例
+- [ ] **更新设计资源** — `docs/design-resources.md` 如有新增颜色、组件、交互模式
+- [ ] **更新前端设计 Skill** — `.claude/skills/ux-frontend-design.md` 如有新的设计模式或规范
+- [ ] **更新更新日志** — `docs/changelog.md` 添加本次发布记录（日期、commit、改动点、详细说明）
+
+### 部署流程
+```bash
+# 1. 确认所有文档已更新
+# 2. 确认 P0 用例全部通过
+# 3. 构建
+npm run build
+# 4. 提交代码
+git add . && git commit
+# 5. 推送并部署
+git push origin <branch>
+ssh -i /path/to/key root@163.7.1.94 "cd /root/ai-filter-lark && git pull origin <branch> && npm run build && pm2 restart ai-filter"
+```
+
 ## Important
 - Never commit `backend/.env` (contains API keys). Use `.env.example` as template.
 - The `thinking` mode in aiService.ts is set to `disabled` for the Volcano ARK API.
