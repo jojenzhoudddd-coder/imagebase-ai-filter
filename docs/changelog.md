@@ -7,6 +7,32 @@
 
 ## 2026-04-15
 
+### fix: undo 后端不同步问题修复
+- **commit**: `96d05aa`
+- **改动点**: 修复 undo 操作前端生效但后端未同步的问题
+- **详细说明**:
+  1. `api.ts`：`updateRecord`/`deleteRecords`/`batchCreateRecords` 增加 `res.ok` 检查，后端 4xx/5xx 不再静默吞掉
+  2. `performUndo`：所有后端调用改为 `await`，失败时回退前端状态并 toast 提示 "撤销失败，数据未能同步，请刷新页面"
+  3. `executeDelete`：通过 `deletePendingRef` 追踪删除 Promise，`performUndo` 执行前先 await，防止竞态条件（undo 在删除未完成时触发导致 batchCreate 先于 batchDelete）
+  4. `handleCellChange`/`executeClearCells`：后端失败时回退乐观更新 + toast 提示
+
+### feat: 增加请求日志中间件
+- **commit**: `c905156`
+- **改动点**: 所有 API 请求增加结构化日志
+- **详细说明**: `index.ts` 新增中间件，记录 method、path、clientId、请求体（mutation）、响应状态码、耗时、响应摘要。SSE 和 health 端点跳过详细日志
+
+### feat: 实时数据同步（SSE）
+- **commit**: `c241340`
+- **改动点**: 实现多标签页和多用户实时数据同步
+- **详细说明**:
+  - 新增 `eventBus.ts`：Node.js EventEmitter 事件总线，按 tableId 作用域
+  - 新增 `sseRoutes.ts`：SSE 端点 `GET /api/sync/:tableId/events?clientId=xxx`，30 秒心跳
+  - `tableRoutes.ts`：13 个变更端点添加 `eventBus.emitChange()`
+  - `api.ts`：导出 `CLIENT_ID` + `mutationFetch` 包装函数注入 `X-Client-Id` 头
+  - 新增 `useTableSync.ts`：前端 SSE 订阅 Hook，防回声 + 断线重连全量同步
+  - `App.tsx`：12 个远程事件处理函数，远程变更不入 undo 栈
+  - Nginx 配置 SSE location block（`proxy_buffering off`）
+
 ### fix: 输入框图标顺序与 Loading 截断优化
 - **commit**: `e373adb`
 - **改动点**: FilterPanel AI 输入框有文本时，叉号(X)和麦克风(🎤)图标互换位置；Loading 动效省略号距输入框右边保持 12px 间距
