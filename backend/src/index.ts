@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import tableRoutes from "./routes/tableRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
+import sseRoutes from "./routes/sseRoutes.js";
 import { mockTable } from "./mockData.js";
 import { connectDB, loadTable, getTable } from "./services/dbStore.js";
 
@@ -18,6 +19,7 @@ app.use(express.json());
 
 app.use("/api/tables", tableRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/sync", sseRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));

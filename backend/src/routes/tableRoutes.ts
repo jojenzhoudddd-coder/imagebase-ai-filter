@@ -5,6 +5,11 @@ import { sortRecords } from "../services/sortEngine.js";
 import { queryView } from "../services/viewEngine.js";
 import { validateCellValue } from "../services/fieldValidator.js";
 import { Field, ViewFilter, ViewSort } from "../types.js";
+import { eventBus } from "../services/eventBus.js";
+
+function getClientId(req: Request): string {
+  return (req.headers["x-client-id"] as string) || "unknown";
+}
 
 const router = Router();
 
@@ -59,6 +64,7 @@ router.post("/:tableId/fields", async (req: Request, res: Response) => {
   }
   const field = await store.createField(req.params.tableId, { name, type, config });
   if (!field) { res.status(404).json({ error: "Table not found" }); return; }
+  eventBus.emitChange({ type: "field:create", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { field } });
   res.status(201).json(field);
 });
 
@@ -67,6 +73,7 @@ router.put("/:tableId/fields/:fieldId", async (req: Request, res: Response) => {
   const { name, config } = req.body;
   const field = await store.updateField(req.params.tableId, req.params.fieldId, { name, config });
   if (!field) { res.status(404).json({ error: "Field not found" }); return; }
+  eventBus.emitChange({ type: "field:update", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { fieldId: req.params.fieldId, changes: { name, config } } });
   res.json(field);
 });
 
@@ -76,6 +83,7 @@ router.delete("/:tableId/fields/:fieldId", async (req: Request, res: Response) =
     res.status(400).json({ error: "无法删除字段（可能是主字段或不存在）" });
     return;
   }
+  eventBus.emitChange({ type: "field:delete", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { fieldId: req.params.fieldId } });
   res.json({ ok: true });
 });
 
@@ -91,6 +99,7 @@ router.post("/:tableId/fields/batch-delete", async (req: Request, res: Response)
     res.status(400).json({ error: "No fields could be deleted (primary fields or not found)" });
     return;
   }
+  eventBus.emitChange({ type: "field:batch-delete", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { fieldIds: snapshot.fieldDefs.map((f: any) => f.id) } });
   res.json({ deleted: snapshot.fieldDefs.length, snapshot });
 });
 
@@ -106,6 +115,7 @@ router.post("/:tableId/fields/batch-restore", async (req: Request, res: Response
     res.status(400).json({ error: "Failed to restore fields" });
     return;
   }
+  eventBus.emitChange({ type: "field:batch-restore", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { fields: snapshot.fieldDefs } });
   res.json({ ok: true });
 });
 
@@ -149,6 +159,7 @@ router.post("/:tableId/records", async (req: Request, res: Response) => {
 
   const record = await store.createRecord(req.params.tableId, { cells });
   if (!record) { res.status(500).json({ error: "创建记录失败" }); return; }
+  eventBus.emitChange({ type: "record:create", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { record } });
   res.status(201).json(record);
 });
 
@@ -176,6 +187,7 @@ router.put("/:tableId/records/:recordId", async (req: Request, res: Response) =>
 
   const record = await store.updateRecord(req.params.tableId, req.params.recordId, { cells });
   if (!record) { res.status(404).json({ error: "Record not found" }); return; }
+  eventBus.emitChange({ type: "record:update", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { recordId: req.params.recordId, cells: req.body.cells, updatedAt: record.updatedAt } });
   res.json(record);
 });
 
@@ -185,6 +197,7 @@ router.delete("/:tableId/records/:recordId", async (req: Request, res: Response)
     res.status(404).json({ error: "Record not found" });
     return;
   }
+  eventBus.emitChange({ type: "record:delete", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { recordId: req.params.recordId } });
   res.json({ ok: true });
 });
 
@@ -196,6 +209,7 @@ router.post("/:tableId/records/batch-delete", async (req: Request, res: Response
     return;
   }
   const count = await store.batchDeleteRecords(req.params.tableId, recordIds);
+  eventBus.emitChange({ type: "record:batch-delete", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { recordIds } });
   res.json({ deleted: count });
 });
 
@@ -207,6 +221,7 @@ router.post("/:tableId/records/batch-create", async (req: Request, res: Response
     return;
   }
   const count = await store.batchCreateRecords(req.params.tableId, records);
+  eventBus.emitChange({ type: "record:batch-create", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { records } });
   res.json({ created: count });
 });
 
@@ -249,6 +264,7 @@ router.post("/:tableId/views", async (req: Request, res: Response) => {
   }
   const view = await store.createView(req.params.tableId, { name, type, filter, sort, group, kanbanFieldId });
   if (!view) { res.status(400).json({ error: "创建视图失败" }); return; }
+  eventBus.emitChange({ type: "view:create", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { view } });
   res.status(201).json(view);
 });
 
@@ -264,6 +280,7 @@ router.put("/views/:viewId", async (req: Request, res: Response) => {
   const { name, filter, sort, group, kanbanFieldId, fieldOrder, hiddenFields } = req.body;
   const view = await store.updateView(req.params.viewId, { name, filter, sort, group, kanbanFieldId, fieldOrder, hiddenFields });
   if (!view) { res.status(400).json({ error: "更新视图失败" }); return; }
+  eventBus.emitChange({ type: "view:update", tableId: view.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { viewId: req.params.viewId, changes: { name, filter, sort, group, kanbanFieldId, fieldOrder, hiddenFields } } });
   res.json(view);
 });
 
@@ -271,6 +288,7 @@ router.put("/views/:viewId", async (req: Request, res: Response) => {
 router.put("/views/:viewId/filter", async (req: Request, res: Response) => {
   const view = await store.updateView(req.params.viewId, { filter: req.body });
   if (!view) { res.status(404).json({ error: "View not found" }); return; }
+  eventBus.emitChange({ type: "view:update", tableId: view.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { viewId: req.params.viewId, changes: { filter: req.body } } });
   res.json(view);
 });
 
@@ -280,6 +298,7 @@ router.delete("/:tableId/views/:viewId", async (req: Request, res: Response) => 
     res.status(400).json({ error: "无法删除视图（至少保留一个视图）" });
     return;
   }
+  eventBus.emitChange({ type: "view:delete", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { viewId: req.params.viewId } });
   res.json({ ok: true });
 });
 

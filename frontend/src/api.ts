@@ -2,6 +2,16 @@ import { Field, TableRecord, View, ViewFilter } from "./types";
 
 const BASE = "/api";
 
+export const CLIENT_ID =
+  crypto.randomUUID?.() ??
+  `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+function mutationFetch(url: string, options: RequestInit): Promise<Response> {
+  const headers = new Headers(options.headers);
+  headers.set("X-Client-Id", CLIENT_ID);
+  return fetch(url, { ...options, headers });
+}
+
 export async function fetchFields(tableId: string): Promise<Field[]> {
   const res = await fetch(`${BASE}/tables/${tableId}/fields`);
   return res.json();
@@ -33,7 +43,7 @@ export async function deleteField(
   tableId: string,
   fieldId: string
 ): Promise<{ ok: boolean }> {
-  const res = await fetch(`${BASE}/tables/${tableId}/fields/${fieldId}`, {
+  const res = await mutationFetch(`${BASE}/tables/${tableId}/fields/${fieldId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -47,7 +57,7 @@ export async function updateViewFilter(
   viewId: string,
   filter: ViewFilter
 ): Promise<View> {
-  const res = await fetch(`${BASE}/tables/views/${viewId}/filter`, {
+  const res = await mutationFetch(`${BASE}/tables/views/${viewId}/filter`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(filter),
@@ -59,7 +69,7 @@ export async function updateView(
   viewId: string,
   data: { fieldOrder?: string[]; hiddenFields?: string[] }
 ): Promise<View> {
-  const res = await fetch(`${BASE}/tables/views/${viewId}`, {
+  const res = await mutationFetch(`${BASE}/tables/views/${viewId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -71,7 +81,7 @@ export async function batchDeleteFields(
   tableId: string,
   fieldIds: string[]
 ): Promise<{ deleted: number; snapshot: any }> {
-  const res = await fetch(`${BASE}/tables/${tableId}/fields/batch-delete`, {
+  const res = await mutationFetch(`${BASE}/tables/${tableId}/fields/batch-delete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fieldIds }),
@@ -87,7 +97,7 @@ export async function batchRestoreFields(
   tableId: string,
   snapshot: any
 ): Promise<{ ok: boolean }> {
-  const res = await fetch(`${BASE}/tables/${tableId}/fields/batch-restore`, {
+  const res = await mutationFetch(`${BASE}/tables/${tableId}/fields/batch-restore`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ snapshot }),
@@ -104,7 +114,7 @@ export async function updateRecord(
   recordId: string,
   cells: Record<string, any>
 ): Promise<TableRecord> {
-  const res = await fetch(`${BASE}/tables/${tableId}/records/${recordId}`, {
+  const res = await mutationFetch(`${BASE}/tables/${tableId}/records/${recordId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ cells }),
@@ -116,7 +126,7 @@ export async function deleteRecords(
   tableId: string,
   recordIds: string[]
 ): Promise<{ deleted: number }> {
-  const res = await fetch(`${BASE}/tables/${tableId}/records/batch-delete`, {
+  const res = await mutationFetch(`${BASE}/tables/${tableId}/records/batch-delete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ recordIds }),
@@ -128,7 +138,7 @@ export async function batchCreateRecords(
   tableId: string,
   records: { id: string; cells: Record<string, any>; createdAt: number; updatedAt: number }[]
 ): Promise<{ created: number }> {
-  const res = await fetch(`${BASE}/tables/${tableId}/records/batch-create`, {
+  const res = await mutationFetch(`${BASE}/tables/${tableId}/records/batch-create`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ records }),

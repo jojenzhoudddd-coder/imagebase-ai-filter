@@ -8,10 +8,11 @@ import FilterPanel from "./components/FilterPanel/index";
 import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, CLIENT_ID } from "./api";
 import { useToast } from "./components/Toast/index";
 import ConfirmDialog from "./components/ConfirmDialog/index";
 import { filterRecords } from "./services/filterEngine";
+import { useTableSync } from "./hooks/useTableSync";
 
 const TABLE_ID = "tbl_requirements";
 
@@ -584,6 +585,104 @@ export default function App() {
   const isFilterDirty = useMemo(() => {
     return JSON.stringify(filter) !== JSON.stringify(savedFilter);
   }, [filter, savedFilter]);
+
+  // ── Real-time sync: remote event handlers ──
+  const handleRemoteRecordCreate = useCallback((record: TableRecord) => {
+    setAllRecords(prev => prev.some(r => r.id === record.id) ? prev : [...prev, record]);
+  }, []);
+
+  const handleRemoteRecordUpdate = useCallback((recordId: string, cells: Record<string, any>, updatedAt: number) => {
+    setAllRecords(prev => prev.map(r =>
+      r.id === recordId ? { ...r, cells: { ...r.cells, ...cells }, updatedAt } : r
+    ));
+  }, []);
+
+  const handleRemoteRecordDelete = useCallback((recordId: string) => {
+    setAllRecords(prev => prev.filter(r => r.id !== recordId));
+  }, []);
+
+  const handleRemoteRecordBatchDelete = useCallback((recordIds: string[]) => {
+    const idSet = new Set(recordIds);
+    setAllRecords(prev => prev.filter(r => !idSet.has(r.id)));
+  }, []);
+
+  const handleRemoteRecordBatchCreate = useCallback((records: TableRecord[]) => {
+    setAllRecords(prev => {
+      const existingIds = new Set(prev.map(r => r.id));
+      const newRecords = records.filter(r => !existingIds.has(r.id));
+      return newRecords.length > 0 ? [...prev, ...newRecords] : prev;
+    });
+  }, []);
+
+  const handleRemoteFieldCreate = useCallback((field: Field) => {
+    setFields(prev => prev.some(f => f.id === field.id) ? prev : [...prev, field]);
+    fetchRecords(TABLE_ID).then(records => setAllRecords(records));
+  }, []);
+
+  const handleRemoteFieldUpdate = useCallback((fieldId: string, changes: { name?: string; config?: any }) => {
+    setFields(prev => prev.map(f => f.id === fieldId ? { ...f, ...changes } : f));
+  }, []);
+
+  const handleRemoteFieldDelete = useCallback((fieldId: string) => {
+    setFields(prev => prev.filter(f => f.id !== fieldId));
+    setFilter(prev => ({ ...prev, conditions: prev.conditions.filter(c => c.fieldId !== fieldId) }));
+    setSavedFilter(prev => ({ ...prev, conditions: prev.conditions.filter(c => c.fieldId !== fieldId) }));
+  }, []);
+
+  const handleRemoteFieldBatchDelete = useCallback((fieldIds: string[]) => {
+    const idSet = new Set(fieldIds);
+    setFields(prev => prev.filter(f => !idSet.has(f.id)));
+    setFilter(prev => ({ ...prev, conditions: prev.conditions.filter(c => !idSet.has(c.fieldId)) }));
+    setSavedFilter(prev => ({ ...prev, conditions: prev.conditions.filter(c => !idSet.has(c.fieldId)) }));
+  }, []);
+
+  const handleRemoteFieldBatchRestore = useCallback((restoredFields: Field[]) => {
+    setFields(prev => {
+      const existingIds = new Set(prev.map(f => f.id));
+      const newFields = restoredFields.filter(f => !existingIds.has(f.id));
+      return newFields.length > 0 ? [...prev, ...newFields] : prev;
+    });
+    fetchRecords(TABLE_ID).then(records => setAllRecords(records));
+  }, []);
+
+  const handleRemoteViewUpdate = useCallback((viewId: string, changes: Partial<View>) => {
+    setViews(prev => prev.map(v => v.id === viewId ? { ...v, ...changes } : v));
+    if (viewId === activeViewId) {
+      if (changes.fieldOrder) setViewFieldOrder(changes.fieldOrder);
+      if (changes.hiddenFields) setViewHiddenFields(changes.hiddenFields);
+    }
+  }, [activeViewId]);
+
+  const handleRemoteViewCreate = useCallback((view: View) => {
+    setViews(prev => prev.some(v => v.id === view.id) ? prev : [...prev, view]);
+  }, []);
+
+  const handleRemoteViewDelete = useCallback((viewId: string) => {
+    setViews(prev => prev.filter(v => v.id !== viewId));
+  }, []);
+
+  const handleFullSync = useCallback((syncFields: Field[], syncRecords: TableRecord[], syncViews: View[]) => {
+    setFields(syncFields);
+    setAllRecords(syncRecords);
+    setViews(syncViews);
+  }, []);
+
+  useTableSync(TABLE_ID, CLIENT_ID, {
+    onRecordCreate: handleRemoteRecordCreate,
+    onRecordUpdate: handleRemoteRecordUpdate,
+    onRecordDelete: handleRemoteRecordDelete,
+    onRecordBatchDelete: handleRemoteRecordBatchDelete,
+    onRecordBatchCreate: handleRemoteRecordBatchCreate,
+    onFieldCreate: handleRemoteFieldCreate,
+    onFieldUpdate: handleRemoteFieldUpdate,
+    onFieldDelete: handleRemoteFieldDelete,
+    onFieldBatchDelete: handleRemoteFieldBatchDelete,
+    onFieldBatchRestore: handleRemoteFieldBatchRestore,
+    onViewUpdate: handleRemoteViewUpdate,
+    onViewCreate: handleRemoteViewCreate,
+    onViewDelete: handleRemoteViewDelete,
+    onFullSync: handleFullSync,
+  });
 
   return (
     <div className="app">
