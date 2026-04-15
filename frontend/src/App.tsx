@@ -271,16 +271,37 @@ export default function App() {
     );
     // Persist to backend
     updateRecord(TABLE_ID, recordId, { [fieldId]: value })
-      .catch(err => console.warn("Failed to persist cell change:", err));
-  }, [allRecords, pushUndo]);
+      .catch(() => {
+        // Rollback optimistic update
+        setAllRecords(prev =>
+          prev.map(r =>
+            r.id === recordId
+              ? { ...r, cells: { ...r.cells, [fieldId]: oldValue } }
+              : r
+          )
+        );
+        // Remove the undo entry we just pushed (it's the last one)
+        undoStackRef.current.pop();
+        setCanUndo(undoStackRef.current.length > 0);
+        toast.error("保存失败，修改已回退");
+      });
+  }, [allRecords, pushUndo, toast]);
+
+  // ── Pending delete promise (prevents undo race condition) ──
+  const deletePendingRef = useRef<Promise<any> | null>(null);
 
   // ── Undo helper (multi-step stack, max 20) ──
-  const performUndo = useCallback(() => {
+  const performUndo = useCallback(async () => {
+    // Wait for any in-flight delete to finish before undoing
+    if (deletePendingRef.current) {
+      try { await deletePendingRef.current; } catch { /* already handled */ }
+    }
+
     const item = undoStackRef.current.pop();
     if (!item) return;
 
     if (item.type === "records") {
-      // Restore records at original positions
+      // Optimistic: restore records at original positions
       setAllRecords(prev => {
         const arr = [...prev];
         item.indices.forEach((idx, i) => {
@@ -288,17 +309,23 @@ export default function App() {
         });
         return arr;
       });
-      batchCreateRecords(TABLE_ID, item.records.map(r => ({
-        id: r.id,
-        cells: r.cells as Record<string, any>,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-      }))).catch(err => console.warn("Failed to restore records:", err));
+      try {
+        await batchCreateRecords(TABLE_ID, item.records.map(r => ({
+          id: r.id,
+          cells: r.cells as Record<string, any>,
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
+        })));
+      } catch {
+        // Rollback: remove the records we just restored
+        const restoredIds = new Set(item.records.map(r => r.id));
+        setAllRecords(prev => prev.filter(r => !restoredIds.has(r.id)));
+        toast.error("撤销失败，数据未能同步，请刷新页面");
+      }
     } else if (item.type === "fields") {
-      // Restore fields — skip the fieldOrder sync effect
+      // Optimistic: restore fields — skip the fieldOrder sync effect
       skipFieldSyncRef.current = true;
       setFields(prev => [...prev, ...item.fieldDefs]);
-      // Incremental filter restore: add back removed conditions
       setFilter(prev => ({
         ...prev,
         conditions: [...prev.conditions, ...item.removedConditions],
@@ -307,19 +334,32 @@ export default function App() {
         ...prev,
         conditions: [...prev.conditions, ...item.removedSavedConditions],
       }));
-      // Incremental hiddenFields restore: add back removed hidden ids
       setViewHiddenFields(prev => {
         const nextSet = new Set(prev);
         for (const id of item.removedHiddenIds) nextSet.add(id);
         return Array.from(nextSet);
       });
-      // Full snapshot restore for fieldOrder
       setViewFieldOrder(item.fieldOrderBefore);
       persistFieldOrder(item.fieldOrderBefore);
-      batchRestoreFields(TABLE_ID, item.snapshot)
-        .catch(err => console.warn("Failed to restore fields:", err));
+      try {
+        await batchRestoreFields(TABLE_ID, item.snapshot);
+      } catch {
+        // Rollback: remove the fields we just restored
+        const restoredIds = new Set(item.fieldDefs.map(f => f.id));
+        skipFieldSyncRef.current = true;
+        setFields(prev => prev.filter(f => !restoredIds.has(f.id)));
+        setFilter(prev => ({
+          ...prev,
+          conditions: prev.conditions.filter(c => !restoredIds.has(c.fieldId)),
+        }));
+        setSavedFilter(prev => ({
+          ...prev,
+          conditions: prev.conditions.filter(c => !restoredIds.has(c.fieldId)),
+        }));
+        toast.error("撤销失败，数据未能同步，请刷新页面");
+      }
     } else if (item.type === "cellEdit") {
-      // Restore cell to old value (skip if record no longer exists)
+      // Optimistic: restore cell to old value (skip if record no longer exists)
       setAllRecords(prev => {
         const exists = prev.some(r => r.id === item.recordId);
         if (!exists) return prev;
@@ -329,11 +369,21 @@ export default function App() {
             : r
         );
       });
-      // Persist undo to backend
-      updateRecord(TABLE_ID, item.recordId, { [item.fieldId]: item.oldValue })
-        .catch(err => console.warn("Failed to persist cell undo:", err));
+      try {
+        await updateRecord(TABLE_ID, item.recordId, { [item.fieldId]: item.oldValue });
+      } catch {
+        // Rollback: revert to the newValue (what was before undo)
+        setAllRecords(prev =>
+          prev.map(r =>
+            r.id === item.recordId
+              ? { ...r, cells: { ...r.cells, [item.fieldId]: item.newValue } }
+              : r
+          )
+        );
+        toast.error("撤销失败，数据未能同步，请刷新页面");
+      }
     } else if (item.type === "cellBatchClear") {
-      // Restore all cleared cells to their old values
+      // Optimistic: restore all cleared cells to their old values
       const restoreMap = new Map<string, Record<string, any>>();
       setAllRecords(prev =>
         prev.map(r => {
@@ -349,15 +399,30 @@ export default function App() {
           return { ...r, cells: newCells };
         })
       );
-      // Persist undo to backend
-      for (const [recordId, cells] of restoreMap) {
-        updateRecord(TABLE_ID, recordId, cells)
-          .catch(err => console.warn("Failed to persist batch cell undo:", err));
+      // Persist undo to backend — await all
+      try {
+        await Promise.all(
+          Array.from(restoreMap).map(([recordId, cells]) =>
+            updateRecord(TABLE_ID, recordId, cells)
+          )
+        );
+      } catch {
+        // Rollback: re-clear the cells (set back to null)
+        setAllRecords(prev =>
+          prev.map(r => {
+            const cellChanges = item.changes.filter(c => c.recordId === r.id);
+            if (cellChanges.length === 0) return r;
+            const newCells = { ...r.cells };
+            for (const c of cellChanges) newCells[c.fieldId] = null;
+            return { ...r, cells: newCells };
+          })
+        );
+        toast.error("撤销失败，数据未能同步，请刷新页面");
       }
     }
 
     setCanUndo(undoStackRef.current.length > 0);
-  }, [persistFieldOrder]);
+  }, [persistFieldOrder, toast]);
 
   // ── Ctrl+Z / ⌘+Z global undo shortcut ──
   useEffect(() => {
@@ -391,8 +456,8 @@ export default function App() {
     // Optimistic removal
     setAllRecords(prev => prev.filter(r => !idSet.has(r.id)));
 
-    // API call
-    deleteRecords(TABLE_ID, recordIds).catch(() => {
+    // API call — store promise so undo can wait for it
+    const deletePromise = deleteRecords(TABLE_ID, recordIds).catch(() => {
       // Revert on failure — pop the item we just pushed
       undoStackRef.current.pop();
       setCanUndo(undoStackRef.current.length > 0);
@@ -401,8 +466,11 @@ export default function App() {
         snapIndices.forEach((idx, i) => arr.splice(idx, 0, snapRecords[i]));
         return arr;
       });
-      toast.error("Failed to delete records");
+      toast.error("删除失败，请重试");
+    }).finally(() => {
+      deletePendingRef.current = null;
     });
+    deletePendingRef.current = deletePromise;
 
     // Toast with undo
     toast.success(
@@ -528,12 +596,27 @@ export default function App() {
     );
 
     // Persist to backend (one call per record)
+    const clearPromises: Promise<any>[] = [];
     for (const [recordId, fieldIds] of clearMap) {
       const nullCells: Record<string, null> = {};
       for (const fId of fieldIds) nullCells[fId] = null;
-      updateRecord(TABLE_ID, recordId, nullCells)
-        .catch(err => console.warn("Failed to persist cell clear:", err));
+      clearPromises.push(updateRecord(TABLE_ID, recordId, nullCells));
     }
+    Promise.all(clearPromises).catch(() => {
+      // Rollback: restore old values
+      setAllRecords(prev =>
+        prev.map(r => {
+          const cellChanges = changes.filter(c => c.recordId === r.id);
+          if (cellChanges.length === 0) return r;
+          const newCells = { ...r.cells };
+          for (const c of cellChanges) newCells[c.fieldId] = c.oldValue;
+          return { ...r, cells: newCells };
+        })
+      );
+      undoStackRef.current.pop();
+      setCanUndo(undoStackRef.current.length > 0);
+      toast.error("清除失败，修改已回退");
+    });
 
     const msg = toastLabel ?? `Cleared ${changes.length} cell${changes.length > 1 ? "s" : ""}`;
     toast.success(msg, { duration: 5000, action: { label: "Undo", onClick: () => performUndo() } });

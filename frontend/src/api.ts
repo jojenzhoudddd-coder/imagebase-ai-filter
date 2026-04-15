@@ -119,6 +119,10 @@ export async function updateRecord(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ cells }),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || `Failed to update record ${recordId}`);
+  }
   return res.json();
 }
 
@@ -131,6 +135,10 @@ export async function deleteRecords(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ recordIds }),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to delete records");
+  }
   return res.json();
 }
 
@@ -143,6 +151,10 @@ export async function batchCreateRecords(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ records }),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to restore records");
+  }
   return res.json();
 }
 
