@@ -17,6 +17,7 @@ export interface TableSyncHandlers {
   onViewCreate: (view: View) => void;
   onViewDelete: (viewId: string) => void;
   onTableUpdate?: (changes: { name?: string }) => void;
+  onDocumentUpdate?: (changes: { documentId: string; name: string }) => void;
   onFullSync: (fields: Field[], records: TableRecord[], views: View[]) => void;
 }
 
@@ -106,6 +107,9 @@ export function useTableSync(
             break;
           case "table:update":
             h.onTableUpdate?.(p);
+            break;
+          case "document:update":
+            h.onDocumentUpdate?.(p);
             break;
         }
       } catch (err) {

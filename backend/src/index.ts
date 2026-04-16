@@ -7,7 +7,8 @@ import tableRoutes from "./routes/tableRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import sseRoutes from "./routes/sseRoutes.js";
 import { mockTable } from "./mockData.js";
-import { connectDB, loadTable, getTable } from "./services/dbStore.js";
+import { connectDB, loadTable, getTable, getDocument, updateDocument } from "./services/dbStore.js";
+import { eventBus } from "./services/eventBus.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -53,6 +54,42 @@ app.use("/api", (req, res, next) => {
 app.use("/api/tables", tableRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/sync", sseRoutes);
+
+// ═══════ Document API ═══════
+
+// GET /api/documents/:docId
+app.get("/api/documents/:docId", async (req, res) => {
+  const doc = await getDocument(req.params.docId);
+  if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+  res.json(doc);
+});
+
+// PUT /api/documents/:docId — rename document
+app.put("/api/documents/:docId", async (req, res) => {
+  const { name } = req.body;
+  if (!name || typeof name !== "string" || !name.trim()) {
+    res.status(400).json({ error: "文档名不能为空" }); return;
+  }
+  const doc = await updateDocument(req.params.docId, { name: name.trim() });
+  if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+  const clientId = (req.headers["x-client-id"] as string) || "unknown";
+  // Broadcast to all tables under this document
+  eventBus.emitChange({
+    type: "document:update",
+    tableId: "tbl_requirements", // primary table for SSE channel
+    clientId,
+    timestamp: Date.now(),
+    payload: { documentId: doc.id, name: doc.name },
+  });
+  res.json(doc);
+});
+
+// GET /api/documents/:docId/tables — list tables in document
+app.get("/api/documents/:docId/tables", async (req, res) => {
+  // For now, return all tables (single-document mode)
+  const tables = await import("./services/dbStore.js").then(m => m.listTables());
+  res.json(tables.map(t => ({ id: t.id, name: t.name, documentId: req.params.docId })));
+});
 
 // Health check
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));

@@ -6,14 +6,16 @@ import "./TopBar.css";
 
 interface Props {
   tableName: string;
+  documentName: string;
   deleteProtection?: boolean;
   onDeleteProtectionChange?: (on: boolean) => void;
   onRenameTable?: (newName: string) => void;
+  onRenameDocument?: (newName: string) => void;
 }
 
-export default function TopBar({ tableName, deleteProtection = true, onDeleteProtectionChange, onRenameTable }: Props) {
+export default function TopBar({ tableName, documentName, deleteProtection = true, onDeleteProtectionChange, onRenameTable, onRenameDocument }: Props) {
   const { t, locale } = useTranslation();
-  const [editingTableName, setEditingTableName] = useState(false);
+  const [editingDocName, setEditingDocName] = useState(false);
 
   // ── More button menu ──
   const [menuOpen, setMenuOpen] = useState(false);
@@ -120,20 +122,20 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
             </svg>
             <span className="topbar-crumb-current">
               <svg className="topbar-base-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="1" width="14" height="14" rx="3" fill="#FFBA00"/>
+                <rect x="1" y="1" width="14" height="14" rx="3" fill="#3370FF"/>
                 <rect x="3.5" y="4" width="9" height="1.5" rx="0.5" fill="white"/>
                 <rect x="3.5" y="7" width="6" height="1.5" rx="0.5" fill="white"/>
                 <rect x="3.5" y="10" width="7.5" height="1.5" rx="0.5" fill="white"/>
               </svg>
               <InlineEdit
-                value={tableName}
-                isEditing={editingTableName}
-                onStartEdit={() => setEditingTableName(true)}
+                value={documentName}
+                isEditing={editingDocName}
+                onStartEdit={() => setEditingDocName(true)}
                 onSave={(name) => {
-                  setEditingTableName(false);
-                  onRenameTable?.(name);
+                  setEditingDocName(false);
+                  onRenameDocument?.(name);
                 }}
-                onCancelEdit={() => setEditingTableName(false)}
+                onCancelEdit={() => setEditingDocName(false)}
               />
             </span>
             <button className="topbar-pin-btn" title={t("topbar.pin")}>

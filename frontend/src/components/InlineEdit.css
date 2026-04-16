@@ -22,6 +22,7 @@
 /* Sidebar: fill available space within the item hover area */
 .inline-edit-input.sidebar-edit {
   width: 100%;
+  font-weight: 400;
 }
 
 /* ViewTabs: fixed 120px */

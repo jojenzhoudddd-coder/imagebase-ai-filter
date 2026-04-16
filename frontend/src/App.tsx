@@ -8,7 +8,7 @@ import FilterPanel from "./components/FilterPanel/index";
 import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, CLIENT_ID } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, CLIENT_ID } from "./api";
 import type { SidebarItem } from "./components/Sidebar";
 import { useToast } from "./components/Toast/index";
 import { useTranslation } from "./i18n/index";
@@ -17,6 +17,7 @@ import { filterRecords } from "./services/filterEngine";
 import { useTableSync } from "./hooks/useTableSync";
 
 const TABLE_ID = "tbl_requirements";
+const DOCUMENT_ID = "doc_default";
 
 const MAX_UNDO = 20;
 type CellValue = string | number | boolean | string[] | null;
@@ -32,6 +33,7 @@ export default function App() {
   const [views, setViews] = useState<View[]>([]);
   const [activeViewId, setActiveViewId] = useState("view_all");
   const [tableName, setTableName] = useState("需求管理表");
+  const [documentName, setDocumentName] = useState("Default Document");
   const SIDEBAR_NAMES_KEY = "sidebar_item_names";
   const [sidebarNames, setSidebarNames] = useState<Record<string, string>>(() => {
     try {
@@ -109,12 +111,14 @@ export default function App() {
       fetchRecords(TABLE_ID),
       fetchViews(TABLE_ID),
       fetch("/api/tables").then(r => r.json()) as Promise<Array<{ id: string; name: string }>>,
-    ]).then(([f, r, v, tables]) => {
+      fetchDocument(DOCUMENT_ID).catch(() => null),
+    ]).then(([f, r, v, tables, doc]) => {
       setFields(f);
       setAllRecords(r);
       setViews(v);
       const tbl = tables.find(t => t.id === TABLE_ID);
       if (tbl) setTableName(tbl.name);
+      if (doc) setDocumentName(doc.name);
       // Store the initial saved filter from the active view
       const activeView = v.find(view => view.id === "view_all");
       if (activeView) {
@@ -762,6 +766,12 @@ export default function App() {
     if (changes.name) setTableName(changes.name);
   }, []);
 
+  const handleRemoteDocumentUpdate = useCallback((changes: { documentId: string; name: string }) => {
+    if (changes.documentId === DOCUMENT_ID && changes.name) {
+      setDocumentName(changes.name);
+    }
+  }, []);
+
   const handleFullSync = useCallback((syncFields: Field[], syncRecords: TableRecord[], syncViews: View[]) => {
     setFields(syncFields);
     setAllRecords(syncRecords);
@@ -788,6 +798,17 @@ export default function App() {
       });
     }
   }, [tableName, toast, t]);
+
+  const handleRenameDocument = useCallback(async (newName: string) => {
+    const oldName = documentName;
+    setDocumentName(newName);
+    try {
+      await renameDocument(DOCUMENT_ID, newName);
+    } catch {
+      setDocumentName(oldName);
+      toast.error(t("toast.renameFailed"));
+    }
+  }, [documentName, toast, t]);
 
   const handleRenameView = useCallback(async (viewId: string, newName: string) => {
     setViews(prev => prev.map(v => v.id === viewId ? { ...v, name: newName } : v));
@@ -820,6 +841,7 @@ export default function App() {
     onViewCreate: handleRemoteViewCreate,
     onViewDelete: handleRemoteViewDelete,
     onTableUpdate: handleRemoteTableUpdate,
+    onDocumentUpdate: handleRemoteDocumentUpdate,
     onFullSync: handleFullSync,
   });
 
@@ -827,9 +849,11 @@ export default function App() {
     <div className="app">
       <TopBar
         tableName={tableName}
+        documentName={documentName}
         deleteProtection={deleteProtection}
         onDeleteProtectionChange={setDeleteProtection}
         onRenameTable={(name) => handleRenameSidebarItem("table", name)}
+        onRenameDocument={handleRenameDocument}
       />
       <div className="app-body">
         <Sidebar items={sidebarItems} onRenameItem={handleRenameSidebarItem} />
