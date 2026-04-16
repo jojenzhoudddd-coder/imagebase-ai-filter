@@ -316,7 +316,6 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
               <path d="M1.5 8h13M2.5 5h11M2.5 11h11" stroke="currentColor" strokeWidth="1.0" strokeLinecap="round"/>
             </svg>
             <span className="topbar-menu-label">{t("topbar.language")}</span>
-            <span className="topbar-menu-value">{locale === "zh" ? t("topbar.langChinese") : t("topbar.langEnglish")}</span>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="topbar-menu-arrow">
               <path d="M4.5 2.5l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
