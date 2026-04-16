@@ -62,7 +62,14 @@ export default function Sidebar({ items, onRenameItem }: Props) {
       </div>
       <div className="sidebar-nav">
         {items.map((item) => (
-          <div key={item.id} className={`sidebar-item ${item.active ? "active" : ""}`}>
+          <div
+            key={item.id}
+            className={`sidebar-item ${item.active ? "active" : ""}`}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setEditingItemId(item.id);
+            }}
+          >
             <span className="sidebar-icon">{ICONS[item.id]}</span>
             <span className="sidebar-label">
               <InlineEdit
@@ -74,6 +81,7 @@ export default function Sidebar({ items, onRenameItem }: Props) {
                   onRenameItem(item.id, name);
                 }}
                 onCancelEdit={() => setEditingItemId(null)}
+                className="sidebar-edit"
               />
             </span>
             <span

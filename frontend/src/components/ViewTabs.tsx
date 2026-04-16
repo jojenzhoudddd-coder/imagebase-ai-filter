@@ -83,6 +83,7 @@ export default function ViewTabs({ views, activeViewId, onSelect, isFiltered, is
                     onRenameView?.(v.id, name);
                   }}
                   onCancelEdit={() => setEditingViewId(null)}
+                  className="view-tab-edit"
                 />
                 {isActive && !isFilterDirty && editingViewId !== v.id && (
                   <span
