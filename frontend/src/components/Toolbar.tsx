@@ -117,27 +117,33 @@ function ToolbarIconBtn({ icon, title }: ToolbarIconBtnProps) {
 /* --- Icons matching real Lark Base toolbar --- */
 
 function CustomizeFieldIcon() {
+  /* icon_setting_outlined — 齿轮设置 */
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <path d="M6.86 2h2.28l.3 1.62c.46.16.89.39 1.27.68l1.52-.63 1.14 1.97-1.22.99c.09.44.09.9 0 1.34l1.22.99-1.14 1.97-1.52-.63c-.38.29-.81.52-1.27.68L9.14 14H6.86l-.3-1.62a4.7 4.7 0 01-1.27-.68l-1.52.63-1.14-1.97 1.22-.99a4.7 4.7 0 010-1.34l-1.22-.99 1.14-1.97 1.52.63c.38-.29.81-.52 1.27-.68L6.86 2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
       <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.2"/>
-      <path d="M8 2v2.5M8 11.5V14M2 8h2.5M11.5 8H14M3.8 3.8l1.8 1.8M10.4 10.4l1.8 1.8M12.2 3.8l-1.8 1.8M5.6 10.4l-1.8 1.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
     </svg>
   );
 }
 
 function ViewSettingsIcon() {
+  /* icon_ganttset_outlined — 视图配置（方块+齿轮） */
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.2"/>
-      <path d="M2 5.5h12M6 5.5V14" stroke="currentColor" strokeWidth="1.2"/>
+      <rect x="1.5" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+      <rect x="9.5" y="2" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+      <rect x="1.5" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+      <circle cx="12" cy="11.5" r="2.5" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M12 9.5v.5m0 3v.5m-2-2.5h.5m3.5 0h.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
     </svg>
   );
 }
 
 function FilterIcon() {
+  /* icon_jira-filter_outlined — 筛选漏斗 */
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <path d="M2.5 3.5h11l-4 5v3.5l-3 1.5V8.5l-4-5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+      <path d="M2 3h12L9.5 8.5V12l-3 1.5V8.5L2 3z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
 }
@@ -153,29 +159,32 @@ function GroupByIcon() {
 }
 
 function SortIcon() {
+  /* icon_sor-a-to-z_outlined — A↓Z 排序 */
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <path d="M4 3v10M4 13l-2-2M4 13l2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M9 5h5M9 8h3.5M9 11h2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+      <path d="M3 4h4.5M3 8h3M3 12h2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+      <path d="M11.5 3v10m0 0l2-2.5m-2 2.5l-2-2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
 }
 
 function RowHeightIcon() {
+  /* icon_row-height_outlined — 行高（横线+上下箭头） */
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <path d="M3 4h10M3 7h10M3 10h10M3 13h10" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-      <path d="M13.5 5.5v5M13.5 5.5l-1 1M13.5 5.5l1 1M13.5 10.5l-1-1M13.5 10.5l1-1" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M5 3h9M5 6.5h9M5 10h9M5 13.5h9" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <path d="M2 5l-1-1.5h2L2 5zm0 6l-1 1.5h2L2 12.5z" fill="currentColor"/>
+      <path d="M2 4.5v7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
     </svg>
   );
 }
 
 function ConditionalColorIcon() {
+  /* icon_base-conditionalcolor_outlined — 填色（油漆桶+水滴）— Figma 原始路径 */
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <circle cx="6" cy="7" r="3.5" stroke="currentColor" strokeWidth="1.1"/>
-      <circle cx="10" cy="7" r="3.5" stroke="currentColor" strokeWidth="1.1"/>
-      <path d="M8 4.5v5" stroke="currentColor" strokeWidth="0.8" opacity="0.3"/>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <path d="M9.66 1.29a1 1 0 011.41 0l8.13 8.13a2.5 2.5 0 010 3.54l-7.42 7.42a2.5 2.5 0 01-3.54 0l-5.66-5.65a2.5 2.5 0 010-3.54l8.13-8.13-.35-.35a1 1 0 010-1.42zm8.13 9.55l-6.36-6.36-7.49 7.49 14.06-.01c.17-.37.1-.82-.21-1.12zM3.29 14.02l5.66 5.66a1 1 0 001.41 0l5.72-5.72H3.24l.05.06z" fill="currentColor"/>
+      <path d="M22.36 20.75a2.67 2.67 0 11-5.33 0c0-1.32.87-2.35 1.65-3.27.4-.48.79-.94 1.02-1.4.23.46.61.92 1.02 1.4.78.92 1.64 1.95 1.64 3.27z" fill="currentColor"/>
     </svg>
   );
 }

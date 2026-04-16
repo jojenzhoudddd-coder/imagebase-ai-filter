@@ -14,7 +14,7 @@ export const zh: TranslationKeys = {
   "topbar.pin": "固定",
   "topbar.l2Internal": "L2 – 内部",
   "topbar.lastModified": "最近修改：刚刚",
-  "topbar.publicWarning": "请确保内容适合公开",
+  "topbar.publicWarning": "请确保内容公开可接受",
   "topbar.share": "分享",
   "topbar.robot": "机器人",
   "topbar.permissions": "权限",
@@ -31,14 +31,14 @@ export const zh: TranslationKeys = {
 
   // Toolbar
   "toolbar.addRecord": "添加记录",
-  "toolbar.customizeField": "自定义字段",
-  "toolbar.viewSettings": "视图设置",
+  "toolbar.customizeField": "字段设置",
+  "toolbar.viewSettings": "视图配置",
   "toolbar.filter": "筛选",
   "toolbar.filterCount": "{{count}} 个筛选",
   "toolbar.groupBy": "分组",
   "toolbar.sort": "排序",
   "toolbar.rowHeight": "行高",
-  "toolbar.conditionalColoring": "条件着色",
+  "toolbar.conditionalColoring": "填色",
   "toolbar.undo": "撤销",
 
   // ViewTabs
@@ -118,7 +118,7 @@ export const zh: TranslationKeys = {
   "value.selectDate": "选择日期",
 
   // FieldConfigPanel
-  "fieldConfig.title": "自定义字段",
+  "fieldConfig.title": "字段设置",
   "fieldConfig.searchPlaceholder": "搜索字段...",
   "fieldConfig.noFields": "未找到字段",
   "fieldConfig.showField": "显示字段",
