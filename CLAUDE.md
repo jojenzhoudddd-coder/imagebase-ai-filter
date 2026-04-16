@@ -50,6 +50,10 @@ frontend/
     api.ts            - API client functions (with CLIENT_ID + mutationFetch)
     hooks/
       useTableSync.ts - SSE subscription hook for real-time data sync
+    i18n/
+      en.ts           - English translations (130+ keys)
+      zh.ts           - Chinese translations (130+ keys)
+      index.ts        - LanguageProvider, useTranslation hook, t() function
     components/
       FilterPanel/    - AI filter input + manual filter conditions UI
       TableView/      - Main table grid with drag-reorder, resize, edit

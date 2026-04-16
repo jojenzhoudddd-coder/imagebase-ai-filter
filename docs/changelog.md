@@ -7,6 +7,15 @@
 
 ## 2026-04-15
 
+### feat: 英文/中文国际化语言切换 (i18n)
+- **commit**: `da3584c`
+- **改动点**: 零依赖 React Context i18n 方案，支持英文/简体中文切换
+- **详细说明**:
+  1. 新增 `frontend/src/i18n/en.ts`、`zh.ts`、`index.ts`：LanguageProvider + useTranslation hook + t() 函数，130+ 翻译条目覆盖所有非用户数据 UI 文本
+  2. 头像下拉菜单新增 Language 子菜单，悬浮展开，当前语言显示 checkmark
+  3. localStorage `app_lang` 持久化，切换时 `window.location.reload()` 确保模块作用域常量（OPERATORS_BY_TYPE、DATE_VALUE_OPTIONS 等）使用新语言重新初始化
+  4. 子菜单 CSS 修复：`left: calc(100% + 4px)` → `right: calc(100% + 4px)` 防止右边缘溢出
+
 ### fix: undo 后端不同步问题修复
 - **commit**: `96d05aa`
 - **改动点**: 修复 undo 操作前端生效但后端未同步的问题

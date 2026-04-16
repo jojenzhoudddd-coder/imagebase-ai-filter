@@ -114,6 +114,15 @@ useEffect(() => {
 ### Context Menu Positioning
 Right-click menus use `position: fixed` with `e.clientX` / `e.clientY`. Close on any outside `mousedown`.
 
+## i18n Pattern
+
+- All non-user-data UI strings use `t("key")` from `useTranslation()` hook
+- Translation keys are flat dot-separated: `"toolbar.addRecord"`, `"op.contains"`, `"toast.saveFailed"`
+- Module-scope constants (e.g., `OPERATORS_BY_TYPE`) store translation keys as labels, resolved at render with `t(op.label)`
+- Default props that need translation: make prop optional, resolve inside component body with `t()`
+- Locale stored in `localStorage("app_lang")`, `setLocale()` writes + `window.location.reload()`
+- New translations: add key to `en.ts`, add matching key to `zh.ts` (typed for compile-time safety)
+
 ## CSS Naming Convention
 
 - Component wrapper: `.component-name` (e.g., `.filter-panel`, `.table-view`)
