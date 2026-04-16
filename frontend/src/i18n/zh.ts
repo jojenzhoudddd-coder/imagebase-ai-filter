@@ -45,7 +45,7 @@ export const zh: TranslationKeys = {
   "viewTabs.filterConfigured": "已配置筛选",
   "viewTabs.clear": "清除",
   "viewTabs.save": "保存",
-  "viewTabs.addView": "添加视图",
+  "viewTabs.addView": "新建视图",
   "viewTabs.more": "更多",
 
   // FilterPanel
