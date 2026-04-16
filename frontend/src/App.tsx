@@ -10,6 +10,7 @@ import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
 import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, CLIENT_ID } from "./api";
 import { useToast } from "./components/Toast/index";
+import { useTranslation } from "./i18n/index";
 import ConfirmDialog from "./components/ConfirmDialog/index";
 import { filterRecords } from "./services/filterEngine";
 import { useTableSync } from "./hooks/useTableSync";
@@ -67,6 +68,7 @@ export default function App() {
     setCanUndo(true);
   }, []);
   const [canUndo, setCanUndo] = useState(false);
+  const { t } = useTranslation();
   const toast = useToast();
 
   // View-level field order & visibility
@@ -283,7 +285,7 @@ export default function App() {
         // Remove the undo entry we just pushed (it's the last one)
         undoStackRef.current.pop();
         setCanUndo(undoStackRef.current.length > 0);
-        toast.error("保存失败，修改已回退");
+        toast.error(t("toast.saveFailed"));
       });
   }, [allRecords, pushUndo, toast]);
 
@@ -320,7 +322,7 @@ export default function App() {
         // Rollback: remove the records we just restored
         const restoredIds = new Set(item.records.map(r => r.id));
         setAllRecords(prev => prev.filter(r => !restoredIds.has(r.id)));
-        toast.error("撤销失败，数据未能同步，请刷新页面");
+        toast.error(t("toast.undoFailed"));
       }
     } else if (item.type === "fields") {
       // Optimistic: restore fields — skip the fieldOrder sync effect
@@ -356,7 +358,7 @@ export default function App() {
           ...prev,
           conditions: prev.conditions.filter(c => !restoredIds.has(c.fieldId)),
         }));
-        toast.error("撤销失败，数据未能同步，请刷新页面");
+        toast.error(t("toast.undoFailed"));
       }
     } else if (item.type === "cellEdit") {
       // Optimistic: restore cell to old value (skip if record no longer exists)
@@ -380,7 +382,7 @@ export default function App() {
               : r
           )
         );
-        toast.error("撤销失败，数据未能同步，请刷新页面");
+        toast.error(t("toast.undoFailed"));
       }
     } else if (item.type === "cellBatchClear") {
       // Optimistic: restore all cleared cells to their old values
@@ -417,7 +419,7 @@ export default function App() {
             return { ...r, cells: newCells };
           })
         );
-        toast.error("撤销失败，数据未能同步，请刷新页面");
+        toast.error(t("toast.undoFailed"));
       }
     }
 
@@ -466,7 +468,7 @@ export default function App() {
         snapIndices.forEach((idx, i) => arr.splice(idx, 0, snapRecords[i]));
         return arr;
       });
-      toast.error("删除失败，请重试");
+      toast.error(t("toast.deleteFailed"));
     }).finally(() => {
       deletePendingRef.current = null;
     });
@@ -474,11 +476,11 @@ export default function App() {
 
     // Toast with undo
     toast.success(
-      `Deleted ${recordIds.length} record${recordIds.length > 1 ? "s" : ""}`,
+      t("toast.deletedRecords", { count: recordIds.length }),
       {
         duration: 5000,
         action: {
-          label: "Undo",
+          label: t("toast.undo"),
           onClick: () => performUndo(),
         },
       }
@@ -521,12 +523,12 @@ export default function App() {
 
       const count = result.deleted;
       toast.success(
-        `Deleted ${count} field${count > 1 ? "s" : ""}`,
-        { duration: 5000, action: { label: "Undo", onClick: () => performUndo() } },
+        t("toast.deletedFields", { count }),
+        { duration: 5000, action: { label: t("toast.undo"), onClick: () => performUndo() } },
       );
     } catch (err) {
       console.error("Failed to delete fields:", err);
-      toast.error((err as Error).message || "Failed to delete fields");
+      toast.error((err as Error).message || t("toast.failedDeleteFields"));
     }
   }, [fields, filter, savedFilter, viewHiddenFields, viewFieldOrder, toast, performUndo, pushUndo]);
 
@@ -615,11 +617,11 @@ export default function App() {
       );
       undoStackRef.current.pop();
       setCanUndo(undoStackRef.current.length > 0);
-      toast.error("清除失败，修改已回退");
+      toast.error(t("toast.clearFailed"));
     });
 
-    const msg = toastLabel ?? `Cleared ${changes.length} cell${changes.length > 1 ? "s" : ""}`;
-    toast.success(msg, { duration: 5000, action: { label: "Undo", onClick: () => performUndo() } });
+    const msg = toastLabel ?? t("toast.clearedCells", { count: changes.length });
+    toast.success(msg, { duration: 5000, action: { label: t("toast.undo"), onClick: () => performUndo() } });
   }, [allRecords, pushUndo, toast, performUndo]);
 
   // Cell clearing (from cell range selection) always executes directly, undo is sufficient
@@ -633,10 +635,10 @@ export default function App() {
       setConfirmDialog({ open: true, type: "rowCells", recordIds: [], fieldIds: [], cellsToClear: cells });
     } else {
       const rowCount = new Set(cells.map(c => c.recordId)).size;
-      executeClearCells(cells, `Cleared ${rowCount} record${rowCount > 1 ? "s" : ""}`);
+      executeClearCells(cells, t("toast.clearedRecords", { count: rowCount }));
       tableViewRef.current?.clearRowSelection();
     }
-  }, [deleteProtection, executeClearCells]);
+  }, [deleteProtection, executeClearCells, t]);
 
   const handleConfirmDelete = useCallback(() => {
     const reset = { open: false, type: "records" as const, recordIds: [] as string[], fieldIds: [] as string[], cellsToClear: [] as Array<{ recordId: string; fieldId: string }> };
@@ -654,7 +656,7 @@ export default function App() {
       setConfirmDialog(reset);
       if (isRowCells) {
         const rowCount = new Set(cells.map(c => c.recordId)).size;
-        executeClearCells(cells, `Cleared ${rowCount} record${rowCount > 1 ? "s" : ""}`);
+        executeClearCells(cells, t("toast.clearedRecords", { count: rowCount }));
         tableViewRef.current?.clearRowSelection();
       } else {
         executeClearCells(cells);
@@ -843,25 +845,25 @@ export default function App() {
       <ConfirmDialog
         open={confirmDialog.open}
         title={
-          confirmDialog.type === "fields" ? "Delete Fields"
-          : confirmDialog.type === "rowCells" ? "Clear Records"
-          : confirmDialog.type === "cells" ? "Clear Cells"
-          : "Delete Records"
+          confirmDialog.type === "fields" ? t("app.deleteFields")
+          : confirmDialog.type === "rowCells" ? t("app.clearRecords")
+          : confirmDialog.type === "cells" ? t("app.clearCells")
+          : t("app.deleteRecords")
         }
         message={
           confirmDialog.type === "fields"
-            ? `Are you sure you want to delete ${confirmDialog.fieldIds.length} field${confirmDialog.fieldIds.length > 1 ? "s" : ""}? All data in ${confirmDialog.fieldIds.length > 1 ? "these fields" : "this field"} will be removed. This action can be undone.`
+            ? t("app.deleteFieldsMsg", { count: confirmDialog.fieldIds.length })
             : confirmDialog.type === "rowCells"
             ? (() => {
                 const rowCount = new Set(confirmDialog.cellsToClear.map(c => c.recordId)).size;
-                return `Are you sure you want to clear all cells of ${rowCount} record${rowCount > 1 ? "s" : ""}? This action can be undone.`;
+                return t("app.clearRecordsMsg", { count: rowCount });
               })()
             : confirmDialog.type === "cells"
-            ? `Are you sure you want to clear ${confirmDialog.cellsToClear.length} cell${confirmDialog.cellsToClear.length > 1 ? "s" : ""}? This action can be undone.`
-            : `Are you sure you want to delete ${confirmDialog.recordIds.length} record${confirmDialog.recordIds.length > 1 ? "s" : ""}? This action can be undone.`
+            ? t("app.clearCellsMsg", { count: confirmDialog.cellsToClear.length })
+            : t("app.deleteRecordsMsg", { count: confirmDialog.recordIds.length })
         }
-        confirmLabel={confirmDialog.type === "rowCells" || confirmDialog.type === "cells" ? "Clear" : "Delete"}
-        cancelLabel="Cancel"
+        confirmLabel={confirmDialog.type === "rowCells" || confirmDialog.type === "cells" ? t("confirm.clear") : t("confirm.delete")}
+        cancelLabel={t("confirm.cancel")}
         variant="danger"
         onConfirm={handleConfirmDelete}
         onCancel={() => setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [], cellsToClear: [] })}

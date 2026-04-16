@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Field, FilterCondition, FilterOperator, FilterValue } from "../../types";
 import CustomSelect from "./CustomSelect";
 import DatePicker from "./DatePicker";
+import { useTranslation } from "../../i18n/index";
 import "./FilterRow.css";
 
 interface Props {
@@ -13,59 +14,59 @@ interface Props {
 
 const OPERATORS_BY_TYPE: Record<string, { value: FilterOperator; label: string }[]> = {
   Text: [
-    { value: "contains", label: "Contains" },
-    { value: "notContains", label: "Does not contain" },
-    { value: "eq", label: "Equals" },
-    { value: "neq", label: "Not equals" },
-    { value: "isEmpty", label: "Is empty" },
-    { value: "isNotEmpty", label: "Is not empty" },
+    { value: "contains", label: "op.contains" },
+    { value: "notContains", label: "op.notContains" },
+    { value: "eq", label: "op.eq" },
+    { value: "neq", label: "op.neq" },
+    { value: "isEmpty", label: "op.isEmpty" },
+    { value: "isNotEmpty", label: "op.isNotEmpty" },
   ],
   SingleSelect: [
-    { value: "eq", label: "Equals" },
-    { value: "neq", label: "Not equals" },
-    { value: "contains", label: "Contains" },
-    { value: "notContains", label: "Does not contain" },
-    { value: "isEmpty", label: "Is empty" },
-    { value: "isNotEmpty", label: "Is not empty" },
+    { value: "eq", label: "op.eq" },
+    { value: "neq", label: "op.neq" },
+    { value: "contains", label: "op.contains" },
+    { value: "notContains", label: "op.notContains" },
+    { value: "isEmpty", label: "op.isEmpty" },
+    { value: "isNotEmpty", label: "op.isNotEmpty" },
   ],
   MultiSelect: [
-    { value: "contains", label: "Contains" },
-    { value: "notContains", label: "Does not contain" },
-    { value: "eq", label: "Has option" },
-    { value: "neq", label: "Does not have option" },
-    { value: "isEmpty", label: "Is empty" },
-    { value: "isNotEmpty", label: "Is not empty" },
+    { value: "contains", label: "op.contains" },
+    { value: "notContains", label: "op.notContains" },
+    { value: "eq", label: "op.hasOption" },
+    { value: "neq", label: "op.notHasOption" },
+    { value: "isEmpty", label: "op.isEmpty" },
+    { value: "isNotEmpty", label: "op.isNotEmpty" },
   ],
   DateTime: [
-    { value: "eq", label: "Equals" },
-    { value: "neq", label: "Not equals" },
-    { value: "after", label: "After" },
-    { value: "gte", label: "On or after" },
-    { value: "before", label: "Before" },
-    { value: "lte", label: "On or before" },
-    { value: "isEmpty", label: "Is empty" },
-    { value: "isNotEmpty", label: "Is not empty" },
+    { value: "eq", label: "op.eq" },
+    { value: "neq", label: "op.neq" },
+    { value: "after", label: "op.after" },
+    { value: "gte", label: "op.onOrAfter" },
+    { value: "before", label: "op.before" },
+    { value: "lte", label: "op.onOrBefore" },
+    { value: "isEmpty", label: "op.isEmpty" },
+    { value: "isNotEmpty", label: "op.isNotEmpty" },
   ],
   Number: [
-    { value: "eq", label: "is" },
-    { value: "neq", label: "is not" },
-    { value: "gt", label: "greater than" },
-    { value: "gte", label: "greater than or equal to" },
-    { value: "lt", label: "less than" },
-    { value: "lte", label: "less than or equal to" },
-    { value: "isEmpty", label: "is empty" },
-    { value: "isNotEmpty", label: "is not empty" },
+    { value: "eq", label: "op.is" },
+    { value: "neq", label: "op.isNot" },
+    { value: "gt", label: "op.gt" },
+    { value: "gte", label: "op.gte" },
+    { value: "lt", label: "op.lt" },
+    { value: "lte", label: "op.lte" },
+    { value: "isEmpty", label: "op.numIsEmpty" },
+    { value: "isNotEmpty", label: "op.numIsNotEmpty" },
   ],
   User: [
-    { value: "eq", label: "Is" },
-    { value: "neq", label: "Is not" },
-    { value: "contains", label: "Contains" },
-    { value: "notContains", label: "Does not contain" },
-    { value: "isEmpty", label: "Is empty" },
-    { value: "isNotEmpty", label: "Is not empty" },
+    { value: "eq", label: "op.is" },
+    { value: "neq", label: "op.isNot" },
+    { value: "contains", label: "op.contains" },
+    { value: "notContains", label: "op.notContains" },
+    { value: "isEmpty", label: "op.isEmpty" },
+    { value: "isNotEmpty", label: "op.isNotEmpty" },
   ],
   Checkbox: [
-    { value: "eq", label: "Is" },
+    { value: "eq", label: "op.is" },
   ],
 };
 // Field type aliases: map types that share the same operators
@@ -76,18 +77,18 @@ OPERATORS_BY_TYPE.CreatedTime = OPERATORS_BY_TYPE.DateTime;
 OPERATORS_BY_TYPE.ModifiedTime = OPERATORS_BY_TYPE.DateTime;
 
 const DATE_VALUE_OPTIONS = [
-  { value: "exactDate", label: "Exact date" },
-  { value: "today", label: "Today" },
-  { value: "yesterday", label: "Yesterday" },
-  { value: "tomorrow", label: "Tomorrow" },
-  { value: "last7Days", label: "Last 7 days" },
-  { value: "last30Days", label: "Last 30 days" },
-  { value: "next7Days", label: "Next 7 days" },
-  { value: "next30Days", label: "Next 30 days" },
-  { value: "thisWeek", label: "This week" },
-  { value: "lastWeek", label: "Last week" },
-  { value: "thisMonth", label: "This month" },
-  { value: "lastMonth", label: "Last month" },
+  { value: "exactDate", label: "date.exactDate" },
+  { value: "today", label: "date.today" },
+  { value: "yesterday", label: "date.yesterday" },
+  { value: "tomorrow", label: "date.tomorrow" },
+  { value: "last7Days", label: "date.last7Days" },
+  { value: "last30Days", label: "date.last30Days" },
+  { value: "next7Days", label: "date.next7Days" },
+  { value: "next30Days", label: "date.next30Days" },
+  { value: "thisWeek", label: "date.thisWeek" },
+  { value: "lastWeek", label: "date.lastWeek" },
+  { value: "thisMonth", label: "date.thisMonth" },
+  { value: "lastMonth", label: "date.lastMonth" },
 ];
 
 function isExactDateMode(value: FilterValue): boolean {
@@ -108,6 +109,7 @@ function OperatorDropdown({
   operators: { value: FilterOperator; label: string }[];
   onChange: (op: FilterOperator) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -142,7 +144,7 @@ function OperatorDropdown({
         className="fr-operator-trigger"
         onClick={handleToggle}
       >
-        <span className="fr-operator-label">{selected?.label ?? value}</span>
+        <span className="fr-operator-label">{selected ? t(selected.label) : value}</span>
         <svg className="fr-operator-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none">
           <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
@@ -161,7 +163,7 @@ function OperatorDropdown({
                   setOpen(false);
                 }}
               >
-                <span>{op.label}</span>
+                <span>{t(op.label)}</span>
                 {isActive && (
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="fr-operator-check">
                     <path d="M2.5 7l3.5 3.5 5.5-5.5" stroke="#3370FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -177,6 +179,7 @@ function OperatorDropdown({
 }
 
 export default function FilterRow({ condition, fields, onChange, onDelete }: Props) {
+  const { t } = useTranslation();
   const field = fields.find((f) => f.id === condition.fieldId);
   const fieldType = field?.type ?? "Text";
   const operators = OPERATORS_BY_TYPE[fieldType] ?? OPERATORS_BY_TYPE.Text;
@@ -224,7 +227,7 @@ export default function FilterRow({ condition, fields, onChange, onDelete }: Pro
         />
       )}
 
-      <button className="fr-delete" onClick={onDelete} title="Delete condition">
+      <button className="fr-delete" onClick={onDelete} title={t("filter.deleteCondition")}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
           <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
@@ -241,6 +244,7 @@ interface ValueInputProps {
 }
 
 function ValueInput({ field, operator, value, onChange }: ValueInputProps) {
+  const { t } = useTranslation();
   const type = field?.type ?? "Text";
 
   if (type === "DateTime" || type === "CreatedTime" || type === "ModifiedTime") {
@@ -258,7 +262,7 @@ function ValueInput({ field, operator, value, onChange }: ValueInputProps) {
         <div className="fr-date-exact">
           <CustomSelect
             value="exactDate"
-            options={DATE_VALUE_OPTIONS}
+            options={DATE_VALUE_OPTIONS.map(o => ({ ...o, label: t(o.label) }))}
             onChange={handleModeChange}
             className="fr-select fr-date-mode"
           />
@@ -274,7 +278,7 @@ function ValueInput({ field, operator, value, onChange }: ValueInputProps) {
     return (
       <CustomSelect
         value={modeValue}
-        options={DATE_VALUE_OPTIONS}
+        options={DATE_VALUE_OPTIONS.map(o => ({ ...o, label: t(o.label) }))}
         onChange={handleModeChange}
         className="fr-select fr-value"
       />
@@ -286,7 +290,7 @@ function ValueInput({ field, operator, value, onChange }: ValueInputProps) {
       <CustomSelect
         value={String(value ?? "")}
         options={[
-          { value: "", label: "Select..." },
+          { value: "", label: t("value.select") },
           ...field.config.options.map((opt) => ({ value: opt.name, label: opt.name })),
         ]}
         onChange={(v) => onChange(v)}
@@ -303,7 +307,7 @@ function ValueInput({ field, operator, value, onChange }: ValueInputProps) {
       <CustomSelect
         value={currentId}
         options={[
-          { value: "", label: "Select..." },
+          { value: "", label: t("value.select") },
           ...field.config.users.map((u) => ({ value: u.id, label: u.name })),
         ]}
         onChange={(v) => onChange(v ? [{ id: v }] as unknown as FilterValue : null)}
@@ -317,8 +321,8 @@ function ValueInput({ field, operator, value, onChange }: ValueInputProps) {
       <CustomSelect
         value={value === true ? "true" : "false"}
         options={[
-          { value: "true", label: "Checked" },
-          { value: "false", label: "Unchecked" },
+          { value: "true", label: t("value.checked") },
+          { value: "false", label: t("value.unchecked") },
         ]}
         onChange={(v) => onChange(v === "true")}
         className="fr-select fr-value"
@@ -333,7 +337,7 @@ function ValueInput({ field, operator, value, onChange }: ValueInputProps) {
         className="fr-input fr-value"
         value={value === null ? "" : String(value)}
         onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-        placeholder="Enter number..."
+        placeholder={t("value.enterNumber")}
       />
     );
   }
@@ -344,7 +348,7 @@ function ValueInput({ field, operator, value, onChange }: ValueInputProps) {
       className="fr-input fr-value"
       value={value === null ? "" : String(value)}
       onChange={(e) => onChange(e.target.value)}
-      placeholder="Enter here"
+      placeholder={t("value.enterHere")}
     />
   );
 }

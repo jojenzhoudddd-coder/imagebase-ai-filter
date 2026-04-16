@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, RefObject } from "re
 import { Field } from "../../types";
 import SearchInput from "../SearchInput/index";
 import { pinyinMatch } from "../../utils/pinyinMatch";
+import { useTranslation } from "../../i18n/index";
 import "./FieldConfigPanel.css";
 
 interface Props {
@@ -30,6 +31,7 @@ export default function FieldConfigPanel({
   onClose,
   anchorRef,
 }: Props) {
+  const { t } = useTranslation();
   const panelRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -172,19 +174,19 @@ export default function FieldConfigPanel({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="field-config-header">
-        Customize Field
+        {t("fieldConfig.title")}
       </div>
       <div className="field-config-search">
         <SearchInput
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder="Search field..."
+          placeholder={t("fieldConfig.searchPlaceholder")}
           onEscape={() => { if (!searchQuery) onClose(); }}
         />
       </div>
       <div className="field-config-list">
         {filteredFields.length === 0 && isSearching ? (
-          <div className="field-config-empty">No fields found</div>
+          <div className="field-config-empty">{t("fieldConfig.noFields")}</div>
         ) : (
           filteredFields.map((field) => {
             const isHidden = hiddenSet.has(field.id);
@@ -233,7 +235,7 @@ export default function FieldConfigPanel({
                   <button
                     className={`field-config-visibility ${isHidden ? "is-hidden" : ""}`}
                     onClick={() => onToggleVisibility(field.id)}
-                    title={isHidden ? "Show field" : "Hide field"}
+                    title={isHidden ? t("fieldConfig.showField") : t("fieldConfig.hideField")}
                   >
                     {isHidden ? <InvisibleIcon /> : <VisibleIcon />}
                   </button>

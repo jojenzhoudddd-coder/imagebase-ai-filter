@@ -1,4 +1,5 @@
 import { RefObject } from "react";
+import { useTranslation } from "../i18n/index";
 import "./Toolbar.css";
 
 interface Props {
@@ -28,6 +29,7 @@ export default function Toolbar({
   canUndo,
   onUndo,
 }: Props) {
+  const { t } = useTranslation();
   return (
     <div className="toolbar">
       <div className="toolbar-left">
@@ -35,7 +37,7 @@ export default function Toolbar({
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
             <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
-          Add Record
+          {t("toolbar.addRecord")}
           <svg className="toolbar-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M3 4l2 2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
@@ -43,28 +45,28 @@ export default function Toolbar({
         <span className="toolbar-sep" />
         <ToolbarBtn
           icon={<CustomizeFieldIcon />}
-          label="Customize Field"
+          label={t("toolbar.customizeField")}
           active={fieldConfigOpen}
           onClick={onCustomizeFieldClick}
           btnRef={customizeFieldBtnRef}
         />
-        <ToolbarBtn icon={<ViewSettingsIcon />} label="View Settings" />
+        <ToolbarBtn icon={<ViewSettingsIcon />} label={t("toolbar.viewSettings")} />
         <ToolbarBtn
           icon={<FilterIcon />}
-          label={filterConditionCount > 0 ? `${filterConditionCount} Filter` : "Filter"}
+          label={filterConditionCount > 0 ? t("toolbar.filterCount", { count: filterConditionCount }) : t("toolbar.filter")}
           active={isFiltered || filterPanelOpen}
           onClick={onFilterClick}
           btnRef={filterBtnRef}
         />
-        <ToolbarBtn icon={<GroupByIcon />} label="Group By" />
-        <ToolbarBtn icon={<SortIcon />} label="Sort" />
-        <ToolbarBtn icon={<RowHeightIcon />} label="Row Height" />
-        <ToolbarBtn icon={<ConditionalColorIcon />} label="Conditional Coloring" />
+        <ToolbarBtn icon={<GroupByIcon />} label={t("toolbar.groupBy")} />
+        <ToolbarBtn icon={<SortIcon />} label={t("toolbar.sort")} />
+        <ToolbarBtn icon={<RowHeightIcon />} label={t("toolbar.rowHeight")} />
+        <ToolbarBtn icon={<ConditionalColorIcon />} label={t("toolbar.conditionalColoring")} />
       </div>
       <div className="toolbar-right">
         <button
           className={`toolbar-undo-btn${canUndo ? "" : " disabled"}`}
-          title="Undo"
+          title={t("toolbar.undo")}
           onClick={() => canUndo && onUndo?.()}
         >
           <svg width="26" height="26" viewBox="0 0 26 26" fill="none">

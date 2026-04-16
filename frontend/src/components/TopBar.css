@@ -238,7 +238,7 @@
 /* Submenu */
 .topbar-submenu {
   position: absolute;
-  left: calc(100% + 4px);
+  right: calc(100% + 4px);
   top: -5px;
   background: var(--color-white);
   border: 1px solid var(--color-border);
@@ -292,6 +292,29 @@
 
 .tb-switch input:checked + .tb-switch-track::after {
   transform: translateX(12px);
+}
+
+/* ─── Avatar menu additions ─── */
+.topbar-menu-value {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  margin-left: auto;
+  margin-right: 4px;
+}
+
+.topbar-menu-check {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.topbar-menu-item-active {
+  color: var(--color-primary);
+}
+
+.topbar-menu-item-active .topbar-menu-label {
+  color: var(--color-primary);
+  font-weight: 500;
 }
 
 /* Narrow viewport: keep only Share, More, Avatar */

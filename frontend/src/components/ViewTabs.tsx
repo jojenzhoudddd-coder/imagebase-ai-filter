@@ -1,4 +1,5 @@
 import { View } from "../types";
+import { useTranslation } from "../i18n/index";
 import "./ViewTabs.css";
 
 interface Props {
@@ -36,6 +37,7 @@ const VIEW_ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function ViewTabs({ views, activeViewId, onSelect, isFiltered, isFilterDirty, onSaveView, onClearFilter }: Props) {
+  const { t } = useTranslation();
   return (
     <div className="view-tabs">
       <div className="view-tabs-list">
@@ -54,7 +56,7 @@ export default function ViewTabs({ views, activeViewId, onSelect, isFiltered, is
                 {VIEW_ICONS[v.id] ?? <GridIcon />}
                 {v.name}
                 {isActive && !isFilterDirty && (
-                  <span className="view-tab-menu" role="button" onClick={(e) => e.stopPropagation()} title="More">
+                  <span className="view-tab-menu" role="button" onClick={(e) => e.stopPropagation()} title={t("viewTabs.more")}>
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                       <circle cx="6" cy="2.5" r="1" fill="currentColor"/>
                       <circle cx="6" cy="6" r="1" fill="currentColor"/>
@@ -65,20 +67,20 @@ export default function ViewTabs({ views, activeViewId, onSelect, isFiltered, is
                 {isActive && isFilterDirty && (
                   <span className="view-tab-apply-pill" onClick={(e) => e.stopPropagation()}>
                     <FilterConfigIcon />
-                    <span className="view-tab-apply-text">Filter configured</span>
-                    <button className="view-tab-apply-btn" onClick={(e) => { e.stopPropagation(); onClearFilter?.(); }}>Clear</button>
-                    <button className="view-tab-apply-btn" onClick={(e) => { e.stopPropagation(); onSaveView?.(); }}>Save</button>
+                    <span className="view-tab-apply-text">{t("viewTabs.filterConfigured")}</span>
+                    <button className="view-tab-apply-btn" onClick={(e) => { e.stopPropagation(); onClearFilter?.(); }}>{t("viewTabs.clear")}</button>
+                    <button className="view-tab-apply-btn" onClick={(e) => { e.stopPropagation(); onSaveView?.(); }}>{t("viewTabs.save")}</button>
                   </span>
                 )}
               </button>
             </div>
           );
         })}
-        <button className="view-tab-add" title="Add View">
+        <button className="view-tab-add" title={t("viewTabs.addView")}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
             <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <span className="view-tab-add-label">Add View</span>
+          <span className="view-tab-add-label">{t("viewTabs.addView")}</span>
         </button>
       </div>
     </div>

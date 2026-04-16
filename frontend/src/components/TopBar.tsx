@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { useTranslation, setLocale } from "../i18n/index";
+import type { Locale } from "../i18n/index";
 import "./TopBar.css";
 
 interface Props {
@@ -8,12 +10,23 @@ interface Props {
 }
 
 export default function TopBar({ tableName, deleteProtection = true, onDeleteProtectionChange }: Props) {
+  const { t, locale } = useTranslation();
+
+  // ── More button menu ──
   const [menuOpen, setMenuOpen] = useState(false);
   const [subMenuOpen, setSubMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const subCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Avatar dropdown menu ──
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  const [langSubOpen, setLangSubOpen] = useState(false);
+  const avatarRef = useRef<HTMLImageElement>(null);
+  const avatarMenuRef = useRef<HTMLDivElement>(null);
+  const [avatarMenuPos, setAvatarMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const langSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -28,6 +41,20 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
+  // Close avatar menu on outside click
+  useEffect(() => {
+    if (!avatarMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target as Node) &&
+          avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
+        setAvatarMenuOpen(false);
+        setLangSubOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [avatarMenuOpen]);
+
   const handleMoreClick = () => {
     if (!menuOpen && moreBtnRef.current) {
       const rect = moreBtnRef.current.getBoundingClientRect();
@@ -40,12 +67,30 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
     }
   };
 
+  const handleAvatarClick = () => {
+    if (!avatarMenuOpen && avatarRef.current) {
+      const rect = avatarRef.current.getBoundingClientRect();
+      setAvatarMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    }
+    setAvatarMenuOpen(!avatarMenuOpen);
+    if (avatarMenuOpen) {
+      setLangSubOpen(false);
+      if (langSubCloseTimer.current) { clearTimeout(langSubCloseTimer.current); langSubCloseTimer.current = null; }
+    }
+  };
+
+  const handleLangSwitch = (lang: Locale) => {
+    if (lang !== locale) {
+      setLocale(lang);
+    }
+  };
+
   return (
     <div className="topbar">
       {/* Left: nav icons + divider + stacked basic info */}
       <div className="topbar-left">
         <div className="topbar-nav">
-          <button className="topbar-icon-btn" title="Menu">
+          <button className="topbar-icon-btn" title={t("topbar.menu")}>
             {/* Figma: Sidebar toggle — lines 708-711 */}
             <svg width="16" height="16" viewBox="24 24 16 16" fill="none">
               <path d="M38.6669 26.6667C38.6669 26.2985 38.3684 26 38.0002 26H26.0002C25.632 26 25.3335 26.2985 25.3335 26.6667C25.3335 27.0349 25.632 27.3333 26.0002 27.3333H38.0002C38.3684 27.3333 38.6669 27.0349 38.6669 26.6667Z" fill="#646A73"/>
@@ -54,7 +99,7 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
               <path d="M29.7269 35.243C30.0911 34.9548 30.0911 34.3785 29.7269 34.0903L26.4261 31.4787C25.9758 31.1225 25.3334 31.4614 25.3334 32.0551V37.2783C25.3334 37.8719 25.9758 38.2108 26.4261 37.8546L29.7269 35.243Z" fill="#646A73"/>
             </svg>
           </button>
-          <button className="topbar-icon-btn" title="Home">
+          <button className="topbar-icon-btn" title={t("topbar.home")}>
             {/* Figma: Home — line 712 */}
             <svg width="16" height="16" viewBox="56 24 16 16" fill="none">
               <path d="M69.3334 30.6665L64 26.7074L58.6667 30.6665L58.6667 37.3332H62V34.7999C62 33.9898 62.6567 33.3332 63.4667 33.3332H64.5334C65.3434 33.3332 66 33.9898 66 34.7999V37.3332H69.3334V30.6665ZM63.3334 37.9999C63.3334 38.368 63.0349 38.6665 62.6667 38.6665H58.6667C57.9303 38.6665 57.3334 38.0696 57.3334 37.3332V30.6665C57.3334 30.2615 57.5175 29.8784 57.8338 29.6253L63.1671 25.6662C63.6541 25.2766 64.346 25.2766 64.833 25.6662L70.1663 29.6253C70.4826 29.8784 70.6667 30.2615 70.6667 30.6665V37.3332C70.6667 38.0696 70.0698 38.6665 69.3334 38.6665H65.3334C64.9652 38.6665 64.6667 38.368 64.6667 37.9999V34.7999C64.6667 34.7262 64.607 34.6665 64.5334 34.6665H63.4667C63.3931 34.6665 63.3334 34.7262 63.3334 34.7999V37.9999Z" fill="#646A73"/>
@@ -79,7 +124,7 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
               </svg>
               {tableName}
             </span>
-            <button className="topbar-pin-btn" title="Pin">
+            <button className="topbar-pin-btn" title={t("topbar.pin")}>
               {/* Figma: Pin — line 731 */}
               <svg width="14" height="14" viewBox="262 13 14 14" fill="none">
                 <path d="M265.687 14.375C265.322 14.375 265.091 14.6541 265.091 14.9758C265.091 15.2876 265.375 15.5434 265.687 15.5417L266.674 15.5434L266.673 18.1836C266.673 18.262 266.608 18.3379 266.552 18.3933L264.128 21.1755C264.073 21.2309 264.042 21.3068 264.042 21.3852L264.042 21.8533C264.042 22.18 264.296 22.4437 264.631 22.4437L268.412 22.4443L268.416 26.2938C268.416 26.6157 268.677 26.8765 268.999 26.8765H269.012C269.334 26.8765 269.595 26.6154 269.595 26.2932L269.595 22.4451L273.375 22.4437C273.696 22.4437 273.958 22.18 273.958 21.8533L273.958 21.3844C273.958 21.3061 273.927 21.2304 273.871 21.1747L271.453 18.3925C271.4 18.3389 271.345 18.2634 271.345 18.185L271.345 15.5447L272.331 15.5417C272.745 15.5417 272.928 15.1896 272.928 14.97C272.928 14.6104 272.646 14.375 272.331 14.375H265.687ZM267.866 15.543L270.202 15.5417L270.206 18.7026L272.438 21.279L265.614 21.2769L267.868 18.6917L267.866 15.543Z" fill="#646A73"/>
@@ -93,10 +138,10 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
               <svg width="12" height="12" viewBox="105 37.5 12 12" fill="none">
                 <path d="M115.422 40.085C115.597 40.1552 115.711 40.3247 115.711 40.513V43.8472C115.711 46.1602 113.406 48.2852 111.128 48.9437C111.044 48.9677 110.956 48.9677 110.872 48.9437C108.594 48.2852 106.288 46.1602 106.288 43.8472V40.513C106.288 40.3247 106.403 40.1555 106.577 40.085C107.045 39.8636 107.511 39.6311 107.979 39.398C108.857 38.9604 109.738 38.5209 110.638 38.1493C110.87 38.0536 111.13 38.0538 111.362 38.1497C112.262 38.5223 113.143 38.9613 114.021 39.3985C114.489 39.6313 114.955 39.8635 115.422 40.085ZM113.604 42.6038C113.799 42.4085 113.799 42.0919 113.604 41.8967C113.408 41.7014 113.092 41.7014 112.896 41.8967L110.5 44.2931L109.354 43.1467C109.158 42.9514 108.842 42.9514 108.646 43.1467C108.451 43.3419 108.451 43.6585 108.646 43.8538L110.146 45.3538C110.342 45.549 110.658 45.549 110.854 45.3538L113.604 42.6038Z" fill="#8F959E"/>
               </svg>
-              L2 – Internal
+              {t("topbar.l2Internal")}
             </button>
             <span className="topbar-badge-divider" />
-            <button className="topbar-badge-btn">Last modified: just now</button>
+            <button className="topbar-badge-btn">{t("topbar.lastModified")}</button>
             <span className="topbar-badge-divider" />
             <button className="topbar-badge-btn topbar-badge-warning">
               {/* Figma: Warning circle — lines 737-739 */}
@@ -105,7 +150,7 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
                 <path d="M314 41C313.724 41 313.5 41.2239 313.5 41.5V44C313.5 44.2761 313.724 44.5 314 44.5C314.276 44.5 314.5 44.2761 314.5 44V41.5C314.5 41.2239 314.276 41 314 41Z" fill="white"/>
                 <path d="M314 45C313.724 45 313.5 45.2239 313.5 45.5C313.5 45.7761 313.724 46 314 46C314.276 46 314.5 45.7761 314.5 45.5C314.5 45.2239 314.276 45 314 45Z" fill="white"/>
               </svg>
-              Ensure content is publicly acceptable
+              {t("topbar.publicWarning")}
             </button>
           </div>
         </div>
@@ -122,10 +167,10 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
             <path d="M993.667 31.3332C993.483 31.3332 993.333 31.4824 993.333 31.6665V32.3332C993.333 32.5173 993.483 32.6665 993.667 32.6665H994.333C994.517 32.6665 994.667 32.5173 994.667 32.3332V31.6665C994.667 31.4824 994.517 31.3332 994.333 31.3332H993.667Z" fill="white"/>
             <path d="M989.333 39.3332C988.597 39.3332 988 38.7362 988 37.9998V25.9998C988 25.2635 988.597 24.6665 989.333 24.6665H996C996.736 24.6665 997.333 25.2635 997.333 25.9998V27.3332H998.667C999.403 27.3332 1000 27.9301 1000 28.6665V37.9998C1000 38.7362 999.403 39.3332 998.667 39.3332H989.333ZM996 25.9998H989.333L989.333 37.9998H991.333V35.9998C991.333 35.6316 991.632 35.3332 992 35.3332H993.333C993.702 35.3332 994 35.6316 994 35.9998V37.9998H996V25.9998ZM997.333 37.9998H998.667V28.6665H997.333V37.9998Z" fill="white"/>
           </svg>
-          Share
+          {t("topbar.share")}
         </button>
         <div className="topbar-icon-group">
-          <button className="topbar-icon-btn" title="Robot">
+          <button className="topbar-icon-btn" title={t("topbar.robot")}>
             {/* Figma: Robot — lines 749-753 */}
             <svg width="20" height="20" viewBox="1069 21.5 20 20" fill="none">
               <path d="M1076.75 32C1077.37 32.0001 1077.88 32.5037 1077.88 33.125C1077.88 33.7463 1077.37 34.2499 1076.75 34.25C1076.13 34.25 1075.62 33.7463 1075.62 33.125C1075.62 32.5037 1076.13 32 1076.75 32Z" fill="#2B2F36"/>
@@ -135,7 +180,7 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
               <path d="M1087.25 30.875C1087.66 30.875 1088 31.2108 1088 31.625V34.625C1088 35.0392 1087.66 35.375 1087.25 35.375C1086.84 35.375 1086.5 35.0392 1086.5 34.625V31.625C1086.5 31.2108 1086.84 30.875 1087.25 30.875Z" fill="#2B2F36"/>
             </svg>
           </button>
-          <button className="topbar-icon-btn" title="Permissions">
+          <button className="topbar-icon-btn" title={t("topbar.permissions")}>
             {/* Figma: Doc + lock — lines 754-757 */}
             <svg width="20" height="20" viewBox="1104 21.5 20 20" fill="none">
               <path d="M1118.25 25.25H1107.75L1107.75 38.3762L1110.75 38.3768V39.8768L1107.75 39.8762C1106.92 39.8762 1106.25 39.2046 1106.25 38.3762L1106.25 25.25C1106.25 24.4216 1106.92 23.75 1107.75 23.75H1118.25C1119.08 23.75 1119.75 24.4216 1119.75 25.25L1119.75 29.3762H1118.25L1118.25 25.25Z" fill="#2B2F36"/>
@@ -144,19 +189,19 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
               <path d="M1113.74 33.1239C1113.74 31.467 1115.08 30.1228 1116.74 30.1215C1118.4 30.1202 1119.74 31.4623 1119.74 33.1192L1119.74 33.4942C1120.57 33.4936 1121.24 34.1646 1121.25 34.993L1121.25 38.368C1121.25 39.1965 1120.58 39.8686 1119.75 39.8692L1113.75 39.8739C1112.92 39.8745 1112.25 39.2035 1112.25 38.3751L1112.25 35.0001C1112.24 34.1716 1112.92 33.4995 1113.74 33.4989L1113.74 33.1239ZM1118.24 33.1204C1118.24 32.2919 1117.57 31.6209 1116.74 31.6215C1115.91 31.6222 1115.24 32.2943 1115.24 33.1227L1115.24 33.4977L1118.24 33.4954L1118.24 33.1204ZM1119.75 34.9942L1113.75 34.9989L1113.75 38.3739L1119.75 38.3692L1119.75 34.9942Z" fill="#2B2F36"/>
             </svg>
           </button>
-          <button className="topbar-icon-btn" title="Extensions">
+          <button className="topbar-icon-btn" title={t("topbar.extensions")}>
             {/* Figma: Ticket/coupon — line 758 */}
             <svg width="20" height="20" viewBox="1137 21.5 20 20" fill="none">
               <path d="M1148 28.25H1152.62V29.6677C1152.04 29.7811 1151.46 30.006 1150.96 30.383C1150.12 31.0138 1149.62 31.9757 1149.62 33.125C1149.62 34.2743 1150.12 35.2362 1150.96 35.867C1151.46 36.244 1152.04 36.4689 1152.62 36.5823V38H1141.38V28.25H1145V26.75C1145 25.9216 1145.67 25.25 1146.5 25.25C1147.33 25.25 1148 25.9216 1148 26.75V28.25ZM1149.5 26.75C1149.5 25.0931 1148.16 23.75 1146.5 23.75C1144.84 23.75 1143.5 25.0931 1143.5 26.75H1140.88C1140.32 26.75 1139.88 27.1977 1139.88 27.75V38.5C1139.88 39.0523 1140.32 39.5 1140.88 39.5H1153.12C1153.68 39.5 1154.12 39.0523 1154.12 38.5V35.6283C1154.12 35.3682 1153.89 35.175 1153.62 35.175C1152.24 35.175 1151.12 34.5057 1151.12 33.125C1151.12 31.7443 1152.24 31.075 1153.62 31.075C1153.89 31.075 1154.12 30.8818 1154.12 30.6217V27.75C1154.12 27.1977 1153.68 26.75 1153.12 26.75H1149.5Z" fill="#2B2F36"/>
             </svg>
           </button>
-          <button className="topbar-icon-btn" title="Notifications">
+          <button className="topbar-icon-btn" title={t("topbar.notifications")}>
             {/* Figma: Bell — line 759 */}
             <svg width="20" height="20" viewBox="1171 22 20 20" fill="none">
               <path d="M1179.5 25.3821V25.187C1179.5 24.7745 1179.84 24.437 1180.25 24.437H1181.75C1182.16 24.437 1182.5 24.7745 1182.5 25.187V25.3821C1185.09 26.0697 1187 28.4946 1187 31.3806L1187 36.1532H1187.75C1188.16 36.1532 1188.5 36.4889 1188.5 36.9032C1188.5 37.3174 1188.16 37.6532 1187.75 37.6532H1174.25C1173.84 37.6532 1173.5 37.3174 1173.5 36.9032C1173.5 36.4889 1173.84 36.1532 1174.25 36.1532H1175L1175 31.3806C1175 28.4946 1176.91 26.0697 1179.5 25.3821ZM1176.5 36.1532H1185.5L1185.5 31.3827C1185.5 28.7893 1183.49 26.687 1181 26.687C1178.51 26.687 1176.5 28.7893 1176.5 31.3827L1176.5 36.1532ZM1178.56 39.5282C1178.56 39.1139 1178.9 38.7782 1179.31 38.7782H1182.69C1183.1 38.7782 1183.44 39.1139 1183.44 39.5282C1183.44 39.9424 1183.1 40.2782 1182.69 40.2782H1179.31C1178.9 40.2782 1178.56 39.9424 1178.56 39.5282Z" fill="#2B2F36"/>
             </svg>
           </button>
-          <button className="topbar-icon-btn" title="More" ref={moreBtnRef} onClick={handleMoreClick}>
+          <button className="topbar-icon-btn" title={t("topbar.more")} ref={moreBtnRef} onClick={handleMoreClick}>
             {/* Figma: Three dots horizontal — lines 760-762 */}
             <svg width="20" height="20" viewBox="1205 22 20 20" fill="none">
               <path d="M1210.12 31.8125C1210.12 32.5374 1209.54 33.125 1208.81 33.125C1208.09 33.125 1207.5 32.5374 1207.5 31.8125C1207.5 31.0876 1208.09 30.5 1208.81 30.5C1209.54 30.5 1210.12 31.0876 1210.12 31.8125Z" fill="#2B2F36"/>
@@ -167,19 +212,19 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
         </div>
         <span className="topbar-divider" />
         <div className="topbar-icon-group">
-          <button className="topbar-icon-btn" title="Search">
+          <button className="topbar-icon-btn" title={t("topbar.search")}>
             {/* Figma: Search — line 764 */}
             <svg width="20" height="20" viewBox="1263.5 21.5 20 20" fill="none">
               <path d="M1277.35 36.4156C1276.13 37.4065 1274.57 38 1272.88 38C1268.94 38 1265.75 34.81 1265.75 30.875C1265.75 26.94 1268.94 23.75 1272.88 23.75C1276.81 23.75 1280 26.94 1280 30.875C1280 32.5724 1279.41 34.1311 1278.42 35.355L1281.25 38.1844C1281.54 38.4755 1281.53 38.9485 1281.24 39.2396C1280.95 39.5307 1280.48 39.5362 1280.18 39.2451L1277.35 36.4156ZM1278.5 30.875C1278.5 27.7684 1275.98 25.25 1272.88 25.25C1269.77 25.25 1267.25 27.7684 1267.25 30.875C1267.25 33.9816 1269.77 36.5 1272.88 36.5C1275.98 36.5 1278.5 33.9816 1278.5 30.875Z" fill="#2B2F36"/>
             </svg>
           </button>
-          <button className="topbar-icon-btn" title="Add">
+          <button className="topbar-icon-btn" title={t("topbar.add")}>
             {/* Figma: Plus — line 765 */}
             <svg width="20" height="20" viewBox="1298 22 20 20" fill="none">
               <path d="M1308 24.5C1307.59 24.5 1307.25 24.8358 1307.25 25.25V31.25H1301.25C1300.84 31.25 1300.5 31.5858 1300.5 32C1300.5 32.4142 1300.84 32.75 1301.25 32.75H1307.25V38.75C1307.25 39.1642 1307.59 39.5 1308 39.5C1308.41 39.5 1308.75 39.1642 1308.75 38.75V32.75H1314.75C1315.16 32.75 1315.5 32.4142 1315.5 32C1315.5 31.5858 1315.16 31.25 1314.75 31.25H1308.75V25.25C1308.75 24.8358 1308.41 24.5 1308 24.5Z" fill="#2B2F36"/>
             </svg>
           </button>
-          <button className="topbar-icon-btn" title="AI">
+          <button className="topbar-icon-btn" title={t("topbar.ai")}>
             {/* Figma: Sparkle/AI — line 766 */}
             <svg width="20" height="20" viewBox="1332 22 20 20" fill="none">
               <path d="M1342 27.3108C1341.02 29.321 1339.43 30.97 1337.46 31.9998C1339.43 33.0294 1341.02 34.678 1342 36.688C1342.98 34.678 1344.57 33.0294 1346.54 31.9998C1344.57 30.97 1342.98 29.321 1342 27.3108ZM1350.62 31.9998C1350.62 32.2031 1350.47 32.3714 1350.27 32.3945L1350.18 32.4062C1349.52 32.4895 1348.89 32.6447 1348.28 32.8647L1347.55 33.1702C1345.67 34.0603 1344.14 35.6041 1343.27 37.5142L1342.96 38.2532C1342.75 38.8585 1342.6 39.4945 1342.51 40.1523L1342.49 40.2483C1342.43 40.4649 1342.23 40.6226 1342 40.6226L1341.9 40.613C1341.72 40.5762 1341.56 40.4341 1341.51 40.2483L1341.49 40.1523C1341.4 39.4945 1341.25 38.8585 1341.04 38.2532L1340.73 37.5142C1339.86 35.6041 1338.33 34.0603 1336.45 33.1702L1335.72 32.8647C1335.16 32.6631 1334.59 32.5156 1333.99 32.4282L1333.73 32.3945C1333.53 32.3714 1333.38 32.2031 1333.38 31.9998C1333.38 31.7964 1333.53 31.6281 1333.73 31.605C1334.33 31.535 1334.92 31.4037 1335.48 31.2175L1335.72 31.1348L1336.45 30.8293C1338.33 29.9392 1339.86 28.3954 1340.73 26.4854L1341.04 25.7463C1341.25 25.141 1341.4 24.505 1341.49 23.8472C1341.52 23.5828 1341.74 23.377 1342 23.377C1342.26 23.377 1342.48 23.5828 1342.51 23.8472C1342.6 24.505 1342.75 25.141 1342.96 25.7463L1343.27 26.4854C1344.14 28.3954 1345.67 29.9392 1347.55 30.8293L1348.28 31.1348L1348.52 31.2175C1349.08 31.4037 1349.67 31.535 1350.27 31.605C1350.47 31.6281 1350.62 31.7964 1350.62 31.9998Z" fill="#2B2F36"/>
@@ -187,7 +232,7 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
           </button>
         </div>
         <span className="topbar-divider" />
-        <img className="topbar-avatar" src="/avatars/me.jpg" alt="avatar" />
+        <img className="topbar-avatar" src="/avatars/me.jpg" alt="avatar" ref={avatarRef} onClick={handleAvatarClick} />
       </div>
 
       {/* Cascading menu from More button */}
@@ -208,7 +253,7 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
               <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
               <circle cx="13" cy="8" r="1.5" fill="currentColor"/>
             </svg>
-            <span className="topbar-menu-label">More</span>
+            <span className="topbar-menu-label">{t("topbar.more")}</span>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="topbar-menu-arrow">
               <path d="M4.5 2.5l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
@@ -224,7 +269,7 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
                   className="topbar-menu-item"
                   onClick={(e) => { e.stopPropagation(); onDeleteProtectionChange?.(!deleteProtection); }}
                 >
-                  <span className="topbar-menu-label">Safe Delete</span>
+                  <span className="topbar-menu-label">{t("topbar.safeDelete")}</span>
                   <label className="tb-switch" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
@@ -233,6 +278,64 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
                     />
                     <span className="tb-switch-track" />
                   </label>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* Avatar dropdown menu */}
+      {avatarMenuOpen && avatarMenuPos && (
+        <div className="topbar-menu" ref={avatarMenuRef} style={{ position: "fixed", top: avatarMenuPos.top, right: avatarMenuPos.right }}>
+          {/* Language submenu */}
+          <div
+            className="topbar-menu-item has-submenu"
+            onMouseEnter={() => {
+              if (langSubCloseTimer.current) { clearTimeout(langSubCloseTimer.current); langSubCloseTimer.current = null; }
+              setLangSubOpen(true);
+            }}
+            onMouseLeave={() => {
+              langSubCloseTimer.current = setTimeout(() => setLangSubOpen(false), 300);
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon">
+              <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2"/>
+              <ellipse cx="8" cy="8" rx="3" ry="6.5" stroke="currentColor" strokeWidth="1.2"/>
+              <path d="M1.5 8h13M2.5 5h11M2.5 11h11" stroke="currentColor" strokeWidth="1.0" strokeLinecap="round"/>
+            </svg>
+            <span className="topbar-menu-label">{t("topbar.language")}</span>
+            <span className="topbar-menu-value">{locale === "zh" ? t("topbar.langChinese") : t("topbar.langEnglish")}</span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="topbar-menu-arrow">
+              <path d="M4.5 2.5l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+
+            {langSubOpen && (
+              <div
+                className="topbar-submenu"
+                onMouseEnter={() => { if (langSubCloseTimer.current) { clearTimeout(langSubCloseTimer.current); langSubCloseTimer.current = null; } }}
+                onMouseLeave={() => { langSubCloseTimer.current = setTimeout(() => setLangSubOpen(false), 300); }}
+              >
+                <div
+                  className={`topbar-menu-item${locale === "en" ? " topbar-menu-item-active" : ""}`}
+                  onClick={() => handleLangSwitch("en")}
+                >
+                  <span className="topbar-menu-label">English</span>
+                  {locale === "en" && (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="topbar-menu-check">
+                      <path d="M3 7.5l3 3 5-6" stroke="#3370FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
+                <div
+                  className={`topbar-menu-item${locale === "zh" ? " topbar-menu-item-active" : ""}`}
+                  onClick={() => handleLangSwitch("zh")}
+                >
+                  <span className="topbar-menu-label">{t("topbar.langChinese")}</span>
+                  {locale === "zh" && (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="topbar-menu-check">
+                      <path d="M3 7.5l3 3 5-6" stroke="#3370FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
                 </div>
               </div>
             )}

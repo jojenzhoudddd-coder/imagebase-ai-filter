@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "../../i18n/index";
 import "./DatePicker.css";
 
 interface Props {
@@ -19,10 +20,10 @@ function parseDate(s: string): Date {
   return new Date(y, m - 1, d);
 }
 
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-
 export default function DatePicker({ value, onChange, className }: Props) {
+  const { t } = useTranslation();
+  const MONTH_NAMES = t("datePicker.months").split(",");
+  const WEEKDAYS = t("datePicker.weekdays").split(",");
   const hasValue = value !== "";
   const date = hasValue ? parseDate(value) : new Date();
   const [viewYear, setViewYear] = useState(date.getFullYear());
@@ -88,7 +89,7 @@ export default function DatePicker({ value, onChange, className }: Props) {
   return (
     <div className={`dp-dropdown ${className ?? ""}`} ref={ref}>
       <button ref={triggerRef} type="button" className="dp-trigger" onClick={handleToggle}>
-        <span className={`dp-label${hasValue ? "" : " dp-placeholder"}`}>{hasValue ? value : "Select date"}</span>
+        <span className={`dp-label${hasValue ? "" : " dp-placeholder"}`}>{hasValue ? value : t("value.selectDate")}</span>
         <svg className="dp-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none">
           <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>

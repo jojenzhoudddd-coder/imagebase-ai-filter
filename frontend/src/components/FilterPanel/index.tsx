@@ -4,6 +4,7 @@ import { Field, FilterCondition, FilterLogic, FilterOperator, FilterValue, ViewF
 import { generateFilter } from "../../api";
 import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
 import { useToast } from "../Toast/index";
+import { useTranslation } from "../../i18n/index";
 import FilterRow from "./FilterRow";
 import "./FilterPanel.css";
 import { v4 as uuidv4 } from "./uuid";
@@ -18,6 +19,7 @@ interface Props {
 }
 
 const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tableId, fields, filter, onFilterChange, onClose, anchorRef }, ref) {
+  const { t } = useTranslation();
   const toast = useToast();
   const [query, setQuery] = useState("");
   const [echoQuery, setEchoQuery] = useState("");
@@ -123,16 +125,16 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
         setAiGenerated(true);
         onFilterChange(newFilter);
         if (newFilter.conditions.length === 0) {
-          toast.info("Filter conditions generated, but no match has been found");
+          toast.info(t("filter.conditionsGeneratedNoMatch"));
         } else {
-          toast.success("Filter conditions generated");
+          toast.success(t("filter.conditionsGenerated"));
         }
       },
       onError(_code, message) {
         setAiStatus("error");
         setAiError(message);
         setEchoQuery(q);
-        toast.error(message || "Failed to generate filter");
+        toast.error(message || t("filter.failedToGenerate"));
       },
       onDone() {
         // Stream closed
@@ -196,11 +198,11 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
   }, [filter.conditions.length]);
 
   const showGenerating = aiStatus === "generating";
-  const placeholder = "Tell AI what you want to see, e.g.: records related to me";
+  const placeholder = t("filter.aiPlaceholder");
 
   return (
     <div className="filter-panel" ref={ref} style={panelLeft !== undefined ? { left: panelLeft } : undefined}>
-      <div className="fp-title">Set Filter Conditions</div>
+      <div className="fp-title">{t("filter.title")}</div>
 
       {/* AI Input: Figma h=32 with AI icon */}
       <div className={`fp-ai-row ${showGenerating ? "generating" : ""} ${aiStatus === "error" ? "error" : ""}`}>
@@ -211,7 +213,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
           {showGenerating ? (
             <div className="fp-ai-loading">
               <span className="fp-ai-loading-text">
-                <span className="fp-ai-loading-query">Generating filter by &ldquo;{echoQuery}&rdquo;</span>
+                <span className="fp-ai-loading-query">{t("filter.generatingBy")}&ldquo;{echoQuery}&rdquo;</span>
                 <LoadingDots />
               </span>
             </div>
@@ -230,7 +232,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
           )}
         </div>
         {(query || echoQuery) && !showGenerating && (
-          <button className="fp-ai-clear" onClick={() => { if (isListening) stopSpeech(); handleClearAi(); }} title="Clear">
+          <button className="fp-ai-clear" onClick={() => { if (isListening) stopSpeech(); handleClearAi(); }} title={t("filter.clear")}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
               <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
@@ -240,7 +242,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
           <button
             className={`fp-ai-mic ${isListening ? (isStopping ? "stopping" : "listening") : ""}`}
             onClick={toggleVoice}
-            title={isStopping ? "Finishing up..." : isListening ? "Stop recording" : "Voice input"}
+            title={isStopping ? t("filter.voiceFinishing") : isListening ? t("filter.voiceStop") : t("filter.voiceInput")}
             disabled={isStopping}
           >
             <MicIcon />
@@ -249,7 +251,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
           </button>
         )}
         {query.trim() && !showGenerating && !isListening && !isStopping && (
-          <button className="fp-ai-send" onClick={handleSubmit} title="Submit">
+          <button className="fp-ai-send" onClick={handleSubmit} title={t("filter.submit")}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <path d="M12 20V4M5 11l7-7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -270,20 +272,20 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
 
       {(aiGenerated || filter.conditions.length >= 2) && (
         <div className="fp-logic-row">
-          {aiGenerated && <span className="fp-logic-left">Filter conditions generated</span>}
+          {aiGenerated && <span className="fp-logic-left">{t("filter.conditionsGenerated")}</span>}
           {filter.conditions.length >= 2 && (
             <div className="fp-logic-right">
-              <span className="fp-logic-label">Match</span>
+              <span className="fp-logic-label">{t("filter.match")}</span>
               <CustomSelect
                 value={filter.logic}
                 options={[
-                  { value: "and", label: "All" },
-                  { value: "or", label: "Any" },
+                  { value: "and", label: t("filter.all") },
+                  { value: "or", label: t("filter.any") },
                 ]}
                 onChange={(v) => handleLogicChange(v as FilterLogic)}
                 className="fp-logic-select"
               />
-              <span className="fp-logic-label">conditions</span>
+              <span className="fp-logic-label">{t("filter.conditions")}</span>
             </div>
           )}
         </div>
@@ -309,13 +311,13 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
-          Add condition
+          {t("filter.addCondition")}
         </button>
       </div>
 
       {filter.conditions.length > 0 && (
         <div className="fp-footer">
-          <button className="fp-save-view">Save as new view</button>
+          <button className="fp-save-view">{t("filter.saveAsNewView")}</button>
         </div>
       )}
     </div>

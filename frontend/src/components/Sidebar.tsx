@@ -1,9 +1,10 @@
+import { useTranslation } from "../i18n/index";
 import "./Sidebar.css";
 
 const items = [
   {
     id: "table",
-    label: "Table",
+    labelKey: "sidebar.table",
     active: true,
     icon: (
       /* Figma: Table icon (sheet-bitable) — lines 17-23 of 主框架.svg */
@@ -20,7 +21,7 @@ const items = [
   },
   {
     id: "dashboard",
-    label: "Dashboard",
+    labelKey: "sidebar.dashboard",
     active: false,
     icon: (
       /* Figma: Dashboard icon (clock/gauge) — lines 28-29 of 主框架.svg */
@@ -32,7 +33,7 @@ const items = [
   },
   {
     id: "workflow",
-    label: "Workflow",
+    labelKey: "sidebar.workflow",
     active: false,
     icon: (
       /* Figma: Workflow icon (org tree) — line 31 of 主框架.svg */
@@ -44,6 +45,7 @@ const items = [
 ];
 
 export default function Sidebar() {
+  const { t } = useTranslation();
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -52,16 +54,16 @@ export default function Sidebar() {
           <svg className="sidebar-search-icon" width="14" height="14" viewBox="20 80 15 15" fill="none">
             <path d="M30.982 91.9251C29.8941 92.8058 28.5086 93.3334 26.9998 93.3334C23.502 93.3334 20.6665 90.4979 20.6665 87.0001C20.6665 83.5023 23.502 80.6667 26.9998 80.6667C30.4976 80.6667 33.3332 83.5023 33.3332 87.0001C33.3332 88.5088 32.8056 89.8944 31.9249 90.9823L34.4399 93.4973C34.6987 93.7561 34.6938 94.1765 34.435 94.4353C34.1763 94.694 33.7559 94.6989 33.4971 94.4402L30.982 91.9251ZM31.9998 87.0001C31.9998 84.2387 29.7613 82.0001 26.9998 82.0001C24.2384 82.0001 21.9998 84.2387 21.9998 87.0001C21.9998 89.7615 24.2384 92.0001 26.9998 92.0001C29.7613 92.0001 31.9998 89.7615 31.9998 87.0001Z" fill="currentColor"/>
           </svg>
-          <span>Search</span>
+          <span>{t("sidebar.search")}</span>
         </div>
       </div>
       <div className="sidebar-nav">
         {items.map((item) => (
           <button key={item.id} className={`sidebar-item ${item.active ? "active" : ""}`}>
             <span className="sidebar-icon">{item.icon}</span>
-            <span className="sidebar-label">{item.label}</span>
+            <span className="sidebar-label">{t(item.labelKey)}</span>
             {item.active && (
-              <span className="sidebar-item-more" role="button" title="More" onClick={(e) => e.stopPropagation()}>
+              <span className="sidebar-item-more" role="button" title={t("topbar.more")} onClick={(e) => e.stopPropagation()}>
                 {/* Figma: Three dots — lines 25-27 of 主框架.svg */}
                 <svg width="14" height="14" viewBox="207 119 4 14" fill="none">
                   <path d="M209 122.208C208.436 122.208 207.979 121.751 207.979 121.187C207.979 120.624 208.436 120.167 209 120.167C209.564 120.167 210.021 120.624 210.021 121.187C210.021 121.751 209.564 122.208 209 122.208Z" fill="currentColor"/>
@@ -79,7 +81,7 @@ export default function Sidebar() {
           <svg width="14" height="14" viewBox="97.5 861.5 13 13" fill="none">
             <path d="M104 862.167C103.678 862.167 103.417 862.428 103.417 862.75V867.417H98.75C98.4278 867.417 98.1666 867.678 98.1666 868C98.1666 868.322 98.4278 868.583 98.75 868.583H103.417V873.25C103.417 873.572 103.678 873.833 104 873.833C104.322 873.833 104.583 873.572 104.583 873.25V868.583H109.25C109.572 868.583 109.833 868.322 109.833 868C109.833 867.678 109.572 867.417 109.25 867.417H104.583V862.75C104.583 862.428 104.322 862.167 104 862.167Z" fill="currentColor"/>
           </svg>
-          New
+          {t("sidebar.new")}
         </button>
       </div>
     </aside>

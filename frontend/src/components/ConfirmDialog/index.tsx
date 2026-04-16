@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "../../i18n/index";
 import "./ConfirmDialog.css";
 
 interface Props {
@@ -16,12 +17,15 @@ export default function ConfirmDialog({
   open,
   title,
   message,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
+  confirmLabel,
+  cancelLabel,
   onConfirm,
   onCancel,
   variant = "default",
 }: Props) {
+  const { t } = useTranslation();
+  const resolvedConfirm = confirmLabel || t("confirm.confirm");
+  const resolvedCancel = cancelLabel || t("confirm.cancel");
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,13 +50,13 @@ export default function ConfirmDialog({
         <div className="confirm-message">{message}</div>
         <div className="confirm-actions">
           <button className="confirm-btn confirm-btn-cancel" onClick={onCancel}>
-            {cancelLabel}
+            {resolvedCancel}
           </button>
           <button
             className={`confirm-btn confirm-btn-ok ${variant === "danger" ? "confirm-btn-danger" : ""}`}
             onClick={onConfirm}
           >
-            {confirmLabel}
+            {resolvedConfirm}
           </button>
         </div>
       </div>
