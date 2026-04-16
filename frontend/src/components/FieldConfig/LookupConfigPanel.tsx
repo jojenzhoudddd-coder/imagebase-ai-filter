@@ -11,6 +11,7 @@ import {
 } from "../../types";
 import { fetchFields, TableBrief } from "../../api";
 import { getAllowedOperators, OPERATOR_LABELS, isUnary } from "./operatorWhitelist";
+import { useTranslation } from "../../i18n";
 
 interface Props {
   currentTable: { id: string; name: string; fields: Field[] };
@@ -19,24 +20,24 @@ interface Props {
   onChange: (cfg: LookupConfig) => void;
 }
 
-const CALC_OPTIONS: { value: LookupCalcMethod; label: string }[] = [
-  { value: "original", label: "Value (原值)" },
-  { value: "deduplicate", label: "Unique values (去重)" },
-  { value: "count", label: "Count (计数)" },
-  { value: "deduplicateCount", label: "Count unique (去重计数)" },
-  { value: "sum", label: "Sum (求和)" },
-  { value: "average", label: "Average (平均)" },
-  { value: "max", label: "Max (最大)" },
-  { value: "min", label: "Min (最小)" },
+const CALC_KEYS: { value: LookupCalcMethod; labelKey: string }[] = [
+  { value: "original", labelKey: "calc.original" },
+  { value: "deduplicate", labelKey: "calc.deduplicate" },
+  { value: "count", labelKey: "calc.count" },
+  { value: "deduplicateCount", labelKey: "calc.deduplicateCount" },
+  { value: "sum", labelKey: "calc.sum" },
+  { value: "average", labelKey: "calc.average" },
+  { value: "max", labelKey: "calc.max" },
+  { value: "min", labelKey: "calc.min" },
 ];
 
-const FORMAT_OPTIONS: { value: LookupOutputFormat; label: string }[] = [
-  { value: "default", label: "Default" },
-  { value: "text", label: "Text" },
-  { value: "number", label: "Number" },
-  { value: "date", label: "Date" },
-  { value: "currency", label: "Currency" },
-  { value: "autoNumber", label: "Auto Number" },
+const FORMAT_KEYS: { value: LookupOutputFormat; labelKey: string }[] = [
+  { value: "default", labelKey: "format.default" },
+  { value: "text", labelKey: "format.text" },
+  { value: "number", labelKey: "format.number" },
+  { value: "date", labelKey: "format.date" },
+  { value: "currency", labelKey: "format.currency" },
+  { value: "autoNumber", labelKey: "format.autoNumber" },
 ];
 
 function allowedFormatsFor(calc: LookupCalcMethod): LookupOutputFormat[] {
@@ -47,10 +48,10 @@ function allowedFormatsFor(calc: LookupCalcMethod): LookupOutputFormat[] {
 }
 
 function allowedCalcsFor(refFieldType: FieldType | undefined): LookupCalcMethod[] {
-  if (!refFieldType) return CALC_OPTIONS.map(o => o.value);
+  if (!refFieldType) return CALC_KEYS.map(o => o.value);
   const NUMERIC: FieldType[] = ["Number", "AutoNumber"];
   const DATE: FieldType[] = ["DateTime"];
-  const all = CALC_OPTIONS.map(o => o.value);
+  const all = CALC_KEYS.map(o => o.value);
   return all.filter(c => {
     if (c === "sum" || c === "average") return NUMERIC.includes(refFieldType);
     if (c === "max" || c === "min") return NUMERIC.includes(refFieldType) || DATE.includes(refFieldType);
@@ -59,6 +60,7 @@ function allowedCalcsFor(refFieldType: FieldType | undefined): LookupCalcMethod[
 }
 
 export function LookupConfigPanel({ currentTable, allTables, config, onChange }: Props) {
+  const { t } = useTranslation();
   // Candidate ref tables = all tables except current
   const refTables = useMemo(() => allTables.filter(t => t.id !== currentTable.id), [allTables, currentTable.id]);
 
@@ -118,7 +120,7 @@ export function LookupConfigPanel({ currentTable, allTables, config, onChange }:
 
       {/* Look up data in this field */}
       <div className="form-row">
-        <label>Look up data in this field</label>
+        <label>{t("lookup.lookupDataIn")}</label>
         <div className="form-row-pair">
           <div className="form-row">
             <select
@@ -126,9 +128,9 @@ export function LookupConfigPanel({ currentTable, allTables, config, onChange }:
               value={config.refTableId}
               onChange={(e) => handleRefTableChange(e.target.value)}
             >
-              <option value="">Select target table</option>
-              {refTables.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+              <option value="">{t("lookup.selectTable")}</option>
+              {refTables.map(tbl => (
+                <option key={tbl.id} value={tbl.id}>{tbl.name}</option>
               ))}
             </select>
           </div>
@@ -139,7 +141,7 @@ export function LookupConfigPanel({ currentTable, allTables, config, onChange }:
               disabled={!config.refTableId || loadingRefFields}
               onChange={(e) => handleRefFieldChange(e.target.value)}
             >
-              <option value="">Select a field</option>
+              <option value="">{t("lookup.selectField")}</option>
               {refFields.map(f => (
                 <option key={f.id} value={f.id}>{f.name}</option>
               ))}
@@ -151,7 +153,7 @@ export function LookupConfigPanel({ currentTable, allTables, config, onChange }:
       {/* Reference data if */}
       <div className="form-row">
         <div className="conditions-header">
-          <label>Reference data if</label>
+          <label>{t("lookup.referenceIf")}</label>
           {config.conditions.length > 1 && (
             <div className="logic-wrap">
               <select
@@ -159,10 +161,10 @@ export function LookupConfigPanel({ currentTable, allTables, config, onChange }:
                 value={config.conditionLogic}
                 onChange={(e) => patch({ conditionLogic: e.target.value as "and" | "or" })}
               >
-                <option value="and">all</option>
-                <option value="or">any</option>
+                <option value="and">{t("lookup.allConditions")}</option>
+                <option value="or">{t("lookup.anyConditions")}</option>
               </select>
-              conditions are met
+              {t("lookup.conditionsMet")}
             </div>
           )}
         </div>
@@ -189,14 +191,14 @@ export function LookupConfigPanel({ currentTable, allTables, config, onChange }:
           disabled={config.conditions.length >= 5 || !config.refFieldId}
           type="button"
         >
-          + Add Condition{config.conditions.length >= 5 ? " (max 5)" : ""}
+          {config.conditions.length >= 5 ? t("lookup.addConditionMax") : t("lookup.addCondition")}
         </button>
       </div>
 
       {/* Display data as + Field format */}
       <div className="form-row-pair">
         <div className="form-row">
-          <label>Display data as</label>
+          <label>{t("lookup.displayAs")}</label>
           <select
             className="fc-select"
             value={config.calcMethod}
@@ -208,21 +210,21 @@ export function LookupConfigPanel({ currentTable, allTables, config, onChange }:
             }}
           >
             {allowedCalcsFor(refField?.type).map(c => {
-              const opt = CALC_OPTIONS.find(o => o.value === c)!;
-              return <option key={c} value={c}>{opt.label}</option>;
+              const opt = CALC_KEYS.find(o => o.value === c)!;
+              return <option key={c} value={c}>{t(opt.labelKey)}</option>;
             })}
           </select>
         </div>
         <div className="form-row">
-          <label>Field format</label>
+          <label>{t("lookup.fieldFormat")}</label>
           <select
             className="fc-select"
             value={config.lookupOutputFormat}
             onChange={(e) => patch({ lookupOutputFormat: e.target.value as LookupOutputFormat })}
           >
             {allowedFormatsFor(config.calcMethod).map(fmt => {
-              const opt = FORMAT_OPTIONS.find(o => o.value === fmt)!;
-              return <option key={fmt} value={fmt}>{opt.label}</option>;
+              const opt = FORMAT_KEYS.find(o => o.value === fmt)!;
+              return <option key={fmt} value={fmt}>{t(opt.labelKey)}</option>;
             })}
           </select>
         </div>
@@ -245,6 +247,7 @@ interface CondRowProps {
 }
 
 function ConditionRow({ idx, condition, refFields, currentFields, canDelete, disabled, onChange, onRemove }: CondRowProps) {
+  const { t } = useTranslation();
   const lhsField = refFields.find(f => f.id === condition.refFieldId);
   const allowedOps = lhsField ? getAllowedOperators(lhsField.type) : [];
   const unary = isUnary(condition.operator);
@@ -263,7 +266,7 @@ function ConditionRow({ idx, condition, refFields, currentFields, canDelete, dis
           onChange({ refFieldId: e.target.value, operator: newOp as FilterOperator });
         }}
       >
-        <option value="">Select field</option>
+        <option value="">{t("lookup.selectField")}</option>
         {refFields.map(f => (
           <option key={f.id} value={f.id}>{f.name}</option>
         ))}
@@ -293,7 +296,7 @@ function ConditionRow({ idx, condition, refFields, currentFields, canDelete, dis
             disabled={disabled}
             onChange={(e) => onChange({ valueType: "field", currentFieldId: e.target.value })}
           >
-            <option value="">Field in current table</option>
+            <option value="">{t("lookup.fieldInCurrent")}</option>
             {currentFields.map(f => (
               <option key={f.id} value={f.id}>{f.name}</option>
             ))}
@@ -301,7 +304,7 @@ function ConditionRow({ idx, condition, refFields, currentFields, canDelete, dis
         ) : (
           <input
             className="fc-input"
-            placeholder="Value"
+            placeholder={t("lookup.valuePlaceholder")}
             value={(condition.value as string) ?? ""}
             disabled={disabled}
             onChange={(e) => onChange({ valueType: "constant", value: e.target.value })}
@@ -313,7 +316,7 @@ function ConditionRow({ idx, condition, refFields, currentFields, canDelete, dis
         <button
           type="button"
           className="cond-delete"
-          title={condition.valueType === "field" ? "Switch to constant" : "Switch to field"}
+          title={condition.valueType === "field" ? t("lookup.switchToConstant") : t("lookup.switchToField")}
           onClick={() => onChange({ valueType: condition.valueType === "field" ? "constant" : "field", value: undefined, currentFieldId: undefined })}
           style={{ color: "#1456f0" }}
         >
@@ -326,7 +329,7 @@ function ConditionRow({ idx, condition, refFields, currentFields, canDelete, dis
         className="cond-delete"
         onClick={onRemove}
         disabled={!canDelete}
-        title="Remove condition"
+        title={t("lookup.removeCondition")}
       >
         ✕
       </button>
@@ -337,6 +340,7 @@ function ConditionRow({ idx, condition, refFields, currentFields, canDelete, dis
 // ─── Date constant input (select for relative, input for absolute) ───
 
 function DateConstantInput({ value, onChange }: { value: CellValue | undefined | any; onChange: (v: any) => void }) {
+  const { t } = useTranslation();
   const isRelative = typeof value === "string" && ["yesterday", "today", "tomorrow"].includes(value);
   const [mode, setMode] = useState<"relative" | "absolute">(isRelative ? "relative" : "absolute");
 
@@ -352,8 +356,8 @@ function DateConstantInput({ value, onChange }: { value: CellValue | undefined |
           onChange(m === "relative" ? "today" : { type: "absolute", value: "" });
         }}
       >
-        <option value="relative">Relative</option>
-        <option value="absolute">Absolute</option>
+        <option value="relative">{t("lookup.relative")}</option>
+        <option value="absolute">{t("lookup.absolute")}</option>
       </select>
       {mode === "relative" ? (
         <select
@@ -361,14 +365,14 @@ function DateConstantInput({ value, onChange }: { value: CellValue | undefined |
           value={(typeof value === "string" ? value : "today")}
           onChange={(e) => onChange(e.target.value)}
         >
-          <option value="yesterday">Yesterday</option>
-          <option value="today">Today</option>
-          <option value="tomorrow">Tomorrow</option>
+          <option value="yesterday">{t("lookup.yesterday")}</option>
+          <option value="today">{t("lookup.today")}</option>
+          <option value="tomorrow">{t("lookup.tomorrow")}</option>
         </select>
       ) : (
         <input
           className="fc-input"
-          placeholder="yyyy/MM/dd"
+          placeholder={t("lookup.datePlaceholder")}
           value={(typeof value === "object" && value?.value) || ""}
           onChange={(e) => onChange({ type: "absolute", value: e.target.value })}
         />

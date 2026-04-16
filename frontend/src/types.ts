@@ -1,15 +1,42 @@
 // Keep in sync with backend/src/types.ts (only the subset the frontend uses).
 
 export type FieldType =
+  // Basic
   | "Text"
   | "Number"
   | "SingleSelect"
   | "MultiSelect"
   | "User"
   | "DateTime"
+  | "Attachment"
   | "Checkbox"
+  | "Stage"
   | "AutoNumber"
-  | "Lookup";
+  | "Url"
+  | "Phone"
+  | "Email"
+  | "Location"
+  | "Barcode"
+  | "Progress"
+  | "Currency"
+  | "Rating"
+  // System
+  | "CreatedUser"
+  | "ModifiedUser"
+  | "CreatedTime"
+  | "ModifiedTime"
+  // Extended
+  | "Formula"
+  | "SingleLink"
+  | "DuplexLink"
+  | "Lookup"
+  // AI
+  | "ai_summary"
+  | "ai_transition"
+  | "ai_extract"
+  | "ai_classify"
+  | "ai_tag"
+  | "ai_custom";
 
 export interface SelectOption {
   id: string;

@@ -94,6 +94,33 @@ export async function updateViewFilter(
   return res.json();
 }
 
+// ─── AI Field Suggestions ───
+
+export interface FieldSuggestion {
+  name: string;
+  type: string;
+}
+
+export interface SuggestFieldsResponse {
+  suggestions: FieldSuggestion[];
+  hasMore: boolean;
+}
+
+export async function suggestFields(
+  tableId: string,
+  opts?: { title?: string; excludeNames?: string[] },
+  signal?: AbortSignal,
+): Promise<SuggestFieldsResponse> {
+  const res = await fetch(`${BASE}/ai/fields/suggest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tableId, title: opts?.title, excludeNames: opts?.excludeNames }),
+    signal,
+  });
+  if (!res.ok) return { suggestions: [], hasMore: false };
+  return res.json();
+}
+
 export interface AIGenerateOptions {
   tableId: string;
   query: string;
