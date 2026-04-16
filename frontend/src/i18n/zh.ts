@@ -34,7 +34,7 @@ export const zh: TranslationKeys = {
   "toolbar.customizeField": "字段设置",
   "toolbar.viewSettings": "视图配置",
   "toolbar.filter": "筛选",
-  "toolbar.filterCount": "{{count}} 个筛选",
+  "toolbar.filterCount": "{{count}} 筛选",
   "toolbar.groupBy": "分组",
   "toolbar.sort": "排序",
   "toolbar.rowHeight": "行高",

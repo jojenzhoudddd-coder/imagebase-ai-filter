@@ -42,7 +42,7 @@
 
 /* Active tab: h=44, white bg, no border, rounded top */
 .view-tab.active {
-  color: var(--color-primary);
+  color: var(--color-text-primary);
   background: var(--color-white);
   font-weight: 500;
   border: none;
@@ -84,14 +84,14 @@
   right: 6px;
 }
 
-/* ─── Figma: Apply pill — rect x=354 y=74 w=156 h=24 rx=12 fill=#E0E9FF ─── */
+/* ─── Figma: Apply pill — rect x=354 y=74 w=156 h=28 rx=14 fill=#E0E9FF ─── */
 .view-tab-apply-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 6px 0 8px;
-  border-radius: 12px;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 14px;
   background: #E0E9FF;
   margin-left: 8px;
   align-self: center;
@@ -102,8 +102,7 @@
 .view-tab-apply-text {
   font-size: 12px;
   color: #646A73;
-  line-height: 24px;
-  margin-right: 6px; /* 6px gap + 6px margin = 12px to first button */
+  line-height: 28px;
 }
 
 .view-tab-apply-btn {
@@ -115,13 +114,8 @@
   padding: 0 6px;
   font-family: var(--font-family);
   font-weight: 500;
-  line-height: 22px;
+  line-height: 20px;
   border-radius: var(--radius-s);
-  margin-left: 6px; /* 6px gap + 6px margin = 12px between buttons */
-}
-
-.view-tab-apply-btn:first-of-type {
-  margin-left: 0; /* text margin-right handles the 12px gap to first button */
 }
 
 .view-tab-apply-btn:hover {
