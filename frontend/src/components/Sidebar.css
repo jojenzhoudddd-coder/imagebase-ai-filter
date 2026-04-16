@@ -82,6 +82,7 @@
   transition: background 0.1s;
   margin-bottom: 1px;
   position: relative;
+  cursor: pointer;
 }
 
 .sidebar-item:hover {

@@ -1,5 +1,8 @@
+import { useState, useRef } from "react";
 import { View } from "../types";
 import { useTranslation } from "../i18n/index";
+import InlineEdit from "./InlineEdit";
+import DropdownMenu from "./DropdownMenu";
 import "./ViewTabs.css";
 
 interface Props {
@@ -10,6 +13,7 @@ interface Props {
   isFilterDirty: boolean;
   onSaveView?: () => void;
   onClearFilter?: () => void;
+  onRenameView?: (viewId: string, newName: string) => void;
 }
 
 /* Figma: Grid/Table icon — line 42 of 主框架.svg */
@@ -32,12 +36,28 @@ function FilterConfigIcon() {
   );
 }
 
+function RenameIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
 const VIEW_ICONS: Record<string, React.ReactNode> = {
   view_all: <GridIcon />,
 };
 
-export default function ViewTabs({ views, activeViewId, onSelect, isFiltered, isFilterDirty, onSaveView, onClearFilter }: Props) {
+export default function ViewTabs({ views, activeViewId, onSelect, isFiltered, isFilterDirty, onSaveView, onClearFilter, onRenameView }: Props) {
   const { t } = useTranslation();
+  const [editingViewId, setEditingViewId] = useState<string | null>(null);
+  const [menuViewId, setMenuViewId] = useState<string | null>(null);
+  const moreRefs = useRef<Map<string, HTMLSpanElement>>(new Map());
+
+  const menuItems = [
+    { key: "rename", label: t("contextMenu.rename"), icon: <RenameIcon /> },
+  ];
+
   return (
     <div className="view-tabs">
       <div className="view-tabs-list">
@@ -49,14 +69,32 @@ export default function ViewTabs({ views, activeViewId, onSelect, isFiltered, is
           return (
             <div key={v.id} style={{ display: "flex", alignItems: "center" }}>
               {showDivider && <span className="view-tab-divider" />}
-              <button
+              <div
                 className={`view-tab ${isActive ? "active" : ""}`}
                 onClick={() => onSelect(v.id)}
               >
                 {VIEW_ICONS[v.id] ?? <GridIcon />}
-                {v.name}
-                {isActive && !isFilterDirty && (
-                  <span className="view-tab-menu" role="button" onClick={(e) => e.stopPropagation()} title={t("viewTabs.more")}>
+                <InlineEdit
+                  value={v.name}
+                  isEditing={editingViewId === v.id}
+                  onStartEdit={() => setEditingViewId(v.id)}
+                  onSave={(name) => {
+                    setEditingViewId(null);
+                    onRenameView?.(v.id, name);
+                  }}
+                  onCancelEdit={() => setEditingViewId(null)}
+                />
+                {isActive && !isFilterDirty && editingViewId !== v.id && (
+                  <span
+                    className="view-tab-menu"
+                    role="button"
+                    ref={(el) => { if (el) moreRefs.current.set(v.id, el); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuViewId(menuViewId === v.id ? null : v.id);
+                    }}
+                    title={t("viewTabs.more")}
+                  >
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                       <circle cx="6" cy="2.5" r="1" fill="currentColor"/>
                       <circle cx="6" cy="6" r="1" fill="currentColor"/>
@@ -72,7 +110,17 @@ export default function ViewTabs({ views, activeViewId, onSelect, isFiltered, is
                     <button className="view-tab-apply-btn" onClick={(e) => { e.stopPropagation(); onSaveView?.(); }}>{t("viewTabs.save")}</button>
                   </span>
                 )}
-              </button>
+                {menuViewId === v.id && moreRefs.current.get(v.id) && (
+                  <DropdownMenu
+                    items={menuItems}
+                    anchorEl={moreRefs.current.get(v.id)!}
+                    onSelect={(key) => {
+                      if (key === "rename") setEditingViewId(v.id);
+                    }}
+                    onClose={() => setMenuViewId(null)}
+                  />
+                )}
+              </div>
             </div>
           );
         })}

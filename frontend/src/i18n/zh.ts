@@ -174,4 +174,10 @@ export const zh: TranslationKeys = {
 
   // Search
   "search.placeholder": "搜索...",
+
+  // Context menu
+  "contextMenu.rename": "重命名",
+
+  // Toast (rename)
+  "toast.renameFailed": "重命名失败，修改已回退",
 };

@@ -16,6 +16,7 @@ export interface TableSyncHandlers {
   onViewUpdate: (viewId: string, changes: Partial<View>) => void;
   onViewCreate: (view: View) => void;
   onViewDelete: (viewId: string) => void;
+  onTableUpdate?: (changes: { name?: string }) => void;
   onFullSync: (fields: Field[], records: TableRecord[], views: View[]) => void;
 }
 
@@ -102,6 +103,9 @@ export function useTableSync(
             break;
           case "view:delete":
             h.onViewDelete(p.viewId);
+            break;
+          case "table:update":
+            h.onTableUpdate?.(p);
             break;
         }
       } catch (err) {

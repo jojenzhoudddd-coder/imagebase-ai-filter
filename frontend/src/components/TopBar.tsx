@@ -1,16 +1,19 @@
 import { useState, useRef, useEffect } from "react";
 import { useTranslation, setLocale } from "../i18n/index";
 import type { Locale } from "../i18n/index";
+import InlineEdit from "./InlineEdit";
 import "./TopBar.css";
 
 interface Props {
   tableName: string;
   deleteProtection?: boolean;
   onDeleteProtectionChange?: (on: boolean) => void;
+  onRenameTable?: (newName: string) => void;
 }
 
-export default function TopBar({ tableName, deleteProtection = true, onDeleteProtectionChange }: Props) {
+export default function TopBar({ tableName, deleteProtection = true, onDeleteProtectionChange, onRenameTable }: Props) {
   const { t, locale } = useTranslation();
+  const [editingTableName, setEditingTableName] = useState(false);
 
   // ── More button menu ──
   const [menuOpen, setMenuOpen] = useState(false);
@@ -122,7 +125,16 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
                 <rect x="3.5" y="7" width="6" height="1.5" rx="0.5" fill="white"/>
                 <rect x="3.5" y="10" width="7.5" height="1.5" rx="0.5" fill="white"/>
               </svg>
-              {tableName}
+              <InlineEdit
+                value={tableName}
+                isEditing={editingTableName}
+                onStartEdit={() => setEditingTableName(true)}
+                onSave={(name) => {
+                  setEditingTableName(false);
+                  onRenameTable?.(name);
+                }}
+                onCancelEdit={() => setEditingTableName(false)}
+              />
             </span>
             <button className="topbar-pin-btn" title={t("topbar.pin")}>
               {/* Figma: Pin — line 731 */}

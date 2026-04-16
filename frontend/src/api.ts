@@ -65,9 +65,25 @@ export async function updateViewFilter(
   return res.json();
 }
 
+export async function renameTable(
+  tableId: string,
+  name: string
+): Promise<{ id: string; name: string }> {
+  const res = await mutationFetch(`${BASE}/tables/${tableId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to rename table");
+  }
+  return res.json();
+}
+
 export async function updateView(
   viewId: string,
-  data: { fieldOrder?: string[]; hiddenFields?: string[] }
+  data: { fieldOrder?: string[]; hiddenFields?: string[]; name?: string }
 ): Promise<View> {
   const res = await mutationFetch(`${BASE}/tables/views/${viewId}`, {
     method: "PUT",

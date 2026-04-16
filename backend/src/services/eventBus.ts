@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 
 export interface TableChangeEvent {
   type:
+    | "table:update"
     | "record:create"
     | "record:update"
     | "record:delete"

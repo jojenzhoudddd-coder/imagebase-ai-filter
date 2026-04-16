@@ -172,6 +172,12 @@ export const en = {
 
   // Search
   "search.placeholder": "Search...",
+
+  // Context menu
+  "contextMenu.rename": "Rename",
+
+  // Toast (rename)
+  "toast.renameFailed": "Rename failed, changes reverted",
 };
 
 export type TranslationKeys = typeof en;

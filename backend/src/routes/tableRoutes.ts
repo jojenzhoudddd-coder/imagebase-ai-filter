@@ -46,6 +46,25 @@ router.delete("/:tableId", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// PUT /api/tables/:tableId — rename table
+router.put("/:tableId", async (req: Request, res: Response) => {
+  const { name } = req.body;
+  if (!name || typeof name !== "string" || !name.trim()) {
+    res.status(400).json({ error: "表名不能为空" });
+    return;
+  }
+  const table = await store.updateTable(req.params.tableId, { name: name.trim() });
+  if (!table) { res.status(404).json({ error: "Table not found" }); return; }
+  eventBus.emitChange({
+    type: "table:update",
+    tableId: req.params.tableId,
+    clientId: getClientId(req),
+    timestamp: Date.now(),
+    payload: { name: table.name },
+  });
+  res.json({ id: table.id, name: table.name });
+});
+
 // ═══════ Field CRUD ═══════
 
 // GET /api/tables/:tableId/fields

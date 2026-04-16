@@ -1,0 +1,19 @@
+.inline-edit-text {
+  cursor: default;
+  min-width: 1em;
+}
+
+.inline-edit-input {
+  border: none;
+  outline: none;
+  background: var(--color-primary-light);
+  border-radius: 3px;
+  padding: 0 2px;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+  min-width: 2em;
+  box-sizing: border-box;
+  line-height: inherit;
+}
