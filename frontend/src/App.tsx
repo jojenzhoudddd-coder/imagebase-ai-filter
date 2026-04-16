@@ -6,6 +6,7 @@ import Toolbar from "./components/Toolbar";
 import TableView, { TableViewHandle } from "./components/TableView/index";
 import FilterPanel from "./components/FilterPanel/index";
 import FieldConfigPanel from "./components/FieldConfigPanel/index";
+import { AddFieldPopover } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
 import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, CLIENT_ID } from "./api";
@@ -664,6 +665,21 @@ export default function App() {
     }
   }, [confirmDialog, executeDelete, executeDeleteFields, executeClearCells]);
 
+  // Add-field popover state
+  const [addFieldAnchor, setAddFieldAnchor] = useState<DOMRect | null>(null);
+
+  const handleOpenAddField = useCallback((rect: DOMRect) => {
+    setAddFieldAnchor(rect);
+  }, []);
+
+  const handleCreateFieldConfirm = useCallback(async (newField: Field) => {
+    setFields((prev) => [...prev, newField]);
+    // Refetch records so Lookup fields get their materialized values from the backend
+    const r = await fetchRecords(TABLE_ID);
+    setAllRecords(r);
+    setAddFieldAnchor(null);
+  }, []);
+
   const isFiltered = filter.conditions.length > 0;
 
   // Dirty = local filter differs from the saved (backend) filter
@@ -816,6 +832,7 @@ export default function App() {
               onDeleteRecords={handleDeleteRecords}
               onClearCells={handleClearCells}
               onClearRowCells={handleClearRowCells}
+              onAddField={handleOpenAddField}
             />
             {filterPanelOpen && (
               <FilterPanel
@@ -837,6 +854,15 @@ export default function App() {
                 onSelectField={handleSelectField}
                 onClose={() => setFieldConfigOpen(false)}
                 anchorRef={customizeFieldBtnRef}
+              />
+            )}
+            {addFieldAnchor && (
+              <AddFieldPopover
+                currentTableId={TABLE_ID}
+                currentFields={fields}
+                anchorRect={addFieldAnchor}
+                onCancel={() => setAddFieldAnchor(null)}
+                onConfirm={handleCreateFieldConfirm}
               />
             )}
           </div>

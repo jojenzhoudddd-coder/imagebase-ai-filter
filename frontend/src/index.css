@@ -22,7 +22,11 @@
   --color-border-component: #D0D3D6;
   --color-border-light: #EFF0F1;
   --color-bg: #F5F6F7;
+  --color-bg-base: #F5F6F7;
   --color-bg-secondary: #F8F9FA;
+  /* Typography */
+  --fs-base: 14px;
+  --lh-base: 22px;
   --color-bg-hover: #F0F1F3;
   --color-bg-float: #FFFFFF;
   --color-white: #FFFFFF;

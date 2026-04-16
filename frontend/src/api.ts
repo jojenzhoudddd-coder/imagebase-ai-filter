@@ -1,4 +1,4 @@
-import { Field, TableRecord, View, ViewFilter } from "./types";
+import { Field, FieldConfig, FieldType, TableRecord, View, ViewFilter } from "./types";
 
 const BASE = "/api";
 
@@ -12,6 +12,18 @@ function mutationFetch(url: string, options: RequestInit): Promise<Response> {
   return fetch(url, { ...options, headers });
 }
 
+export interface TableBrief {
+  id: string;
+  name: string;
+  fieldCount: number;
+  recordCount: number;
+}
+
+export async function fetchTables(): Promise<TableBrief[]> {
+  const res = await fetch(`${BASE}/tables`);
+  return res.json();
+}
+
 export async function fetchFields(tableId: string): Promise<Field[]> {
   const res = await fetch(`${BASE}/tables/${tableId}/fields`);
   return res.json();
@@ -19,6 +31,33 @@ export async function fetchFields(tableId: string): Promise<Field[]> {
 
 export async function fetchRecords(tableId: string): Promise<TableRecord[]> {
   const res = await fetch(`${BASE}/tables/${tableId}/records`);
+  return res.json();
+}
+
+export interface CreateFieldDTO {
+  name: string;
+  type: FieldType;
+  config?: FieldConfig;
+}
+
+export interface ApiError extends Error {
+  code?: string;
+  path?: string;
+}
+
+export async function createField(tableId: string, dto: CreateFieldDTO): Promise<Field> {
+  const res = await fetch(`${BASE}/tables/${tableId}/fields`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dto),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.message || body.error || `HTTP ${res.status}`) as ApiError;
+    err.code = body.error;
+    err.path = body.path;
+    throw err;
+  }
   return res.json();
 }
 
@@ -155,6 +194,33 @@ export async function batchCreateRecords(
     const err = await res.json().catch(() => ({}));
     throw new Error((err as any).error || "Failed to restore records");
   }
+  return res.json();
+}
+
+// ─── AI Field Suggestions ───
+
+export interface FieldSuggestion {
+  name: string;
+  type: string;
+}
+
+export interface SuggestFieldsResponse {
+  suggestions: FieldSuggestion[];
+  hasMore: boolean;
+}
+
+export async function suggestFields(
+  tableId: string,
+  opts?: { title?: string; excludeNames?: string[] },
+  signal?: AbortSignal,
+): Promise<SuggestFieldsResponse> {
+  const res = await fetch(`${BASE}/ai/fields/suggest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tableId, title: opts?.title, excludeNames: opts?.excludeNames }),
+    signal,
+  });
+  if (!res.ok) return { suggestions: [], hasMore: false };
   return res.json();
 }
 

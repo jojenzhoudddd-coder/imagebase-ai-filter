@@ -18,6 +18,7 @@ interface Props {
   onDeleteRecords?: (recordIds: string[]) => void;
   onClearCells?: (cells: Array<{ recordId: string; fieldId: string }>) => void;
   onClearRowCells?: (cells: Array<{ recordId: string; fieldId: string }>) => void;
+  onAddField?: (anchorRect: DOMRect) => void;
 }
 
 interface CellRange {
@@ -113,8 +114,39 @@ function UserAvatar({ userId, users, showName = true }: { userId: string; users:
 
 // ─────────── Cell display (read-only) ───────────
 function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
+  // Lookup sentinels first — error states surface as red labels
+  if (field.type === "Lookup" && typeof value === "string" && (value === "#REF!" || value === "#CYCLE!")) {
+    return <span className="cell-text" style={{ color: "#c23b3b", fontWeight: 500 }}>{value}</span>;
+  }
+
   if (value === null || value === undefined || value === "") {
     return <span className="cell-empty" />;
+  }
+
+  // Lookup array values — render as chip list
+  if (field.type === "Lookup" && Array.isArray(value)) {
+    return (
+      <div className="cell-tags">
+        {value.map((v, i) => (
+          <span key={i} className="status-tag" style={{ background: "#F0F2F5", color: "#1f2329" }}>
+            {String(v)}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  // Lookup number/scalar: use number format
+  if (field.type === "Lookup") {
+    const fmt = field.config.lookup?.lookupOutputFormat;
+    if (fmt === "number" && typeof value === "number") {
+      // Round to 2 decimals max, drop trailing zeros
+      return <span className="cell-text">{Math.round((value + Number.EPSILON) * 100) / 100}</span>;
+    }
+    if (fmt === "date" && (typeof value === "number" || typeof value === "string")) {
+      return <span className="cell-text">{formatDate(value as number | string)}</span>;
+    }
+    return <span className="cell-text">{String(value)}</span>;
   }
 
   switch (field.type) {
@@ -468,7 +500,7 @@ function EditableCell({
   onCancel: () => void;
 }) {
   const value = record.cells[field.id] ?? null;
-  const isEditable = field.type !== "AutoNumber";
+  const isEditable = field.type !== "AutoNumber" && field.type !== "Lookup";
 
   const handleDoubleClick = () => {
     if (isEditable && !editing && field.type !== "Checkbox") onStartEdit();
@@ -568,7 +600,7 @@ function loadColWidths(): Record<string, number> {
 
 const CELL_DRAG_THRESHOLD = 4;
 
-const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords, onClearCells, onClearRowCells }, ref) {
+const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords, onClearCells, onClearRowCells, onAddField }, ref) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
@@ -1142,7 +1174,14 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                 </th>
               ))}
               <th className="col-add">
-                <button className="col-add-btn" title={t("table.addField")}>
+                <button
+                  className="col-add-btn"
+                  title={t("table.addField")}
+                  onClick={(e) => {
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    onAddField?.(rect);
+                  }}
+                >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                     <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
@@ -1313,6 +1352,14 @@ function FieldIcon({ type }: { type: string }) {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
           <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2" />
           <path d="m7 12 3 3 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "Lookup":
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
+          <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="2" />
+          <path d="M21 18l-4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <circle cx="17" cy="14" r="3" stroke="currentColor" strokeWidth="2" />
         </svg>
       );
     default:

@@ -4,7 +4,8 @@ import { filterRecords } from "../services/filterEngine.js";
 import { sortRecords } from "../services/sortEngine.js";
 import { queryView } from "../services/viewEngine.js";
 import { validateCellValue } from "../services/fieldValidator.js";
-import { Field, ViewFilter, ViewSort } from "../types.js";
+import { validateLookupConfig } from "../services/lookupValidator.js";
+import { Field, ViewFilter, ViewSort, LookupConfig } from "../types.js";
 import { eventBus } from "../services/eventBus.js";
 
 function getClientId(req: Request): string {
@@ -62,6 +63,21 @@ router.post("/:tableId/fields", async (req: Request, res: Response) => {
     res.status(400).json({ error: "字段名和类型不能为空" });
     return;
   }
+  if (type === "Lookup") {
+    const tables = await store.listTables();
+    const currentTable = tables.find(t => t.id === req.params.tableId) ?? null;
+    const r = validateLookupConfig(
+      (config as { lookup?: LookupConfig } | undefined)?.lookup,
+      req.params.tableId,
+      currentTable,
+      tables,
+      null,
+    );
+    if (!r.valid) {
+      res.status(400).json({ error: "LOOKUP_CONFIG_INVALID", message: r.error, path: r.path });
+      return;
+    }
+  }
   const field = await store.createField(req.params.tableId, { name, type, config });
   if (!field) { res.status(404).json({ error: "Table not found" }); return; }
   eventBus.emitChange({ type: "field:create", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { field } });
@@ -71,6 +87,23 @@ router.post("/:tableId/fields", async (req: Request, res: Response) => {
 // PUT /api/tables/:tableId/fields/:fieldId — update field
 router.put("/:tableId/fields/:fieldId", async (req: Request, res: Response) => {
   const { name, config } = req.body;
+  // Re-validate if this field is a Lookup and config is being updated
+  const existing = (await store.getTable(req.params.tableId))?.fields.find(f => f.id === req.params.fieldId);
+  if (existing && existing.type === "Lookup" && config) {
+    const tables = await store.listTables();
+    const currentTable = tables.find(t => t.id === req.params.tableId) ?? null;
+    const r = validateLookupConfig(
+      (config as { lookup?: LookupConfig }).lookup,
+      req.params.tableId,
+      currentTable,
+      tables,
+      req.params.fieldId,
+    );
+    if (!r.valid) {
+      res.status(400).json({ error: "LOOKUP_CONFIG_INVALID", message: r.error, path: r.path });
+      return;
+    }
+  }
   const field = await store.updateField(req.params.tableId, req.params.fieldId, { name, config });
   if (!field) { res.status(404).json({ error: "Field not found" }); return; }
   eventBus.emitChange({ type: "field:update", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { fieldId: req.params.fieldId, changes: { name, config } } });
@@ -125,6 +158,14 @@ router.post("/:tableId/fields/batch-restore", async (req: Request, res: Response
 router.get("/:tableId/records", async (req: Request, res: Response) => {
   const table = await store.getTable(req.params.tableId);
   if (!table) { res.status(404).json({ error: "Table not found" }); return; }
+  const hasLookup = table.fields.some(f => f.type === "Lookup");
+  if (hasLookup) {
+    const { materializeLookups } = await import("../services/lookupEngine.js");
+    const allTables = await store.listTables();
+    const { records } = materializeLookups(table, table.records, allTables);
+    res.json(records);
+    return;
+  }
   res.json(table.records);
 });
 
@@ -311,7 +352,14 @@ router.post("/:tableId/views/:viewId/query", async (req: Request, res: Response)
   if (!view) { res.status(404).json({ error: "View not found" }); return; }
 
   const fieldMap = new Map<string, Field>(table.fields.map(f => [f.id, f]));
-  const result = queryView(table.records, view, fieldMap);
+  const hasLookup = table.fields.some(f => f.type === "Lookup");
+  const allTables = hasLookup ? await store.listTables() : [];
+  const result = queryView(
+    table.records,
+    view,
+    fieldMap,
+    hasLookup ? { currentTable: table, allTables } : undefined,
+  );
   res.json(result);
 });
 

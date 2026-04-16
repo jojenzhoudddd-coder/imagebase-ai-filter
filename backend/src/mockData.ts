@@ -389,6 +389,71 @@ function genRecords(): TableRecord[] {
   });
 }
 
+// ─── Second table: 研发工时日志 ───
+// Each record is a log entry for a requirement. fld_req_name links to tbl_requirements.fld_name by value.
+// This lets us demo cross-table Lookups: "sum hours for this requirement", "count entries", etc.
+
+const HISTORY_STATUS_OPTIONS = [
+  { id: "opt_status_doing", name: "进行中", color: "#002270" },
+  { id: "opt_status_done",  name: "已完成", color: "#02312A" },
+  { id: "opt_status_paused", name: "已暂停", color: "#3B1A02" },
+];
+
+function genHistoryRecords(): TableRecord[] {
+  const out: TableRecord[] = [];
+  // For each requirement, seed 1-4 log entries
+  NAMES.forEach((name, i) => {
+    const entries = 1 + ((i * 7 + 3) % 4); // 1..4
+    for (let k = 0; k < entries; k++) {
+      const idx = out.length + 1;
+      const id = `hist_${String(idx).padStart(4, "0")}`;
+      const hours = 1 + ((i * 3 + k * 5 + 2) % 8); // 1..8
+      const statusIdx = (i + k) % HISTORY_STATUS_OPTIONS.length;
+      const status = HISTORY_STATUS_OPTIONS[statusIdx].name;
+      const logDaysAgo = Math.max(1, 90 - ((i * 5 + k * 17) % 90));
+      const logDate = daysAgo(logDaysAgo);
+      const loggerIdx = (i * 2 + k + 1) % USERS.length;
+      out.push({
+        id,
+        tableId: "tbl_history",
+        cells: {
+          hist_req_name: name,
+          hist_hours: hours,
+          hist_status: status,
+          hist_log_date: logDate,
+          hist_logger: USERS[loggerIdx].id,
+        },
+        createdAt: logDate,
+        updatedAt: logDate,
+      });
+    }
+  });
+  return out;
+}
+
+export const mockHistoryTable: Table = {
+  id: "tbl_history",
+  name: "研发工时日志",
+  autoNumberCounters: {},
+  fields: [
+    { id: "hist_req_name", tableId: "tbl_history", name: "所属需求", type: "Text", isPrimary: true, config: {} },
+    { id: "hist_hours",    tableId: "tbl_history", name: "工时(h)",   type: "Number", isPrimary: false, config: {} },
+    {
+      id: "hist_status", tableId: "tbl_history", name: "状态", type: "SingleSelect", isPrimary: false,
+      config: { options: HISTORY_STATUS_OPTIONS },
+    },
+    {
+      id: "hist_log_date", tableId: "tbl_history", name: "记录日期", type: "DateTime", isPrimary: false,
+      config: { format: "yyyy-MM-dd", includeTime: false },
+    },
+    { id: "hist_logger", tableId: "tbl_history", name: "记录人", type: "User", isPrimary: false, config: { users: USERS } },
+  ],
+  records: genHistoryRecords(),
+  views: [
+    { id: "view_history", tableId: "tbl_history", name: "Grid", type: "grid", filter: { logic: "and", conditions: [] } },
+  ],
+};
+
 export const mockTable: Table = {
   id: "tbl_requirements",
   name: "需求管理表",

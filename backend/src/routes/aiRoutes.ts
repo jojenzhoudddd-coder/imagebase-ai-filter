@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import * as store from "../services/dbStore.js";
 import { generateFilter } from "../services/aiService.js";
+import { suggestFields } from "../services/fieldSuggestService.js";
 import { FilterGenerateRequest } from "../types.js";
 
 const router = Router();
@@ -39,6 +40,30 @@ router.post("/filter/generate", async (req: Request, res: Response) => {
 
   res.write("event: done\ndata: {}\n\n");
   res.end();
+});
+
+// POST /api/ai/fields/suggest  — AI field recommendations
+router.post("/fields/suggest", async (req: Request, res: Response) => {
+  const { tableId, title, excludeNames } = req.body;
+
+  if (!tableId) {
+    res.status(400).json({ error: "tableId is required" });
+    return;
+  }
+
+  const table = await store.getTable(tableId);
+  if (!table) {
+    res.status(404).json({ error: "Table not found" });
+    return;
+  }
+
+  try {
+    const result = await suggestFields({ tableId, title, excludeNames });
+    res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: message });
+  }
 });
 
 export default router;

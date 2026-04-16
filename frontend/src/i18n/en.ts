@@ -172,6 +172,103 @@ export const en = {
 
   // Search
   "search.placeholder": "Search...",
+
+  // AddFieldPopover
+  "addField.fieldTitle": "Title",
+  "addField.fieldTitlePlaceholder": "Enter field title for AI suggestions",
+  "addField.aiSuggestions": "AI Suggestions",
+  "addField.refresh": "Refresh",
+  "addField.aiLoading": "Thinking...",
+  "addField.fieldType": "Field type",
+  "addField.exploreShortcuts": "Explore Field Shortcuts",
+  "addField.cancel": "Cancel",
+  "addField.confirm": "Confirm",
+  "addField.creating": "...",
+  "addField.createFailed": "Failed to create field",
+
+  // Field type options — Basic
+  "fieldType.text": "Text",
+  "fieldType.number": "Number",
+  "fieldType.singleSelect": "Single Option",
+  "fieldType.multiSelect": "Multi Options",
+  "fieldType.user": "Person",
+  "fieldType.dateTime": "Date",
+  "fieldType.attachment": "Attachment",
+  "fieldType.checkbox": "Checkbox",
+  "fieldType.stage": "Stage",
+  "fieldType.autoNumber": "Auto Number",
+  "fieldType.url": "URL",
+  "fieldType.phone": "Phone",
+  "fieldType.email": "Email",
+  "fieldType.location": "Location",
+  "fieldType.barcode": "Barcode",
+  "fieldType.progress": "Progress",
+  "fieldType.currency": "Currency",
+  "fieldType.rating": "Rating",
+  // Field type options — System
+  "fieldType.createdUser": "Created By",
+  "fieldType.modifiedUser": "Modified By",
+  "fieldType.createdTime": "Created Time",
+  "fieldType.modifiedTime": "Modified Time",
+  // Field type options — Extended
+  "fieldType.formula": "Formula",
+  "fieldType.singleLink": "One-way Link",
+  "fieldType.duplexLink": "Two-way Link",
+  "fieldType.lookup": "Lookup",
+  // Field type options — AI
+  "fieldType.aiSummary": "AI Summary",
+  "fieldType.aiTransition": "AI Translation",
+  "fieldType.aiExtract": "AI Extract",
+  "fieldType.aiClassify": "AI Classify",
+  "fieldType.aiTag": "AI Tag",
+  "fieldType.aiCustom": "AI Custom",
+  // Field type groups
+  "fieldType.groupBasic": "Basic",
+  "fieldType.groupSystem": "System",
+  "fieldType.groupExtended": "Extended",
+  "fieldType.groupAI": "AI",
+
+  // LookupConfigPanel
+  "lookup.lookupDataIn": "Look up data in this field",
+  "lookup.selectTable": "Select target table",
+  "lookup.selectField": "Select a field",
+  "lookup.referenceIf": "Reference data if",
+  "lookup.allConditions": "all",
+  "lookup.anyConditions": "any",
+  "lookup.conditionsMet": "conditions are met",
+  "lookup.addCondition": "+ Add Condition",
+  "lookup.addConditionMax": "+ Add Condition (max 5)",
+  "lookup.displayAs": "Display data as",
+  "lookup.fieldFormat": "Field format",
+  "lookup.fieldInCurrent": "Field in current table",
+  "lookup.valuePlaceholder": "Value",
+  "lookup.switchToConstant": "Switch to constant",
+  "lookup.switchToField": "Switch to field",
+  "lookup.removeCondition": "Remove condition",
+  "lookup.relative": "Relative",
+  "lookup.absolute": "Absolute",
+  "lookup.datePlaceholder": "yyyy/MM/dd",
+  "lookup.yesterday": "Yesterday",
+  "lookup.today": "Today",
+  "lookup.tomorrow": "Tomorrow",
+
+  // Lookup calc methods
+  "calc.original": "Value (original)",
+  "calc.deduplicate": "Unique values (deduplicate)",
+  "calc.count": "Count",
+  "calc.deduplicateCount": "Count unique (deduplicate)",
+  "calc.sum": "Sum",
+  "calc.average": "Average",
+  "calc.max": "Max",
+  "calc.min": "Min",
+
+  // Lookup output formats
+  "format.default": "Default",
+  "format.text": "Text",
+  "format.number": "Number",
+  "format.date": "Date",
+  "format.currency": "Currency",
+  "format.autoNumber": "Auto Number",
 };
 
 export type TranslationKeys = typeof en;
