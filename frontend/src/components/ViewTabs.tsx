@@ -75,7 +75,7 @@ export default function ViewTabs({ views, activeViewId, onSelect, isFiltered, is
               >
                 {VIEW_ICONS[v.id] ?? <GridIcon />}
                 <InlineEdit
-                  value={v.name}
+                  value={v.name === "Grid" ? t("view.defaultGrid") : v.name}
                   isEditing={editingViewId === v.id}
                   onStartEdit={() => setEditingViewId(v.id)}
                   onSave={(name) => {

@@ -308,7 +308,8 @@ export const en = {
   "toast.createTableFailed": "Failed to create table",
   "toast.reorderFailed": "Failed to reorder tables",
 
-  // Default field name
+  // Default view/field names
+  "view.defaultGrid": "Grid",
   "defaultField.text": "Text",
 };
 

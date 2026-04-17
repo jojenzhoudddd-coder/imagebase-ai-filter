@@ -310,6 +310,7 @@ export const zh: TranslationKeys = {
   "toast.createTableFailed": "创建数据表失败",
   "toast.reorderFailed": "排序失败",
 
-  // Default field name
+  // Default view/field names
+  "view.defaultGrid": "表格",
   "defaultField.text": "文本",
 };
