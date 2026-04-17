@@ -869,6 +869,54 @@ Claude Code 会帮你生成完整的 Skill 文件。之后每次涉及 UI 变更
 
 **Skill 的本质是"把产品经理的审美和判断固化成规则"。** 你不可能每次都盯着 AI 写的每一行 CSS。但如果你的审美已经被编码成了 Skill，AI 就会自动按你的标准来——这比你逐像素审查高效 100 倍。
 
+#### 11.4.5 每次提交部署，记得让 AI 自己跑一遍 P0 用例
+
+**教训**：项目中期有一次部署后，发现 AI 筛选功能完全不能用——原因是一个看似无关的重构改动破坏了筛选结果解析。如果部署前跑了 P0 用例，这个问题 30 秒就能发现，而不是上线后用户来报。
+
+**核心认知：Claude Code 能写代码，也能测代码——但你不说，它就不测。**
+
+传统开发中，"提测"是一个明确的流程节点。和 AI 协作时，这个节点很容易被跳过——因为改完代码就能直接部署，太方便了，方便到忘了验证。
+
+**正确做法**：在 `docs/test-plan.md` 中维护 P0 用例清单，每次部署前让 Claude Code 自己跑一遍：
+
+```
+"改完之后，先跑一遍 test-plan.md 里的 P0 用例再部署"
+```
+
+或者更彻底——写进 CLAUDE.md 的部署检查清单（本项目就是这样做的）：
+
+```markdown
+## Deployment Checklist
+- [ ] P0 用例全部通过 — 跑一遍 docs/test-plan.md 中所有 P0 用例
+```
+
+**Claude Code 怎么"跑"P0 用例**：
+
+它不需要 Selenium 或 Cypress。Claude Code 可以通过 Preview 工具直接操作浏览器：
+1. 启动 dev server（`preview_start`）
+2. 截图查看页面状态（`preview_screenshot`）
+3. 点击按钮、填写输入框（`preview_click`、`preview_fill`）
+4. 检查控制台有无报错（`preview_console_logs`）
+5. 检查网络请求（`preview_network`）
+6. 检查页面文本内容（`preview_snapshot`）
+
+这不是完整的 E2E 测试框架，但足以覆盖"功能核心链路能不能跑通"这个 P0 级别的验证。比如：
+
+| P0 用例 | Claude Code 怎么验证 |
+|---------|---------------------|
+| 页面加载后表格正确渲染 | `preview_snapshot` 检查表头和数据行是否存在 |
+| AI 筛选输入后生成条件 | `preview_fill` 输入查询 → `preview_click` 提交 → `preview_snapshot` 检查筛选条件回显 |
+| 新建数据表出现在 Sidebar | `preview_click` 点击新建 → `preview_snapshot` 检查 Sidebar 列表 |
+| 删除记录弹出确认框 | `preview_click` 选中行 → 模拟 Delete 键 → `preview_snapshot` 检查弹窗 |
+
+**P0 用例的维护时机**：
+
+每做完一个新功能，就往 `test-plan.md` 里加对应的 P0 用例。不需要写得很详细——一行描述 + 预期结果就够了。关键是**功能和测试同步增长**，不要等到上线出问题才想起来"应该测一下"。
+
+**本项目的 P0 用例现状**：
+
+`docs/test-plan.md` 中包含 8 个模块、50+ 条 P0 用例，覆盖表格视图、单元格选择、行删除、撤销、AI 筛选、实时同步、国际化等所有核心功能。每条用例都有明确的操作步骤和预期结果，Claude Code 可以直接按照用例描述执行验证。
+
 ### 11.5 用截图/Figma 链接代替文字描述布局
 
 这个项目中效率最高的需求形式是：**一张截图 + 几句补充说明**。
