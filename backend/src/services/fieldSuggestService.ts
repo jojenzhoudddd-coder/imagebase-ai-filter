@@ -80,7 +80,7 @@ const FIELD_SUGGEST_SYSTEM_PROMPT = `# 角色
 # 规则
 1. 不要推荐与已有字段同名的字段。
 2. 包含"姓名"或以"人"结尾的字段（如"负责人""创建人""审批人"）必须使用 User 类型。
-3. 返回 8-12 个推荐字段。
+3. 返回用户指定数量的推荐字段（10-20 个）。
 4. 如果用户提供了正在创建的字段标题，第一个推荐应该是对该标题最合适的类型推断。
 5. 推荐应该与数据表的用途场景相关，合理搭配不同类型。
 
@@ -102,7 +102,9 @@ async function callLLM(tableId: string): Promise<FieldSuggestion[]> {
 
   const tableName = table.name;
   const existingFieldNames = table.fields.map((f) => f.name);
-  const userMessage = `数据表名：${tableName}\n已有字段：${existingFieldNames.join(", ")}\n请推荐 8-12 个合适的新字段。`;
+  // Dynamic count: min 10, max 20, scales with existing field count
+  const suggestCount = Math.min(20, Math.max(10, existingFieldNames.length + 5));
+  const userMessage = `数据表名：${tableName}\n已有字段：${existingFieldNames.join(", ")}\n请推荐 ${suggestCount} 个合适的新字段。`;
 
   try {
     const response = await fetch(`${ARK_BASE_URL}/responses`, {
