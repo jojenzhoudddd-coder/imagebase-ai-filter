@@ -93,7 +93,7 @@ const EMPTY_LOOKUP: LookupConfig = {
   lookupOutputFormat: "default",
 };
 
-const PAGE_SIZE = 4;
+const PAGE_SIZE = 6;
 
 // ─── AI Suggestions hook (used at App level for pre-loading) ───
 
@@ -288,6 +288,9 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
             <div className="suggest-chips">
               {sugLoading && suggestions.length === 0 ? (
                 <>
+                  <span className="suggest-chip skeleton" />
+                  <span className="suggest-chip skeleton" />
+                  <span className="suggest-chip skeleton" />
                   <span className="suggest-chip skeleton" />
                   <span className="suggest-chip skeleton" />
                   <span className="suggest-chip skeleton" />
