@@ -201,8 +201,9 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const width = fieldType === "Lookup" ? 484 : 320;
   const style = useMemo(() => {
     if (!anchorRect) return { left: 100, top: 100, width } as React.CSSProperties;
-    const rightEdge = anchorRect.right + 12;
-    const left = Math.max(16, rightEdge - width);
+    // Default: left-align with anchor; shift left if overflows right edge (16px margin)
+    const maxLeft = window.innerWidth - width - 16;
+    const left = Math.max(16, Math.min(anchorRect.left, maxLeft));
     const top = anchorRect.bottom + 6;
     return { left, top, width };
   }, [anchorRect, width]);
