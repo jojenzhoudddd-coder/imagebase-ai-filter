@@ -268,8 +268,8 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="field-popover-body">
-          {/* AI Suggestions (above title) */}
-          <div className="form-row">
+          {/* AI Suggestions (above title) — hidden in edit mode */}
+          {!isEdit && <div className="form-row">
             <div className="suggest-header">
               <label>{t("addField.aiSuggestions")}</label>
               <button
@@ -309,7 +309,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
                 <span className="suggest-empty">{t("addField.aiLoading")}</span>
               )}
             </div>
-          </div>
+          </div>}
 
           {/* Title */}
           <div className="form-row">
