@@ -213,10 +213,12 @@ function TextEditor({
     const el = inputRef.current;
     if (!el) return;
     el.focus();
-    // Move cursor to end instead of selecting all, so user can click to reposition
-    const len = el.value.length;
-    el.setSelectionRange(len, len);
-  }, []);
+    // setSelectionRange is not allowed on <input type="number">
+    if (field.type !== "Number") {
+      const len = el.value.length;
+      el.setSelectionRange(len, len);
+    }
+  }, [field.type]);
 
   const commit = () => {
     const v = draft.trim();

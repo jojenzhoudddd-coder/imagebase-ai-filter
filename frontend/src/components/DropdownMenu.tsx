@@ -27,9 +27,11 @@ interface Props {
   onItemRef?: (key: string, el: HTMLButtonElement | null) => void;
   /** Extra DOM elements that should NOT trigger click-outside close */
   extraContainers?: React.RefObject<HTMLElement | null>[];
+  /** Additional CSS class for the menu container */
+  className?: string;
 }
 
-export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "below", width, activeSubMenuKey, onMenuRef, onItemRef, extraContainers }: Props) {
+export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "below", width, activeSubMenuKey, onMenuRef, onItemRef, extraContainers, className }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: -9999, left: -9999 });
 
@@ -88,7 +90,7 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
   return createPortal(
     <div
       ref={menuRef}
-      className="dropdown-menu"
+      className={`dropdown-menu${className ? ` ${className}` : ""}`}
       style={{ top: pos.top, left: pos.left, width: width ?? undefined }}
     >
       {groups.map((group, gi) => (

@@ -92,6 +92,7 @@ router.put("/:tableId", async (req: Request, res: Response) => {
   }
   const table = await store.updateTable(req.params.tableId, { name: name.trim() });
   if (!table) { res.status(404).json({ error: "Table not found" }); return; }
+  // Table-level event (for users viewing this table)
   eventBus.emitChange({
     type: "table:update",
     tableId: req.params.tableId,
@@ -99,6 +100,17 @@ router.put("/:tableId", async (req: Request, res: Response) => {
     timestamp: Date.now(),
     payload: { name: table.name },
   });
+  // Document-level event (for sidebar table list sync)
+  const docId = await store.getTableDocumentId(req.params.tableId);
+  if (docId) {
+    eventBus.emitDocumentChange({
+      type: "table:rename",
+      documentId: docId,
+      clientId: getClientId(req),
+      timestamp: Date.now(),
+      payload: { tableId: req.params.tableId, name: table.name },
+    });
+  }
   res.json({ id: table.id, name: table.name });
 });
 

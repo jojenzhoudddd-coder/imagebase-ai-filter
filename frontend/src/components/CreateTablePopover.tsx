@@ -138,14 +138,9 @@ const CreateTablePopover = forwardRef<CreateTablePopoverHandle, Props>(
     }
   }, [handleGenerate, onClose, tableName, state]);
 
-  const handleCreateBlank = useCallback(async () => {
-    setState("creating");
-    try {
-      await onCreateBlank();
-      onClose();
-    } catch {
-      onClose();
-    }
+  const handleCreateBlank = useCallback(() => {
+    onClose();
+    onCreateBlank();
   }, [onCreateBlank, onClose]);
 
   return createPortal(
