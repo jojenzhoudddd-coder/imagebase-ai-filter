@@ -700,7 +700,7 @@ export default function App() {
 
   // Add-field popover state
   const [addFieldAnchor, setAddFieldAnchor] = useState<DOMRect | null>(null);
-  const fieldSuggestions = useFieldSuggestions(TABLE_ID);
+  const fieldSuggestions = useFieldSuggestions(activeTableIdRef.current);
 
   const handleOpenAddField = useCallback((rect: DOMRect) => {
     setAddFieldAnchor(rect);
@@ -709,7 +709,7 @@ export default function App() {
   const handleCreateFieldConfirm = useCallback(async (newField: Field) => {
     setFields((prev) => [...prev, newField]);
     // Refetch records so Lookup fields get their materialized values from the backend
-    const r = await fetchRecords(TABLE_ID);
+    const r = await fetchRecords(activeTableIdRef.current);
     setAllRecords(r);
     setAddFieldAnchor(null);
   }, []);
@@ -1102,7 +1102,7 @@ export default function App() {
             )}
             {addFieldAnchor && (
               <AddFieldPopover
-                currentTableId={TABLE_ID}
+                currentTableId={activeTableIdRef.current}
                 currentFields={fields}
                 anchorRect={addFieldAnchor}
                 onCancel={() => setAddFieldAnchor(null)}
