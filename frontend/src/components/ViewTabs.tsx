@@ -116,6 +116,7 @@ export default function ViewTabs({ views, activeViewId, onSelect, isFiltered, is
                     items={menuItems}
                     anchorEl={moreRefs.current.get(v.id)!}
                     onSelect={(key) => {
+                      setMenuViewId(null);
                       if (key === "rename") setEditingViewId(v.id);
                     }}
                     onClose={() => setMenuViewId(null)}

@@ -337,6 +337,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             items={getContextMenuItems(item)}
             anchorEl={moreRefs.current.get(item.id)!}
             onSelect={(key) => {
+              setMenuItemId(null);
               if (key === "rename") setEditingItemId(item.id);
               if (key === "delete") setDeleteConfirmId(item.id);
             }}
