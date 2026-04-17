@@ -1381,5 +1381,5 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
 export default TableView;
 
 function FieldIcon({ type }: { type: string }) {
-  return <FieldIconSvg type={type} size={12} className="field-icon" />;
+  return <FieldIconSvg type={type} size={18} className="field-icon" />;
 }
