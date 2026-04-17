@@ -44,7 +44,7 @@ router.post("/filter/generate", async (req: Request, res: Response) => {
 
 // POST /api/ai/fields/suggest  — AI field recommendations
 router.post("/fields/suggest", async (req: Request, res: Response) => {
-  const { tableId, title, excludeNames } = req.body;
+  const { tableId, title, excludeNames, forceRefresh } = req.body;
 
   if (!tableId) {
     res.status(400).json({ error: "tableId is required" });
@@ -58,7 +58,7 @@ router.post("/fields/suggest", async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await suggestFields({ tableId, title, excludeNames });
+    const result = await suggestFields({ tableId, title, excludeNames, forceRefresh });
     res.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
