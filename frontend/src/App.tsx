@@ -685,17 +685,36 @@ export default function App() {
   const [addFieldAnchor, setAddFieldAnchor] = useState<DOMRect | null>(null);
   const fieldSuggestions = useFieldSuggestions(TABLE_ID);
 
+  // Edit-field popover state
+  const [editFieldState, setEditFieldState] = useState<{ fieldId: string; anchorRect: DOMRect } | null>(null);
+
   const handleOpenAddField = useCallback((rect: DOMRect) => {
+    setEditFieldState(null);
     setAddFieldAnchor(rect);
+  }, []);
+
+  const handleEditField = useCallback((fieldId: string, anchorRect: DOMRect) => {
+    setAddFieldAnchor(null);
+    setEditFieldState({ fieldId, anchorRect });
   }, []);
 
   const handleCreateFieldConfirm = useCallback(async (newField: Field) => {
     setFields((prev) => [...prev, newField]);
-    // Refetch records so Lookup fields get their materialized values from the backend
     const r = await fetchRecords(TABLE_ID);
     setAllRecords(r);
     setAddFieldAnchor(null);
   }, []);
+
+  const handleEditFieldConfirm = useCallback(async (updatedField: Field) => {
+    const oldField = fields.find(f => f.id === updatedField.id);
+    const typeChanged = oldField && oldField.type !== updatedField.type;
+    setFields((prev) => prev.map(f => f.id === updatedField.id ? updatedField : f));
+    if (typeChanged) {
+      const r = await fetchRecords(TABLE_ID);
+      setAllRecords(r);
+    }
+    setEditFieldState(null);
+  }, [fields]);
 
   const isFiltered = filter.conditions.length > 0;
 
@@ -914,6 +933,7 @@ export default function App() {
               onClearCells={handleClearCells}
               onClearRowCells={handleClearRowCells}
               onAddField={handleOpenAddField}
+              onEditField={handleEditField}
             />
             {filterPanelOpen && (
               <FilterPanel
@@ -945,6 +965,18 @@ export default function App() {
                 onCancel={() => setAddFieldAnchor(null)}
                 onConfirm={handleCreateFieldConfirm}
                 fieldSuggestions={fieldSuggestions}
+              />
+            )}
+            {editFieldState && (
+              <AddFieldPopover
+                key={editFieldState.fieldId}
+                currentTableId={TABLE_ID}
+                currentFields={fields}
+                anchorRect={editFieldState.anchorRect}
+                onCancel={() => setEditFieldState(null)}
+                onConfirm={handleEditFieldConfirm}
+                fieldSuggestions={fieldSuggestions}
+                editingField={fields.find(f => f.id === editFieldState.fieldId)}
               />
             )}
           </div>

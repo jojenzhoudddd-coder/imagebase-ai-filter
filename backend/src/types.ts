@@ -335,7 +335,7 @@ export interface ViewQueryResult {
 
 export interface CreateTableDTO { name: string; }
 export interface CreateFieldDTO { name: string; type: FieldType; config?: FieldConfig; }
-export interface UpdateFieldDTO { name?: string; config?: FieldConfig; }
+export interface UpdateFieldDTO { name?: string; type?: FieldType; config?: FieldConfig; }
 export interface CreateRecordDTO { cells: Record<string, CellValue>; }
 export interface UpdateRecordDTO { cells: Record<string, CellValue>; }
 export interface CreateViewDTO {

@@ -187,6 +187,13 @@ export const zh: TranslationKeys = {
   "addField.confirm": "确认",
   "addField.creating": "...",
   "addField.createFailed": "创建字段失败",
+  "addField.save": "保存",
+  "addField.saving": "...",
+  "addField.saveFailed": "保存字段失败",
+  "addField.editTitle": "编辑字段",
+
+  // Context menu
+  "table.editField": "编辑字段",
 
   // Field type options — Basic
   "fieldType.text": "文本",

@@ -160,26 +160,21 @@
 .col-add {
   width: 136px;
   border-right: none !important;
-  cursor: default;
+  cursor: pointer;
 }
 
 .col-add:hover {
-  background: #F7F8FA !important;
+  background: #F0F1F3 !important;
 }
 
-.col-add-btn {
+.col-add-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: var(--radius-s);
   color: var(--color-text-secondary);
   margin-left: 12px;
-}
-
-.col-add-btn:hover {
-  background: var(--color-bg-hover);
 }
 
 /* Figma: checkbox 16x16 */

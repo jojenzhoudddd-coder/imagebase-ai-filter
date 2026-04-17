@@ -185,6 +185,13 @@ export const en = {
   "addField.confirm": "Confirm",
   "addField.creating": "...",
   "addField.createFailed": "Failed to create field",
+  "addField.save": "Save",
+  "addField.saving": "...",
+  "addField.saveFailed": "Failed to save field",
+  "addField.editTitle": "Edit Field",
+
+  // Context menu
+  "table.editField": "Edit field",
 
   // Field type options — Basic
   "fieldType.text": "Text",

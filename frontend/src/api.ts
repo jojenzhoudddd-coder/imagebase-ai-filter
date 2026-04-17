@@ -61,6 +61,28 @@ export async function createField(tableId: string, dto: CreateFieldDTO): Promise
   return res.json();
 }
 
+export interface UpdateFieldDTO {
+  name?: string;
+  type?: FieldType;
+  config?: FieldConfig;
+}
+
+export async function updateField(tableId: string, fieldId: string, dto: UpdateFieldDTO): Promise<Field> {
+  const res = await mutationFetch(`${BASE}/tables/${tableId}/fields/${fieldId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dto),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.message || body.error || `HTTP ${res.status}`) as ApiError;
+    err.code = body.error;
+    err.path = body.path;
+    throw err;
+  }
+  return res.json();
+}
+
 export async function queryRecords(
   tableId: string,
   filter: ViewFilter

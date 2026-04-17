@@ -105,7 +105,7 @@ router.post("/:tableId/fields", async (req: Request, res: Response) => {
 
 // PUT /api/tables/:tableId/fields/:fieldId — update field
 router.put("/:tableId/fields/:fieldId", async (req: Request, res: Response) => {
-  const { name, config } = req.body;
+  const { name, type, config } = req.body;
   // Re-validate if this field is a Lookup and config is being updated
   const existing = (await store.getTable(req.params.tableId))?.fields.find(f => f.id === req.params.fieldId);
   if (existing && existing.type === "Lookup" && config) {
@@ -123,9 +123,9 @@ router.put("/:tableId/fields/:fieldId", async (req: Request, res: Response) => {
       return;
     }
   }
-  const field = await store.updateField(req.params.tableId, req.params.fieldId, { name, config });
+  const field = await store.updateField(req.params.tableId, req.params.fieldId, { name, type, config });
   if (!field) { res.status(404).json({ error: "Field not found" }); return; }
-  eventBus.emitChange({ type: "field:update", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { fieldId: req.params.fieldId, changes: { name, config } } });
+  eventBus.emitChange({ type: "field:update", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { fieldId: req.params.fieldId, changes: { name, type, config } } });
   res.json(field);
 });
 

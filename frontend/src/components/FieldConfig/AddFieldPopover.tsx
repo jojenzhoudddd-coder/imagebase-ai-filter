@@ -4,7 +4,7 @@ import {
   FieldType,
   LookupConfig,
 } from "../../types";
-import { createField, fetchTables, suggestFields, TableBrief, ApiError, FieldSuggestion } from "../../api";
+import { createField, updateField, fetchTables, suggestFields, TableBrief, ApiError, FieldSuggestion } from "../../api";
 import { LookupConfigPanel } from "./LookupConfigPanel";
 import { FieldIcon } from "./FieldIcons";
 import { useTranslation } from "../../i18n";
@@ -17,6 +17,7 @@ interface Props {
   onCancel: () => void;
   onConfirm: (newField: Field) => void;
   fieldSuggestions: FieldSuggestionsState;
+  editingField?: Field;
 }
 
 interface FieldTypeItem { type: FieldType; icon: string; labelKey: string }
@@ -160,10 +161,11 @@ export interface FieldSuggestionsState {
 
 // ─── Main component ───
 
-export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onCancel, onConfirm, fieldSuggestions }: Props) {
+export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onCancel, onConfirm, fieldSuggestions, editingField }: Props) {
+  const isEdit = !!editingField;
   const { t } = useTranslation();
-  const [title, setTitle] = useState("");
-  const [fieldType, setFieldType] = useState<FieldType>("Text");
+  const [title, setTitle] = useState(editingField?.name ?? "");
+  const [fieldType, setFieldType] = useState<FieldType>(editingField?.type ?? "Text");
   const [typePickerAnchor, setTypePickerAnchor] = useState<{ card: DOMRect; popover: DOMRect } | null>(null);
   const [lookupConfig, setLookupConfig] = useState<LookupConfig>(EMPTY_LOOKUP);
   const [submitting, setSubmitting] = useState(false);
@@ -212,17 +214,27 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
     setSubmitting(true);
     setError(null);
     try {
-      const config =
-        fieldType === "Lookup"
-          ? { lookup: lookupConfig }
-          : fieldType === "DateTime"
-          ? { format: "yyyy-MM-dd", includeTime: false }
-          : {};
-      const newField = await createField(currentTableId, { name: title.trim(), type: fieldType, config });
-      onConfirm(newField);
+      if (isEdit) {
+        // Edit mode: update existing field
+        const dto: Record<string, any> = {};
+        if (title.trim() !== editingField.name) dto.name = title.trim();
+        if (fieldType !== editingField.type) dto.type = fieldType;
+        const updated = await updateField(currentTableId, editingField.id, dto);
+        onConfirm(updated);
+      } else {
+        // Create mode
+        const config =
+          fieldType === "Lookup"
+            ? { lookup: lookupConfig }
+            : fieldType === "DateTime"
+            ? { format: "yyyy-MM-dd", includeTime: false }
+            : {};
+        const newField = await createField(currentTableId, { name: title.trim(), type: fieldType, config });
+        onConfirm(newField);
+      }
     } catch (e: unknown) {
       const err = e as ApiError;
-      setError({ message: err.message || t("addField.createFailed"), path: err.path });
+      setError({ message: err.message || t(isEdit ? "addField.saveFailed" : "addField.createFailed"), path: err.path });
       setSubmitting(false);
     }
   };
@@ -251,8 +263,8 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="field-popover-body">
-          {/* AI Suggestions (above title) */}
-          <div className="form-row">
+          {/* AI Suggestions (above title) — hidden in edit mode */}
+          {!isEdit && <div className="form-row">
             <div className="suggest-header">
               <label>{t("addField.aiSuggestions")}</label>
               <button
@@ -292,7 +304,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
                 <span className="suggest-empty">{t("addField.aiLoading")}</span>
               )}
             </div>
-          </div>
+          </div>}
 
           {/* Title */}
           <div className="form-row">
@@ -352,7 +364,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
         <div className="field-popover-footer">
           <button className="btn btn-secondary" onClick={onCancel} disabled={submitting}>{t("addField.cancel")}</button>
           <button className="btn btn-primary" onClick={handleConfirm} disabled={!canSubmit}>
-            {submitting ? t("addField.creating") : t("addField.confirm")}
+            {submitting ? t(isEdit ? "addField.saving" : "addField.creating") : t(isEdit ? "addField.save" : "addField.confirm")}
           </button>
         </div>
       </div>

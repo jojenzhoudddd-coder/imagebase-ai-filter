@@ -261,6 +261,56 @@ export async function createField(tableId: string, dto: CreateFieldDTO): Promise
   return field;
 }
 
+function convertCellValue(value: any, fromType: string, toType: string): any {
+  if (value === null || value === undefined) return null;
+
+  // Same type, no conversion needed
+  if (fromType === toType) return value;
+
+  switch (toType) {
+    case "Text":
+      if (Array.isArray(value)) return value.join(", ");
+      return String(value);
+
+    case "Number": {
+      if (typeof value === "number") return value;
+      if (typeof value === "boolean") return value ? 1 : 0;
+      if (typeof value === "string") {
+        const n = parseFloat(value);
+        return isNaN(n) ? null : n;
+      }
+      return null;
+    }
+
+    case "DateTime": {
+      if (typeof value === "number") return value; // already a timestamp
+      if (typeof value === "string") {
+        const d = new Date(value);
+        return isNaN(d.getTime()) ? null : d.getTime();
+      }
+      return null;
+    }
+
+    case "Checkbox":
+      if (typeof value === "boolean") return value;
+      return null;
+
+    case "SingleSelect":
+      if (typeof value === "string") return value;
+      if (Array.isArray(value)) return value[0] ?? null;
+      return String(value);
+
+    case "MultiSelect":
+      if (Array.isArray(value)) return value.map(String);
+      if (typeof value === "string") return [value];
+      return [String(value)];
+
+    default:
+      // For other types (User, Attachment, etc.), clear the value
+      return null;
+  }
+}
+
 export async function updateField(tableId: string, fieldId: string, dto: UpdateFieldDTO): Promise<Field | null> {
   const row = await prisma.table.findUnique({ where: { id: tableId } });
   if (!row) return null;
@@ -271,6 +321,18 @@ export async function updateField(tableId: string, fieldId: string, dto: UpdateF
 
   if (dto.name !== undefined) field.name = dto.name.slice(0, 100);
   if (dto.config !== undefined) field.config = { ...field.config, ...dto.config };
+
+  if (dto.type !== undefined && dto.type !== field.type) {
+    const oldType = field.type;
+    field.type = dto.type;
+    // Convert all cells for this field
+    const records = await prisma.record.findMany({ where: { tableId } });
+    for (const rec of records) {
+      const cells = (rec.cells ?? {}) as Record<string, any>;
+      cells[fieldId] = convertCellValue(cells[fieldId], oldType, dto.type);
+      await prisma.record.update({ where: { id: rec.id }, data: { cells: cells as any } });
+    }
+  }
 
   await prisma.table.update({ where: { id: tableId }, data: { fields: fields as any } });
   return field;
