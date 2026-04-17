@@ -93,7 +93,7 @@ const EMPTY_LOOKUP: LookupConfig = {
   lookupOutputFormat: "default",
 };
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 8;
 
 // ─── AI Suggestions hook (used at App level for pre-loading) ───
 
@@ -148,8 +148,12 @@ export function useFieldSuggestions(tableId: string) {
   const refresh = useCallback(() => {
     const nextPage = pageIndex + 1;
     if (nextPage < totalPages) {
+      // Still have cached pages — instant switch
       setPageIndex(nextPage);
     } else {
+      // Exhausted cache — re-fetch, show loading
+      setCache([]);
+      setPageIndex(0);
       fetchSuggestions();
     }
   }, [pageIndex, totalPages, fetchSuggestions]);

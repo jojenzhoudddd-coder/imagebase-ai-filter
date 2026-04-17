@@ -295,7 +295,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  min-height: 28px;
+  min-height: 26px;
+  max-height: 58px;
+  overflow: hidden;
   align-items: center;
 }
 

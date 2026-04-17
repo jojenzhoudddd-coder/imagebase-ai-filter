@@ -23,6 +23,7 @@
 .dropdown-menu-items {
   display: flex;
   flex-direction: column;
+  gap: 4px;
 }
 
 /* Menu item — aligned with field-context-menu-item */
