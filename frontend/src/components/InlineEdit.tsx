@@ -27,11 +27,8 @@ export default function InlineEdit({
     if (isEditing) {
       setDraft(value);
       requestAnimationFrame(() => {
-        const el = inputRef.current;
-        if (!el) return;
-        el.focus();
-        const len = el.value.length;
-        el.setSelectionRange(len, len);
+        inputRef.current?.focus();
+        inputRef.current?.select();
       });
     }
   }, [isEditing, value]);
@@ -63,6 +60,7 @@ export default function InlineEdit({
             onCancelEdit();
           }
         }}
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
       />
