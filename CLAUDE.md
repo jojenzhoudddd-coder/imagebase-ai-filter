@@ -88,7 +88,17 @@ Domain: http://www.baseimage.cn
 - `docs/test-plan.md` - 测试计划与测试用例（P0 功能可用性 + P1 产品体验）
 - `docs/design-resources.md` - 设计资源（色彩、排版、间距、组件规范、交互规范）
 - `docs/changelog.md` - 更新日志（所有发布部署记录）
-- `.claude/skills/ux-frontend-design.md` - UX & 前端设计 Skill
+- `docs/case-study.md` - 项目案例文档（完整开发故事 + PM 协作指南）
+
+## Skills（自动加载的专业指令集）
+每个 Skill 在对应场景下会被 Claude Code 自动激活，无需手动引用。
+
+| Skill 文件 | 使用场景 | 核心内容 |
+|------------|---------|---------|
+| `.claude/skills/ux-frontend-design.md` | 新增/修改任何 UI 组件、样式、交互 | 色彩体系、间距规范、组件尺寸、交互模式、Figma 库 Key、CSS 命名、动画规范 |
+| `.claude/skills/api-conventions.md` | 新增/修改 API 端点、SSE 事件、前端 API 客户端 | URL 命名规范、HTTP 方法约定、请求/响应格式、SSE 事件格式、EventBus 模式、错误码、ID 生成规则 |
+| `.claude/skills/ai-prompt-patterns.md` | 新增/修改 AI 功能、调试 Prompt、调参 | 温度选择策略、结构化输出模板、Tool Use 模式、Prompt 结构规范、三个 AI 服务对比、调试指南 |
+| `.claude/skills/deployment.md` | 部署代码、配置服务器、排查生产问题、回滚 | 服务器信息、部署命令、PM2/Nginx 配置、SSL 证书、回滚策略、健康检查、常见问题排查 |
 
 ## Deployment Checklist (发布部署检查清单)
 每次发布部署前，必须完成以下检查项：
