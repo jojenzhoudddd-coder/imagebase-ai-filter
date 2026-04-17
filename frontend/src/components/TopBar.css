@@ -190,31 +190,26 @@
 /* ─── Cascading menu ─── */
 .topbar-menu {
   z-index: 1000;
-  background: #FFFFFF;
-  border: 1px solid #DEE0E3;
-  border-radius: 8px;
-  box-shadow:
-    0 4px 8px -8px rgba(31, 35, 41, 0.06),
-    0 6px 12px 0 rgba(31, 35, 41, 0.04),
-    0 8px 24px 8px rgba(31, 35, 41, 0.04);
-  padding: 8px;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-dropdown);
+  padding: 4px;
   width: 220px;
 }
 
 .topbar-menu-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 34px;
-  padding: 0 8px;
-  border-radius: 6px;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-s);
   cursor: pointer;
   position: relative;
   font-family: var(--font-family);
   font-size: 14px;
-  line-height: 22px;
-  font-weight: 400;
-  color: #1F2329;
+  color: var(--color-text-primary);
   white-space: nowrap;
 }
 
@@ -224,7 +219,7 @@
 
 .topbar-menu-icon {
   flex-shrink: 0;
-  color: #646A73;
+  color: var(--color-text-secondary);
 }
 
 .topbar-menu-label {

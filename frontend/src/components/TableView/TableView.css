@@ -465,29 +465,24 @@
 .field-context-menu {
   position: fixed;
   z-index: 100;
-  background: #FFFFFF;
-  border: 1px solid #DEE0E3;
-  border-radius: 8px;
-  box-shadow:
-    0 4px 8px -8px rgba(31, 35, 41, 0.06),
-    0 6px 12px 0 rgba(31, 35, 41, 0.04),
-    0 8px 24px 8px rgba(31, 35, 41, 0.04);
-  padding: 8px;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-dropdown);
+  padding: 4px;
   width: 180px;
 }
 
 .field-context-menu-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  height: 34px;
-  border-radius: 6px;
+  gap: 8px;
+  padding: 0 12px;
+  height: 32px;
+  border-radius: var(--radius-s);
   cursor: pointer;
   font-size: 14px;
-  line-height: 22px;
-  font-weight: 400;
-  color: #1F2329;
+  color: var(--color-text-primary);
   width: 100%;
   text-align: left;
   background: none;
@@ -498,7 +493,7 @@
 
 .field-context-menu-item svg {
   flex-shrink: 0;
-  color: #646A73;
+  color: var(--color-text-secondary);
 }
 
 .field-context-menu-item:hover {
