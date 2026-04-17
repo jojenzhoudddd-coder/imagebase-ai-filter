@@ -822,7 +822,12 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
 
   const handleCellMouseDown = useCallback((e: React.MouseEvent, rowIdx: number, colIdx: number) => {
     if (e.button !== 0) return;
-    // If currently editing, exit edit mode first, then proceed to select the new cell
+    // If clicking inside the active editor (e.g. input), let the browser handle cursor placement
+    const target = e.target as HTMLElement;
+    if (editing && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.closest(".cell-editor-wrap"))) {
+      return;
+    }
+    // If currently editing a different cell, exit edit mode first
     if (editing) setEditing(null);
 
     // Check if clicking on an already-selected single cell (for "click again to edit")
