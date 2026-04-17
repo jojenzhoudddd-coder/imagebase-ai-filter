@@ -932,23 +932,31 @@ export default function App() {
 
   // ── AI Create table (create + reset with AI-generated fields, returns tableId) ──
   const handleCreateWithAI = useCallback(async (aiTableName: string, generatedFields: GeneratedField[]): Promise<string> => {
+    // 1. Create table
     const result = await apiCreateTable(aiTableName, DOCUMENT_ID, locale as "en" | "zh");
     setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order }]);
-    await switchTable(result.id);
-    setTableName(result.name);
 
+    // 2. Reset with AI fields (skip switchTable to avoid premature warmup)
     const resetResult = await resetTable(result.id, generatedFields, locale as "en" | "zh");
+
+    // 3. Now set active table and load data in one shot (with correct AI fields)
+    undoStackRef.current = [];
+    setCanUndo(false);
+    setActiveTableId(result.id);
+    setTableName(result.name);
     setFields(resetResult.fields);
     setAllRecords(resetResult.records);
     setViews(resetResult.views);
     if (resetResult.views[0]) {
       setActiveViewId(resetResult.views[0].id);
+      const viewFilter = resetResult.views[0].filter ?? { logic: "and", conditions: [] };
+      setSavedFilter(viewFilter);
+      setFilter(viewFilter);
       initFieldOrderFromView(resetResult.views[0], resetResult.fields);
     }
-    // Re-fetch AI field suggestions with the new AI-generated fields
-    fieldSuggestions.refetch();
+    // activeTableId change will trigger useFieldSuggestions auto-fetch with correct AI fields
     return result.id;
-  }, [locale, switchTable, initFieldOrderFromView, fieldSuggestions]);
+  }, [locale, initFieldOrderFromView]);
 
   // ── Reset to default: replace AI fields with a single Text column + 5 empty rows ──
   const handleResetToDefault = useCallback(async (tableId: string, _aiTableName: string): Promise<void> => {
@@ -1040,6 +1048,13 @@ export default function App() {
         return prev.map(t => orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t)
                     .sort((a, b) => a.order - b.order);
       });
+    }, []),
+    onTableRename: useCallback((tableId: string, name: string) => {
+      setDocumentTables(prev => prev.map(t => t.id === tableId ? { ...t, name } : t));
+      // If the renamed table is the active one, update the displayed name too
+      if (tableId === activeTableIdRef.current) {
+        setTableName(name);
+      }
     }, []),
   });
 

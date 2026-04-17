@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, ReactNode } from "react";
+import { useState, useRef, useCallback, useEffect, ReactNode } from "react";
 import { useTranslation } from "../i18n/index";
 import InlineEdit from "./InlineEdit";
 import DropdownMenu from "./DropdownMenu";
@@ -96,6 +96,14 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   const moreRefs = useRef<Map<string, HTMLSpanElement>>(new Map());
   const newBtnRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // ── Auto-scroll to active item ──
+  useEffect(() => {
+    const el = itemRefs.current.get(activeItemId);
+    if (el) {
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [activeItemId]);
 
   // ── Sidebar resize state ──
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -384,6 +392,8 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             onSelect={(key) => {
               if (key === "table") {
                 setShowAIPopover(true);
+              } else {
+                setShowAIPopover(false);
               }
             }}
             onClose={() => {
@@ -395,6 +405,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             position="above"
             width={240}
             activeSubMenuKey={showAIPopover ? "table" : null}
+            className="sidebar-new-menu"
             onMenuRef={handleMenuRef}
             onItemRef={handleItemRef}
             extraContainers={[popoverContainerRef]}

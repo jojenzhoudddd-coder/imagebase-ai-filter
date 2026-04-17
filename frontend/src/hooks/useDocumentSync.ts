@@ -4,6 +4,7 @@ export interface DocumentSyncHandlers {
   onTableCreate: (table: { id: string; name: string; order: number }) => void;
   onTableDelete: (tableId: string) => void;
   onTableReorder: (updates: Array<{ id: string; order: number }>) => void;
+  onTableRename: (tableId: string, name: string) => void;
 }
 
 export function useDocumentSync(
@@ -59,6 +60,9 @@ export function useDocumentSync(
             break;
           case "table:reorder":
             h.onTableReorder(p.updates);
+            break;
+          case "table:rename":
+            h.onTableRename(p.tableId, p.name);
             break;
         }
       } catch (err) {

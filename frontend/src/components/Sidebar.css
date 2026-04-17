@@ -188,3 +188,8 @@
   background: var(--color-bg-hover);
   color: var(--color-text-primary);
 }
+
+/* New menu dropdown — extra top padding */
+.sidebar-new-menu.dropdown-menu {
+  padding-top: 12px;
+}

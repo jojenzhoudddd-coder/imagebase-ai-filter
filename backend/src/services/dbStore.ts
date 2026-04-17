@@ -317,6 +317,11 @@ export async function updateTable(id: string, dto: { name?: string }): Promise<T
 
 // ─── Table helpers (multi-table) ───
 
+export async function getTableDocumentId(tableId: string): Promise<string | null> {
+  const row = await prisma.table.findUnique({ where: { id: tableId }, select: { documentId: true } });
+  return row?.documentId ?? null;
+}
+
 export async function listTablesForDocument(documentId: string): Promise<Array<{ id: string; name: string; order: number }>> {
   const rows = await prisma.table.findMany({
     where: { documentId },
