@@ -333,6 +333,13 @@ export interface ViewQueryResult {
   groups?: GroupedRecords[];
 }
 
+export interface GeneratedField {
+  name: string;
+  type: string;
+  isPrimary?: boolean;
+  config?: Record<string, any>;
+}
+
 export interface CreateTableDTO { name: string; documentId?: string; language?: "en" | "zh"; }
 export interface CreateFieldDTO { name: string; type: FieldType; config?: FieldConfig; }
 export interface UpdateFieldDTO { name?: string; type?: FieldType; config?: FieldConfig; }

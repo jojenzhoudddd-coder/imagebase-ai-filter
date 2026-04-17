@@ -311,6 +311,18 @@ export const en = {
   // Default view/field names
   "view.defaultGrid": "Grid",
   "defaultField.text": "Text",
+
+  // AI Table Generation
+  "aiTable.title": "Table Name",
+  "aiTable.placeholder": "An accurate name helps AI generate table structure",
+  "aiTable.create": "AI Create Table",
+  "aiTable.generating": "Planning field names",
+  "aiTable.complete": "Created \"{{name}}\"",
+  "aiTable.adopt": "Looks good, adopt",
+  "aiTable.blank": "Not ideal, reset to blank",
+  "aiTable.blankCreate": "Create blank table",
+  "aiTable.failed": "AI generation failed, please retry",
+  "aiTable.creating": "Planning field names",
 };
 
 export type TranslationKeys = typeof en;

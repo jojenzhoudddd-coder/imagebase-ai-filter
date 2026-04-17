@@ -391,3 +391,83 @@ export function generateFilter(opts: AIGenerateOptions): () => void {
 
   return () => controller.abort();
 }
+
+// ─── AI Table Structure Generation ───
+
+export interface GeneratedField {
+  name: string;
+  type: string;
+  isPrimary?: boolean;
+  config?: Record<string, any>;
+}
+
+export interface GenerateTableOptions {
+  tableName: string;
+  onFields?: (fields: GeneratedField[]) => void;
+  onError?: (code: string, message: string) => void;
+  onDone?: () => void;
+}
+
+export function generateTableStructure(opts: GenerateTableOptions): () => void {
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const res = await fetch(`${BASE}/ai/table/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tableName: opts.tableName }),
+        signal: controller.signal,
+      });
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        let currentEvent = "";
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
+            const data = JSON.parse(line.slice(6));
+            if (currentEvent === "fields") opts.onFields?.(data.fields);
+            if (currentEvent === "error") opts.onError?.(data.code, data.message);
+            if (currentEvent === "done") opts.onDone?.();
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        opts.onError?.("NETWORK_ERROR", "网络请求失败，请检查后端服务");
+      }
+    }
+    opts.onDone?.();
+  })();
+
+  return () => controller.abort();
+}
+
+export async function resetTable(
+  tableId: string,
+  fields: GeneratedField[],
+  language: "en" | "zh",
+): Promise<{ fields: Field[]; records: TableRecord[]; views: View[] }> {
+  const res = await mutationFetch(`${BASE}/tables/${tableId}/reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fields, language }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to reset table");
+  }
+  return res.json();
+}

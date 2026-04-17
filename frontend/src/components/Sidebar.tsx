@@ -4,6 +4,9 @@ import InlineEdit from "./InlineEdit";
 import DropdownMenu from "./DropdownMenu";
 import type { MenuItem } from "./DropdownMenu";
 import ConfirmDialog from "./ConfirmDialog/index";
+import CreateTablePopover from "./CreateTablePopover";
+import type { CreateTablePopoverHandle } from "./CreateTablePopover";
+import type { GeneratedField } from "../api";
 import "./Sidebar.css";
 
 export interface SidebarItem {
@@ -19,10 +22,12 @@ interface Props {
   onRenameItem: (id: string, newName: string) => void;
   activeItemId: string;
   onSelectItem: (id: string) => void;
-  onCreateTable: () => void;
   onReorderTables: (updates: Array<{ id: string; order: number }>) => void;
   onDeleteTable: (id: string) => void;
   tableCount: number;
+  onCreateWithAI: (tableName: string, fields: GeneratedField[]) => Promise<string>;
+  onResetToDefault: (tableId: string, tableName: string) => Promise<void>;
+  onCreateBlank: () => Promise<void>;
 }
 
 const DRAG_THRESHOLD = 4;
@@ -83,7 +88,7 @@ const SIDEBAR_MIN_W = 120;
 const SIDEBAR_MAX_W = 400;
 const SIDEBAR_DEFAULT_W = 190;
 
-export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onCreateTable, onReorderTables, onDeleteTable, tableCount }: Props) {
+export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderTables, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank }: Props) {
   const { t } = useTranslation();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
@@ -141,6 +146,13 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  // ── AI Create sub-menu state ──
+  const [showAIPopover, setShowAIPopover] = useState(false);
+  const [menuEl, setMenuEl] = useState<HTMLDivElement | null>(null);
+  const [tableItemEl, setTableItemEl] = useState<HTMLButtonElement | null>(null);
+  const popoverContainerRef = useRef<HTMLDivElement | null>(null);
+  const popoverHandleRef = useRef<CreateTablePopoverHandle | null>(null);
+
   const tableItems = items.filter(i => i.type === "table");
   const staticItems = items.filter(i => i.type === "static");
 
@@ -150,9 +162,9 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   ];
 
   const createMenuItems: MenuItem[] = [
-    { key: "ai_create", label: t("createMenu.aiCreate"), section: t("createMenu.quickCreate"), icon: CM_ICONS.aiCreate, suffix: ARROW_RIGHT, noop: true },
+    { key: "ai_create", label: t("createMenu.aiCreate"), section: t("createMenu.quickCreate"), icon: CM_ICONS.aiCreate, noop: true },
     { key: "template", label: t("createMenu.template"), icon: CM_ICONS.template, suffix: ARROW_RIGHT, noop: true },
-    { key: "table", label: t("createMenu.table"), section: t("createMenu.new"), icon: CM_ICONS.table },
+    { key: "table", label: t("createMenu.table"), section: t("createMenu.new"), icon: CM_ICONS.table, suffix: ARROW_RIGHT },
     { key: "form", label: t("createMenu.form"), icon: CM_ICONS.form, suffix: ARROW_RIGHT, noop: true },
     { key: "cm_dashboard", label: t("createMenu.dashboard"), icon: CM_ICONS.dashboard, noop: true },
     { key: "cm_workflow", label: t("createMenu.workflow"), icon: CM_ICONS.workflow, noop: true },
@@ -161,6 +173,20 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
     { key: "import", label: t("createMenu.import"), icon: CM_ICONS.transfer, suffix: ARROW_RIGHT, noop: true },
     { key: "app", label: t("createMenu.app"), section: t("createMenu.appSection"), icon: CM_ICONS.app, suffix: ARROW_RIGHT, noop: true },
   ];
+
+  // Close everything handler
+  const handleCloseAll = useCallback(() => {
+    setShowAIPopover(false);
+    setNewMenuOpen(false);
+  }, []);
+
+  // Stable callbacks for menu/item refs
+  const handleMenuRef = useCallback((el: HTMLDivElement | null) => {
+    if (el) setMenuEl(el);
+  }, []);
+  const handleItemRef = useCallback((key: string, el: HTMLButtonElement | null) => {
+    if (key === "table" && el) setTableItemEl(el);
+  }, []);
 
   // ── Drag handlers (table items only) ──
   const handleDragMouseDown = useCallback((e: React.MouseEvent, tableId: string) => {
@@ -314,6 +340,10 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
     );
   };
 
+  // Determine if popover is in a blocking state (generating/creating)
+  const isPopoverBlocking = showAIPopover && popoverHandleRef.current &&
+    ["generating", "creating"].includes(popoverHandleRef.current.getState());
+
   return (
     <aside className="sidebar" style={{ width: sidebarWidth }}>
       <div className="sidebar-resize-handle" onMouseDown={handleResizeMouseDown} />
@@ -333,7 +363,14 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
         <button
           ref={newBtnRef}
           className="sidebar-new-btn"
-          onClick={() => setNewMenuOpen(prev => !prev)}
+          onClick={() => {
+            if (newMenuOpen && !isPopoverBlocking) {
+              setNewMenuOpen(false);
+              setShowAIPopover(false);
+            } else if (!newMenuOpen) {
+              setNewMenuOpen(true);
+            }
+          }}
         >
           <svg width="14" height="14" viewBox="97.5 861.5 13 13" fill="none">
             <path d="M104 862.167C103.678 862.167 103.417 862.428 103.417 862.75V867.417H98.75C98.4278 867.417 98.1666 867.678 98.1666 868C98.1666 868.322 98.4278 868.583 98.75 868.583H103.417V873.25C103.417 873.572 103.678 873.833 104 873.833C104.322 873.833 104.583 873.572 104.583 873.25V868.583H109.25C109.572 868.583 109.833 868.322 109.833 868C109.833 867.678 109.572 867.417 109.25 867.417H104.583V862.75C104.583 862.428 104.322 862.167 104 862.167Z" fill="currentColor"/>
@@ -345,12 +382,33 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             items={createMenuItems}
             anchorEl={newBtnRef.current}
             onSelect={(key) => {
-              if (key === "table") onCreateTable();
-              setNewMenuOpen(false);
+              if (key === "table") {
+                setShowAIPopover(true);
+              }
             }}
-            onClose={() => setNewMenuOpen(false)}
+            onClose={() => {
+              if (!isPopoverBlocking) {
+                setNewMenuOpen(false);
+                setShowAIPopover(false);
+              }
+            }}
             position="above"
             width={240}
+            activeSubMenuKey={showAIPopover ? "table" : null}
+            onMenuRef={handleMenuRef}
+            onItemRef={handleItemRef}
+            extraContainers={[popoverContainerRef]}
+          />
+        )}
+        {showAIPopover && menuEl && tableItemEl && (
+          <CreateTablePopover
+            ref={(handle) => { popoverHandleRef.current = handle; }}
+            anchorItemEl={tableItemEl}
+            menuEl={menuEl}
+            onClose={handleCloseAll}
+            onCreateWithAI={onCreateWithAI}
+            onResetToDefault={onResetToDefault}
+            onCreateBlank={onCreateBlank}
           />
         )}
       </div>

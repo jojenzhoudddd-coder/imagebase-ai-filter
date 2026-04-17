@@ -7,7 +7,7 @@ import {
   CreateRecordDTO, UpdateRecordDTO,
   CreateViewDTO, UpdateViewDTO,
   ViewFilter, FieldType, FieldConfig,
-  AutoNumberRule,
+  AutoNumberRule, GeneratedField,
 } from "../types.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -225,6 +225,77 @@ export async function deleteTable(id: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function resetTableWithFields(
+  tableId: string,
+  generatedFields: GeneratedField[],
+  language: "en" | "zh",
+): Promise<{ fields: Field[]; records: TableRecord[]; views: View[] } | null> {
+  const row = await prisma.table.findUnique({ where: { id: tableId } });
+  if (!row) return null;
+
+  // Build new fields from AI-generated definitions
+  const newFields: Field[] = generatedFields.map((gf, i) => ({
+    id: `fld_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}_${i}`,
+    tableId,
+    name: gf.name.slice(0, 100),
+    type: gf.type as FieldType,
+    isPrimary: i === 0,
+    config: (gf.config ?? {}) as FieldConfig,
+  }));
+
+  // Build views: update fieldOrder to new field IDs
+  const oldViews = (row.views ?? []) as View[];
+  const newFieldOrder = newFields.map(f => f.id);
+  const newViews: View[] = oldViews.map(v => ({
+    ...v,
+    fieldOrder: [...newFieldOrder],
+    hiddenFields: [],
+    filter: { logic: "and" as const, conditions: [] },
+    sort: undefined,
+    group: undefined,
+  }));
+
+  // If no views exist, create a default Grid view
+  if (newViews.length === 0) {
+    newViews.push({
+      id: `viw_${Date.now().toString(36)}`,
+      tableId,
+      name: "Grid",
+      type: "grid",
+      filter: { logic: "and", conditions: [] },
+      fieldOrder: [...newFieldOrder],
+      hiddenFields: [],
+    });
+  }
+
+  // Delete old records
+  await prisma.record.deleteMany({ where: { tableId } });
+
+  // Create 5 empty records
+  const emptyCells: Record<string, CellValue> = {};
+  for (const f of newFields) emptyCells[f.id] = null;
+
+  const newRecords: TableRecord[] = [];
+  for (let i = 0; i < 5; i++) {
+    const rec = await prisma.record.create({
+      data: { tableId, cells: { ...emptyCells } as any },
+    });
+    newRecords.push(toRecord(rec));
+  }
+
+  // Update table with new fields and views
+  await prisma.table.update({
+    where: { id: tableId },
+    data: {
+      fields: newFields as any,
+      views: newViews as any,
+      autoNumberCounters: {} as any,
+    },
+  });
+
+  return { fields: newFields, records: newRecords, views: newViews };
 }
 
 export async function updateTable(id: string, dto: { name?: string }): Promise<Table | null> {

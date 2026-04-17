@@ -45,7 +45,8 @@
   border: none;
 }
 
-.dropdown-menu-item:hover {
+.dropdown-menu-item:hover,
+.dropdown-menu-item.active-submenu {
   background: var(--color-bg-hover);
 }
 

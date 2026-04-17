@@ -9,7 +9,8 @@ import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import { AddFieldPopover, useFieldSuggestions } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, fetchDocumentTables, createTable as apiCreateTable, reorderTables, deleteTable as apiDeleteTable, CLIENT_ID } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, fetchDocumentTables, createTable as apiCreateTable, reorderTables, deleteTable as apiDeleteTable, resetTable, CLIENT_ID } from "./api";
+import type { GeneratedField } from "./api";
 import type { SidebarItem } from "./components/Sidebar";
 import { useToast } from "./components/Toast/index";
 import { useTranslation } from "./i18n/index";
@@ -929,19 +930,46 @@ export default function App() {
     }
   }, [documentTables, initFieldOrderFromView, toast, t]);
 
-  // ── Create table ──
-  const handleCreateTable = useCallback(async () => {
-    const baseName = locale === "zh" ? "数据表" : "Table";
-    try {
-      const result = await apiCreateTable(baseName, DOCUMENT_ID, locale as "en" | "zh");
-      setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order }]);
-      await switchTable(result.id);
-      // Set name directly since documentTables state may not have flushed yet
-      setTableName(result.name);
-    } catch {
-      toast.error(t("toast.createTableFailed"));
+  // ── AI Create table (create + reset with AI-generated fields, returns tableId) ──
+  const handleCreateWithAI = useCallback(async (aiTableName: string, generatedFields: GeneratedField[]): Promise<string> => {
+    const result = await apiCreateTable(aiTableName, DOCUMENT_ID, locale as "en" | "zh");
+    setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order }]);
+    await switchTable(result.id);
+    setTableName(result.name);
+
+    const resetResult = await resetTable(result.id, generatedFields, locale as "en" | "zh");
+    setFields(resetResult.fields);
+    setAllRecords(resetResult.records);
+    setViews(resetResult.views);
+    if (resetResult.views[0]) {
+      setActiveViewId(resetResult.views[0].id);
+      initFieldOrderFromView(resetResult.views[0], resetResult.fields);
     }
-  }, [locale, switchTable, toast, t]);
+    return result.id;
+  }, [locale, switchTable, initFieldOrderFromView]);
+
+  // ── Reset to default: replace AI fields with a single Text column + 5 empty rows ──
+  const handleResetToDefault = useCallback(async (tableId: string, _aiTableName: string): Promise<void> => {
+    const defaultFieldName = locale === "zh" ? "\u6587\u672c" : "Text";
+    const defaultFields: GeneratedField[] = [{ name: defaultFieldName, type: "Text", isPrimary: true }];
+    const result = await resetTable(tableId, defaultFields, locale as "en" | "zh");
+    setFields(result.fields);
+    setAllRecords(result.records);
+    setViews(result.views);
+    if (result.views[0]) {
+      setActiveViewId(result.views[0].id);
+      initFieldOrderFromView(result.views[0], result.fields);
+    }
+  }, [locale, initFieldOrderFromView]);
+
+  // ── Create blank table (1 Text column + 5 empty rows) ──
+  const handleCreateBlankTable = useCallback(async (): Promise<void> => {
+    const baseName = locale === "zh" ? "数据表" : "Table";
+    const result = await apiCreateTable(baseName, DOCUMENT_ID, locale as "en" | "zh");
+    setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order }]);
+    await switchTable(result.id);
+    setTableName(result.name);
+  }, [locale, switchTable]);
 
   // ── Reorder tables ──
   const handleReorderTables = useCallback(async (updates: Array<{ id: string; order: number }>) => {
@@ -1051,10 +1079,12 @@ export default function App() {
             const isTable = documentTables.some(t => t.id === id);
             if (isTable) switchTable(id);
           }}
-          onCreateTable={handleCreateTable}
           onReorderTables={handleReorderTables}
           onDeleteTable={handleDeleteTable}
           tableCount={documentTables.length}
+          onCreateWithAI={handleCreateWithAI}
+          onResetToDefault={handleResetToDefault}
+          onCreateBlank={handleCreateBlankTable}
         />
         <div className="app-main">
           <ViewTabs

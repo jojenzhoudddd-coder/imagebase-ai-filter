@@ -5,7 +5,7 @@ import { sortRecords } from "../services/sortEngine.js";
 import { queryView } from "../services/viewEngine.js";
 import { validateCellValue } from "../services/fieldValidator.js";
 import { validateLookupConfig } from "../services/lookupValidator.js";
-import { Field, ViewFilter, ViewSort, LookupConfig } from "../types.js";
+import { Field, ViewFilter, ViewSort, LookupConfig, GeneratedField } from "../types.js";
 import { eventBus } from "../services/eventBus.js";
 import { warmupSuggestions, invalidateSuggestionCache } from "../services/fieldSuggestService.js";
 
@@ -100,6 +100,32 @@ router.put("/:tableId", async (req: Request, res: Response) => {
     payload: { name: table.name },
   });
   res.json({ id: table.id, name: table.name });
+});
+
+// POST /api/tables/:tableId/reset — replace table structure with AI-generated fields
+router.post("/:tableId/reset", async (req: Request, res: Response) => {
+  const { fields: generatedFields, language } = req.body as { fields: GeneratedField[]; language?: "en" | "zh" };
+  if (!Array.isArray(generatedFields) || generatedFields.length === 0) {
+    res.status(400).json({ error: "fields must be a non-empty array" });
+    return;
+  }
+
+  const result = await store.resetTableWithFields(req.params.tableId, generatedFields, language || "zh");
+  if (!result) {
+    res.status(404).json({ error: "Table not found" });
+    return;
+  }
+
+  // Emit full-sync so connected clients reload
+  eventBus.emitChange({
+    type: "full-sync",
+    tableId: req.params.tableId,
+    clientId: getClientId(req),
+    timestamp: Date.now(),
+    payload: {},
+  });
+
+  res.json(result);
 });
 
 // ═══════ Field CRUD ═══════

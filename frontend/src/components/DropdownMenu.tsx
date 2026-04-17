@@ -19,9 +19,17 @@ interface Props {
   onClose: () => void;
   position?: "below" | "above";
   width?: number;
+  /** Key of item that currently has a sub-menu open — prevents click-outside close */
+  activeSubMenuKey?: string | null;
+  /** Ref callback: receives menu DOM element once mounted (for sub-menu positioning) */
+  onMenuRef?: (el: HTMLDivElement | null) => void;
+  /** Ref callback: receives a specific item's DOM element (for sub-menu anchor) */
+  onItemRef?: (key: string, el: HTMLButtonElement | null) => void;
+  /** Extra DOM elements that should NOT trigger click-outside close */
+  extraContainers?: React.RefObject<HTMLElement | null>[];
 }
 
-export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "below", width }: Props) {
+export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "below", width, activeSubMenuKey, onMenuRef, onItemRef, extraContainers }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: -9999, left: -9999 });
 
@@ -40,16 +48,27 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
     }
   }, [anchorEl, position]);
 
+  // Expose menu ref on mount only
+  useEffect(() => {
+    onMenuRef?.(menuRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node) &&
-          !anchorEl.contains(e.target as Node)) {
-        onClose();
-      }
+      const target = e.target as Node;
+      // Don't close if click is inside menu or anchor
+      if (menuRef.current && menuRef.current.contains(target)) return;
+      if (anchorEl.contains(target)) return;
+      // Don't close if click is inside any extra containers (e.g. sub-menu popover)
+      if (extraContainers?.some(ref => ref.current?.contains(target))) return;
+      // Don't close if a sub-menu is active (generating/creating)
+      if (activeSubMenuKey) return;
+      onClose();
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [anchorEl, onClose]);
+  }, [anchorEl, onClose, activeSubMenuKey, extraContainers]);
 
   // Group items by section
   const groups: Array<{ title?: string; items: MenuItem[] }> = [];
@@ -79,12 +98,12 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
             {group.items.map((item) => (
               <button
                 key={item.key}
-                className={`dropdown-menu-item${item.disabled ? " disabled" : ""}${item.suffix ? " has-suffix" : ""}`}
+                ref={(el) => onItemRef?.(item.key, el)}
+                className={`dropdown-menu-item${item.disabled ? " disabled" : ""}${item.suffix ? " has-suffix" : ""}${activeSubMenuKey === item.key ? " active-submenu" : ""}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (item.disabled || item.noop) return;
                   onSelect(item.key);
-                  onClose();
                 }}
               >
                 {item.icon && <span className="dropdown-menu-item-icon">{item.icon}</span>}

@@ -16,7 +16,8 @@ export interface TableChangeEvent {
     | "field:batch-restore"
     | "view:create"
     | "view:update"
-    | "view:delete";
+    | "view:delete"
+    | "full-sync";
   tableId: string;
   clientId: string;
   timestamp: number;

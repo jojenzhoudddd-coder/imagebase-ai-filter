@@ -313,4 +313,16 @@ export const zh: TranslationKeys = {
   // Default view/field names
   "view.defaultGrid": "表格",
   "defaultField.text": "文本",
+
+  // AI Table Generation
+  "aiTable.title": "数据表名称",
+  "aiTable.placeholder": "准确的名称有助于 AI 生成表结构",
+  "aiTable.create": "AI 创建表",
+  "aiTable.generating": "正在规划字段名称",
+  "aiTable.complete": "已创建 \u201C{{name}}\u201D",
+  "aiTable.adopt": "效果不错，采纳",
+  "aiTable.blank": "效果一般，重置为空白表",
+  "aiTable.blankCreate": "创建空白表",
+  "aiTable.failed": "AI 生成失败，请重试",
+  "aiTable.creating": "正在规划字段名称",
 };
