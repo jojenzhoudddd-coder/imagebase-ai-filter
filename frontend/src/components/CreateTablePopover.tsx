@@ -150,6 +150,17 @@ const CreateTablePopover = forwardRef<CreateTablePopoverHandle, Props>(
 
   return createPortal(
     <div ref={popoverRef} className="create-table-popover" style={{ top: pos.top, left: pos.left }}>
+      {/* Close button — always visible */}
+      <button
+        className="create-table-popover-close"
+        onClick={onClose}
+        title="Close"
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+      </button>
+
       {/* Title — hidden during generating/creating/complete */}
       {state !== "generating" && state !== "creating" && state !== "complete" && (
         <div className="create-table-popover-title">

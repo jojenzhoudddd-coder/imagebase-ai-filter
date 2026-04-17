@@ -405,7 +405,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             ref={(handle) => { popoverHandleRef.current = handle; }}
             anchorItemEl={tableItemEl}
             menuEl={menuEl}
-            onClose={handleCloseAll}
+            onClose={() => setShowAIPopover(false)}
             onCreateWithAI={onCreateWithAI}
             onResetToDefault={onResetToDefault}
             onCreateBlank={onCreateBlank}

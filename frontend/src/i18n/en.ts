@@ -315,12 +315,12 @@ export const en = {
   // AI Table Generation
   "aiTable.title": "Table Name",
   "aiTable.placeholder": "An accurate name helps AI generate table structure",
-  "aiTable.create": "AI Create Table",
+  "aiTable.create": "AI Create",
   "aiTable.generating": "Planning field names",
   "aiTable.complete": "Created \"{{name}}\"",
   "aiTable.adopt": "Looks good, adopt",
   "aiTable.blank": "Not ideal, reset to blank",
-  "aiTable.blankCreate": "Create blank table",
+  "aiTable.blankCreate": "Blank",
   "aiTable.failed": "AI generation failed, please retry",
   "aiTable.creating": "Planning field names",
 };

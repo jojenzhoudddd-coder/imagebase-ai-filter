@@ -14,6 +14,30 @@
   display: flex;
   flex-direction: column;
   min-height: 160px;
+  position: relative;
+}
+
+/* Close button */
+.create-table-popover-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: #8F959E;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.create-table-popover-close:hover {
+  background: var(--color-bg-hover);
+  color: #1F2329;
 }
 
 /* Title */
