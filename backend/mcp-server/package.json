@@ -1,0 +1,14 @@
+{
+  "name": "ai-filter-mcp-server",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "MCP server exposing Table/Field/Record/View CRUD as tools for the Chat Agent",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  }
+}

@@ -178,6 +178,10 @@
   color: var(--color-icon-n1);
 }
 
+.topbar-icon-btn-active {
+  background: rgba(20, 86, 240, 0.1);
+}
+
 .topbar-avatar {
   width: 32px;
   height: 32px;

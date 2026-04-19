@@ -471,3 +471,232 @@ export async function resetTable(
   }
   return res.json();
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Chat Agent (Table Agent)
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface ChatToolCall {
+  callId: string;
+  tool: string;
+  args: Record<string, unknown>;
+  result?: unknown;
+  status?: "running" | "success" | "error" | "awaiting_confirmation";
+  error?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  role: "user" | "assistant" | "tool";
+  content: string;
+  thinking?: string;
+  toolCalls?: ChatToolCall[];
+  toolResult?: unknown;
+  timestamp: number;
+}
+
+export interface ChatConversation {
+  id: string;
+  documentId: string;
+  title: string;
+  summary?: string;
+  messageCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export async function listConversations(documentId: string): Promise<ChatConversation[]> {
+  const res = await fetch(`${BASE}/chat/conversations?documentId=${encodeURIComponent(documentId)}`);
+  if (!res.ok) throw new Error("Failed to list conversations");
+  return res.json();
+}
+
+export async function createConversation(documentId: string): Promise<ChatConversation> {
+  const res = await mutationFetch(`${BASE}/chat/conversations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ documentId }),
+  });
+  if (!res.ok) throw new Error("Failed to create conversation");
+  return res.json();
+}
+
+export async function getConversationMessages(
+  conversationId: string
+): Promise<{ conversation: ChatConversation; messages: ChatMessage[] }> {
+  const res = await fetch(`${BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`);
+  if (!res.ok) throw new Error("Failed to load messages");
+  return res.json();
+}
+
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const res = await mutationFetch(`${BASE}/chat/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete conversation");
+}
+
+export interface PendingConfirm {
+  callId: string;
+  tool: string;
+  args: Record<string, unknown>;
+  prompt: string;
+}
+
+export interface StreamChatOptions {
+  conversationId: string;
+  message: string;
+  onStart?: (messageId: string) => void;
+  onThinking?: (delta: string) => void;
+  onMessage?: (delta: string) => void;
+  onToolStart?: (call: ChatToolCall) => void;
+  onToolResult?: (callId: string, success: boolean, result: unknown) => void;
+  onConfirm?: (pending: PendingConfirm) => void;
+  onError?: (code: string, message: string) => void;
+  onDone?: () => void;
+}
+
+/**
+ * Generic SSE reader that parses `event:`/`data:` line pairs and dispatches
+ * callbacks. Shared between streamChatMessage() and sendChatConfirmation().
+ */
+async function readChatSseStream(
+  res: Response,
+  handlers: Omit<StreamChatOptions, "conversationId" | "message">
+) {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    let currentEvent = "";
+    for (const line of lines) {
+      if (line.startsWith("event: ")) {
+        currentEvent = line.slice(7).trim();
+      } else if (line.startsWith("data: ")) {
+        let data: any;
+        try {
+          data = JSON.parse(line.slice(6));
+        } catch {
+          continue;
+        }
+        switch (currentEvent) {
+          case "start":
+            handlers.onStart?.(data.messageId);
+            break;
+          case "thinking":
+            handlers.onThinking?.(data.text || "");
+            break;
+          case "message":
+            handlers.onMessage?.(data.text || "");
+            break;
+          case "tool_start":
+            handlers.onToolStart?.({
+              callId: data.callId,
+              tool: data.tool,
+              args: data.args || {},
+              status: "running",
+            });
+            break;
+          case "tool_result":
+            handlers.onToolResult?.(data.callId, Boolean(data.success), data.result);
+            break;
+          case "confirm":
+            handlers.onConfirm?.({
+              callId: data.callId,
+              tool: data.tool,
+              args: data.args || {},
+              prompt: data.prompt || "",
+            });
+            break;
+          case "error":
+            handlers.onError?.(data.code || "UNKNOWN", data.message || "");
+            break;
+          case "done":
+            handlers.onDone?.();
+            break;
+        }
+      }
+    }
+  }
+}
+
+/** Send a user message; stream agent response events back. Returns an abort fn. */
+export function streamChatMessage(opts: StreamChatOptions): () => void {
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const res = await mutationFetch(`${BASE}/chat/conversations/${encodeURIComponent(opts.conversationId)}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: opts.message }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        opts.onError?.("HTTP_ERROR", (err as any).error || `HTTP ${res.status}`);
+        opts.onDone?.();
+        return;
+      }
+      await readChatSseStream(res, opts);
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        opts.onError?.("NETWORK_ERROR", "网络请求失败，请检查后端服务");
+      }
+    }
+    opts.onDone?.();
+  })();
+
+  return () => controller.abort();
+}
+
+export interface SendConfirmOptions extends Omit<StreamChatOptions, "message"> {
+  callId: string;
+  confirmed: boolean;
+}
+
+/** User confirmed (or cancelled) a danger tool — resume the agent stream. */
+export function sendChatConfirmation(opts: SendConfirmOptions): () => void {
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const res = await mutationFetch(`${BASE}/chat/conversations/${encodeURIComponent(opts.conversationId)}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callId: opts.callId, confirmed: opts.confirmed }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        opts.onError?.("HTTP_ERROR", (err as any).error || `HTTP ${res.status}`);
+        opts.onDone?.();
+        return;
+      }
+      await readChatSseStream(res, opts);
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        opts.onError?.("NETWORK_ERROR", "网络请求失败");
+      }
+    }
+    opts.onDone?.();
+  })();
+
+  return () => controller.abort();
+}
+
+/** Abort an in-progress agent turn on the server side. */
+export async function stopChatTurn(conversationId: string): Promise<void> {
+  await mutationFetch(`${BASE}/chat/conversations/${encodeURIComponent(conversationId)}/stop`, {
+    method: "POST",
+  });
+}

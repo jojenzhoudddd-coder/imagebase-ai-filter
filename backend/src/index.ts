@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import tableRoutes from "./routes/tableRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import sseRoutes from "./routes/sseRoutes.js";
+import chatRoutes from "./routes/chatRoutes.js";
 import { mockTable } from "./mockData.js";
 import { connectDB, loadTable, getTable, getDocument, updateDocument, listTablesForDocument } from "./services/dbStore.js";
 import { eventBus } from "./services/eventBus.js";
@@ -54,6 +55,7 @@ app.use("/api", (req, res, next) => {
 app.use("/api/tables", tableRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/sync", sseRoutes);
+app.use("/api/chat", chatRoutes);
 
 // ═══════ Document API ═══════
 

@@ -18,6 +18,7 @@ import ConfirmDialog from "./components/ConfirmDialog/index";
 import { filterRecords } from "./services/filterEngine";
 import { useTableSync } from "./hooks/useTableSync";
 import { useDocumentSync } from "./hooks/useDocumentSync";
+import ChatSidebar from "./components/ChatSidebar/index";
 
 const DOCUMENT_ID = "doc_default";
 
@@ -51,6 +52,7 @@ export default function App() {
   const [savedFilter, setSavedFilter] = useState<ViewFilter>({ logic: "and", conditions: [] });
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [fieldConfigOpen, setFieldConfigOpen] = useState(false);
+  const [chatAgentOpen, setChatAgentOpen] = useState(false);
   const filterBtnRef = useRef<HTMLButtonElement>(null);
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const customizeFieldBtnRef = useRef<HTMLButtonElement>(null);
@@ -1086,6 +1088,8 @@ export default function App() {
         onDeleteProtectionChange={setDeleteProtection}
         onRenameTable={(name) => handleRenameSidebarItem(activeTableId, name)}
         onRenameDocument={handleRenameDocument}
+        onOpenChatAgent={() => setChatAgentOpen((v) => !v)}
+        chatAgentOpen={chatAgentOpen}
       />
       <div className="app-body">
         <Sidebar
@@ -1217,6 +1221,11 @@ export default function App() {
         variant="danger"
         onConfirm={handleConfirmDelete}
         onCancel={() => setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [], cellsToClear: [] })}
+      />
+      <ChatSidebar
+        open={chatAgentOpen}
+        documentId={DOCUMENT_ID}
+        onClose={() => setChatAgentOpen(false)}
       />
     </div>
   );
