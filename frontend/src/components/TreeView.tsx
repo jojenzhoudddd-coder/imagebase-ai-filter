@@ -113,6 +113,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
   const dragOverIdRef = useRef<string | null>(null);
   const dragOverPosRef = useRef<"above" | "below" | null>(null);
   const dragOverFolderRef = useRef<string | null>(null);
+  const justDraggedRef = useRef(false);
 
   // Persist expanded state
   useEffect(() => {
@@ -234,6 +235,10 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
           }
         }
       }
+      if (dragRef.current?.isDragging) {
+        justDraggedRef.current = true;
+        setTimeout(() => { justDraggedRef.current = false; }, 0);
+      }
       dragRef.current = null;
       setDragId(null);
       setDragOverId(null);
@@ -276,6 +281,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
           style={depth > 0 ? { paddingLeft: 8 + depth * INDENT_PX } : undefined}
           data-type={node.type}
           onClick={() => {
+            if (justDraggedRef.current) return;
             if (isFolder) {
               toggleExpand(node.id);
             } else {
