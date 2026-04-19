@@ -152,37 +152,37 @@ router.post("/suggestions/refresh", async (req: Request, res: Response) => {
 });
 
 // GET /api/chat/conversations?documentId=xxx
-router.get("/conversations", (req: Request, res: Response) => {
+router.get("/conversations", async (req: Request, res: Response) => {
   const documentId = (req.query.documentId as string) || "doc_default";
-  const list = convStore.listConversations(documentId);
+  const list = await convStore.listConversations(documentId);
   res.json(list);
 });
 
 // POST /api/chat/conversations
-router.post("/conversations", (req: Request, res: Response) => {
+router.post("/conversations", async (req: Request, res: Response) => {
   const { documentId } = req.body as { documentId?: string };
   if (!documentId) {
     res.status(400).json({ error: "documentId is required" });
     return;
   }
-  const conv = convStore.createConversation(documentId);
+  const conv = await convStore.createConversation(documentId);
   res.json(conv);
 });
 
 // GET /api/chat/conversations/:id/messages
-router.get("/conversations/:id/messages", (req: Request, res: Response) => {
-  const conv = convStore.getConversation(req.params.id);
+router.get("/conversations/:id/messages", async (req: Request, res: Response) => {
+  const conv = await convStore.getConversation(req.params.id);
   if (!conv) {
     res.status(404).json({ error: "Conversation not found" });
     return;
   }
-  const messages = convStore.getMessages(req.params.id);
+  const messages = await convStore.getMessages(req.params.id);
   res.json({ conversation: conv, messages });
 });
 
 // DELETE /api/chat/conversations/:id
-router.delete("/conversations/:id", (req: Request, res: Response) => {
-  const ok = convStore.deleteConversation(req.params.id);
+router.delete("/conversations/:id", async (req: Request, res: Response) => {
+  const ok = await convStore.deleteConversation(req.params.id);
   turnStates.delete(req.params.id);
   if (!ok) {
     res.status(404).json({ error: "Conversation not found" });
@@ -195,7 +195,7 @@ router.delete("/conversations/:id", (req: Request, res: Response) => {
 // POST /api/chat/conversations/:id/messages
 // Body: { message: string }
 router.post("/conversations/:id/messages", async (req: Request, res: Response) => {
-  const conv = convStore.getConversation(req.params.id);
+  const conv = await convStore.getConversation(req.params.id);
   if (!conv) {
     res.status(404).json({ error: "Conversation not found" });
     return;
@@ -246,7 +246,7 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
 // POST /api/chat/conversations/:id/confirm
 // Body: { callId: string, confirmed: boolean }
 router.post("/conversations/:id/confirm", async (req: Request, res: Response) => {
-  const conv = convStore.getConversation(req.params.id);
+  const conv = await convStore.getConversation(req.params.id);
   if (!conv) {
     res.status(404).json({ error: "Conversation not found" });
     return;

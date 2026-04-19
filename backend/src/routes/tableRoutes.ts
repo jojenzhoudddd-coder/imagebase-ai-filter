@@ -356,16 +356,42 @@ router.post("/:tableId/records/batch-delete", async (req: Request, res: Response
   res.json({ deleted: count });
 });
 
-// POST /api/tables/:tableId/records/batch-create — restore records (for undo)
+// POST /api/tables/:tableId/records/batch-create
+// Two call shapes:
+//   1. Undo / restore — records already carry id + createdAt + updatedAt.
+//      Pass straight to batchCreateRecords which preserves those fields.
+//   2. Agent / bulk insert — records only carry { cells }. Each record needs
+//      a fresh cuid and server-side timestamps, plus default values + auto-
+//      number counter updates that batchCreateRecords doesn't do. Loop
+//      createRecord per row for correctness; aggregate the materialised
+//      records so SSE receivers see real ids instead of undefined (which
+//      would collide in React key lookup).
 router.post("/:tableId/records/batch-create", async (req: Request, res: Response) => {
   const { records } = req.body;
   if (!Array.isArray(records)) {
     res.status(400).json({ error: "records must be an array" });
     return;
   }
-  const count = await store.batchCreateRecords(req.params.tableId, records);
-  eventBus.emitChange({ type: "record:batch-create", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { records } });
-  res.json({ created: count });
+  const isRestore = records.length > 0 && records.every(
+    (r: any) => typeof r?.id === "string" && typeof r?.createdAt === "number" && typeof r?.updatedAt === "number"
+  );
+  const tableId = req.params.tableId;
+  const clientId = getClientId(req);
+  if (isRestore) {
+    const count = await store.batchCreateRecords(tableId, records);
+    eventBus.emitChange({ type: "record:batch-create", tableId, clientId, timestamp: Date.now(), payload: { records } });
+    res.json({ created: count });
+    return;
+  }
+  // Bulk-insert path: generate ids + timestamps via createRecord.
+  const created: any[] = [];
+  for (const r of records) {
+    const dto = { cells: (r?.cells ?? {}) as Record<string, any> };
+    const rec = await store.createRecord(tableId, dto);
+    if (rec) created.push(rec);
+  }
+  eventBus.emitChange({ type: "record:batch-create", tableId, clientId, timestamp: Date.now(), payload: { records: created } });
+  res.json({ created: created.length, records: created });
 });
 
 // POST /api/tables/:tableId/records/query — filter/sort records

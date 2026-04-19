@@ -118,12 +118,12 @@
   flex-direction: column;
   align-items: center;
   gap: 40px;
-  /* Hero must sit 80px from the top of .chat-part (which contains the 60px
+  /* Hero must sit 80px from the top of .chat-part (which contains the 36px
    * header + the .chat-messages area). .chat-messages already adds 16px of
-   * padding-top, so chat-empty adds 4px margin-top to land at exactly
-   * 60 + 16 + 4 = 80px from the chat-part outer edge. */
+   * padding-top, so chat-empty adds 28px margin-top to land at exactly
+   * 36 + 16 + 28 = 80px from the chat-part outer edge. */
   padding: 0 20px;
-  margin-top: 4px;
+  margin-top: 28px;
   color: #1F2329;
   text-align: left;
 }
@@ -157,6 +157,12 @@
   color: #1F2329;
   letter-spacing: 0;
   margin: 0;
+}
+/* Each half of the title (before/after the comma) stays atomic — wrapping
+ * is only permitted at the <wbr> injected between them, so narrow widths
+ * always break after the comma rather than mid-phrase. */
+.chat-empty-title-part {
+  white-space: nowrap;
 }
 
 .chat-empty-sections {

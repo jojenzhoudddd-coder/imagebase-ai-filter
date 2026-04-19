@@ -26,7 +26,13 @@ import * as store from "./dbStore.js";
 
 const ARK_BASE_URL = process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 const SEED_MODEL = process.env.SEED_MODEL || process.env.ARK_MODEL || "ep-20260412192731-vwdh7";
-const MAX_TOOL_ROUNDS = 10;
+// Pushed up from 10 per user request. Seed can chain dozens of tool calls in
+// a single CRM-build turn; cap is only a last-resort runaway guard.
+const MAX_TOOL_ROUNDS = 50;
+// Seed / Doubao reasoning models accept up to 32k output tokens. Higher cap
+// gives thinking + final answer enough room so long multi-step plans don't
+// get truncated.
+const MAX_OUTPUT_TOKENS = 32768;
 
 // ─── Logging ───
 const LOG_DIR = path.resolve("logs");
@@ -61,8 +67,9 @@ const SYSTEM_PROMPT_ZH = `# 角色
 # 工具使用策略
 - 需要了解现状时先调 list_tables / get_table / list_fields / query_records
 - 批量操作优先使用 batch_ 系列（减少轮次）
-- 创建复杂表时顺序：create_table → **先用 update_field 改造默认主字段**（见下条）→ 再逐个 create_field 追加其余字段 → batch_create_records
+- 创建复杂表时顺序：create_table → **先用 update_field 改造默认主字段**（见下条）→ 再逐个 create_field 追加其余字段 → **先 batch_delete_records 删掉默认 5 条空记录** → batch_create_records 写入真实数据
 - **create_table 会自动生成一个默认 Text 类型主字段（中文名 "名称"），返回值里的 primaryField 字段给出它的 id / name / type。** 当用户期望的第一列与默认主字段不一致（例如要求第一列叫 "客户名称" / "需求ID" 或类型为 AutoNumber/SingleSelect 等）时，你必须调用 update_field 把这个默认主字段就地修改成用户想要的第一列（name/type/config），绝对不要再额外 create_field 一个新的第一列，否则会出现两个语义重复的字段。只有在用户明确表达"保留默认名称字段"时才跳过此步。
+- **create_table 还会自动生成 5 条空记录占位。若用户要求你往新表里写入真实数据（而不是保留空白表），在 batch_create_records 之前必须先 query_records 拿到这 5 条空记录的 id，再 batch_delete_records 把它们删掉**（此调用需要用户确认，你要在自然语言里提前说明"先清理默认空记录再写入数据"）。只有用户明确说"保留空白记录"或"在现有基础上追加"时才跳过此步。
 - 创建 SingleSelect/MultiSelect 字段时，config.options 的每项要包含 name 和 color（如 '#FFE2D9'）
 - 包含"姓名"或以"人"结尾的字段使用 User 类型
 
@@ -112,7 +119,7 @@ async function assembleInput(conversationId: string, documentId: string, newUser
   const snapshot = await buildDocumentSnapshot(documentId);
   const systemText = SYSTEM_PROMPT_ZH + "\n\n" + snapshot;
 
-  const history = convStore.getMessages(conversationId);
+  const history = await convStore.getMessages(conversationId);
   // Sliding window: last 20 messages (plan Phase 3.2)
   const windowed = history.slice(-20);
 
@@ -121,7 +128,7 @@ async function assembleInput(conversationId: string, documentId: string, newUser
   ];
 
   // Add conversation summary if present (for long conversations)
-  const conv = convStore.getConversation(conversationId);
+  const conv = await convStore.getConversation(conversationId);
   if (conv?.summary) {
     input.push({
       role: "system",
@@ -146,43 +153,44 @@ async function assembleInput(conversationId: string, documentId: string, newUser
   return input;
 }
 
-// ─── ARK Responses API (non-streaming; see note below) ───────────────────
-// For MVP we use non-streaming and rely on in-loop yields to deliver tool
-// cards and final text as discrete events. Token-by-token streaming for the
-// "message" and "thinking" channels can be added by switching to stream:true
-// and parsing SSE chunks — the agent's generator interface doesn't change.
+// ─── ARK Responses API (streaming) ────────────────────────────────────────
+// Parses Volcano ARK's SSE stream and yields unified internal events. The
+// agent loop consumes these in real time so the frontend sees thinking and
+// message tokens arrive one-by-one rather than in one big burst at the end
+// of each round.
+//
+// ARK streams events shaped `event: <name>\ndata: <json>\n\n`. The key names
+// we care about (mirroring the OpenAI Responses API):
+//   response.output_text.delta              — incremental assistant text
+//   response.reasoning.delta / thinking.delta — incremental thinking text
+//   response.function_call_arguments.delta  — incremental tool-call args
+//   response.output_item.added              — new function_call/message item
+//   response.output_item.done               — item complete (has final fields)
+//   response.completed                      — stream end
+//   response.error                          — terminal error
+//
+// We tolerate naming drift by also accepting bare "output_text.delta" etc.
 
-interface ArkResponse {
-  output?: Array<{
-    type: string;
-    id?: string;
-    call_id?: string;
-    name?: string;
-    arguments?: string;
-    text?: string;
-    content?: Array<{ type: string; text?: string }>;
-  }>;
-  choices?: Array<{
-    message?: {
-      content?: string;
-      tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>;
-    };
-  }>;
-}
+interface RawFunctionCall { callId: string; name: string; arguments: string; }
 
-async function callArk(input: ArkInputItem[]): Promise<ArkResponse> {
+type ArkStreamEvent =
+  | { kind: "text_delta"; text: string }
+  | { kind: "thinking_delta"; text: string }
+  | { kind: "tool_call_done"; call: RawFunctionCall }
+  | { kind: "done" }
+  | { kind: "error"; message: string };
+
+async function* callArkStream(input: ArkInputItem[], abortSignal?: AbortSignal): AsyncGenerator<ArkStreamEvent> {
   const apiKey = process.env.ARK_API_KEY;
   if (!apiKey) throw new Error("ARK_API_KEY not configured");
 
   const body: Record<string, unknown> = {
     model: SEED_MODEL,
     input,
-    max_output_tokens: 4096,
+    max_output_tokens: MAX_OUTPUT_TOKENS,
     temperature: 0.1,
-    stream: false,
-    // thinking is enabled per plan; set to disabled if the endpoint doesn't
-    // support thinking for the configured model
-    thinking: { type: "disabled" },
+    stream: true,
+    thinking: { type: "enabled" },
     tools: toArkToolFormat(),
   };
 
@@ -191,48 +199,171 @@ async function callArk(input: ArkInputItem[]): Promise<ArkResponse> {
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      "Accept": "text/event-stream",
     },
     body: JSON.stringify(body),
+    signal: abortSignal,
   });
-  if (!res.ok) {
-    const txt = await res.text();
+  if (!res.ok || !res.body) {
+    const txt = await res.text().catch(() => "");
     throw new Error(`ARK ${res.status}: ${txt.slice(0, 400)}`);
   }
-  return (await res.json()) as ArkResponse;
-}
 
-function extractTextContent(r: ArkResponse): string | null {
-  if (r.output) {
-    for (const it of r.output) {
-      if (it.type === "message" && it.content) {
-        for (const c of it.content) {
-          if (c.type === "output_text" && c.text) return c.text;
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  // Per-item accumulators (function_call arguments streams in as chunks and
+  // the complete JSON only becomes callable at output_item.done time).
+  const pendingCalls = new Map<string, { name?: string; args: string; callId?: string }>();
+
+  function parseEventBlock(block: string): { event: string; data: any } | null {
+    let event = "message";
+    let dataStr = "";
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+    }
+    if (!dataStr || dataStr === "[DONE]") return { event, data: null };
+    try {
+      return { event, data: JSON.parse(dataStr) };
+    } catch {
+      return { event, data: dataStr };
+    }
+  }
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE frames are separated by blank lines (\n\n). Process each complete
+      // frame; leave any partial trailing frame in the buffer.
+      let idx: number;
+      while ((idx = buffer.indexOf("\n\n")) !== -1) {
+        const block = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        if (!block.trim()) continue;
+        const parsed = parseEventBlock(block);
+        if (!parsed) continue;
+        const { event, data } = parsed;
+        if (data === null) {
+          if (event === "done" || event === "response.completed") {
+            yield { kind: "done" };
+            return;
+          }
+          continue;
+        }
+
+        // Text deltas. ARK uses response.output_text.delta; also tolerate
+        // the bare event names some deployments emit.
+        if (event === "response.output_text.delta" || event === "output_text.delta") {
+          const txt = typeof data === "string" ? data : (data.delta ?? data.text ?? "");
+          if (txt) yield { kind: "text_delta", text: String(txt) };
+          continue;
+        }
+        // Thinking / reasoning deltas. Seed 2.0 pro emits these as
+        // `response.reasoning_summary_text.delta`; other ARK models/variants
+        // have used the shorter names. Match all known spellings.
+        if (
+          event === "response.reasoning_summary_text.delta" ||
+          event === "response.reasoning.delta" ||
+          event === "response.thinking.delta" ||
+          event === "reasoning.delta" ||
+          event === "thinking.delta" ||
+          event === "response.reasoning_text.delta"
+        ) {
+          const txt = typeof data === "string" ? data : (data.delta ?? data.text ?? "");
+          if (txt) yield { kind: "thinking_delta", text: String(txt) };
+          continue;
+        }
+        // Function-call arguments arrive in chunks; accumulate per-item.
+        if (
+          event === "response.function_call_arguments.delta" ||
+          event === "function_call_arguments.delta"
+        ) {
+          const itemId = data.item_id || data.id || data.call_id || "default";
+          const entry = pendingCalls.get(itemId) ?? { args: "" };
+          entry.args += typeof data.delta === "string" ? data.delta : (data.arguments ?? "");
+          if (!entry.callId && data.call_id) entry.callId = data.call_id;
+          pendingCalls.set(itemId, entry);
+          continue;
+        }
+        if (
+          event === "response.function_call_arguments.done" ||
+          event === "function_call_arguments.done"
+        ) {
+          const itemId = data.item_id || data.id || data.call_id || "default";
+          const entry = pendingCalls.get(itemId);
+          if (entry) {
+            if (data.arguments && !entry.args) entry.args = data.arguments;
+            if (data.call_id && !entry.callId) entry.callId = data.call_id;
+          }
+          continue;
+        }
+        // New output item: message or function_call. Seed the accumulator for
+        // function_call items so later delta events can find it.
+        if (event === "response.output_item.added" || event === "output_item.added") {
+          const item = data.item ?? data;
+          if (item?.type === "function_call") {
+            const itemId = data.item_id || item.id || item.call_id || "default";
+            pendingCalls.set(itemId, {
+              name: item.name,
+              args: typeof item.arguments === "string" ? item.arguments : "",
+              callId: item.call_id || item.id,
+            });
+          }
+          continue;
+        }
+        // Item done: for a function_call, emit the fully-assembled tool call.
+        if (event === "response.output_item.done" || event === "output_item.done") {
+          const item = data.item ?? data;
+          if (item?.type === "function_call") {
+            const itemId = data.item_id || item.id || item.call_id || "default";
+            const entry: { name?: string; args: string; callId?: string } =
+              pendingCalls.get(itemId) ?? { args: "", name: item.name, callId: item.call_id || item.id };
+            const finalArgs = entry.args || (typeof item.arguments === "string" ? item.arguments : "") || "{}";
+            const name = entry.name || item.name;
+            const callId = entry.callId || item.call_id || item.id || uuidv4();
+            pendingCalls.delete(itemId);
+            if (name) {
+              yield { kind: "tool_call_done", call: { callId, name, arguments: finalArgs } };
+            }
+          }
+          continue;
+        }
+        if (event === "response.completed" || event === "completed") {
+          // Some providers embed the final response here; in case any
+          // function calls only appear in the terminal payload, extract
+          // them as a fallback.
+          const output = data?.response?.output ?? data?.output;
+          if (Array.isArray(output)) {
+            for (const it of output) {
+              if (it?.type === "function_call" && it.name) {
+                const callId = it.call_id || it.id || uuidv4();
+                // Skip if we already yielded this call above.
+                const already = Array.from(pendingCalls.values()).some(e => e.callId === callId);
+                if (!already) {
+                  yield { kind: "tool_call_done", call: { callId, name: it.name, arguments: it.arguments || "{}" } };
+                }
+              }
+            }
+          }
+          yield { kind: "done" };
+          return;
+        }
+        if (event === "response.error" || event === "error") {
+          const msg = typeof data === "string" ? data : (data.message || data.error || JSON.stringify(data));
+          yield { kind: "error", message: String(msg) };
+          return;
         }
       }
-      if (it.type === "output_text" && it.text) return it.text;
     }
+  } finally {
+    try { await reader.cancel(); } catch { /* noop */ }
   }
-  if (r.choices?.[0]?.message?.content) return r.choices[0].message.content;
-  return null;
-}
-
-interface RawFunctionCall { callId: string; name: string; arguments: string; }
-
-function extractFunctionCalls(r: ArkResponse): RawFunctionCall[] {
-  const calls: RawFunctionCall[] = [];
-  if (r.output) {
-    for (const it of r.output) {
-      if (it.type === "function_call" && it.name && it.arguments) {
-        calls.push({ callId: it.call_id || it.id || uuidv4(), name: it.name, arguments: it.arguments });
-      }
-    }
-  }
-  if (calls.length === 0 && r.choices?.[0]?.message?.tool_calls) {
-    for (const tc of r.choices[0].message.tool_calls) {
-      calls.push({ callId: tc.id, name: tc.function.name, arguments: tc.function.arguments });
-    }
-  }
-  return calls;
+  yield { kind: "done" };
 }
 
 // ─── Agent loop ──────────────────────────────────────────────────────────
@@ -271,7 +402,7 @@ export async function* runAgent(
   yield { event: "start", data: { messageId: assistantMsgId } };
 
   // Persist the user message immediately so it shows up in history.
-  convStore.appendMessage(conversationId, {
+  await convStore.appendMessage(conversationId, {
     role: "user",
     content: userMessage,
   });
@@ -280,6 +411,7 @@ export async function* runAgent(
   const input = await assembleInput(conversationId, documentId, userMessage);
 
   let accumulatedText = "";
+  let accumulatedThinking = "";
   const accumulatedToolCalls: ToolCall[] = [];
 
   logAgent({ event: "turn_start", conversationId, userMessage });
@@ -290,28 +422,44 @@ export async function* runAgent(
       break;
     }
 
-    let resp: ArkResponse;
+    // Consume the ARK stream, forwarding deltas to the client in real time
+    // and collecting tool calls to execute after the stream ends.
+    const funcCalls: RawFunctionCall[] = [];
+    let roundText = "";
+    let streamErrored: string | null = null;
     try {
-      resp = await callArk(input);
+      for await (const ev of callArkStream(input, abortSignal)) {
+        if (ev.kind === "text_delta") {
+          roundText += ev.text;
+          accumulatedText += ev.text;
+          yield { event: "message", data: { text: ev.text, delta: true } };
+        } else if (ev.kind === "thinking_delta") {
+          accumulatedThinking += ev.text;
+          yield { event: "thinking", data: { text: ev.text } };
+        } else if (ev.kind === "tool_call_done") {
+          funcCalls.push(ev.call);
+        } else if (ev.kind === "error") {
+          streamErrored = ev.message;
+          break;
+        } else if (ev.kind === "done") {
+          break;
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logAgent({ event: "ark_error", round, error: msg });
       yield { event: "error", data: { code: "ARK_ERROR", message: msg } };
       break;
     }
-
-    const text = extractTextContent(resp);
-    const funcCalls = extractFunctionCalls(resp);
-
-    // If the model produced text, stream it as a "message" event.
-    if (text) {
-      accumulatedText += (accumulatedText ? "\n" : "") + text;
-      yield { event: "message", data: { text, delta: true } };
+    if (streamErrored) {
+      logAgent({ event: "ark_stream_error", round, error: streamErrored });
+      yield { event: "error", data: { code: "ARK_ERROR", message: streamErrored } };
+      break;
     }
 
     // No tool calls → final answer; break out.
     if (funcCalls.length === 0) {
-      logAgent({ event: "final_answer", round, textLen: (text || "").length });
+      logAgent({ event: "final_answer", round, textLen: roundText.length });
       break;
     }
 
@@ -407,15 +555,22 @@ export async function* runAgent(
     }
   }
 
-  // Persist the assistant message (aggregated text + tool calls).
-  convStore.appendMessage(conversationId, {
+  // Persist the assistant message (aggregated text + thinking + tool calls).
+  await convStore.appendMessage(conversationId, {
     role: "assistant",
     content: accumulatedText,
+    thinking: accumulatedThinking || undefined,
     toolCalls: accumulatedToolCalls,
   });
 
   yield { event: "done", data: { messageId: assistantMsgId } };
-  logAgent({ event: "turn_end", conversationId, textLen: accumulatedText.length, toolCalls: accumulatedToolCalls.length });
+  logAgent({
+    event: "turn_end",
+    conversationId,
+    textLen: accumulatedText.length,
+    thinkingLen: accumulatedThinking.length,
+    toolCalls: accumulatedToolCalls.length,
+  });
 }
 
 /**

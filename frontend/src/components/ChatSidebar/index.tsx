@@ -16,7 +16,9 @@ import ThinkingIndicator from "./ChatMessage/ThinkingIndicator";
 import ToolCallCard from "./ChatMessage/ToolCallCard";
 import ToolCallGroup from "./ChatMessage/ToolCallGroup";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
-import { RefreshIcon } from "./icons";
+import { MoreIcon } from "./icons";
+import DropdownMenu from "../DropdownMenu";
+import ConfirmDialog from "../ConfirmDialog";
 import { useTranslation } from "../../i18n";
 import {
   type ChatConversation,
@@ -124,6 +126,12 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
   // every ~10 minutes via a scheduled task; we fetch once on open and after
   // handleNewConversation to keep it fresh.
   const [suggestions, setSuggestions] = useState<ChatSuggestion[]>([]);
+
+  // Header overflow menu (... button) + its refresh-confirmation dialog.
+  // The refresh action is two-step: open menu → pick "刷新会话" → confirm.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false);
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
 
   const cancelRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -470,20 +478,54 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
     <aside className={`chat-sidebar${open ? " open" : ""}`} aria-hidden={!open}>
       <header className="chat-header">
         <div className="chat-header-actions">
-          <button
-            type="button"
-            className="chat-header-btn"
-            title={messages.length === 0 ? t("chat.refreshDisabled") : t("chat.refresh")}
-            aria-label={t("chat.refresh")}
-            // Disable on the welcome page — there is nothing to reset, so the
-            // button greys out to hint that it's a no-op in that state.
-            disabled={messages.length === 0 && !streaming}
-            onClick={() => void handleNewConversation()}
-          >
-            <RefreshIcon size={16} />
-          </button>
+          {/* Welcome page has nothing to refresh — hide the overflow entry
+              entirely there. Shown once a conversation has any content, or
+              while a turn is streaming. */}
+          {(messages.length > 0 || streaming) && (
+            <button
+              ref={moreBtnRef}
+              type="button"
+              className="chat-header-btn"
+              title={t("chat.menu.more")}
+              aria-label={t("chat.menu.more")}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              <MoreIcon size={16} />
+            </button>
+          )}
         </div>
       </header>
+      {menuOpen && moreBtnRef.current && (
+        <DropdownMenu
+          anchorEl={moreBtnRef.current}
+          items={[
+            {
+              key: "refresh",
+              label: t("chat.menu.refresh"),
+            },
+          ]}
+          onSelect={(key) => {
+            setMenuOpen(false);
+            if (key === "refresh") setRefreshConfirmOpen(true);
+          }}
+          onClose={() => setMenuOpen(false)}
+          width={180}
+        />
+      )}
+      <ConfirmDialog
+        open={refreshConfirmOpen}
+        title={t("chat.refresh.confirm.title")}
+        message={t("chat.refresh.confirm.message")}
+        confirmLabel={t("chat.refresh.confirm.ok")}
+        cancelLabel={t("chat.refresh.confirm.cancel")}
+        onConfirm={() => {
+          setRefreshConfirmOpen(false);
+          void handleNewConversation();
+        }}
+        onCancel={() => setRefreshConfirmOpen(false)}
+      />
       <div className="chat-messages" ref={scrollRef}>
         {messages.length === 0 && !error && (
           <EmptyState
@@ -613,6 +655,27 @@ function groupConsecutiveTools(
  * the fetch fails. Labels + prompts both live in the i18n table. */
 const FALLBACK_PRESET_KEYS = ["answer", "save", "report"] as const;
 
+/** Render the welcome title so that if it needs to wrap, the break happens
+ * right after the first comma (ASCII "," or full-width "，"). Both halves get
+ * `white-space: nowrap`, and a `<wbr>` between them marks the only allowed
+ * break point — so "Hi, I'm your new chatbot" will never break between
+ * "I'm your" etc., and "你好，我是你的新助手" never breaks mid-phrase. */
+function renderTitleWithCommaBreak(title: string) {
+  // Capture head including comma + any trailing whitespace (so the visible
+  // space in "Hi, I'm..." stays with the head and disappears on wrap).
+  const m = title.match(/^(.*?[,，]\s*)(.*)$/s);
+  if (!m || !m[2]) {
+    return <span className="chat-empty-title-part">{title}</span>;
+  }
+  return (
+    <>
+      <span className="chat-empty-title-part">{m[1]}</span>
+      <wbr />
+      <span className="chat-empty-title-part">{m[2]}</span>
+    </>
+  );
+}
+
 function EmptyState({
   onPreset,
   contextHint,
@@ -645,7 +708,7 @@ function EmptyState({
           aria-hidden="true"
           draggable={false}
         />
-        <div className="chat-empty-title">{t("chat.empty.title")}</div>
+        <div className="chat-empty-title">{renderTitleWithCommaBreak(t("chat.empty.title"))}</div>
       </div>
 
       {contextHint && (

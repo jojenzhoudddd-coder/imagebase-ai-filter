@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-04-20
+
+### feat: Chat 对话持久化 + 欢迎页 & 刷新会话交互优化
+
+- **改动点**: 对话存储迁移到 Postgres、欢迎页文案与排版调整、刷新会话入口改版
+- **详细说明**:
+  1. **对话持久化到 Postgres（Prisma）** — `backend/prisma/schema.prisma` 新增 `Conversation` 和 `Message` 两张表（含 `@@index([documentId, updatedAt(sort: Desc)])` 与 `@@index([conversationId, timestamp])`），迁移 `20260419160227_add_conversations_and_messages`。`backend/src/services/conversationStore.ts` 从内存 Map 重写为 Prisma 客户端：保留原公有 DTO 形状（string id、epoch ms timestamp、Message role / toolCalls JSON），通过 `toConversation()` / `toMessage()` 辅助把 Date → number ms；`appendMessage()` 用 `$transaction` 串联 message 插入 + messageCount 递增 + 自动标题。`chatRoutes.ts` 6 个 handler 改为 async + await。重启 backend / pm2 reload / tsx watch 重编后对话不再丢失。
+  2. **Bug 修复：batch-create 生成唯一 id** — `backend/src/routes/tableRoutes.ts` 的 `POST /api/tables/:tableId/records/batch-create` 区分两种调用：撤销恢复（records 已含 id/createdAt/updatedAt）走原路径；Agent 批量写入（只含 cells）改为循环 `createRecord` 生成 cuid + 服务端时间戳 + 默认值 + autonumber 计数，返回 `records[]` 让 SSE 收到真实 id，避免 React key 碰撞导致列表只显示 0 条。
+  3. **欢迎页文案：去掉 "new"** — 中文 `chat.empty.title` 改为 "你好，我是你的智能助手"，英文改为 "Hi, I'm your chatbot"。新增 `renderTitleWithCommaBreak()` 辅助：将标题按首个中英文逗号拆成两段，每段 `white-space: nowrap`，中间插 `<wbr>`，narrow 宽度下只能在逗号后换行，不会在词中间断开。
+  4. **刷新会话改版：More menu + 二次确认** — 原刷新 icon 替换为 More（⋯）icon，点击弹出 `DropdownMenu`（仅一个"刷新会话"菜单项），选择后弹 `ConfirmDialog` 告知用户"刷新后会开始一个全新的空白会话，当前会话仍会保留在对话历史中"。欢迎页（messages 为空且非 streaming 状态）隐藏 More 按钮以避免无意义操作。新增 i18n: `chat.menu.more` / `chat.menu.refresh` / `chat.refresh.confirm.{title,message,ok,cancel}`。
+  5. **欢迎页顶部间距** — `.chat-empty` margin-top 从 4px 调整为 28px，使 `.chat-empty-hero` 距离 `.chat-part` 顶部正好 80px（header 36px + chat-messages padding-top 16px + margin-top 28px = 80px）；修正 CSS 注释中关于 header 高度的错误描述。
+
+---
+
 ## 2026-04-19
 
 ### feat: Chat Sidebar 前端缓存 + 智能提示词建议
