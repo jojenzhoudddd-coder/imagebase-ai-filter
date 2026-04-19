@@ -13,6 +13,7 @@ import type { TreeNodeData } from "./TreeView";
 import type { GeneratedField } from "../api";
 import type { TreeItemType } from "../types";
 import "./Sidebar.css";
+import "./TreeView.css";
 
 export interface SidebarItem {
   id: string;
