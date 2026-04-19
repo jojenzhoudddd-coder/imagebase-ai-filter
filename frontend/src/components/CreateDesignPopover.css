@@ -1,0 +1,119 @@
+/* CreateDesignPopover — reuses CreateTablePopover styling patterns.
+ * Width kept in lock-step with .create-table-popover (320px) so both
+ * "新建" sub-popovers have identical footprints. */
+.create-design-popover {
+  position: fixed;
+  z-index: 1001;
+  width: 320px;
+  background: #FFFFFF;
+  border: 1px solid #DEE0E3;
+  border-radius: 8px;
+  box-shadow:
+    0 4px 8px -8px rgba(31, 35, 41, 0.06),
+    0 6px 12px 0 rgba(31, 35, 41, 0.04),
+    0 8px 24px 8px rgba(31, 35, 41, 0.04);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.create-design-popover-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: #8F959E;
+  cursor: pointer;
+}
+
+.create-design-popover-close:hover {
+  background: var(--color-bg-hover);
+  color: #1F2329;
+}
+
+.create-design-popover-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  color: #1F2329;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.create-design-popover-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #DEE0E3;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 22px;
+  color: #1F2329;
+  background: #FFFFFF;
+  outline: none;
+  box-sizing: border-box;
+  font-family: var(--font-family);
+}
+
+.create-design-popover-input::placeholder {
+  color: #8F959E;
+}
+
+.create-design-popover-input:focus {
+  border-color: #3370FF;
+  box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.15);
+}
+
+.create-design-popover-hint {
+  font-size: 12px;
+  line-height: 18px;
+  color: #8F959E;
+  margin: 0;
+}
+
+.create-design-popover-error {
+  font-size: 13px;
+  line-height: 20px;
+  color: #F54A45;
+  margin: 0;
+}
+
+.create-design-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.create-design-popover-btn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  cursor: pointer;
+  border: none;
+  font-family: var(--font-family);
+}
+
+.create-design-popover-btn.primary {
+  background: #3370FF;
+  color: #FFFFFF;
+}
+
+.create-design-popover-btn.primary:hover {
+  background: #2860E1;
+}
+
+.create-design-popover-btn.primary:disabled {
+  background: #94BFFF;
+  cursor: not-allowed;
+}

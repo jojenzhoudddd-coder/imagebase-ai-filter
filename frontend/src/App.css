@@ -12,6 +12,154 @@
   overflow: hidden;
 }
 
+/* ─── Workspace split (artifact | 6px gap | chat) ───
+   6px white gap; each part has a 1px border so the separation reads as
+   a pair of outlined panel cards rather than a grey channel. */
+.workspace {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  overflow: hidden;
+  background: #FFFFFF;
+}
+.artifact-part {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  order: 1;
+  background: #FFFFFF;
+  /* Full 1px border. When chat-part is not mounted, artifact fills the whole
+   * workspace and has no rounded corners (it reads as the page edge). The
+   * rounded corner only appears on the side that meets chat-part — see the
+   * .chat-open overrides below. Bottom corners always square. */
+  border: 1px solid #DEE0E3;
+  border-radius: 0;
+}
+.chat-part {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: #FFFFFF;
+  position: relative;
+  order: 3;
+  /* Symmetric 20px padding on left / right / bottom so the chat UI insets
+   * uniformly from its card. The move-bar still sits absolutely positioned
+   * at bottom:4px regardless of the inner padding.
+   * Mirror rule of artifact-part: only the top corner facing artifact is
+   * rounded. Default layout places chat on the right, so round top-left. */
+  padding: 0 20px 20px 20px;
+  border: 1px solid #DEE0E3;
+  border-radius: 8px 0 0 0;
+}
+.workspace .split-divider { order: 2; }
+
+/* When chat-part is open, artifact-part rounds its top corner facing the
+ * chat panel. Default layout (chat on right) → artifact top-right; the
+ * chat-left modifier below flips both panels' rounded sides. */
+.workspace.chat-open .artifact-part { border-radius: 0 8px 0 0; }
+
+/* When the user drags the move-bar and releases on the opposite side, these
+ * order reversals swap the two panels. CSS-only swap — DOM stays stable.
+ * The rounded-corner sides also flip so each panel keeps rounding only the
+ * edge that meets its sibling. */
+.workspace.chat-left .chat-part { order: 1; border-radius: 0 8px 0 0; }
+.workspace.chat-left .split-divider { order: 2; }
+.workspace.chat-left .artifact-part { order: 3; border-radius: 8px 0 0 0; }
+
+/* Vertical splitter — a 6px transparent gap between the two panels.
+ * The workspace background (grey) shows through; the surrounding panels
+ * round off their touching edges (see .artifact-part / .chat-part radius). */
+.split-divider {
+  flex: 0 0 6px;
+  width: 6px;
+  cursor: col-resize;
+  position: relative;
+  user-select: none;
+  background: transparent;
+}
+.split-divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -2px;
+  right: -2px;
+}
+.split-divider.dragging {
+  background: rgba(20, 86, 240, 0.15);
+}
+.split-divider-grip { display: none; }
+
+/* ─── iOS/iPad-style home-indicator move bar ───
+ * Sits at the BOTTOM-center of each part. Invisible by default; reveals on
+ * hover of the bottom hover zone (or while dragging). 100px wide.
+ * Each part reserves a 40px bottom strip (see .artifact-part, .chat-part)
+ * so content doesn't overlap the bar. */
+.part-move-bar {
+  position: absolute;
+  /* 4px from the outer bottom edge of the part (iOS home-indicator vibe) */
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 4px;
+  border-radius: 2px;
+  background: #D0D3D6;
+  opacity: 0;
+  transition: opacity 160ms ease, background-color 160ms ease;
+  cursor: grab;
+  z-index: 50;
+  user-select: none;
+}
+
+/* Bottom hover zone: invisible 16px strip along each part's bottom that
+ * reveals its move bar on cursor proximity (smaller than before per spec). */
+.part-hover-zone {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 16px;
+  z-index: 40;
+  pointer-events: auto;
+}
+/* Hover (idle): reveal the bar in a neutral grey — an affordance without
+ * implying an action. Grab cursor hints it is draggable. */
+.part-hover-zone:hover ~ .part-move-bar,
+.part-move-bar:hover {
+  opacity: 1;
+  background: #8F959E;
+  cursor: grab;
+}
+/* Active / dragging: once grabbed, the bar turns primary blue and the
+ * cursor becomes grabbing until release. */
+.part-move-bar.dragging,
+.workspace.moving .part-move-bar {
+  opacity: 1;
+  background: #1456F0;
+}
+.part-move-bar.dragging {
+  cursor: grabbing;
+}
+.workspace.moving,
+.workspace.moving * {
+  cursor: grabbing !important;
+}
+
+/* Drag preview — highlight ONLY the panel whose move-bar is being
+ * dragged with a primary-blue inset outline + soft glow, so the user sees
+ * which card they are about to reposition. Uses :has() to scope to the
+ * ancestor part of the active move-bar. */
+.artifact-part:has(.part-move-bar.dragging),
+.chat-part:has(.part-move-bar.dragging) {
+  box-shadow: 0 0 0 1.5px #1456F0 inset, 0 8px 24px rgba(20, 86, 240, 0.12);
+  transition: box-shadow 120ms ease;
+}
+
 .app-main {
   display: flex;
   flex-direction: column;
@@ -26,4 +174,28 @@
   flex: 1;
   overflow: hidden;
   position: relative;
+}
+
+/* ─── Placeholder pages (design, album, folder) ─── */
+
+.placeholder-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 12px;
+  color: var(--color-text-3);
+  font-size: 14px;
+  user-select: none;
+}
+
+.placeholder-page .placeholder-icon {
+  color: var(--color-text-4);
+  opacity: 0.5;
+}
+
+.placeholder-page .placeholder-label {
+  font-size: 13px;
+  color: var(--color-text-4);
 }

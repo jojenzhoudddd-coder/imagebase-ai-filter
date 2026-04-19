@@ -15,15 +15,17 @@ import AssistantText from "./ChatMessage/AssistantText";
 import ThinkingIndicator from "./ChatMessage/ThinkingIndicator";
 import ToolCallCard from "./ChatMessage/ToolCallCard";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
-import { FourPointStarIcon, PlusIcon, CloseIcon } from "./icons";
+import { RefreshIcon } from "./icons";
 import {
   type ChatConversation,
+  type ChatContextSnapshot,
   type ChatMessage,
   type ChatToolCall,
   type PendingConfirm,
   createConversation,
   listConversations,
   getConversationMessages,
+  fetchChatContextSnapshot,
   streamChatMessage,
   sendChatConfirmation,
   stopChatTurn,
@@ -53,6 +55,11 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
   const [streaming, setStreaming] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Thin document summary shown on the welcome page after a refresh, so the
+  // user knows what the Agent will see before their first prompt. Kept
+  // separate from the full Document Snapshot, which is rebuilt inside the
+  // backend agent service on every message.
+  const [contextHint, setContextHint] = useState<ChatContextSnapshot | null>(null);
 
   const cancelRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -316,47 +323,61 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
 
   const handleNewConversation = useCallback(async () => {
     if (streaming) handleStop();
+    // Reset UI first so the user sees the welcome page immediately; the new
+    // conversation + context snapshot fetch happen in parallel behind it.
+    setMessages([]);
+    setPendingConfirm(null);
+    setError(null);
+    setContextHint(null);
     try {
-      const conv = await createConversation(documentId);
+      const [conv, snapshot] = await Promise.all([
+        createConversation(documentId),
+        fetchChatContextSnapshot(documentId).catch(() => null),
+      ]);
       setActiveConv(conv);
-      setMessages([]);
-      setPendingConfirm(null);
-      setError(null);
+      if (snapshot) setContextHint(snapshot);
     } catch (err) {
       setError((err as Error).message);
     }
   }, [documentId, streaming, handleStop]);
 
   // ─── Render ─────────────────────────────────────────────────────────
+  // Header row re-added per Figma node 6:5309 "AI header": no title, just a
+  // right-aligned cluster with History + More icon buttons. The outer
+  // .chat-part container supplies the rounded corners / border, so the
+  // header itself stays flat white.
+  // `onClose` is currently not wired to a close button in the header (the
+  // panel is closed from the top-bar four-point-star toggle) — keep a void
+  // to silence TS until we decide whether to add a close affordance back.
+  void onClose;
   return (
     <aside className={`chat-sidebar${open ? " open" : ""}`} aria-hidden={!open}>
       <header className="chat-header">
-        <div className="chat-header-title">Table Agent</div>
         <div className="chat-header-actions">
           <button
+            type="button"
             className="chat-header-btn"
-            title="新对话"
-            onClick={handleNewConversation}
+            title={messages.length === 0 ? "当前已是新对话" : "刷新对话"}
+            aria-label="刷新对话"
+            // Disable on the welcome page — there is nothing to reset, so the
+            // button greys out to hint that it's a no-op in that state.
+            disabled={messages.length === 0 && !streaming}
+            onClick={() => void handleNewConversation()}
           >
-            <PlusIcon size={14} />
-          </button>
-          <button className="chat-header-btn" title="关闭" onClick={onClose}>
-            <CloseIcon size={14} />
+            <RefreshIcon size={16} />
           </button>
         </div>
       </header>
-
       <div className="chat-messages" ref={scrollRef}>
         {messages.length === 0 && !error && (
-          <div className="chat-empty">
-            <div className="chat-empty-icon">
-              <FourPointStarIcon size={32} />
-            </div>
-            <div className="chat-empty-title">你好，我是 Table Agent</div>
-            <div className="chat-empty-subtitle">
-              我可以帮你创建和管理数据表、字段、记录、视图。试试说"帮我创建一个项目管理表"。
-            </div>
-          </div>
+          <EmptyState
+            contextHint={contextHint}
+            onPreset={(text) => {
+              // Fill the input only — do NOT auto-send. User reviews/edits
+              // and presses send themselves.
+              setInputValue(text);
+            }}
+          />
         )}
 
         {messages.map((m) => (
@@ -399,16 +420,120 @@ function serverToUi(m: ChatMessage): UiMessage {
   };
 }
 
+/**
+ * Render an assistant or user message block. Figma node 6:2989 / 6:5300
+ * drive the layout:
+ *
+ *   - While the model is thinking and no answer text exists yet, show the
+ *     ACTIVE thinking caption ("正在分析需求...") — node 6:2990.
+ *   - Once the answer has begun to stream (or the message is finished) and
+ *     a `thinking` transcript exists, show the COLLAPSED deepthink pill
+ *     ("深度思考") above the answer text — node 6:5302.
+ *   - Tool-call cards render after the answer text, in the order they
+ *     arrived from the stream.
+ */
 function MessageBlock({ msg }: { msg: UiMessage }) {
   if (msg.role === "user") return <UserBubble content={msg.content} />;
 
+  const hasThinking = Boolean(msg.thinking && msg.thinking.length > 0);
+  const hasAnswer = msg.content.length > 0;
+  // Thinking is considered "done" once the model starts producing answer
+  // tokens or the message has finished streaming entirely.
+  const thinkingCollapsed = hasThinking && (hasAnswer || !msg.streaming);
+  const thinkingActive = msg.streaming && !hasAnswer;
+
   return (
     <>
-      {msg.thinking && <ThinkingIndicator text={msg.thinking.slice(-60)} />}
+      {thinkingCollapsed && <ThinkingIndicator mode="collapsed" />}
+      {thinkingActive && <ThinkingIndicator mode="active" />}
       <AssistantText content={msg.content} streaming={msg.streaming} />
       {msg.toolCalls.map((tc) => (
         <ToolCallCard key={tc.callId} call={tc} />
       ))}
     </>
+  );
+}
+
+/**
+ * Empty-state welcome page.
+ *
+ * Layout (top → bottom):
+ *   1. Hero row: mascot IP image (`/chat-mascot.jpg`) + "Hi, I'm your new chatbot" title
+ *   2. Context-hint pill ("已加载 N 张表 · M 个字段 · K 条记录"), shown once the
+ *      /api/chat/context-snapshot warm-up call resolves
+ *   3. Section label: "Start by telling me what you need"
+ *   4. Three preset chips — clicking fills the input but does NOT auto-send;
+ *      the user reviews/edits and presses send themselves.
+ */
+const PRESET_PROMPTS: Array<{ label: string; prompt: string }> = [
+  { label: "Answer questions using my bases", prompt: "请根据当前文档的表数据回答我的问题" },
+  { label: "Save new messages to my base automatically", prompt: "把新消息自动保存到当前文档对应的表中" },
+  { label: "Help me track task progress and write a weekly report", prompt: "帮我汇总任务进度并生成一份周报" },
+];
+
+function EmptyState({
+  onPreset,
+  contextHint,
+}: {
+  onPreset: (text: string) => void;
+  contextHint: ChatContextSnapshot | null;
+}) {
+  // Welcome page: hero (mascot IP + title), context-hint pill, preset chips.
+  // "Or use a template" section removed per product direction.
+  return (
+    <div className="chat-empty">
+      <div className="chat-empty-hero">
+        <img
+          className="chat-empty-mascot"
+          src="/chat-mascot.jpg"
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+        />
+        <div className="chat-empty-title">Hi, I'm your new chatbot</div>
+      </div>
+
+      {contextHint && (
+        <div className="chat-empty-context-hint" title={`documentId: ${contextHint.documentId}`}>
+          <span className="dot" aria-hidden="true" />
+          已加载 {contextHint.tableCount} 张表 · {contextHint.fieldCount} 个字段 · {contextHint.recordCount} 条记录
+        </div>
+      )}
+
+      <div className="chat-empty-sections">
+        <div className="chat-empty-section">
+          <div className="chat-empty-section-label">Start by telling me what you need</div>
+          <div className="chat-empty-presets">
+            {PRESET_PROMPTS.map((p) => (
+              <button
+                key={p.prompt}
+                type="button"
+                className="chat-preset-chip"
+                onClick={() => onPreset(p.prompt)}
+              >
+                <span className="chat-preset-chip-label">{p.label}</span>
+                <SpaceRightIcon size={12} />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** `icon_space-right_outlined` (Figma). Small right-pointing arrow used on the
+ * right edge of each preset chip. 12px default to match Figma's 12×12 slot. */
+function SpaceRightIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path
+        d="M4.5 2.5 8 6l-3.5 3.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

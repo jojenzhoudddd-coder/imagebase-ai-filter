@@ -9,15 +9,18 @@ import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import { AddFieldPopover, useFieldSuggestions } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, fetchDocumentTables, createTable as apiCreateTable, reorderTables, deleteTable as apiDeleteTable, resetTable, CLIENT_ID } from "./api";
-import type { GeneratedField } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, fetchDocumentTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchDocumentTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign } from "./api";
+import type { GeneratedField, FolderBrief, DesignBrief } from "./api";
 import type { SidebarItem } from "./components/Sidebar";
+import type { TreeItemType } from "./types";
+import DesignPanel from "./components/DesignPanel";
 import { useToast } from "./components/Toast/index";
 import { useTranslation } from "./i18n/index";
 import ConfirmDialog from "./components/ConfirmDialog/index";
 import { filterRecords } from "./services/filterEngine";
 import { useTableSync } from "./hooks/useTableSync";
 import { useDocumentSync } from "./hooks/useDocumentSync";
+import { useSplitResize } from "./hooks/useSplitResize";
 import ChatSidebar from "./components/ChatSidebar/index";
 
 const DOCUMENT_ID = "doc_default";
@@ -40,7 +43,23 @@ export default function App() {
   const [activeTableId, setActiveTableId] = useState<string>("tbl_requirements");
   const activeTableIdRef = useRef(activeTableId);
   activeTableIdRef.current = activeTableId;
-  const [documentTables, setDocumentTables] = useState<Array<{ id: string; name: string; order: number }>>([]);
+  const [documentTables, setDocumentTables] = useState<Array<{ id: string; name: string; order: number; parentId: string | null }>>([]);
+  const [documentFolders, setDocumentFolders] = useState<FolderBrief[]>([]);
+  const [documentDesigns, setDocumentDesigns] = useState<DesignBrief[]>([]);
+  /* Transient id used to scroll the sidebar to a specific tree node — set
+   * after creating a folder (since folders can't become the activeItemId, the
+   * normal auto-scroll doesn't apply). Cleared on next user-driven change. */
+  const [scrollToItemId, setScrollToItemId] = useState<string | null>(null);
+  /* Pool of design ids whose <DesignPanel> (and Figma iframe) stays mounted
+   * across active-item changes. First time the user opens a design its id is
+   * pushed here; subsequent switches back to it reuse the existing iframe —
+   * preserving zoom/pan state and avoiding a fresh embed.figma.com load.
+   * Unbounded on purpose: users complained that a capped MRU made re-opening
+   * a previously-viewed design reload from scratch. We keep every opened
+   * design mounted for the lifetime of the session; the cleanup effect below
+   * still evicts ids whose design has been deleted. */
+  const [mountedDesignIds, setMountedDesignIds] = useState<string[]>([]);
+  const [activeItemType, setActiveItemType] = useState<TreeItemType>("table");
   const SIDEBAR_NAMES_KEY = "sidebar_item_names";
   const [sidebarNames, setSidebarNames] = useState<Record<string, string>>(() => {
     try {
@@ -52,7 +71,102 @@ export default function App() {
   const [savedFilter, setSavedFilter] = useState<ViewFilter>({ logic: "and", conditions: [] });
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [fieldConfigOpen, setFieldConfigOpen] = useState(false);
-  const [chatAgentOpen, setChatAgentOpen] = useState(false);
+  // Chat agent defaults to OPEN on first mount so the welcome page is the
+  // entry experience. Persist the user's open/close preference so their
+  // choice sticks across reloads.
+  const [chatAgentOpen, setChatAgentOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem("chat_agent_open_v1");
+      return v === null ? true : v === "true";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("chat_agent_open_v1", String(chatAgentOpen)); } catch { /* ignore */ }
+  }, [chatAgentOpen]);
+
+  // Which side the chat panel is on. Persisted in localStorage so swap sticks.
+  const [chatSide, setChatSide] = useState<"left" | "right">(() => {
+    try {
+      const v = localStorage.getItem("chat_panel_side_v1");
+      return v === "left" ? "left" : "right";
+    } catch {
+      return "right";
+    }
+  });
+
+  // Horizontal split between the artifact (table view) and chat panels.
+  // Only active while chatAgentOpen; the ratio persists across sessions.
+  // `anchorSide` mirrors chatSide so drag direction always tracks the chat
+  // panel regardless of which side it lives on.
+  const {
+    ratio: chatRatio,
+    containerRef: workspaceRef,
+    onDividerMouseDown: onSplitDragStart,
+    isDragging: isSplitDragging,
+  } = useSplitResize({
+    storageKey: "chat_artifact_ratio_v1",
+    defaultRatio: 0.35,
+    minLeftPx: 480,
+    minRightPx: 320,
+    maxRatio: 0.6,
+    anchorSide: chatSide,
+  });
+  const setChatSidePersisted = useCallback((side: "left" | "right") => {
+    setChatSide(side);
+    try { localStorage.setItem("chat_panel_side_v1", side); } catch { /* ignore */ }
+  }, []);
+
+  // iOS-style move bar drag: tracks the horizontal delta so we know when the
+  // user has pulled far enough across the divider to trigger a swap.
+  const [movingPart, setMovingPart] = useState<null | "artifact" | "chat">(null);
+  const onMoveBarMouseDown = useCallback(
+    (which: "artifact" | "chat") => (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const container = workspaceRef.current;
+      if (!container) return;
+
+      const startX = e.clientX;
+      const rect = container.getBoundingClientRect();
+      const midX = rect.left + rect.width / 2;
+      setMovingPart(which);
+
+      document.body.style.userSelect = "none";
+      document.body.style.cursor = "grabbing";
+
+      const onMove = (ev: MouseEvent) => {
+        // Visual-only signal during drag; no layout changes until release.
+        void ev;
+      };
+      const onUp = (ev: MouseEvent) => {
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+
+        const endX = ev.clientX;
+        const dx = endX - startX;
+        // Swap only if the release happened on the opposite half AND the
+        // user moved at least 40px.
+        if (Math.abs(dx) >= 40) {
+          const releasedSide: "left" | "right" = endX < midX ? "left" : "right";
+          if (which === "chat") {
+            setChatSidePersisted(releasedSide);
+          } else {
+            // Dragging the artifact bar to the other side implies chat goes
+            // to the opposite side of the artifact's new position.
+            setChatSidePersisted(releasedSide === "left" ? "right" : "left");
+          }
+        }
+        setMovingPart(null);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [setChatSidePersisted, workspaceRef]
+  );
   const filterBtnRef = useRef<HTMLButtonElement>(null);
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const customizeFieldBtnRef = useRef<HTMLButtonElement>(null);
@@ -115,11 +229,14 @@ export default function App() {
   // Load initial data: document tables list, then active table data
   useEffect(() => {
     const init = async () => {
-      const [tables, doc] = await Promise.all([
-        fetchDocumentTables(DOCUMENT_ID),
+      const [treeData, doc] = await Promise.all([
+        fetchDocumentTree(DOCUMENT_ID),
         fetchDocument(DOCUMENT_ID).catch(() => null),
       ]);
+      const tables = treeData.tables.map(t => ({ ...t, parentId: t.parentId ?? null }));
       setDocumentTables(tables);
+      setDocumentFolders(treeData.folders);
+      setDocumentDesigns((treeData.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
       if (doc) setDocumentName(doc.name);
 
       // Determine which table to activate
@@ -891,15 +1008,32 @@ export default function App() {
       id: tbl.id,
       type: "table" as const,
       displayName: tbl.id === activeTableId ? tableName : tbl.name,
-      active: tbl.id === activeTableId,
+      active: tbl.id === activeTableId && activeItemType === "table",
       order: tbl.order,
+      parentId: tbl.parentId ?? null,
+    }));
+    const folderItems: SidebarItem[] = documentFolders.map(f => ({
+      id: f.id,
+      type: "folder" as const,
+      displayName: f.name,
+      active: false,
+      order: f.order,
+      parentId: f.parentId,
+    }));
+    const designItems: SidebarItem[] = documentDesigns.map(d => ({
+      id: d.id,
+      type: "design" as const,
+      displayName: d.name,
+      active: d.id === activeTableId && activeItemType === "design",
+      order: d.order,
+      parentId: d.parentId,
     }));
     const staticItems: SidebarItem[] = [
       { id: "dashboard", type: "static" as const, displayName: sidebarNames.dashboard ?? t("sidebar.dashboard"), active: false, order: Infinity },
       { id: "workflow", type: "static" as const, displayName: sidebarNames.workflow ?? t("sidebar.workflow"), active: false, order: Infinity },
     ];
-    return [...tableItems, ...staticItems];
-  }, [documentTables, activeTableId, tableName, sidebarNames, t]);
+    return [...folderItems, ...tableItems, ...designItems, ...staticItems];
+  }, [documentTables, documentFolders, documentDesigns, activeTableId, activeItemType, tableName, sidebarNames, t]);
 
   // ── Table switching ──
   const switchTable = useCallback(async (tableId: string) => {
@@ -936,7 +1070,7 @@ export default function App() {
   const handleCreateWithAI = useCallback(async (aiTableName: string, generatedFields: GeneratedField[]): Promise<string> => {
     // 1. Create table
     const result = await apiCreateTable(aiTableName, DOCUMENT_ID, locale as "en" | "zh");
-    setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order }]);
+    setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order, parentId: null }]);
 
     // 2. Reset with AI fields (skip switchTable to avoid premature warmup)
     const resetResult = await resetTable(result.id, generatedFields, locale as "en" | "zh");
@@ -978,25 +1112,59 @@ export default function App() {
   const handleCreateBlankTable = useCallback(async (): Promise<void> => {
     const baseName = locale === "zh" ? "数据表" : "Table";
     const result = await apiCreateTable(baseName, DOCUMENT_ID, locale as "en" | "zh");
-    setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order }]);
+    setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order, parentId: null }]);
     await switchTable(result.id);
     setTableName(result.name);
   }, [locale, switchTable]);
 
-  // ── Reorder tables ──
-  const handleReorderTables = useCallback(async (updates: Array<{ id: string; order: number }>) => {
-    // Optimistic update
-    setDocumentTables(prev => {
-      const orderMap = new Map(updates.map(u => [u.id, u.order]));
-      return prev.map(t => orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t)
-                  .sort((a, b) => a.order - b.order);
-    });
+  // ── Reorder items (tables, folders, designs) ──
+  const handleReorderItems = useCallback(async (updates: Array<{ id: string; type: TreeItemType; order: number }>) => {
+    // Optimistic update per type
+    const tableUpdates = updates.filter(u => u.type === "table");
+    const folderUpdates = updates.filter(u => u.type === "folder");
+    const designUpdates = updates.filter(u => u.type === "design");
+
+    if (tableUpdates.length > 0) {
+      const orderMap = new Map(tableUpdates.map(u => [u.id, u.order]));
+      setDocumentTables(prev =>
+        prev.map(t => orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t)
+            .sort((a, b) => a.order - b.order)
+      );
+    }
+    if (folderUpdates.length > 0) {
+      const orderMap = new Map(folderUpdates.map(u => [u.id, u.order]));
+      setDocumentFolders(prev =>
+        prev.map(f => orderMap.has(f.id) ? { ...f, order: orderMap.get(f.id)! } : f)
+            .sort((a, b) => a.order - b.order)
+      );
+    }
+    if (designUpdates.length > 0) {
+      const orderMap = new Map(designUpdates.map(u => [u.id, u.order]));
+      setDocumentDesigns(prev =>
+        prev.map(d => orderMap.has(d.id) ? { ...d, order: orderMap.get(d.id)! } : d)
+            .sort((a, b) => a.order - b.order)
+      );
+    }
+
     try {
-      await reorderTables(updates, DOCUMENT_ID);
+      const calls: Promise<void>[] = [];
+      if (tableUpdates.length > 0) {
+        calls.push(reorderTables(tableUpdates.map(u => ({ id: u.id, order: u.order })), DOCUMENT_ID));
+      }
+      if (folderUpdates.length > 0) {
+        calls.push(reorderFolders(folderUpdates.map(u => ({ id: u.id, order: u.order })), DOCUMENT_ID));
+      }
+      if (designUpdates.length > 0) {
+        calls.push(reorderDesigns(designUpdates.map(u => ({ id: u.id, order: u.order })), DOCUMENT_ID));
+      }
+      await Promise.all(calls);
     } catch {
       toast.error(t("toast.reorderFailed"));
-      // Refetch on failure
-      fetchDocumentTables(DOCUMENT_ID).then(setDocumentTables);
+      fetchDocumentTree(DOCUMENT_ID).then(tree => {
+        setDocumentTables(tree.tables.map(t => ({ ...t, parentId: t.parentId ?? null })));
+        setDocumentFolders(tree.folders);
+        setDocumentDesigns((tree.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
+      });
     }
   }, [toast, t]);
 
@@ -1025,20 +1193,162 @@ export default function App() {
       await apiDeleteTable(tableId);
     } catch {
       toast.error(t("toast.deleteFailed"));
-      fetchDocumentTables(DOCUMENT_ID).then(setDocumentTables);
+      fetchDocumentTree(DOCUMENT_ID).then(tree => setDocumentTables(tree.tables.map(t => ({ ...t, parentId: t.parentId ?? null }))));
     }
   }, [documentTables, initFieldOrderFromView, toast, t]);
+
+  // ── Create folder ──
+  const handleCreateFolder = useCallback(async () => {
+    const name = locale === "zh" ? "新建文件夹" : "New Folder";
+    try {
+      const folder = await apiCreateFolder(name, DOCUMENT_ID);
+      setDocumentFolders(prev => [...prev, folder]);
+      // Folders can't become the activeItemId (they have no content view), so
+      // request an explicit scroll to the new row — otherwise the user won't
+      // see where it landed when the sidebar is scrolled away from the
+      // bottom, which is where new folders are created.
+      setScrollToItemId(folder.id);
+    } catch {
+      toast.error("Failed to create folder");
+    }
+  }, [locale, toast]);
+
+  // ── Create design ──
+  const handleCreateDesign = useCallback(async (name: string, figmaUrl: string): Promise<string> => {
+    try {
+      const design = await apiCreateDesign(name, figmaUrl, DOCUMENT_ID);
+      setDocumentDesigns(prev => [...prev, design]);
+      setActiveTableId(design.id);
+      setActiveItemType("design");
+      return design.id;
+    } catch (err) {
+      toast.error((err as Error).message || t("toast.createTableFailed"));
+      throw err;
+    }
+  }, [toast, t]);
+
+  // ── Delete item (folder or design) ──
+  const handleDeleteItem = useCallback(async (id: string, type: TreeItemType) => {
+    try {
+      if (type === "folder") {
+        await apiDeleteFolder(id);
+        setDocumentFolders(prev => prev.filter(f => f.id !== id));
+        // Move children to root
+        setDocumentTables(prev => prev.map(t => t));
+        setDocumentDesigns(prev => prev.map(d => d.parentId === id ? { ...d, parentId: null } : d));
+      } else if (type === "design") {
+        await apiDeleteDesign(id);
+        setDocumentDesigns(prev => prev.filter(d => d.id !== id));
+        if (id === activeTableId) {
+          // Switch to first table
+          const firstTable = documentTables[0];
+          if (firstTable) {
+            setActiveTableId(firstTable.id);
+            setActiveItemType("table");
+            switchTable(firstTable.id);
+          }
+        }
+      }
+    } catch {
+      toast.error(t("toast.deleteFailed"));
+    }
+  }, [activeTableId, documentTables, switchTable, toast, t]);
+
+  // ── Move item ──
+  const handleMoveItem = useCallback(async (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => {
+    // Optimistic update FIRST
+    if (itemType === "table") {
+      setDocumentTables(prev => prev.map(t => t.id === itemId ? { ...t, parentId: newParentId } : t));
+    } else if (itemType === "folder") {
+      setDocumentFolders(prev => prev.map(f => f.id === itemId ? { ...f, parentId: newParentId } : f));
+    } else if (itemType === "design") {
+      setDocumentDesigns(prev => prev.map(d => d.id === itemId ? { ...d, parentId: newParentId } : d));
+    }
+    try {
+      await apiMoveItem(itemId, itemType, newParentId);
+    } catch {
+      // Rollback — refetch tree
+      const treeData = await fetchDocumentTree(DOCUMENT_ID);
+      setDocumentTables(treeData.tables.map(t => ({ ...t, parentId: t.parentId ?? null })));
+      setDocumentFolders(treeData.folders);
+      setDocumentDesigns((treeData.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
+      toast.error(t("toast.reorderFailed"));
+    }
+  }, [toast, t]);
+
+  // ── Select item (table or design) ──
+  const handleSelectItem = useCallback((id: string, type?: TreeItemType) => {
+    if (type === "design") {
+      setActiveTableId(id);
+      setActiveItemType("design");
+    } else if (type === "folder") {
+      // Folders are not selectable as content
+      return;
+    } else {
+      const isTable = documentTables.some(t => t.id === id);
+      if (isTable) {
+        setActiveItemType("table");
+        switchTable(id);
+      }
+    }
+  }, [documentTables, switchTable]);
+
+  // ── Rename for design/folder ──
+  const handleRenameSidebarItemExtended = useCallback(async (itemId: string, newName: string) => {
+    // Check if it's a folder
+    const isFolder = documentFolders.some(f => f.id === itemId);
+    if (isFolder) {
+      setDocumentFolders(prev => prev.map(f => f.id === itemId ? { ...f, name: newName } : f));
+      try {
+        await apiRenameFolder(itemId, newName);
+      } catch {
+        toast.error(t("toast.renameFailed"));
+      }
+      return;
+    }
+    // Check if it's a design
+    const isDesign = documentDesigns.some(d => d.id === itemId);
+    if (isDesign) {
+      setDocumentDesigns(prev => prev.map(d => d.id === itemId ? { ...d, name: newName } : d));
+      try {
+        await apiRenameDesign(itemId, newName);
+      } catch {
+        toast.error(t("toast.renameFailed"));
+      }
+      return;
+    }
+    // Fall through to original handler (tables + statics)
+    handleRenameSidebarItem(itemId, newName);
+  }, [documentFolders, documentDesigns, handleRenameSidebarItem, toast, t]);
 
   // ── Persist active table to localStorage ──
   useEffect(() => {
     if (activeTableId) localStorage.setItem("lastActiveTableId", activeTableId);
   }, [activeTableId]);
 
+  /* Track opened designs so their iframes stay mounted across switches. When
+   * the user opens a design we append its id if not already mounted. The pool
+   * is unbounded within a session so every design the user has visited stays
+   * warm (no re-fetch of embed.figma.com on re-select). Dead ids are pruned
+   * by the cleanup effect below when a design is removed from the document. */
+  useEffect(() => {
+    if (activeItemType !== "design" || !activeTableId) return;
+    setMountedDesignIds(prev => (prev.includes(activeTableId) ? prev : [...prev, activeTableId]));
+  }, [activeItemType, activeTableId]);
+
+  useEffect(() => {
+    setMountedDesignIds(prev => {
+      const validIds = new Set(documentDesigns.map(d => d.id));
+      const kept = prev.filter(id => validIds.has(id));
+      return kept.length === prev.length ? prev : kept;
+    });
+  }, [documentDesigns]);
+
   // ── Document-level SSE for sidebar sync ──
   useDocumentSync(DOCUMENT_ID, CLIENT_ID, {
     onTableCreate: useCallback((table: { id: string; name: string; order: number }) => {
       setDocumentTables(prev =>
-        prev.some(t => t.id === table.id) ? prev : [...prev, table].sort((a, b) => a.order - b.order)
+        prev.some(t => t.id === table.id) ? prev : [...prev, { ...table, parentId: null }].sort((a, b) => a.order - b.order)
       );
     }, []),
     onTableDelete: useCallback((tableId: string) => {
@@ -1091,23 +1401,54 @@ export default function App() {
         onOpenChatAgent={() => setChatAgentOpen((v) => !v)}
         chatAgentOpen={chatAgentOpen}
       />
-      <div className="app-body">
+      <div className={`workspace${chatAgentOpen ? " chat-open" : ""}${chatAgentOpen && chatSide === "left" ? " chat-left" : ""}${movingPart ? " moving" : ""}`} ref={workspaceRef}>
+        <div
+          className="artifact-part"
+          /* When chat is open, let artifact flex-grow into the remaining
+           * space (= 100% - chat% - 6px divider). */
+          style={chatAgentOpen ? { flex: "1 1 auto", minWidth: 0 } : undefined}
+        >
+        <div className="app-body">
         <Sidebar
           items={sidebarItems}
-          onRenameItem={handleRenameSidebarItem}
+          onRenameItem={handleRenameSidebarItemExtended}
           activeItemId={activeTableId}
-          onSelectItem={(id: string) => {
-            const isTable = documentTables.some(t => t.id === id);
-            if (isTable) switchTable(id);
-          }}
-          onReorderTables={handleReorderTables}
+          onSelectItem={handleSelectItem}
+          onReorderItems={handleReorderItems}
           onDeleteTable={handleDeleteTable}
           tableCount={documentTables.length}
           onCreateWithAI={handleCreateWithAI}
           onResetToDefault={handleResetToDefault}
           onCreateBlank={handleCreateBlankTable}
+          folders={documentFolders.map(f => ({ id: f.id, name: f.name }))}
+          onCreateFolder={handleCreateFolder}
+          onCreateDesign={handleCreateDesign}
+          onDeleteItem={handleDeleteItem}
+          onMoveItem={handleMoveItem}
+          scrollToItemId={scrollToItemId}
         />
         <div className="app-main">
+          {/* Design panels pool — every design the user has ever opened in
+           * this session stays mounted (display:none when inactive) so the
+           * Figma iframe preserves loaded state and zoom/pan across switches.
+           * Only the active design is visible; the table view below renders
+           * in parallel when no design is active. */}
+          {mountedDesignIds.map(id => {
+            const d = documentDesigns.find(x => x.id === id);
+            if (!d) return null;
+            const isActive = activeItemType === "design" && activeTableId === id;
+            return (
+              <DesignPanel
+                key={id}
+                designId={id}
+                designName={d.name}
+                onRename={(name) => handleRenameSidebarItemExtended(id, name)}
+                hidden={!isActive}
+              />
+            );
+          })}
+          {activeItemType !== "design" && (
+          <>
           <ViewTabs
             views={views}
             activeViewId={activeViewId}
@@ -1194,7 +1535,52 @@ export default function App() {
               />
             )}
           </div>
+          </>
+          )}
         </div>
+      </div>
+          {chatAgentOpen && (
+            <>
+              <div className="part-hover-zone" aria-hidden="true" />
+              <div
+                className={`part-move-bar${movingPart === "artifact" ? " dragging" : ""}`}
+                onMouseDown={onMoveBarMouseDown("artifact")}
+                title="拖动以切换左右位置"
+                role="button"
+                aria-label="Swap panel positions"
+              />
+            </>
+          )}
+        </div>
+        {chatAgentOpen && (
+          <>
+            <div
+              className={`split-divider${isSplitDragging ? " dragging" : ""}`}
+              onMouseDown={onSplitDragStart}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize chat panel"
+            />
+            <div
+              className="chat-part"
+              style={{ flex: `0 0 ${(chatRatio * 100).toFixed(3)}%` }}
+            >
+              <ChatSidebar
+                open={chatAgentOpen}
+                documentId={DOCUMENT_ID}
+                onClose={() => setChatAgentOpen(false)}
+              />
+              <div className="part-hover-zone" aria-hidden="true" />
+              <div
+                className={`part-move-bar${movingPart === "chat" ? " dragging" : ""}`}
+                onMouseDown={onMoveBarMouseDown("chat")}
+                title="拖动以切换左右位置"
+                role="button"
+                aria-label="Swap panel positions"
+              />
+            </div>
+          </>
+        )}
       </div>
       <ConfirmDialog
         open={confirmDialog.open}
@@ -1221,11 +1607,6 @@ export default function App() {
         variant="danger"
         onConfirm={handleConfirmDelete}
         onCancel={() => setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [], cellsToClear: [] })}
-      />
-      <ChatSidebar
-        open={chatAgentOpen}
-        documentId={DOCUMENT_ID}
-        onClose={() => setChatAgentOpen(false)}
       />
     </div>
   );

@@ -65,6 +65,8 @@ model Document {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User      @relation(fields: [createdById], references: [id])
   tables    Table[]
+  folders   Folder[]
+  designs   Design[]
 
   @@index([workspaceId])
   @@map("documents")
@@ -76,6 +78,7 @@ model Table {
   id                 String   @id @default(cuid())
   documentId         String
   name               String
+  parentId           String?
   order              Int      @default(0)
   fields             Json     @default("[]")
   views              Json     @default("[]")
@@ -87,6 +90,7 @@ model Table {
   records  Record[]
 
   @@index([documentId])
+  @@index([parentId])
   @@map("tables")
 }
 
@@ -106,4 +110,45 @@ model Record {
   @@index([tableId])
   @@index([cells(ops: JsonbPathOps)], type: Gin)
   @@map("records")
+}
+
+// ─── 文件夹（树形结构，自引用） ───
+
+model Folder {
+  id         String   @id @default(cuid())
+  documentId String
+  name       String
+  parentId   String?
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  parent   Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Folder[] @relation("FolderTree")
+
+  @@index([documentId])
+  @@index([parentId])
+  @@map("folders")
+}
+
+// ─── 设计稿（Figma 链接） ───
+
+model Design {
+  id           String   @id @default(cuid())
+  documentId   String
+  name         String
+  parentId     String?
+  order        Int      @default(0)
+  figmaUrl     String?
+  figmaFileKey String?
+  figmaNodeId  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([parentId])
+  @@map("designs")
 }

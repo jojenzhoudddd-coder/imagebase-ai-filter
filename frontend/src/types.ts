@@ -176,3 +176,24 @@ export interface View {
 }
 
 export type AIGenerateStatus = "idle" | "generating" | "done" | "error";
+
+export type TreeItemType = "table" | "folder" | "design" | "album";
+
+export interface FolderNode {
+  id: string;
+  type: "folder";
+  name: string;
+  parentId: string | null;
+  order: number;
+  expanded: boolean;
+}
+
+export interface FileNode {
+  id: string;
+  type: TreeItemType;
+  name: string;
+  parentId: string | null;
+  order: number;
+}
+
+export type TreeNode = FolderNode | FileNode;

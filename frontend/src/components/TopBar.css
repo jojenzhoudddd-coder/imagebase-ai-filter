@@ -6,7 +6,8 @@
   justify-content: space-between;
   padding: 0 20px;
   background: var(--color-white);
-  border-bottom: 0.5px solid rgba(31, 35, 41, 0.15);
+  /* Bottom border removed per spec — workspace panels below supply their
+   * own outline via .artifact-part / .chat-part borders. */
   flex-shrink: 0;
   z-index: 10;
 }
@@ -180,6 +181,15 @@
 
 .topbar-icon-btn-active {
   background: rgba(20, 86, 240, 0.1);
+}
+
+/* When the Table Agent chat is open, the four-pointed star fills in blue
+ * inside a circular light-blue background (matches Figma active state). */
+.topbar-agent-btn.topbar-icon-btn-active,
+.topbar-agent-btn.topbar-icon-btn-active:hover {
+  color: #1456F0;
+  background: rgba(20, 86, 240, 0.1);
+  border-radius: 50%;
 }
 
 .topbar-avatar {

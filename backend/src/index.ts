@@ -7,6 +7,11 @@ import tableRoutes from "./routes/tableRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import sseRoutes from "./routes/sseRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
+import folderRoutes from "./routes/folderRoutes.js";
+import designRoutes from "./routes/designRoutes.js";
+import pg from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "./generated/prisma/client.js";
 import { mockTable } from "./mockData.js";
 import { connectDB, loadTable, getTable, getDocument, updateDocument, listTablesForDocument } from "./services/dbStore.js";
 import { eventBus } from "./services/eventBus.js";
@@ -15,6 +20,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const PORT = parseInt(process.env.PORT || "3001", 10);
+
+// Prisma client for tree queries (folders, designs)
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const treePrisma = new PrismaClient({ adapter } as any);
 
 app.use(cors());
 app.use(express.json());
@@ -56,6 +66,8 @@ app.use("/api/tables", tableRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/sync", sseRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/folders", folderRoutes);
+app.use("/api/designs", designRoutes);
 
 // ═══════ Document API ═══════
 
@@ -90,6 +102,22 @@ app.put("/api/documents/:docId", async (req, res) => {
 app.get("/api/documents/:docId/tables", async (req, res) => {
   const tables = await listTablesForDocument(req.params.docId);
   res.json(tables);
+});
+
+// GET /api/documents/:docId/tree — full tree (folders + tables + designs)
+app.get("/api/documents/:docId/tree", async (req, res) => {
+  try {
+    const docId = req.params.docId;
+    const [folders, tables, designs] = await Promise.all([
+      treePrisma.folder.findMany({ where: { documentId: docId }, orderBy: { order: "asc" } }),
+      treePrisma.table.findMany({ where: { documentId: docId }, orderBy: { order: "asc" } }),
+      treePrisma.design.findMany({ where: { documentId: docId }, orderBy: { order: "asc" } }),
+    ]);
+    res.json({ folders, tables, designs });
+  } catch (err: any) {
+    console.error("[tree] error:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Health check

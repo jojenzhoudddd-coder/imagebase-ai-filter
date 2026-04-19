@@ -303,6 +303,157 @@ export async function batchCreateRecords(
   return res.json();
 }
 
+// ─── Document Tree (folders + designs) ───
+
+export interface FolderBrief {
+  id: string;
+  name: string;
+  parentId: string | null;
+  order: number;
+}
+
+export interface TreeData {
+  tables: Array<{ id: string; name: string; order: number; parentId: string | null }>;
+  folders: FolderBrief[];
+  designs: DesignBrief[];
+}
+
+export async function fetchDocumentTree(docId: string): Promise<TreeData> {
+  const res = await fetch(`${BASE}/documents/${docId}/tree`);
+  if (!res.ok) {
+    // Fallback: return tables-only if endpoint doesn't exist yet
+    const tables = await fetchDocumentTables(docId);
+    return { tables: tables.map(t => ({ ...t, parentId: null })), folders: [], designs: [] };
+  }
+  return res.json();
+}
+
+export async function createFolder(
+  name: string,
+  documentId: string,
+  parentId?: string | null
+): Promise<FolderBrief> {
+  const res = await mutationFetch(`${BASE}/folders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, documentId, parentId: parentId || null }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to create folder");
+  }
+  return res.json();
+}
+
+export async function renameFolder(folderId: string, name: string): Promise<{ id: string; name: string }> {
+  const res = await mutationFetch(`${BASE}/folders/${folderId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Failed to rename folder");
+  return res.json();
+}
+
+export async function deleteFolder(folderId: string): Promise<void> {
+  const res = await mutationFetch(`${BASE}/folders/${folderId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete folder");
+}
+
+export async function moveItem(
+  itemId: string,
+  itemType: "table" | "folder" | "design",
+  newParentId: string | null
+): Promise<void> {
+  const res = await mutationFetch(`${BASE}/folders/move`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ itemId, itemType, newParentId }),
+  });
+  if (!res.ok) throw new Error("Failed to move item");
+}
+
+export async function reorderFolders(
+  updates: Array<{ id: string; order: number }>,
+  documentId: string
+): Promise<void> {
+  const res = await mutationFetch(`${BASE}/folders/reorder`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates, documentId }),
+  });
+  if (!res.ok) throw new Error("Failed to reorder folders");
+}
+
+export async function reorderDesigns(
+  updates: Array<{ id: string; order: number }>,
+  documentId: string
+): Promise<void> {
+  const res = await mutationFetch(`${BASE}/designs/reorder`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates, documentId }),
+  });
+  if (!res.ok) throw new Error("Failed to reorder designs");
+}
+
+// ─── Designs ───
+
+export interface DesignBrief {
+  id: string;
+  name: string;
+  figmaUrl: string;
+  parentId: string | null;
+  order: number;
+}
+
+export interface DesignDetail extends DesignBrief {
+  figmaFileKey?: string;
+  figmaNodeId?: string;
+  thumbnailUrl?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export async function createDesign(
+  name: string,
+  figmaUrl: string,
+  documentId: string,
+  parentId?: string | null
+): Promise<DesignDetail> {
+  const res = await mutationFetch(`${BASE}/designs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, figmaUrl, documentId, parentId: parentId || null }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to create design");
+  }
+  return res.json();
+}
+
+export async function fetchDesign(designId: string): Promise<DesignDetail> {
+  const res = await fetch(`${BASE}/designs/${designId}`);
+  if (!res.ok) throw new Error("Failed to fetch design");
+  return res.json();
+}
+
+export async function renameDesign(designId: string, name: string): Promise<{ id: string; name: string }> {
+  const res = await mutationFetch(`${BASE}/designs/${designId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Failed to rename design");
+  return res.json();
+}
+
+export async function deleteDesign(designId: string): Promise<void> {
+  const res = await mutationFetch(`${BASE}/designs/${designId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete design");
+}
+
 // ─── AI Field Suggestions ───
 
 export interface FieldSuggestion {
@@ -509,6 +660,23 @@ export interface ChatConversation {
 export async function listConversations(documentId: string): Promise<ChatConversation[]> {
   const res = await fetch(`${BASE}/chat/conversations?documentId=${encodeURIComponent(documentId)}`);
   if (!res.ok) throw new Error("Failed to list conversations");
+  return res.json();
+}
+
+export interface ChatContextSnapshot {
+  documentId: string;
+  tableCount: number;
+  fieldCount: number;
+  recordCount: number;
+}
+
+/** Warm-up endpoint used by the chat sidebar's refresh / new-conversation
+ * flow to show "已加载 N 张表、M 个字段" as an affordance before the user's
+ * first prompt. The Agent still rebuilds its own Document Snapshot on each
+ * request — this is purely a UX hint. */
+export async function fetchChatContextSnapshot(documentId: string): Promise<ChatContextSnapshot> {
+  const res = await fetch(`${BASE}/chat/context-snapshot?documentId=${encodeURIComponent(documentId)}`);
+  if (!res.ok) throw new Error("Failed to fetch context snapshot");
   return res.json();
 }
 

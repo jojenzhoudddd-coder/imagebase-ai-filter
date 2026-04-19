@@ -5,6 +5,8 @@ export const en = {
   "sidebar.dashboard": "Dashboard",
   "sidebar.workflow": "Workflow",
   "sidebar.new": "New",
+  "sidebar.design": "Design",
+  "sidebar.album": "Album",
 
   // TopBar
   "topbar.menu": "Menu",
@@ -280,6 +282,8 @@ export const en = {
   // Context menu
   "contextMenu.rename": "Rename",
   "contextMenu.delete": "Delete",
+  "contextMenu.moveTo": "Move to",
+  "contextMenu.moveToRoot": "Root",
 
   // Delete table
   "app.deleteTable": "Delete Table",
@@ -300,6 +304,8 @@ export const en = {
   "createMenu.doc": "Document",
   "createMenu.manage": "Manage",
   "createMenu.folder": "Folder",
+  "createMenu.design": "Design",
+  "createMenu.album": "Album",
   "createMenu.import": "Import / Sync Data",
   "createMenu.appSection": "App",
   "createMenu.app": "App",
@@ -323,6 +329,28 @@ export const en = {
   "aiTable.blankCreate": "Blank",
   "aiTable.failed": "AI generation failed, please retry",
   "aiTable.creating": "Planning field names",
+
+  // Placeholder pages
+  "placeholder.design": "Select a design to preview",
+  "placeholder.album": "Select an album to view",
+
+  // Design panel
+  "design.urlPlaceholder": "Paste Figma URL here",
+  "design.create": "Create Design",
+  "design.invalidUrl": "Please enter a valid Figma URL",
+  "design.goToEdit": "Open in Figma",
+  "design.copyLink": "Copy link",
+  "design.linkCopied": "Link copied",
+  "design.linkCopyFailed": "Copy failed, please try again",
+  "design.panHint": "Click and drag to pan the canvas, pinch to zoom",
+  "design.panHintGotIt": "Got it",
+  "design.loading": "Loading design...",
+  "design.notFound": "Design not found",
+  "design.sharingHint": "Make sure the Figma file has sharing enabled",
+
+  // Folder
+  "folder.defaultName": "New Folder",
+  "folder.deleteConfirm": "Are you sure you want to delete this folder? Items inside will be moved to root.",
 };
 
 export type TranslationKeys = typeof en;

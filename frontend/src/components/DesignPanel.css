@@ -1,0 +1,245 @@
+/* DesignPanel — Figma embed preview with top bar */
+.design-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  /* Prevent 2-finger trackpad pans that reach the edge of the Figma canvas
+   * from scroll-chaining into the rest of the page (or triggering macOS
+   * swipe-to-navigate on the x-axis). Figma's iframe handles its own canvas
+   * pan; parent ancestors must not see any leftover delta. */
+  overscroll-behavior: contain;
+}
+
+.design-panel-loading,
+.design-panel-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.design-panel-error button {
+  padding: 4px 16px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #DEE0E3;
+  background: #F5F6F7;
+  color: #1F2329;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.design-panel-error button:hover {
+  background: #E8E9EB;
+}
+
+/* Top bar */
+.design-panel-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(31, 35, 41, 0.15);
+  flex-shrink: 0;
+}
+
+.design-panel-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1F2329;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.design-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.design-panel-edit-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid #DEE0E3;
+  background: #FFFFFF;
+  color: #1F2329;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: var(--font-family);
+}
+
+.design-panel-edit-btn:hover {
+  background: #F5F6F7;
+  border-color: #C9CDD4;
+}
+
+/* Icon-only borderless variant for secondary actions (copy link, etc.).
+ * Sits to the right of the primary button and reads as a subtle affordance. */
+.design-panel-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #1F2329;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.design-panel-icon-btn:hover {
+  background: #F5F6F7;
+}
+
+.design-panel-icon-btn:active {
+  background: #E8E9EB;
+}
+
+/* While the user is dragging the sidebar resize handle we must stop the Figma
+ * iframe from claiming the cursor (Figma swaps the pointer to "hand" when the
+ * pointer hovers its canvas — that swap out-competes our col-resize cursor
+ * and the drag appears to "get stuck" on the iframe). Disabling pointer events
+ * on every design iframe during the drag keeps the resize cursor and mouseup
+ * on the document handler reliable. */
+body.sidebar-resizing .design-panel-iframe {
+  pointer-events: none;
+}
+
+/* Wrapper for the iframe + loading progress bar overlay. The iframe fills it
+ * entirely; the progress bar sits absolutely positioned on top. A wrapper is
+ * needed because iframes can't host pseudo-elements and we don't want to
+ * unmount the iframe (would trash Figma's cached canvas state). */
+.design-panel-iframe-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Iframe */
+.design-panel-iframe {
+  flex: 1;
+  width: 100%;
+  border: none;
+  /* Same reason as .design-panel above — must be set on the iframe itself so
+   * the browser treats its scrollable area as a scroll boundary. Without this
+   * a two-finger pan in Figma's canvas can surface as a horizontal back-swipe
+   * or bubble up to the outer window. */
+  overscroll-behavior: contain;
+}
+
+/* Indeterminate progress bar shown while the Figma embed is (re)loading —
+ * first mount AND page transitions inside the file. 2px high, sits flush
+ * against the topbar; animates a 40%-wide sliver sliding across. */
+.design-panel-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(20, 86, 240, 0.08);
+  overflow: hidden;
+  z-index: 2;
+  pointer-events: none;
+}
+.design-panel-progress::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  background: #1456F0;
+  border-radius: 2px;
+  animation: design-panel-progress-slide 1.1s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes design-panel-progress-slide {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}
+
+/* Interaction hint — dark pill floating at bottom-center of the Figma canvas
+ * viewport. Uses the project's dark text-primary (#1F2329) + white content
+ * pattern seen in Toast/tooltip conventions. Disappears on dismiss (stored
+ * in localStorage so it only appears once per browser). */
+.design-panel-pan-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 40px);
+  padding: 8px 8px 8px 12px;
+  background: rgba(31, 35, 41, 0.92);
+  color: #FFFFFF;
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-dropdown);
+  font-size: 13px;
+  line-height: 20px;
+  z-index: 3;
+  pointer-events: auto;
+  animation: design-panel-pan-hint-enter 180ms ease-out;
+  backdrop-filter: saturate(1.2);
+}
+
+.design-panel-pan-hint-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.82);
+  flex-shrink: 0;
+}
+
+.design-panel-pan-hint-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-panel-pan-hint-close {
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-s);
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #FFFFFF;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--font-family, inherit);
+}
+
+.design-panel-pan-hint-close:hover {
+  background: rgba(255, 255, 255, 0.20);
+}
+
+.design-panel-pan-hint-close:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@keyframes design-panel-pan-hint-enter {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}

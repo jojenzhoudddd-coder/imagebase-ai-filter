@@ -6,28 +6,44 @@ import type { MenuItem } from "./DropdownMenu";
 import ConfirmDialog from "./ConfirmDialog/index";
 import CreateTablePopover from "./CreateTablePopover";
 import type { CreateTablePopoverHandle } from "./CreateTablePopover";
+import CreateDesignPopover from "./CreateDesignPopover";
+import type { CreateDesignPopoverHandle } from "./CreateDesignPopover";
+import TreeView from "./TreeView";
+import type { TreeNodeData } from "./TreeView";
 import type { GeneratedField } from "../api";
+import type { TreeItemType } from "../types";
 import "./Sidebar.css";
+import "./TreeView.css";
 
 export interface SidebarItem {
   id: string;
-  type: "table" | "static";
+  type: TreeItemType | "static";
   displayName: string;
   active: boolean;
   order: number;
+  parentId?: string | null;
 }
 
 interface Props {
   items: SidebarItem[];
   onRenameItem: (id: string, newName: string) => void;
   activeItemId: string;
-  onSelectItem: (id: string) => void;
-  onReorderTables: (updates: Array<{ id: string; order: number }>) => void;
+  onSelectItem: (id: string, type?: TreeItemType) => void;
+  onReorderItems: (updates: Array<{ id: string; type: TreeItemType; order: number }>) => void;
   onDeleteTable: (id: string) => void;
   tableCount: number;
   onCreateWithAI: (tableName: string, fields: GeneratedField[]) => Promise<string>;
   onResetToDefault: (tableId: string, tableName: string) => Promise<void>;
   onCreateBlank: () => Promise<void>;
+  folders?: Array<{ id: string; name: string }>;
+  onCreateFolder?: () => void;
+  onCreateDesign?: (name: string, figmaUrl: string) => Promise<string>;
+  onDeleteItem?: (id: string, type: TreeItemType) => void;
+  onMoveItem?: (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => void;
+  /** When set, the TreeView scrolls the node with this id into view on the
+   * next render. Used after creating a folder (which cannot become the active
+   * item) so the user can see where the new node landed. */
+  scrollToItemId?: string | null;
 }
 
 const DRAG_THRESHOLD = 4;
@@ -81,6 +97,14 @@ const CM_ICONS = {
   app: (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.954 10.027c.261.102.562.203.898.292l-.59 1.18a.534.534 0 01-.894-.298l.515-1.03c.113.05.236.104.37.155z" fill="#336DF4"/><path d="M7.702 3.937a.534.534 0 01.894.297l3.334 6.667a.534.534 0 01-.894.597L7.404 4.831a.534.534 0 01.298-.894z" fill="#336DF4"/><path d="M3.783 8.158a.534.534 0 01.926-.176s.003.002.005.003l.037.026a5.15 5.15 0 00.166.096c.11.06.259.136.444.216a5.96 5.96 0 00.197.082c.009.003.018.007.027.011a5.47 5.47 0 00.446.166c.19.058.396.113.618.159a5.97 5.97 0 001.352 0 6.45 6.45 0 00.939-.069l.623 1.246a7.36 7.36 0 01-1.562.156c-.822 0-1.549-.13-2.151-.298l-.11-.03a7.65 7.65 0 01-.139-.043 6.03 6.03 0 01-.151-.049 5.2 5.2 0 01-.115-.039 5.98 5.98 0 01-.236-.081 5.76 5.76 0 01-.822-.62 3.41 3.41 0 01-.227-.14 1.67 1.67 0 01-.063-.057l-.002-.002-.001-.001-.001 0a.534.534 0 01.204-.834z" fill="#336DF4"/><path d="M11.292 7.982a.534.534 0 01.925.176c.207.304.129.718-.176.926l-.001 0-.001.001-.002.002a1.67 1.67 0 01-.063.057 3.41 3.41 0 01-.227.14l-.147.086-.597-1.194c.031-.015.06-.028.085-.04a2.9 2.9 0 00.166-.096l.037-.026.002-.003z" fill="#336DF4"/><path d="M7.045 5.01l.73 1.462-.941 1.882a4.4 4.4 0 01-.62-.248 4.07 4.07 0 01-.19-.078l1.492-2.983.032.021c.005.01.009.02.014.03l-.002-.016-.515-.068z" fill="#336DF4"/><path d="M11.063.667c.957 0 1.873.364 2.549 1.011.676.647 1.055 1.525 1.055 2.44v10.549a.667.667 0 01-.667.666H4.937a3.594 3.594 0 01-2.548-1.011A3.432 3.432 0 011.333 11.882V1.333A.667.667 0 012 .667h9.063zM2.667 11.882c0 .542.224 1.075.644 1.477.422.404 1.006.641 1.626.641H13.333V4.118c0-.543-.224-1.075-.644-1.477A2.26 2.26 0 0011.063 2H2.667v9.882z" fill="#336DF4"/></svg>
   ),
+  design: (
+    /* Same shape as the new-design popover title icon — keeps the create-menu
+     * entry, popover heading, and sidebar row visually unified. */
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M10.141 17.9883L5.86567 17.978C5.69999 17.9776 5.56599 17.843 5.56639 17.6773C5.56658 17.598 5.59818 17.522 5.65426 17.4659L9.78706 13.3331C9.94327 13.1769 10.1965 13.1769 10.3527 13.3331L12.2598 15.2402L17.3172 10.1829C17.4734 10.0266 17.7266 10.0266 17.8828 10.1829C17.9579 10.2579 18 10.3596 18 10.4657V17.7C18 17.8657 17.8657 18 17.7 18H10.2243C10.1954 18 10.1674 17.9959 10.141 17.9883ZM4 22C2.9 22 2 21.1 2 20V4C2 2.9 2.9 2 4 2H20C21.1 2 22 2.9 22 4V20C22 21.1 21.1 22 20 22H4ZM4 20H20V4H4V20ZM6 6H9V9H6V6Z" fill="#336DF4"/></svg>
+  ),
+  album: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.667 1.333A1.333 1.333 0 001.333 2.667v8A1.333 1.333 0 002.667 12h8a1.333 1.333 0 001.333-1.333v-8A1.333 1.333 0 0010.667 1.333h-8zm0 1.334h8v8h-8v-8z" fill="#8D55ED"/><path d="M13.333 4v9.333H4v1.334h9.333A1.333 1.333 0 0014.667 13.333V4h-1.334z" fill="#8D55ED"/></svg>
+  ),
 };
 
 const SIDEBAR_WIDTH_KEY = "sidebar_width";
@@ -88,7 +112,7 @@ const SIDEBAR_MIN_W = 120;
 const SIDEBAR_MAX_W = 400;
 const SIDEBAR_DEFAULT_W = 190;
 
-export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderTables, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank }: Props) {
+export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onDeleteItem, onMoveItem, scrollToItemId }: Props) {
   const { t } = useTranslation();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
@@ -106,37 +130,56 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   }, [activeItemId]);
 
   // ── Sidebar resize state ──
+  // `sidebarWidth` is the persisted "at rest" value. During an active drag we
+  // do NOT update React state — instead we mutate `asideRef.current.style.width`
+  // directly inside a requestAnimationFrame so the whole Sidebar subtree (tree,
+  // footer, AI popovers…) doesn't reconcile at pointer frequency. One React
+  // state commit happens at mouseup to persist the final width.
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const stored = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return stored ? Math.max(SIDEBAR_MIN_W, Math.min(SIDEBAR_MAX_W, Number(stored))) : SIDEBAR_DEFAULT_W;
   });
-  const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
+  const asideRef = useRef<HTMLElement>(null);
 
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    resizeRef.current = { startX: e.clientX, startW: sidebarWidth };
+    const startX = e.clientX;
+    const startW = asideRef.current?.offsetWidth ?? SIDEBAR_DEFAULT_W;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
+    // Neutralise every iframe's pointer-events during the drag. Figma's embed
+    // eagerly swaps the cursor to "hand" when hovered — that fight the
+    // col-resize cursor and can swallow the mouseup, making the drag feel
+    // sticky. CSS rule: body.sidebar-resizing iframe { pointer-events:none }.
+    document.body.classList.add("sidebar-resizing");
+
+    let rafId: number | null = null;
+    let latestW = startW;
+
+    const flush = () => {
+      rafId = null;
+      if (asideRef.current) asideRef.current.style.width = `${latestW}px`;
+    };
 
     const onMouseMove = (ev: MouseEvent) => {
-      if (!resizeRef.current) return;
-      const newW = Math.max(SIDEBAR_MIN_W, Math.min(SIDEBAR_MAX_W, resizeRef.current.startW + ev.clientX - resizeRef.current.startX));
-      setSidebarWidth(newW);
+      latestW = Math.max(SIDEBAR_MIN_W, Math.min(SIDEBAR_MAX_W, startW + ev.clientX - startX));
+      if (rafId == null) rafId = requestAnimationFrame(flush);
     };
-    const onMouseUp = (ev: MouseEvent) => {
-      if (resizeRef.current) {
-        const finalW = Math.max(SIDEBAR_MIN_W, Math.min(SIDEBAR_MAX_W, resizeRef.current.startW + ev.clientX - resizeRef.current.startX));
-        localStorage.setItem(SIDEBAR_WIDTH_KEY, String(finalW));
-      }
-      resizeRef.current = null;
+    const onMouseUp = () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      document.body.classList.remove("sidebar-resizing");
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      // Single React commit — persists width and keeps inline style in sync
+      // with the final DOM style we already applied during the drag.
+      setSidebarWidth(latestW);
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(latestW));
     };
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [sidebarWidth]);
+  }, []);
 
   // Drag state
   const [dragId, setDragId] = useState<string | null>(null);
@@ -156,10 +199,14 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
 
   // ── AI Create sub-menu state ──
   const [showAIPopover, setShowAIPopover] = useState(false);
+  const [showDesignPopover, setShowDesignPopover] = useState(false);
   const [menuEl, setMenuEl] = useState<HTMLDivElement | null>(null);
   const [tableItemEl, setTableItemEl] = useState<HTMLButtonElement | null>(null);
+  const [designItemEl, setDesignItemEl] = useState<HTMLButtonElement | null>(null);
   const popoverContainerRef = useRef<HTMLDivElement | null>(null);
   const popoverHandleRef = useRef<CreateTablePopoverHandle | null>(null);
+  const designPopoverHandleRef = useRef<CreateDesignPopoverHandle | null>(null);
+  const designPopoverContainerRef = useRef<HTMLDivElement | null>(null);
 
   const tableItems = items.filter(i => i.type === "table");
   const staticItems = items.filter(i => i.type === "static");
@@ -173,11 +220,12 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
     { key: "ai_create", label: t("createMenu.aiCreate"), section: t("createMenu.quickCreate"), icon: CM_ICONS.aiCreate, noop: true },
     { key: "template", label: t("createMenu.template"), icon: CM_ICONS.template, suffix: ARROW_RIGHT, noop: true },
     { key: "table", label: t("createMenu.table"), section: t("createMenu.new"), icon: CM_ICONS.table, suffix: ARROW_RIGHT },
+    { key: "design", label: t("createMenu.design"), icon: CM_ICONS.design || CM_ICONS.doc, suffix: ARROW_RIGHT },
     { key: "form", label: t("createMenu.form"), icon: CM_ICONS.form, suffix: ARROW_RIGHT, noop: true },
     { key: "cm_dashboard", label: t("createMenu.dashboard"), icon: CM_ICONS.dashboard, noop: true },
     { key: "cm_workflow", label: t("createMenu.workflow"), icon: CM_ICONS.workflow, noop: true },
     { key: "doc", label: t("createMenu.doc"), icon: CM_ICONS.doc, noop: true },
-    { key: "folder", label: t("createMenu.folder"), section: t("createMenu.manage"), icon: CM_ICONS.folder, noop: true },
+    { key: "folder", label: t("createMenu.folder"), section: t("createMenu.manage"), icon: CM_ICONS.folder },
     { key: "import", label: t("createMenu.import"), icon: CM_ICONS.transfer, suffix: ARROW_RIGHT, noop: true },
     { key: "app", label: t("createMenu.app"), section: t("createMenu.appSection"), icon: CM_ICONS.app, suffix: ARROW_RIGHT, noop: true },
   ];
@@ -185,6 +233,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   // Close everything handler
   const handleCloseAll = useCallback(() => {
     setShowAIPopover(false);
+    setShowDesignPopover(false);
     setNewMenuOpen(false);
   }, []);
 
@@ -194,6 +243,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   }, []);
   const handleItemRef = useCallback((key: string, el: HTMLButtonElement | null) => {
     if (key === "table" && el) setTableItemEl(el);
+    if (key === "design" && el) setDesignItemEl(el);
   }, []);
 
   // ── Drag handlers (table items only) ──
@@ -253,8 +303,8 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
         if (dragOverPosRef.current === "below") toIdx += 1;
         arr.splice(toIdx, 0, tableId);
 
-        const updates = arr.map((id, i) => ({ id, order: i }));
-        onReorderTables(updates);
+        const updates = arr.map((id, i) => ({ id, type: "table" as TreeItemType, order: i }));
+        onReorderItems(updates);
       }
 
       dragRef.current = null;
@@ -271,7 +321,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [tableItems, onReorderTables]);
+  }, [tableItems, onReorderItems]);
 
   const getIcon = (item: SidebarItem) => {
     if (item.type === "table") return ICONS.table;
@@ -350,11 +400,13 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   };
 
   // Determine if popover is in a blocking state (generating/creating)
-  const isPopoverBlocking = showAIPopover && popoverHandleRef.current &&
-    ["generating", "creating"].includes(popoverHandleRef.current.getState());
+  const isPopoverBlocking = (showAIPopover && popoverHandleRef.current &&
+    ["generating", "creating"].includes(popoverHandleRef.current.getState())) ||
+    (showDesignPopover && designPopoverHandleRef.current &&
+    designPopoverHandleRef.current.getState() === "creating");
 
   return (
-    <aside className="sidebar" style={{ width: sidebarWidth }}>
+    <aside ref={asideRef} className="sidebar" style={{ width: sidebarWidth }}>
       <div className="sidebar-resize-handle" onMouseDown={handleResizeMouseDown} />
       <div className="sidebar-header">
         <div className="sidebar-search-trigger">
@@ -365,8 +417,66 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
         </div>
       </div>
       <div className="sidebar-nav">
-        {tableItems.map(renderItem)}
-        {staticItems.map(renderItem)}
+        {(() => {
+          // Build tree nodes from items that have a parentId property (table, design, folder)
+          const treeItemTypes = new Set(["table", "folder", "design", "album"]);
+          const treeItems = items.filter(i => treeItemTypes.has(i.type));
+          const flatNodes: TreeNodeData[] = treeItems.map(i => ({
+            id: i.id,
+            type: i.type as TreeItemType,
+            name: i.displayName,
+            parentId: i.parentId ?? null,
+            order: i.order,
+            children: [],
+          }));
+          // Build id→node map, then attach each node to its parent's children[].
+          // Roots = nodes with parentId === null (or parent not found, treat as root).
+          const nodeMap = new Map(flatNodes.map(n => [n.id, n]));
+          const treeNodes: TreeNodeData[] = [];
+          for (const n of flatNodes) {
+            const parent = n.parentId ? nodeMap.get(n.parentId) : null;
+            if (parent) parent.children!.push(n);
+            else treeNodes.push(n);
+          }
+          // Sort each sibling group by order
+          const sortByOrder = (arr: TreeNodeData[]) => {
+            arr.sort((a, b) => a.order - b.order);
+            for (const c of arr) if (c.children?.length) sortByOrder(c.children);
+          };
+          sortByOrder(treeNodes);
+
+          if (treeNodes.length > 0) {
+            return (
+              <TreeView
+                nodes={treeNodes}
+                activeItemId={activeItemId}
+                onSelectItem={(id, type) => onSelectItem(id, type)}
+                onRenameItem={(id, _type, newName) => onRenameItem(id, newName)}
+                onDeleteItem={(id, type) => {
+                  if (type === "table") {
+                    setDeleteConfirmId(id);
+                  } else if (onDeleteItem) {
+                    onDeleteItem(id, type);
+                  }
+                }}
+                onMoveItem={(itemId, itemType, newParentId) => {
+                  if (onMoveItem) onMoveItem(itemId, itemType as "table" | "folder" | "design", newParentId);
+                }}
+                onReorderItems={onReorderItems}
+                folders={folders}
+                scrollToItemId={scrollToItemId ?? null}
+              />
+            );
+          }
+
+          // Fallback: flat list for tables + statics
+          return (
+            <>
+              {tableItems.map(renderItem)}
+              {staticItems.map(renderItem)}
+            </>
+          );
+        })()}
       </div>
       <div className="sidebar-footer">
         <button
@@ -393,23 +503,32 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             onSelect={(key) => {
               if (key === "table") {
                 setShowAIPopover(true);
+                setShowDesignPopover(false);
+              } else if (key === "design") {
+                setShowDesignPopover(true);
+                setShowAIPopover(false);
+              } else if (key === "folder") {
+                if (onCreateFolder) onCreateFolder();
+                handleCloseAll();
               } else {
                 setShowAIPopover(false);
+                setShowDesignPopover(false);
               }
             }}
             onClose={() => {
               if (!isPopoverBlocking) {
                 setNewMenuOpen(false);
                 setShowAIPopover(false);
+                setShowDesignPopover(false);
               }
             }}
             position="above"
             width={240}
-            activeSubMenuKey={showAIPopover ? "table" : null}
+            activeSubMenuKey={showAIPopover ? "table" : showDesignPopover ? "design" : null}
             className="sidebar-new-menu"
             onMenuRef={handleMenuRef}
             onItemRef={handleItemRef}
-            extraContainers={[popoverContainerRef]}
+            extraContainers={[popoverContainerRef, designPopoverContainerRef]}
           />
         )}
         {showAIPopover && menuEl && tableItemEl && (
@@ -421,6 +540,15 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             onCreateWithAI={onCreateWithAI}
             onResetToDefault={onResetToDefault}
             onCreateBlank={onCreateBlank}
+          />
+        )}
+        {showDesignPopover && menuEl && designItemEl && onCreateDesign && (
+          <CreateDesignPopover
+            ref={(handle) => { designPopoverHandleRef.current = handle; }}
+            anchorItemEl={designItemEl}
+            menuEl={menuEl}
+            onClose={() => setShowDesignPopover(false)}
+            onCreateDesign={onCreateDesign}
           />
         )}
       </div>
