@@ -61,8 +61,12 @@ export default function DesignPanel({ designId, designName, onRename, hidden = f
     return () => { cancelled = true; };
   }, [designId]);
 
+  // Figma embed URL.
+  //   footer=false  — hides the bottom "Figma • Edited X ago" strip
+  //   hide-ui=1     — collapses the top title bar so the canvas fills the frame
+  //   (both params are officially supported; see Figma embed docs)
   const embedUrl = design
-    ? `https://embed.figma.com/design/${design.figmaFileKey}/${encodeURIComponent(designName)}?embed-host=${location.hostname}${design.figmaNodeId ? `&node-id=${design.figmaNodeId}` : ""}`
+    ? `https://embed.figma.com/design/${design.figmaFileKey}/${encodeURIComponent(designName)}?embed-host=${location.hostname}&footer=false${design.figmaNodeId ? `&node-id=${design.figmaNodeId}` : ""}`
     : "";
 
   const hideStyle = hidden ? { display: "none" as const } : undefined;
@@ -101,6 +105,13 @@ export default function DesignPanel({ designId, designName, onRename, hidden = f
         </span>
         <div className="design-panel-actions">
           <button
+            className="design-panel-edit-btn"
+            onClick={() => window.open(design.figmaUrl, "_blank")}
+          >
+            {t("design.goToEdit")}
+            {EXTERNAL_LINK_ICON}
+          </button>
+          <button
             className="design-panel-icon-btn"
             onClick={handleCopyLink}
             title={t("design.copyLink")}
@@ -108,19 +119,19 @@ export default function DesignPanel({ designId, designName, onRename, hidden = f
           >
             {COPY_LINK_ICON}
           </button>
-          <button
-            className="design-panel-edit-btn"
-            onClick={() => window.open(design.figmaUrl, "_blank")}
-          >
-            {t("design.goToEdit")}
-            {EXTERNAL_LINK_ICON}
-          </button>
         </div>
       </div>
+      {/* No `sandbox` attribute: Figma's embed needs the full default set of
+       * iframe capabilities (pointer-lock-style gesture capture, clipboard for
+       * copy, fullscreen) to drive the canvas. With a restricted sandbox the
+       * two-finger trackpad pan doesn't work because Figma's JS can't capture
+       * the wheel/pointer stream properly. Figma's own embed docs don't ask
+       * for any sandbox; they host the iframe on their own `embed.figma.com`
+       * origin which is already cross-origin and therefore isolated. */}
       <iframe
         className="design-panel-iframe"
         src={embedUrl}
-        sandbox="allow-scripts allow-same-origin allow-popups"
+        allow="clipboard-read; clipboard-write; fullscreen"
         allowFullScreen
       />
     </div>

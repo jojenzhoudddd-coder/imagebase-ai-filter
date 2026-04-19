@@ -147,6 +147,11 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
     const startW = asideRef.current?.offsetWidth ?? SIDEBAR_DEFAULT_W;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
+    // Neutralise every iframe's pointer-events during the drag. Figma's embed
+    // eagerly swaps the cursor to "hand" when hovered — that fight the
+    // col-resize cursor and can swallow the mouseup, making the drag feel
+    // sticky. CSS rule: body.sidebar-resizing iframe { pointer-events:none }.
+    document.body.classList.add("sidebar-resizing");
 
     let rafId: number | null = null;
     let latestW = startW;
@@ -164,6 +169,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
       if (rafId != null) cancelAnimationFrame(rafId);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      document.body.classList.remove("sidebar-resizing");
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
       // Single React commit — persists width and keeps inline style in sync

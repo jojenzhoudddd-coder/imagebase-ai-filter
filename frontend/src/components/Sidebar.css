@@ -32,7 +32,7 @@
  * 4px gap between consecutive tree items (.tree-item margin-bottom:4). */
 .sidebar-header {
   display: block;
-  padding: 4px 8px 0 8px;
+  padding: 8px 8px 0 8px;
   flex-shrink: 0;
 }
 

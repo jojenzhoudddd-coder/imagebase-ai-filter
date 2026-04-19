@@ -87,7 +87,8 @@
   border-color: #C9CDD4;
 }
 
-/* Icon-only variant for secondary actions (copy link, etc.) */
+/* Icon-only borderless variant for secondary actions (copy link, etc.).
+ * Sits to the right of the primary button and reads as a subtle affordance. */
 .design-panel-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -96,8 +97,8 @@
   height: 32px;
   padding: 0;
   border-radius: 6px;
-  border: 1px solid #DEE0E3;
-  background: #FFFFFF;
+  border: none;
+  background: transparent;
   color: #1F2329;
   cursor: pointer;
   flex-shrink: 0;
@@ -105,11 +106,20 @@
 
 .design-panel-icon-btn:hover {
   background: #F5F6F7;
-  border-color: #C9CDD4;
 }
 
 .design-panel-icon-btn:active {
   background: #E8E9EB;
+}
+
+/* While the user is dragging the sidebar resize handle we must stop the Figma
+ * iframe from claiming the cursor (Figma swaps the pointer to "hand" when the
+ * pointer hovers its canvas — that swap out-competes our col-resize cursor
+ * and the drag appears to "get stuck" on the iframe). Disabling pointer events
+ * on every design iframe during the drag keeps the resize cursor and mouseup
+ * on the document handler reliable. */
+body.sidebar-resizing .design-panel-iframe {
+  pointer-events: none;
 }
 
 /* Iframe */
