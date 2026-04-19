@@ -26,9 +26,9 @@ export interface TableChangeEvent {
 
 export interface DocumentChangeEvent {
   type: "table:create" | "table:delete" | "table:reorder" | "table:rename"
-    | "folder:create" | "folder:rename" | "folder:delete"
+    | "folder:create" | "folder:rename" | "folder:delete" | "folder:reorder"
     | "item:move"
-    | "design:create" | "design:rename" | "design:delete";
+    | "design:create" | "design:rename" | "design:delete" | "design:reorder";
   documentId: string;
   clientId: string;
   timestamp: number;

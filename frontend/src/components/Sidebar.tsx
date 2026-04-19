@@ -40,6 +40,10 @@ interface Props {
   onCreateDesign?: (name: string, figmaUrl: string) => Promise<string>;
   onDeleteItem?: (id: string, type: TreeItemType) => void;
   onMoveItem?: (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => void;
+  /** When set, the TreeView scrolls the node with this id into view on the
+   * next render. Used after creating a folder (which cannot become the active
+   * item) so the user can see where the new node landed. */
+  scrollToItemId?: string | null;
 }
 
 const DRAG_THRESHOLD = 4;
@@ -106,7 +110,7 @@ const SIDEBAR_MIN_W = 120;
 const SIDEBAR_MAX_W = 400;
 const SIDEBAR_DEFAULT_W = 190;
 
-export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onDeleteItem, onMoveItem }: Props) {
+export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onDeleteItem, onMoveItem, scrollToItemId }: Props) {
   const { t } = useTranslation();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
@@ -396,13 +400,29 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
           // Build tree nodes from items that have a parentId property (table, design, folder)
           const treeItemTypes = new Set(["table", "folder", "design", "album"]);
           const treeItems = items.filter(i => treeItemTypes.has(i.type));
-          const treeNodes: TreeNodeData[] = treeItems.map(i => ({
+          const flatNodes: TreeNodeData[] = treeItems.map(i => ({
             id: i.id,
             type: i.type as TreeItemType,
             name: i.displayName,
             parentId: i.parentId ?? null,
             order: i.order,
+            children: [],
           }));
+          // Build id→node map, then attach each node to its parent's children[].
+          // Roots = nodes with parentId === null (or parent not found, treat as root).
+          const nodeMap = new Map(flatNodes.map(n => [n.id, n]));
+          const treeNodes: TreeNodeData[] = [];
+          for (const n of flatNodes) {
+            const parent = n.parentId ? nodeMap.get(n.parentId) : null;
+            if (parent) parent.children!.push(n);
+            else treeNodes.push(n);
+          }
+          // Sort each sibling group by order
+          const sortByOrder = (arr: TreeNodeData[]) => {
+            arr.sort((a, b) => a.order - b.order);
+            for (const c of arr) if (c.children?.length) sortByOrder(c.children);
+          };
+          sortByOrder(treeNodes);
 
           if (treeNodes.length > 0) {
             return (
@@ -423,6 +443,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
                 }}
                 onReorderItems={onReorderItems}
                 folders={folders}
+                scrollToItemId={scrollToItemId ?? null}
               />
             );
           }

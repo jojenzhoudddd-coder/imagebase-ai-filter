@@ -9,7 +9,7 @@ import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import { AddFieldPopover, useFieldSuggestions } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, fetchDocumentTables, createTable as apiCreateTable, reorderTables, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchDocumentTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, fetchDocumentTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchDocumentTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign } from "./api";
 import type { GeneratedField, FolderBrief, DesignBrief } from "./api";
 import type { SidebarItem } from "./components/Sidebar";
 import type { TreeItemType } from "./types";
@@ -20,6 +20,7 @@ import ConfirmDialog from "./components/ConfirmDialog/index";
 import { filterRecords } from "./services/filterEngine";
 import { useTableSync } from "./hooks/useTableSync";
 import { useDocumentSync } from "./hooks/useDocumentSync";
+import { useSplitResize } from "./hooks/useSplitResize";
 import ChatSidebar from "./components/ChatSidebar/index";
 
 const DOCUMENT_ID = "doc_default";
@@ -45,6 +46,10 @@ export default function App() {
   const [documentTables, setDocumentTables] = useState<Array<{ id: string; name: string; order: number; parentId: string | null }>>([]);
   const [documentFolders, setDocumentFolders] = useState<FolderBrief[]>([]);
   const [documentDesigns, setDocumentDesigns] = useState<DesignBrief[]>([]);
+  /* Transient id used to scroll the sidebar to a specific tree node — set
+   * after creating a folder (since folders can't become the activeItemId, the
+   * normal auto-scroll doesn't apply). Cleared on next user-driven change. */
+  const [scrollToItemId, setScrollToItemId] = useState<string | null>(null);
   const [activeItemType, setActiveItemType] = useState<TreeItemType>("table");
   const SIDEBAR_NAMES_KEY = "sidebar_item_names";
   const [sidebarNames, setSidebarNames] = useState<Record<string, string>>(() => {
@@ -58,6 +63,85 @@ export default function App() {
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [fieldConfigOpen, setFieldConfigOpen] = useState(false);
   const [chatAgentOpen, setChatAgentOpen] = useState(false);
+
+  // Horizontal split between the artifact (table view) and chat panels.
+  // Only active while chatAgentOpen; the ratio persists across sessions.
+  const {
+    ratio: chatRatio,
+    containerRef: workspaceRef,
+    onDividerMouseDown: onSplitDragStart,
+    isDragging: isSplitDragging,
+  } = useSplitResize({
+    storageKey: "chat_artifact_ratio_v1",
+    defaultRatio: 0.35,
+    minLeftPx: 480,
+    minRightPx: 320,
+    maxRatio: 0.6,
+  });
+
+  // Which side the chat panel is on. Persisted in localStorage so swap sticks.
+  const [chatSide, setChatSide] = useState<"left" | "right">(() => {
+    try {
+      const v = localStorage.getItem("chat_panel_side_v1");
+      return v === "left" ? "left" : "right";
+    } catch {
+      return "right";
+    }
+  });
+  const setChatSidePersisted = useCallback((side: "left" | "right") => {
+    setChatSide(side);
+    try { localStorage.setItem("chat_panel_side_v1", side); } catch { /* ignore */ }
+  }, []);
+
+  // iOS-style move bar drag: tracks the horizontal delta so we know when the
+  // user has pulled far enough across the divider to trigger a swap.
+  const [movingPart, setMovingPart] = useState<null | "artifact" | "chat">(null);
+  const onMoveBarMouseDown = useCallback(
+    (which: "artifact" | "chat") => (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const container = workspaceRef.current;
+      if (!container) return;
+
+      const startX = e.clientX;
+      const rect = container.getBoundingClientRect();
+      const midX = rect.left + rect.width / 2;
+      setMovingPart(which);
+
+      document.body.style.userSelect = "none";
+      document.body.style.cursor = "grabbing";
+
+      const onMove = (ev: MouseEvent) => {
+        // Visual-only signal during drag; no layout changes until release.
+        void ev;
+      };
+      const onUp = (ev: MouseEvent) => {
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+
+        const endX = ev.clientX;
+        const dx = endX - startX;
+        // Swap only if the release happened on the opposite half AND the
+        // user moved at least 40px.
+        if (Math.abs(dx) >= 40) {
+          const releasedSide: "left" | "right" = endX < midX ? "left" : "right";
+          if (which === "chat") {
+            setChatSidePersisted(releasedSide);
+          } else {
+            // Dragging the artifact bar to the other side implies chat goes
+            // to the opposite side of the artifact's new position.
+            setChatSidePersisted(releasedSide === "left" ? "right" : "left");
+          }
+        }
+        setMovingPart(null);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [setChatSidePersisted, workspaceRef]
+  );
   const filterBtnRef = useRef<HTMLButtonElement>(null);
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const customizeFieldBtnRef = useRef<HTMLButtonElement>(null);
@@ -1038,12 +1122,17 @@ export default function App() {
     }
 
     try {
-      // Only tables have a dedicated reorder endpoint; for folders/designs we use individual move calls
+      const calls: Promise<void>[] = [];
       if (tableUpdates.length > 0) {
-        await reorderTables(tableUpdates.map(u => ({ id: u.id, order: u.order })), DOCUMENT_ID);
+        calls.push(reorderTables(tableUpdates.map(u => ({ id: u.id, order: u.order })), DOCUMENT_ID));
       }
-      // Folders and designs don't have batch reorder — update order via individual updates
-      // (acceptable for small numbers of items; batch endpoint can be added later)
+      if (folderUpdates.length > 0) {
+        calls.push(reorderFolders(folderUpdates.map(u => ({ id: u.id, order: u.order })), DOCUMENT_ID));
+      }
+      if (designUpdates.length > 0) {
+        calls.push(reorderDesigns(designUpdates.map(u => ({ id: u.id, order: u.order })), DOCUMENT_ID));
+      }
+      await Promise.all(calls);
     } catch {
       toast.error(t("toast.reorderFailed"));
       fetchDocumentTree(DOCUMENT_ID).then(tree => {
@@ -1089,6 +1178,11 @@ export default function App() {
     try {
       const folder = await apiCreateFolder(name, DOCUMENT_ID);
       setDocumentFolders(prev => [...prev, folder]);
+      // Folders can't become the activeItemId (they have no content view), so
+      // request an explicit scroll to the new row — otherwise the user won't
+      // see where it landed when the sidebar is scrolled away from the
+      // bottom, which is where new folders are created.
+      setScrollToItemId(folder.id);
     } catch {
       toast.error("Failed to create folder");
     }
@@ -1264,7 +1358,14 @@ export default function App() {
         onOpenChatAgent={() => setChatAgentOpen((v) => !v)}
         chatAgentOpen={chatAgentOpen}
       />
-      <div className="app-body">
+      <div className={`workspace${chatAgentOpen && chatSide === "left" ? " chat-left" : ""}${movingPart ? " moving" : ""}`} ref={workspaceRef}>
+        <div
+          className="artifact-part"
+          /* When chat is open, let artifact flex-grow into the remaining
+           * space (= 100% - chat% - 6px divider). */
+          style={chatAgentOpen ? { flex: "1 1 auto", minWidth: 0 } : undefined}
+        >
+        <div className="app-body">
         <Sidebar
           items={sidebarItems}
           onRenameItem={handleRenameSidebarItemExtended}
@@ -1281,6 +1382,7 @@ export default function App() {
           onCreateDesign={handleCreateDesign}
           onDeleteItem={handleDeleteItem}
           onMoveItem={handleMoveItem}
+          scrollToItemId={scrollToItemId}
         />
         <div className="app-main">
           {activeItemType === "design" ? (
@@ -1381,6 +1483,49 @@ export default function App() {
           )}
         </div>
       </div>
+          {chatAgentOpen && (
+            <>
+              <div className="part-hover-zone" aria-hidden="true" />
+              <div
+                className={`part-move-bar${movingPart === "artifact" ? " dragging" : ""}`}
+                onMouseDown={onMoveBarMouseDown("artifact")}
+                title="拖动以切换左右位置"
+                role="button"
+                aria-label="Swap panel positions"
+              />
+            </>
+          )}
+        </div>
+        {chatAgentOpen && (
+          <>
+            <div
+              className={`split-divider${isSplitDragging ? " dragging" : ""}`}
+              onMouseDown={onSplitDragStart}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize chat panel"
+            />
+            <div
+              className="chat-part"
+              style={{ flex: `0 0 ${(chatRatio * 100).toFixed(3)}%` }}
+            >
+              <ChatSidebar
+                open={chatAgentOpen}
+                documentId={DOCUMENT_ID}
+                onClose={() => setChatAgentOpen(false)}
+              />
+              <div className="part-hover-zone" aria-hidden="true" />
+              <div
+                className={`part-move-bar${movingPart === "chat" ? " dragging" : ""}`}
+                onMouseDown={onMoveBarMouseDown("chat")}
+                title="拖动以切换左右位置"
+                role="button"
+                aria-label="Swap panel positions"
+              />
+            </div>
+          </>
+        )}
+      </div>
       <ConfirmDialog
         open={confirmDialog.open}
         title={
@@ -1406,11 +1551,6 @@ export default function App() {
         variant="danger"
         onConfirm={handleConfirmDelete}
         onCancel={() => setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [], cellsToClear: [] })}
-      />
-      <ChatSidebar
-        open={chatAgentOpen}
-        documentId={DOCUMENT_ID}
-        onClose={() => setChatAgentOpen(false)}
       />
     </div>
   );

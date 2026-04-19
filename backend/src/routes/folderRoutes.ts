@@ -12,6 +12,28 @@ function getClientId(req: Request): string {
   return (req.headers["x-client-id"] as string) || "unknown";
 }
 
+/**
+ * Ensure folder name is unique within the document. Mirrors the table naming
+ * behaviour in `dbStore.generateTableName`: if `baseName` already exists,
+ * append " 1", " 2", … until free. Optional `excludeId` lets rename-flows
+ * skip over the folder's own current name.
+ */
+async function generateUniqueFolderName(
+  documentId: string,
+  baseName: string,
+  excludeId?: string,
+): Promise<string> {
+  const existing = await prisma.folder.findMany({
+    where: { documentId, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
+    select: { name: true },
+  });
+  const names = new Set(existing.map(f => f.name));
+  if (!names.has(baseName)) return baseName;
+  let i = 1;
+  while (names.has(`${baseName} ${i}`)) i++;
+  return `${baseName} ${i}`;
+}
+
 const router = Router();
 
 // POST /api/folders — create folder
@@ -23,15 +45,25 @@ router.post("/", async (req: Request, res: Response) => {
   }
   const docId = documentId || "doc_default";
 
-  // Compute next order within the same parent
-  const siblings = await prisma.folder.findMany({
-    where: { documentId: docId, parentId: parentId || null },
-  });
-  const maxOrder = siblings.reduce((max, f) => Math.max(max, f.order), -1);
+  // New folder should appear at the bottom of the sidebar at its level, so
+  // compute the max order across all sibling items (folders + tables +
+  // designs) rather than only folder siblings. This matches user expectation
+  // that "new folder appears at the bottom just like new tables/designs".
+  const parentFilter = { documentId: docId, parentId: parentId || null };
+  const [folderSibs, tableSibs, designSibs] = await Promise.all([
+    prisma.folder.findMany({ where: parentFilter, select: { order: true } }),
+    prisma.table.findMany({ where: parentFilter, select: { order: true } }),
+    prisma.design.findMany({ where: parentFilter, select: { order: true } }),
+  ]);
+  const maxOrder = [...folderSibs, ...tableSibs, ...designSibs]
+    .reduce((max, x) => Math.max(max, x.order), -1);
+
+  const trimmed = name.trim().slice(0, 100);
+  const uniqueName = await generateUniqueFolderName(docId, trimmed);
 
   const folder = await prisma.folder.create({
     data: {
-      name: name.trim().slice(0, 100),
+      name: uniqueName,
       documentId: docId,
       parentId: parentId || null,
       order: maxOrder + 1,
@@ -108,6 +140,29 @@ router.put("/move", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// PUT /api/folders/reorder — batch reorder folders (must be before /:folderId)
+router.put("/reorder", async (req: Request, res: Response) => {
+  const { updates, documentId } = req.body;
+  if (!Array.isArray(updates)) {
+    res.status(400).json({ error: "updates must be an array" });
+    return;
+  }
+  const docId = documentId || "doc_default";
+  await Promise.all(
+    updates.map((u: { id: string; order: number }) =>
+      prisma.folder.update({ where: { id: u.id }, data: { order: u.order } })
+    )
+  );
+  eventBus.emitDocumentChange({
+    type: "folder:reorder",
+    documentId: docId,
+    clientId: getClientId(req),
+    timestamp: Date.now(),
+    payload: { updates },
+  });
+  res.json({ ok: true });
+});
+
 // PUT /api/folders/:folderId — rename folder
 router.put("/:folderId", async (req: Request, res: Response) => {
   const { name } = req.body;
@@ -116,9 +171,16 @@ router.put("/:folderId", async (req: Request, res: Response) => {
     return;
   }
   try {
+    const existing = await prisma.folder.findUnique({
+      where: { id: req.params.folderId },
+      select: { documentId: true },
+    });
+    if (!existing) throw new Error("not found");
+    const trimmed = name.trim().slice(0, 100);
+    const uniqueName = await generateUniqueFolderName(existing.documentId, trimmed, req.params.folderId);
     const folder = await prisma.folder.update({
       where: { id: req.params.folderId },
-      data: { name: name.trim().slice(0, 100) },
+      data: { name: uniqueName },
     });
     eventBus.emitDocumentChange({
       type: "folder:rename",

@@ -2,10 +2,12 @@
  * Layout mirrors the original .sidebar-item exactly:
  *   gap 8px, padding 0 8px, height 32px, margin-bottom 4px */
 
+/* The sidebar .sidebar-search-trigger already supplies 4px bottom margin
+ * so the tree view starts flush — no extra top padding needed. */
 .tree-view {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: 0;
 }
 
 .tree-item {

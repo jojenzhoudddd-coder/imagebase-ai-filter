@@ -17,7 +17,10 @@ interface Props {
   onSelect: (key: string) => void;
   anchorEl: HTMLElement;
   onClose: () => void;
-  position?: "below" | "above";
+  /** "auto" (default) chooses below if space allows, else above. "right"
+   * docks the menu to the right of anchorEl, vertically top-aligned —
+   * used for cascading sub-menus. */
+  position?: "below" | "above" | "auto" | "right";
   width?: number;
   /** Key of item that currently has a sub-menu open — prevents click-outside close */
   activeSubMenuKey?: string | null;
@@ -31,24 +34,47 @@ interface Props {
   className?: string;
 }
 
-export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "below", width, activeSubMenuKey, onMenuRef, onItemRef, extraContainers, className }: Props) {
+export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "auto", width, activeSubMenuKey, onMenuRef, onItemRef, extraContainers, className }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: -9999, left: -9999 });
 
   useLayoutEffect(() => {
     const rect = anchorEl.getBoundingClientRect();
-    if (position === "above") {
-      if (menuRef.current) {
-        const menuRect = menuRef.current.getBoundingClientRect();
-        setPos({ top: rect.top - menuRect.height - 4, left: rect.left });
-      } else {
-        // Fallback: estimate
-        setPos({ top: rect.top - 300, left: rect.left });
-      }
-    } else {
-      setPos({ top: rect.bottom + 4, left: rect.left });
+    const menuRect = menuRef.current?.getBoundingClientRect();
+    const menuH = menuRect?.height ?? 300;
+    const menuW = menuRect?.width ?? (width ?? 220);
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    if (position === "right") {
+      // Sub-menu: dock to the right of anchor (the parent menu item), top-
+      // aligned with it. Flip to left of anchor if not enough horizontal
+      // space. Clamp top so it stays within the viewport.
+      let left = rect.right + 4;
+      if (left + menuW > vw - 8) left = rect.left - menuW - 4;
+      const top = Math.max(8, Math.min(rect.top, vh - menuH - 8));
+      setPos({ top, left });
+      return;
     }
-  }, [anchorEl, position]);
+
+    if (position === "above") {
+      setPos({ top: rect.top - menuH - 4, left: rect.left });
+      return;
+    }
+    if (position === "below") {
+      setPos({ top: rect.bottom + 4, left: rect.left });
+      return;
+    }
+    // auto: prefer below; flip to above if not enough room below (and there IS
+    // room above).
+    const spaceBelow = vh - rect.bottom;
+    const spaceAbove = rect.top;
+    if (spaceBelow >= menuH + 8 || spaceBelow >= spaceAbove) {
+      setPos({ top: rect.bottom + 4, left: rect.left });
+    } else {
+      setPos({ top: Math.max(8, rect.top - menuH - 4), left: rect.left });
+    }
+  }, [anchorEl, position, width]);
 
   // Expose menu ref on mount only
   useEffect(() => {

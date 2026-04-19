@@ -12,6 +12,27 @@ function getClientId(req: Request): string {
   return (req.headers["x-client-id"] as string) || "unknown";
 }
 
+/**
+ * Ensure design name is unique within the document. Mirrors the folder/table
+ * dedup rule: append " 1", " 2", … until free. `excludeId` lets renames
+ * ignore the design's own current name.
+ */
+async function generateUniqueDesignName(
+  documentId: string,
+  baseName: string,
+  excludeId?: string,
+): Promise<string> {
+  const existing = await prisma.design.findMany({
+    where: { documentId, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
+    select: { name: true },
+  });
+  const names = new Set(existing.map(d => d.name));
+  if (!names.has(baseName)) return baseName;
+  let i = 1;
+  while (names.has(`${baseName} ${i}`)) i++;
+  return `${baseName} ${i}`;
+}
+
 // ─── Figma URL parser ───
 
 interface FigmaParsed {
@@ -77,9 +98,11 @@ router.post("/", async (req: Request, res: Response) => {
   });
   const maxOrder = siblings.reduce((max, d) => Math.max(max, d.order), -1);
 
+  const uniqueName = await generateUniqueDesignName(docId, finalName);
+
   const design = await prisma.design.create({
     data: {
-      name: finalName,
+      name: uniqueName,
       documentId: docId,
       parentId: parentId || null,
       order: maxOrder + 1,
@@ -108,6 +131,29 @@ router.post("/", async (req: Request, res: Response) => {
   });
 });
 
+// PUT /api/designs/reorder — batch reorder designs (must be before /:designId)
+router.put("/reorder", async (req: Request, res: Response) => {
+  const { updates, documentId } = req.body;
+  if (!Array.isArray(updates)) {
+    res.status(400).json({ error: "updates must be an array" });
+    return;
+  }
+  const docId = documentId || "doc_default";
+  await Promise.all(
+    updates.map((u: { id: string; order: number }) =>
+      prisma.design.update({ where: { id: u.id }, data: { order: u.order } })
+    )
+  );
+  eventBus.emitDocumentChange({
+    type: "design:reorder",
+    documentId: docId,
+    clientId: getClientId(req),
+    timestamp: Date.now(),
+    payload: { updates },
+  });
+  res.json({ ok: true });
+});
+
 // GET /api/designs/:designId — get design details
 router.get("/:designId", async (req: Request, res: Response) => {
   const design = await prisma.design.findUnique({ where: { id: req.params.designId } });
@@ -134,9 +180,16 @@ router.put("/:designId", async (req: Request, res: Response) => {
     return;
   }
   try {
+    const existing = await prisma.design.findUnique({
+      where: { id: req.params.designId },
+      select: { documentId: true },
+    });
+    if (!existing) throw new Error("not found");
+    const trimmed = name.trim().slice(0, 100);
+    const uniqueName = await generateUniqueDesignName(existing.documentId, trimmed, req.params.designId);
     const design = await prisma.design.update({
       where: { id: req.params.designId },
-      data: { name: name.trim().slice(0, 100) },
+      data: { name: uniqueName },
     });
     eventBus.emitDocumentChange({
       type: "design:rename",

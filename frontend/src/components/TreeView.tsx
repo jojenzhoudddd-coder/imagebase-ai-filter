@@ -65,6 +65,15 @@ function MoveIcon() {
   );
 }
 
+/* Right-pointing chevron 12×12 used as the submenu indicator on the
+ * "Move to" item (▶). Kept distinct from the 16×16 CHEVRON_RIGHT_16 so its
+ * visual weight matches the small dropdown suffix slot. */
+const SUBMENU_ARROW_12 = (
+  <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+    <path d="M6.195 3.528a.667.667 0 01.943 0l4 4a.667.667 0 010 .944l-4 4a.667.667 0 11-.943-.944L9.724 8 6.195 4.472a.667.667 0 010-.944z" fill="currentColor"/>
+  </svg>
+);
+
 // ─── Types ───
 
 export interface TreeNodeData {
@@ -85,12 +94,16 @@ interface TreeViewProps {
   onMoveItem: (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => void;
   onReorderItems: (updates: Array<{ id: string; type: TreeItemType; order: number }>) => void;
   folders: Array<{ id: string; name: string }>;
+  /** Scroll the node with this id into view whenever the id changes. Used for
+   * newly-created folders (folders can't become active, so the normal
+   * activeItemId-based auto-scroll doesn't apply). */
+  scrollToItemId?: string | null;
 }
 
 const INDENT_PX = 20;
 const DRAG_THRESHOLD = 4;
 
-export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameItem, onDeleteItem, onMoveItem, onReorderItems, folders }: TreeViewProps) {
+export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameItem, onDeleteItem, onMoveItem, onReorderItems, folders, scrollToItemId }: TreeViewProps) {
   const { t } = useTranslation();
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
     try {
@@ -103,6 +116,12 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
   const [moveMenuId, setMoveMenuId] = useState<string | null>(null);
   const moreRefs = useRef<Map<string, HTMLSpanElement>>(new Map());
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  /* Ref to the DOM node of the "moveTo" menu item inside the currently open
+   * main dropdown. The cascading sub-menu uses this as its anchor so it
+   * docks to the right of that specific row rather than overlapping the
+   * whole main menu. Cleared on every main-menu close. */
+  const moveToItemRef = useRef<HTMLButtonElement | null>(null);
+  const subMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Drag state — supports reorder (above/below) AND move-to-folder
   const [dragId, setDragId] = useState<string | null>(null);
@@ -129,11 +148,37 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
     });
   }, []);
 
+  /* Flatten the (already-hierarchical) `nodes` prop into a lookup of every
+   * node in the tree. Used by the drag-drop logic to find a drop target's
+   * parentId so we can reparent + reorder a dragged node when the user drops
+   * it above/below a child of an expanded folder. */
+  const nodeById = useMemo(() => {
+    const map = new Map<string, TreeNodeData>();
+    const walk = (ns: TreeNodeData[]) => {
+      for (const n of ns) {
+        map.set(n.id, n);
+        if (n.children?.length) walk(n.children);
+      }
+    };
+    walk(nodes);
+    return map;
+  }, [nodes]);
+
   // Auto-scroll to active
   useEffect(() => {
     const el = itemRefs.current.get(activeItemId);
     if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [activeItemId]);
+
+  /* Auto-scroll to an arbitrary node (e.g. newly-created folder). Depends on
+   * `nodes` so the scroll fires AFTER the new node's DOM ref is registered.
+   * Safe to run multiple times — scrolling is idempotent when the element is
+   * already in view. */
+  useEffect(() => {
+    if (!scrollToItemId) return;
+    const el = itemRefs.current.get(scrollToItemId);
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [scrollToItemId, nodes]);
 
   const getIcon = (type: TreeItemType, id: string): ReactNode => {
     if (type === "folder") return expandedIds.has(id) ? CHEVRON_DOWN_16 : CHEVRON_RIGHT_16;
@@ -147,11 +192,14 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
       { key: "rename", label: t("contextMenu.rename"), icon: <RenameIcon /> },
     ];
 
-    // Move to folder submenu (only for non-folder items or for folder items)
+    // Move to folder submenu (only for non-folder items or for folder items).
+    // `suffix` renders the ▶ arrow in the item's right-aligned slot so the
+    // user knows a sub-menu will open on click.
     if (folders.length > 0) {
-      items.push({ key: "moveTo", label: t("contextMenu.moveTo"), icon: <MoveIcon /> });
+      items.push({ key: "moveTo", label: t("contextMenu.moveTo"), icon: <MoveIcon />, suffix: SUBMENU_ARROW_12 });
     }
-    if (node.parentId) {
+    // "Move to root" only for folders — tables/designs hide this option per product spec
+    if (node.parentId && node.type === "folder") {
       items.push({ key: "moveToRoot", label: t("contextMenu.moveToRoot"), icon: <MoveIcon /> });
     }
 
@@ -186,8 +234,13 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
         const rect = el.getBoundingClientRect();
         if (ev.clientY >= rect.top && ev.clientY <= rect.bottom) {
           const isFolder = el.getAttribute("data-type") === "folder";
-          if (isFolder) {
-            // Middle third = move into folder; top/bottom thirds = reorder
+          // When a folder is expanded, skip the "drop into folder" middle-
+          // third target so the user can drop precisely among its visible
+          // children instead. For collapsed folders, keep the middle-third
+          // shortcut that moves the dragged item into the folder (placed at
+          // the end of its children).
+          const isExpandedFolder = isFolder && expandedIds.has(id);
+          if (isFolder && !isExpandedFolder) {
             const third = rect.height / 3;
             if (ev.clientY > rect.top + third && ev.clientY < rect.bottom - third) {
               overFolder = id;
@@ -213,23 +266,39 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
     const onMouseUp = () => {
       if (dragRef.current?.isDragging) {
         const dragType = dragRef.current.type as "table" | "folder" | "design";
+        const draggedNode = nodeById.get(node.id);
+
         if (dragOverFolderRef.current) {
-          // Move into folder
+          // Collapsed-folder middle-third target — drop into the folder.
           onMoveItem(node.id, dragType, dragOverFolderRef.current);
-        } else if (dragOverIdRef.current && dragOverPosRef.current) {
-          // Reorder all root-level nodes regardless of type
-          const allIds = nodes.map(n => n.id);
-          const arr = [...allIds];
-          const fromIdx = arr.indexOf(node.id);
-          if (fromIdx !== -1) {
-            arr.splice(fromIdx, 1);
-            let toIdx = arr.indexOf(dragOverIdRef.current);
-            if (toIdx !== -1) {
-              if (dragOverPosRef.current === "below") toIdx += 1;
-              arr.splice(toIdx, 0, node.id);
-              // Build updates with type info so App can dispatch per-type
-              const nodeMap = new Map(nodes.map(n => [n.id, n.type]));
-              const updates = arr.map((id, i) => ({ id, type: nodeMap.get(id)!, order: i }));
+        } else if (dragOverIdRef.current && dragOverPosRef.current && draggedNode) {
+          /* Drop above/below a specific node. The target's parent becomes
+           * the dragged node's new parent (so dropping onto a child of an
+           * expanded folder reparents into that folder). Then we renumber
+           * the siblings at that parent level — including any type — so
+           * the combined sort in Sidebar preserves the new position
+           * regardless of whether neighbours are tables, folders, or
+           * designs. */
+          const target = nodeById.get(dragOverIdRef.current);
+          if (target && target.id !== node.id) {
+            const newParentId = target.parentId;
+            const siblings = Array.from(nodeById.values())
+              .filter(n => n.parentId === newParentId && n.id !== node.id)
+              .sort((a, b) => a.order - b.order);
+
+            const targetIdx = siblings.findIndex(s => s.id === target.id);
+            if (targetIdx !== -1) {
+              const insertAt = dragOverPosRef.current === "below" ? targetIdx + 1 : targetIdx;
+              siblings.splice(insertAt, 0, draggedNode);
+
+              if (draggedNode.parentId !== newParentId) {
+                // Reparent first so subsequent reorder writes land on the
+                // right rows. Fire-and-forget: both optimistic updates live
+                // in App state and the server calls reconcile on error.
+                onMoveItem(node.id, dragType, newParentId);
+              }
+
+              const updates = siblings.map((s, i) => ({ id: s.id, type: s.type, order: i }));
               onReorderItems(updates);
             }
           }
@@ -255,7 +324,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [onMoveItem, onReorderItems, nodes]);
+  }, [onMoveItem, onReorderItems, nodes, nodeById, expandedIds]);
 
   const renderNode = (node: TreeNodeData, depth: number): ReactNode => {
     const isFolder = node.type === "folder";
@@ -335,26 +404,39 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
             <DropdownMenu
               items={getContextMenuItems(node)}
               anchorEl={moreRefs.current.get(node.id)!}
-              onSelect={(key) => {
-                setMenuId(null);
-                if (key === "rename") setEditingId(node.id);
-                else if (key === "delete") onDeleteItem(node.id, node.type);
-                else if (key === "moveToRoot") onMoveItem(node.id, node.type as "table" | "folder" | "design", null);
-                else if (key === "moveTo") setMoveMenuId(node.id);
+              position="auto"
+              activeSubMenuKey={moveMenuId === node.id ? "moveTo" : null}
+              extraContainers={[subMenuRef]}
+              onItemRef={(key, el) => {
+                if (key === "moveTo") moveToItemRef.current = el;
               }}
-              onClose={() => setMenuId(null)}
+              onSelect={(key) => {
+                if (key === "rename") { setMenuId(null); setEditingId(node.id); }
+                else if (key === "delete") { setMenuId(null); onDeleteItem(node.id, node.type); }
+                else if (key === "moveToRoot") { setMenuId(null); onMoveItem(node.id, node.type as "table" | "folder" | "design", null); }
+                else if (key === "moveTo") {
+                  /* Keep main menu open; open the cascading sub-menu. The
+                   * sub-menu will use moveToItemRef.current as its anchor
+                   * so it docks to the right of this row. */
+                  setMoveMenuId(node.id);
+                }
+              }}
+              onClose={() => { setMenuId(null); setMoveMenuId(null); moveToItemRef.current = null; }}
               width={180}
             />
           )}
 
-          {moveMenuId === node.id && moreRefs.current.get(node.id) && (
+          {menuId === node.id && moveMenuId === node.id && moveToItemRef.current && (
             <DropdownMenu
               items={folders
                 .filter(f => f.id !== node.id && f.id !== node.parentId)
-                .map(f => ({ key: f.id, label: f.name, icon: CHEVRON_RIGHT_16 }))}
-              anchorEl={moreRefs.current.get(node.id)!}
+                .map(f => ({ key: f.id, label: f.name }))}
+              anchorEl={moveToItemRef.current}
+              position="right"
+              onMenuRef={(el) => { subMenuRef.current = el; }}
               onSelect={(folderId) => {
                 setMoveMenuId(null);
+                setMenuId(null);
                 onMoveItem(node.id, node.type as "table" | "folder" | "design", folderId);
               }}
               onClose={() => setMoveMenuId(null)}
