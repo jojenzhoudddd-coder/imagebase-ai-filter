@@ -71,10 +71,35 @@ export default function App() {
   const [savedFilter, setSavedFilter] = useState<ViewFilter>({ logic: "and", conditions: [] });
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [fieldConfigOpen, setFieldConfigOpen] = useState(false);
-  const [chatAgentOpen, setChatAgentOpen] = useState(false);
+  // Chat agent defaults to OPEN on first mount so the welcome page is the
+  // entry experience. Persist the user's open/close preference so their
+  // choice sticks across reloads.
+  const [chatAgentOpen, setChatAgentOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem("chat_agent_open_v1");
+      return v === null ? true : v === "true";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("chat_agent_open_v1", String(chatAgentOpen)); } catch { /* ignore */ }
+  }, [chatAgentOpen]);
+
+  // Which side the chat panel is on. Persisted in localStorage so swap sticks.
+  const [chatSide, setChatSide] = useState<"left" | "right">(() => {
+    try {
+      const v = localStorage.getItem("chat_panel_side_v1");
+      return v === "left" ? "left" : "right";
+    } catch {
+      return "right";
+    }
+  });
 
   // Horizontal split between the artifact (table view) and chat panels.
   // Only active while chatAgentOpen; the ratio persists across sessions.
+  // `anchorSide` mirrors chatSide so drag direction always tracks the chat
+  // panel regardless of which side it lives on.
   const {
     ratio: chatRatio,
     containerRef: workspaceRef,
@@ -86,16 +111,7 @@ export default function App() {
     minLeftPx: 480,
     minRightPx: 320,
     maxRatio: 0.6,
-  });
-
-  // Which side the chat panel is on. Persisted in localStorage so swap sticks.
-  const [chatSide, setChatSide] = useState<"left" | "right">(() => {
-    try {
-      const v = localStorage.getItem("chat_panel_side_v1");
-      return v === "left" ? "left" : "right";
-    } catch {
-      return "right";
-    }
+    anchorSide: chatSide,
   });
   const setChatSidePersisted = useCallback((side: "left" | "right") => {
     setChatSide(side);

@@ -16,6 +16,7 @@
 import express, { type Request, type Response } from "express";
 import * as convStore from "../services/conversationStore.js";
 import { runAgent, resumeAfterConfirm, type AgentContext, type SseEvent } from "../services/chatAgentService.js";
+import * as store from "../services/dbStore.js";
 
 const router = express.Router();
 
@@ -63,6 +64,38 @@ function writeEvent(res: Response, e: SseEvent) {
 }
 
 // ─── REST endpoints ──────────────────────────────────────────────────────
+
+// GET /api/chat/context-snapshot?documentId=xxx
+// Thin summary of the current document — used by the chat sidebar's
+// "refresh / new conversation" flow to render a "已加载 N 张表、M 个字段"
+// hint so the user knows what the Agent will see before their first prompt.
+// The full context (Document Snapshot) is still built inside chatAgentService
+// on each message; this endpoint is purely a UX warm-up.
+router.get("/context-snapshot", async (req: Request, res: Response) => {
+  const documentId = (req.query.documentId as string) || "doc_default";
+  try {
+    const tables = await store.listTablesForDocument(documentId);
+    let fieldCount = 0;
+    let recordCount = 0;
+    for (const t of tables) {
+      const detail = await store.getTable(t.id);
+      if (!detail) continue;
+      fieldCount += detail.fields.length;
+      recordCount += detail.records.length;
+    }
+    res.json({
+      documentId,
+      tableCount: tables.length,
+      fieldCount,
+      recordCount,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: "Failed to build context snapshot",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
 
 // GET /api/chat/conversations?documentId=xxx
 router.get("/conversations", (req: Request, res: Response) => {

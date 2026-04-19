@@ -1,8 +1,10 @@
-/* CreateDesignPopover — reuses CreateTablePopover styling patterns */
+/* CreateDesignPopover — reuses CreateTablePopover styling patterns.
+ * Width kept in lock-step with .create-table-popover (320px) so both
+ * "新建" sub-popovers have identical footprints. */
 .create-design-popover {
   position: fixed;
   z-index: 1001;
-  width: 360px;
+  width: 320px;
   background: #FFFFFF;
   border: 1px solid #DEE0E3;
   border-radius: 8px;

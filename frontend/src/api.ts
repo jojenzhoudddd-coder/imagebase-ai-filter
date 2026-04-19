@@ -663,6 +663,23 @@ export async function listConversations(documentId: string): Promise<ChatConvers
   return res.json();
 }
 
+export interface ChatContextSnapshot {
+  documentId: string;
+  tableCount: number;
+  fieldCount: number;
+  recordCount: number;
+}
+
+/** Warm-up endpoint used by the chat sidebar's refresh / new-conversation
+ * flow to show "已加载 N 张表、M 个字段" as an affordance before the user's
+ * first prompt. The Agent still rebuilds its own Document Snapshot on each
+ * request — this is purely a UX hint. */
+export async function fetchChatContextSnapshot(documentId: string): Promise<ChatContextSnapshot> {
+  const res = await fetch(`${BASE}/chat/context-snapshot?documentId=${encodeURIComponent(documentId)}`);
+  if (!res.ok) throw new Error("Failed to fetch context snapshot");
+  return res.json();
+}
+
 export async function createConversation(documentId: string): Promise<ChatConversation> {
   const res = await mutationFetch(`${BASE}/chat/conversations`, {
     method: "POST",

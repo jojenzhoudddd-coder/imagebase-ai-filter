@@ -3,70 +3,87 @@
    Design tokens from docs/chat-sidebar-plan.md Phase 5.2
 ============================================================ */
 
+/* Fills its parent (.chat-part) — no longer a fixed overlay. The .chat-part
+ * container in App.tsx handles width (flex), rounded corners, 6px gap, move-bar
+ * and split-divider resize. This element just paints the chat UI inside. */
 .chat-sidebar {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 350px;
+  position: relative;
+  width: 100%;
+  height: 100%;
   background: #FFFFFF;
-  border-left: 1px solid #DEE0E3;
   display: flex;
   flex-direction: column;
-  z-index: 900;
-  box-shadow: -12px 0 20px rgba(31, 35, 41, 0.04), -8px 0 14px rgba(31, 35, 41, 0.02);
-  transform: translateX(100%);
-  transition: transform 240ms ease-out;
-}
-.chat-sidebar.open {
-  transform: translateX(0);
+  overflow: hidden;
 }
 
-/* Header */
+/* ─── Header ────────────────────────────────────────────────────────
+ * Pixel-aligned to Figma node 6:5309 "AI header".
+ * Height 60px (py-18 + 24 icon row), bg #FFFFFF, no title — just a
+ * right-aligned cluster of icon buttons (History + More). The sidebar
+ * is inside a bordered/ rounded .chat-part container already, so we
+ * don't repeat the bottom border here.
+ */
 .chat-header {
-  height: 48px;
-  flex: 0 0 48px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  border-bottom: 1px solid #EEF0F2;
-}
-.chat-header-title {
-  flex: 1;
-  font-size: 14px;
-  font-weight: 500;
-  color: #1F2329;
+  justify-content: flex-end;
+  /* Horizontal padding is supplied by .chat-part (20px). Keep vertical
+   * rhythm so the 60px AI header height is preserved. */
+  padding: 18px 0;
+  background: #FFFFFF;
+  gap: 16px;
 }
 .chat-header-actions {
-  display: flex;
-  gap: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .chat-header-btn {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
   border: none;
   background: transparent;
+  color: #646A73;             /* token/icon/n2 */
   border-radius: 6px;
-  color: #646A73;
   cursor: pointer;
-  transition: background 100ms;
+  transition: background 100ms ease, color 100ms ease;
 }
 .chat-header-btn:hover {
   background: #F5F6F7;
   color: #2B2F36;
 }
+.chat-header-btn:disabled {
+  /* Grey-out state — used on the welcome page to signal "nothing to reset" */
+  color: #C0C5CC;
+  cursor: default;
+  background: transparent;
+}
+.chat-header-btn:disabled:hover {
+  background: transparent;
+  color: #C0C5CC;
+}
 
-/* Message list */
+/* ─── Message list ──────────────────────────────────────────────────
+ * Pixel-aligned to Figma node 6:2985 / 6:5296 "内容".
+ * Inner content frame is 310w × (full height) with 20px horizontal padding
+ * and 16px vertical padding; conversation rows are stacked with a 28px gap.
+ * items-stretch so user-row and assistant-block can self-justify their own
+ * alignment (user row = right-aligned; assistant block = left-stretched).
+ */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  /* Horizontal padding supplied by .chat-part (20px). */
+  padding: 16px 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  align-items: stretch;
+  gap: 28px;
 }
 .chat-messages::-webkit-scrollbar {
   width: 6px;
@@ -77,16 +94,30 @@
 }
 
 /* ─── Empty-state welcome page ─────────────────────────────────────────
- * Pixel-aligned to Figma export (/Users/bytedance/Desktop/用户发送 prompt.svg).
- * Sections: hero (avatar + greeting) → "Start by telling me what you need"
- * → 3 preset chips → "Or use a template" → 2-col template cards. */
+ * Layout: hero (mascot IP + title) → context-hint pill → preset chips.
+ *
+ * Horizontal gutter spec: content sits ≥40px from the .chat-part outer edge.
+ * Since .chat-part supplies 20px side padding, .chat-empty adds 20px more
+ * (20 + 20 = 40). Centering happens via flex `align-items: center` plus
+ * `max-width: 444px` on inner blocks — when the panel is wider than
+ * 444 + 80 = 524px the content centers, otherwise it fills.
+ *
+ * Vertical: content is pinned ~60px from the top of .chat-part (see
+ * padding-top below). We drop `justify-content: center` so the welcome
+ * block sits near the top rather than vertically centered.
+ */
 .chat-empty {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  padding: 40px 8px 16px 8px;
+  align-items: center;
+  gap: 40px;
+  /* Hero must sit 80px from the top of .chat-part (which contains the 60px
+   * header + the .chat-messages area). .chat-messages already adds 16px of
+   * padding-top, so chat-empty adds 4px margin-top to land at exactly
+   * 60 + 16 + 4 = 80px from the chat-part outer edge. */
+  padding: 0 20px;
+  margin-top: 4px;
   color: #1F2329;
   text-align: left;
 }
@@ -94,59 +125,87 @@
 .chat-empty-hero {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 32px;
+  gap: 20px;
+  width: 100%;
+  max-width: 444px;
+}
+/* Hero mascot IP — 80×80 rasterized art, rounded to match the prior SVG avatar's
+ * softened square silhouette. Keep intrinsic aspect-ratio and block rendering so
+ * the flex row aligns the title correctly. */
+.chat-empty-mascot {
+  flex: 0 0 80px;
+  width: 80px;
+  height: 80px;
+  display: block;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
 }
 .chat-empty-title {
-  font-size: 22px;
+  flex: 1;
+  min-width: 0;
+  font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  font-size: 24px;
   font-weight: 600;
-  line-height: 30px;
+  line-height: 36px;
   color: #1F2329;
-  letter-spacing: -0.2px;
+  letter-spacing: 0;
   margin: 0;
 }
 
-.chat-empty-section-label {
-  font-size: 13px;
-  line-height: 20px;
-  color: #8F959E;
-  margin: 0 0 10px 0;
+.chat-empty-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+  max-width: 444px;
 }
-.chat-empty-section-label + .chat-empty-presets,
-.chat-empty-section-label + .chat-empty-templates {
-  margin-bottom: 28px;
+.chat-empty-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+.chat-empty-section-label {
+  font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: #8F959E;
+  margin: 0;
 }
 
+/* ─── Preset chips ───────────────────────────────────────────────── */
 .chat-empty-presets {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 10px;
   width: 100%;
-  align-items: stretch;
 }
 .chat-preset-chip {
-  display: flex;
+  display: inline-flex;        /* auto-width to content — matches Figma shrink-0 */
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  background: #FFFFFF;
-  border: 1px solid #E5E6E8;
-  border-radius: 10px;
+  gap: 10px;
+  padding: 8px 14px;
+  background: #F8F9FA;
+  border: none;
+  border-radius: 8px;
   color: #1F2329;
-  font-size: 13px;
-  line-height: 20px;
+  font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
   text-align: left;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  overflow: hidden;
+  max-width: 100%;
+  transition: background 120ms ease;
 }
 .chat-preset-chip:hover {
-  background: #F7F8FA;
-  border-color: #D0D3D6;
-  box-shadow: 0 1px 2px rgba(31,35,41,0.04);
+  background: #EEF0F2;
 }
 .chat-preset-chip-label {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -157,102 +216,183 @@
   color: #8F959E;
 }
 
-.chat-empty-templates {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+/* ─── User message ──────────────────────────────────────────────────
+ * Figma node 6:2986 "用户" + 6:2987 "Desktop / Chat cell".
+ * Row container aligns bubble to the right with a 40px left gutter so even
+ * short messages sit at the right edge (matches Figma pl-40). The bubble
+ * itself is flex-1 within that row so long messages wrap within the cell.
+ */
+.chat-msg-user-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding-left: 40px;
   width: 100%;
 }
-.chat-template-card {
+.chat-msg-user {
+  flex: 1 0 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  min-height: 92px;
-  padding: 12px 14px;
-  background: #FFFFFF;
-  border: 1px solid #E5E6E8;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
-  text-align: left;
-}
-.chat-template-card:hover {
-  background: #F7F8FA;
-  border-color: #D0D3D6;
-  box-shadow: 0 1px 2px rgba(31,35,41,0.04);
-}
-.chat-template-title {
-  font-size: 13px;
-  line-height: 18px;
-  color: #1F2329;
-  font-weight: 500;
-}
-.chat-bot-avatar {
-  flex: 0 0 auto;
-  display: block;
-}
-
-/* User bubble (right aligned blue) */
-.chat-msg-user {
-  align-self: flex-end;
-  max-width: 80%;
-  padding: 8px 12px;
-  background: #D1E3FF;
-  color: #1F2329;
-  border-radius: 10px 10px 2px 10px;
+  align-items: flex-end;
+  padding: 9px 12px;
+  background: #F0F4FF;         /* token/primary/fill-solid/01 */
+  color: #1F2329;              /* token/text/title */
+  border-radius: 8px;          /* radius/l */
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   font-size: 14px;
+  font-weight: 400;
   line-height: 22px;
   word-break: break-word;
   white-space: pre-wrap;
+  text-align: left;
+}
+.chat-msg-user-text {
+  width: 100%;
+  text-align: left;
 }
 
-/* Assistant text (no bubble, plain) */
+/* ─── Assistant text ───────────────────────────────────────────────
+ * Figma node 6:5307. Plain 14/22 PingFang SC body — no bubble, no bg.
+ * Sits flush against the 20px page gutter; conversation rhythm handled
+ * by .chat-messages' gap-28.
+ */
 .chat-msg-assistant {
   align-self: stretch;
-  color: #1F2329;
+  color: #1F2329;              /* token/text/title */
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   font-size: 14px;
+  font-weight: 400;
   line-height: 22px;
   white-space: pre-wrap;
   word-break: break-word;
 }
 .chat-msg-assistant.streaming::after {
-  content: "▋";
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 14px;
   margin-left: 2px;
-  color: #1456F0;
+  vertical-align: text-bottom;
+  background: #1F2329;
+  opacity: 0.6;
   animation: chat-cursor-blink 1s steps(2, start) infinite;
 }
 @keyframes chat-cursor-blink {
-  to { visibility: hidden; }
+  to { opacity: 0; }
 }
 
-/* Thinking indicator */
+/* ─── Thinking indicator ───────────────────────────────────────────
+ * Two visual states driven by Figma:
+ *
+ *   1. Active (node 6:2990 — while model is thinking):
+ *      single caption line "正在分析需求..." — 14/22 #646A73, no icon,
+ *      placed flush-left, followed by an optional skeleton block below.
+ *
+ *   2. Collapsed (node 6:5302 — after thinking completes):
+ *      pill with a 28×28 white tool card (0.5px #DEE0E3, radius 8,
+ *      14×14 deepthink icon centred) + "深度思考" label 12/20 #646A73.
+ *      The tool card + label are separated by an 8px gap.
+ */
 .chat-thinking {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 0;
-  color: #8F959E;
-  font-size: 12px;
-  line-height: 20px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
 }
-.chat-thinking-dots {
+
+/* Active mode: thin caption line, animated ellipsis */
+.chat-thinking.active .chat-thinking-caption {
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: #646A73;              /* token/text/caption */
   display: inline-flex;
+  align-items: center;
   gap: 2px;
 }
-.chat-thinking-dots span {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #8F959E;
-  animation: chat-thinking-pulse 1.2s infinite ease-in-out;
+.chat-thinking.active .chat-thinking-caption::after {
+  content: "...";
+  display: inline-block;
+  width: 14px;
+  overflow: hidden;
+  animation: chat-thinking-ellipsis 1.2s steps(4, end) infinite;
 }
-.chat-thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
-.chat-thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
-@keyframes chat-thinking-pulse {
-  0%, 100% { opacity: 0.3; transform: scale(0.8); }
-  50% { opacity: 1; transform: scale(1.2); }
+@keyframes chat-thinking-ellipsis {
+  0%   { width: 0; }
+  100% { width: 14px; }
+}
+
+/* Active mode — skeleton preview under the caption.
+ * Figma 骨架 (node I6:2993;1688:46937) stacks rows of icon + text
+ * placeholders mimicking a future field/record list. We render a lighter
+ * approximation: five rows, each an icon square + variable-width bar,
+ * all using palette/neutral/50 #F5F6F7. Gentle opacity pulse to hint
+ * activity. */
+.chat-thinking-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  padding-top: 6px;
+  animation: chat-skeleton-pulse 1.6s ease-in-out infinite;
+}
+.chat-thinking-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+.chat-thinking-skeleton-icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: #F5F6F7;         /* palette/neutral/50 */
+}
+.chat-thinking-skeleton-bar {
+  flex: 1;
+  height: 16px;
+  border-radius: 100px;
+  background: #F5F6F7;
+}
+.chat-thinking-skeleton-row.w-80 .chat-thinking-skeleton-bar { max-width: 80%; }
+.chat-thinking-skeleton-row.w-65 .chat-thinking-skeleton-bar { max-width: 65%; }
+.chat-thinking-skeleton-row.w-90 .chat-thinking-skeleton-bar { max-width: 90%; }
+.chat-thinking-skeleton-row.w-55 .chat-thinking-skeleton-bar { max-width: 55%; }
+.chat-thinking-skeleton-row.w-72 .chat-thinking-skeleton-bar { max-width: 72%; }
+@keyframes chat-skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+/* Collapsed mode: pill with deepthink tool icon + label */
+.chat-thinking-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.chat-thinking-tool {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #FFFFFF;         /* token/bg/body */
+  border: 0.5px solid #DEE0E3; /* token/line/border-card */
+  border-radius: 8px;
+  color: #646A73;              /* token/icon/n2 */
+}
+.chat-thinking-label {
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  color: #646A73;              /* token/text/caption */
+  white-space: nowrap;
 }
 
 /* Tool call card */
@@ -361,70 +501,171 @@
   line-height: 20px;
 }
 
-/* Input area */
+/* ─── Input area ─────────────────────────────────────────────────────
+ * Pixel-aligned to Figma node 1:19143 "AI_Input_Area".
+ * Outer wrapper: pb-14 px-14, relative to host an 11px top gradient mask that
+ * softens the handoff from the scrollable message list above.
+ * Box: 0.5px #DEE0E3 border, 16px radius, 3-layer drop shadow, pt-12. Two rows:
+ *   1. Input_Content (px-14, placeholder 14px #8F959E) — textarea goes here
+ *   2. Action row: h-52 p-12 gap-16 items-end justify-end
+ *        left: @ mention pill (28×28 rounded-100 0.429px #D0D3D6)
+ *        right: send button (rounded-16.471, bg rgba(31,35,41,0.15) when idle)
+ */
 .chat-input-wrap {
+  position: relative;
   flex: 0 0 auto;
-  padding: 12px;
-  border-top: 1px solid #EEF0F2;
-  background: #FFFFFF;
+  /* Horizontal + bottom padding supplied by .chat-part (20px). */
+  padding: 0;
+  background: transparent;
 }
+/* Top gradient overlay (white→transparent) — hints the message area is
+ * scrollable behind it. Height 11px, sits just above the input box. */
+.chat-input-wrap::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -11px;
+  height: 11px;
+  background: linear-gradient(to top, #FFFFFF, rgba(255,255,255,0));
+  pointer-events: none;
+}
+
+/* Box — Figma Input node:
+ *   bg #FFFFFF (token/bg/float), 0.5px #DEE0E3 (palette/neutral/300),
+ *   radius 16, overflow-clip, pt-12 ONLY (no L/R/B padding on box; the
+ *   textarea row and action row set their own). The design shadow is
+ *   [D]shadow/s1/down — three stacked drop-shadows. No focus-within
+ *   border-color swap in Figma, so we keep the border grey on focus too
+ *   (matches the spec).
+ */
 .chat-input-box {
-  border: 1px solid #D0D3D6;
-  border-radius: 10px;
-  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  transition: border-color 100ms;
+  align-items: stretch;
+  padding-top: 12px;
+  background: #FFFFFF;
+  border: 0.5px solid #DEE0E3;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow:
+    0 1px 2px -2px rgba(31, 35, 41, 0.05),
+    0 2px 4px 0    rgba(31, 35, 41, 0.05),
+    0 2px 8px 2px  rgba(31, 35, 41, 0.05);
 }
-.chat-input-box:focus-within {
-  border-color: #1456F0;
+
+.chat-input-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  width: 100%;
 }
 .chat-input-textarea {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   border: none;
   outline: none;
   resize: none;
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   font-size: 14px;
+  font-weight: 400;
   line-height: 22px;
   color: #1F2329;
   background: transparent;
-  font-family: inherit;
   min-height: 22px;
   max-height: 140px;
+  padding: 0;
 }
 .chat-input-textarea::placeholder {
   color: #8F959E;
 }
+
+/* Bottom action bar — h52 p12 gap16 items-end justify-end */
 .chat-input-toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: flex-end;
-  gap: 6px;
+  height: 52px;
+  padding: 12px;
+  gap: 16px;
+  width: 100%;
 }
+/* Left cluster (grows) — houses @ mention / future attachments */
+.chat-input-tools-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 0 0;
+  min-width: 0;
+}
+/* Right cluster (shrink-0) — send button (+ future model picker) */
+.chat-input-tools-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* @ mention pill — Figma _[AI] Button_Text:
+ *   size 28, border 0.429px #D0D3D6 (token/line/border-component),
+ *   radius 100, icon icon_at_outlined at color #2B2F36 (token/icon/n1).
+ * Hover only darkens the bg subtly — the border stays grey (no swap). */
+.chat-input-mention-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0.5px solid #D0D3D6;
+  border-radius: 100px;
+  background: transparent;
+  color: #2B2F36;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.chat-input-mention-btn:hover {
+  background: #F5F6F7;
+}
+
+/* Send / stop button — Figma _senter-icon (size 28, rounded-[16.471px]).
+ *   idle / disabled:  rgba(31,35,41,0.15) — faint grey circle, white icon
+ *   canSend:          #1F2329 dark circle, white icon
+ *                     (token udtoken/chatsender/stopgeneration/bg1-normal)
+ *   streaming (stop): same #1F2329 dark circle, white square glyph
+ *
+ * Figma does NOT use primary-blue here — it's a neutral dark circle on
+ * both send and stop variants. Hover darkens imperceptibly.
+ */
 .chat-input-send {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
+  border-radius: 16.471px;
   border: none;
-  background: #1F2329;
+  background: rgba(20, 86, 240, 0.35);  /* primary blue at 35% — disabled affordance */
   color: #FFFFFF;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 100ms, opacity 100ms;
+  transition: background 100ms ease, opacity 100ms ease;
 }
+.chat-input-send.primary:not(:disabled) {
+  background: #1456F0;                    /* token/primary/fill-solid/01 */
+}
+.chat-input-send.primary:not(:disabled):hover { background: #0E44C2; }
 .chat-input-send:disabled {
-  opacity: 0.35;
   cursor: not-allowed;
 }
-.chat-input-send:not(:disabled):hover { background: #0F1113; }
 
+/* Stop-generation button keeps the neutral dark skin to distinguish it from
+ * the primary send state. */
 .chat-input-send.stop {
-  background: #F54A45;
+  background: #1F2329;
 }
-.chat-input-send.stop:hover { background: #D93B36; }
+.chat-input-send.stop:hover { background: #000000; }
 
 .chat-generating-hint {
   font-size: 12px;
@@ -432,5 +673,90 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-right: auto;
+  margin-right: 8px;
+}
+
+/* Voice / microphone button — lives in .chat-input-tools-left alongside the
+ * @ mention pill. Reuses the speech recognition hook from FilterPanel so
+ * the UX (idle → listening pulse → stopping shrink) is identical, only the
+ * visual skin is tuned to the chat input's 28×28 round-pill family. */
+.chat-input-voice-btn {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0.5px solid #D0D3D6;
+  border-radius: 100px;
+  background: transparent;
+  color: #2B2F36;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+}
+.chat-input-voice-btn:hover {
+  background: #F5F6F7;
+}
+.chat-input-voice-btn.listening {
+  background: #1456F0;
+  border-color: #1456F0;
+  color: #FFFFFF;
+}
+.chat-input-voice-btn.listening:hover {
+  background: #0F49D6;
+}
+.chat-input-voice-btn.stopping {
+  background: #1456F0;
+  border-color: #1456F0;
+  color: #FFFFFF;
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+.chat-input-voice-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid #1456F0;
+  animation: chat-mic-pulse 1.2s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes chat-mic-pulse {
+  0%   { transform: scale(1);   opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0;   }
+}
+.chat-input-voice-stopping {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.6);
+  animation: chat-mic-stopping 0.6s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes chat-mic-stopping {
+  0%   { transform: scale(1.1); opacity: 0.5; }
+  100% { transform: scale(0.9); opacity: 0.2; }
+}
+
+/* Context hint — shown below the empty-state hero once a "refresh" has
+ * preloaded the document snapshot. Lets the user know what tables the
+ * Agent currently sees before they type their first prompt. */
+.chat-empty-context-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #F5F6F7;
+  border-radius: 100px;
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 12px;
+  line-height: 20px;
+  color: #646A73;
+  margin-top: 4px;
+}
+.chat-empty-context-hint .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #17B26A;
 }

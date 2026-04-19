@@ -26,6 +26,14 @@ export interface SplitResizeOptions {
   minRightPx?: number;
   /** Maximum ratio for the RIGHT panel. Default 0.6. */
   maxRatio?: number;
+  /**
+   * Which edge the "ratio" panel is anchored to. Default "right" — the ratio
+   * represents the RIGHT panel's width fraction, so dragging the divider
+   * LEFT grows the right panel. Set to "left" when the tracked panel lives
+   * on the LEFT side (e.g. after a chat/artifact swap) so drag direction
+   * matches the panel being resized.
+   */
+  anchorSide?: "left" | "right";
 }
 
 export interface SplitResizeResult {
@@ -60,7 +68,12 @@ function writeRatio(storageKey: string, ratio: number) {
 }
 
 export function useSplitResize(opts: SplitResizeOptions): SplitResizeResult {
-  const { storageKey, defaultRatio = 0.35, minLeftPx = 400, minRightPx = 320, maxRatio = 0.6 } = opts;
+  const { storageKey, defaultRatio = 0.35, minLeftPx = 400, minRightPx = 320, maxRatio = 0.6, anchorSide = "right" } = opts;
+
+  // Live ref so the mousedown closure always reads the latest anchor side
+  // without re-creating the handler when the consumer flips it.
+  const anchorSideRef = useRef(anchorSide);
+  useEffect(() => { anchorSideRef.current = anchorSide; }, [anchorSide]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [ratio, setRatio] = useState<number>(() => readRatio(storageKey) ?? defaultRatio);
@@ -93,11 +106,17 @@ export function useSplitResize(opts: SplitResizeOptions): SplitResizeResult {
       const maxRatioRight = Math.min((containerWidth - minLeftPx) / containerWidth, maxRatio);
 
       const onMove = (ev: MouseEvent) => {
-        // ev.clientX relative to viewport; compute RIGHT panel width
-        const rightWidth = rect.right - ev.clientX;
+        // The tracked panel's on-screen width depends on which edge it hugs.
+        // anchorSide="right" (default): ratio = (container.right - mouseX) / width
+        // anchorSide="left":            ratio = (mouseX - container.left) / width
+        // This keeps drag direction intuitive after a panel swap.
+        const panelWidth =
+          anchorSideRef.current === "left"
+            ? ev.clientX - rect.left
+            : rect.right - ev.clientX;
         const nextRatio = Math.min(
           maxRatioRight,
-          Math.max(minRatioRight, rightWidth / containerWidth)
+          Math.max(minRatioRight, panelWidth / containerWidth)
         );
         ratioRef.current = nextRatio;
         setRatio(nextRatio);

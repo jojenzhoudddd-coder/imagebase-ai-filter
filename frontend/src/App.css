@@ -46,11 +46,12 @@
   background: #FFFFFF;
   position: relative;
   order: 3;
-  /* Symmetric 20px horizontal padding. 6px gap to .artifact-part is the
-   * sibling .split-divider. Bottom gap is .chat-input-wrap's margin.
+  /* Symmetric 20px padding on left / right / bottom so the chat UI insets
+   * uniformly from its card. The move-bar still sits absolutely positioned
+   * at bottom:4px regardless of the inner padding.
    * Mirror rule of artifact-part: only the top corner facing artifact is
    * rounded. Default layout places chat on the right, so round top-left. */
-  padding: 0 20px;
+  padding: 0 20px 20px 20px;
   border: 1px solid #DEE0E3;
   border-radius: 8px 0 0 0;
 }
@@ -126,8 +127,16 @@
   z-index: 40;
   pointer-events: auto;
 }
+/* Hover (idle): reveal the bar in a neutral grey — an affordance without
+ * implying an action. Grab cursor hints it is draggable. */
 .part-hover-zone:hover ~ .part-move-bar,
-.part-move-bar:hover,
+.part-move-bar:hover {
+  opacity: 1;
+  background: #8F959E;
+  cursor: grab;
+}
+/* Active / dragging: once grabbed, the bar turns primary blue and the
+ * cursor becomes grabbing until release. */
 .part-move-bar.dragging,
 .workspace.moving .part-move-bar {
   opacity: 1;
@@ -139,6 +148,16 @@
 .workspace.moving,
 .workspace.moving * {
   cursor: grabbing !important;
+}
+
+/* Drag preview — highlight ONLY the panel whose move-bar is being
+ * dragged with a primary-blue inset outline + soft glow, so the user sees
+ * which card they are about to reposition. Uses :has() to scope to the
+ * ancestor part of the active move-bar. */
+.artifact-part:has(.part-move-bar.dragging),
+.chat-part:has(.part-move-bar.dragging) {
+  box-shadow: 0 0 0 1.5px #1456F0 inset, 0 8px 24px rgba(20, 86, 240, 0.12);
+  transition: box-shadow 120ms ease;
 }
 
 .app-main {
