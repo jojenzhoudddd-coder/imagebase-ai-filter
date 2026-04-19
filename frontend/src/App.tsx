@@ -1358,7 +1358,7 @@ export default function App() {
         onOpenChatAgent={() => setChatAgentOpen((v) => !v)}
         chatAgentOpen={chatAgentOpen}
       />
-      <div className={`workspace${chatAgentOpen && chatSide === "left" ? " chat-left" : ""}${movingPart ? " moving" : ""}`} ref={workspaceRef}>
+      <div className={`workspace${chatAgentOpen ? " chat-open" : ""}${chatAgentOpen && chatSide === "left" ? " chat-left" : ""}${movingPart ? " moving" : ""}`} ref={workspaceRef}>
         <div
           className="artifact-part"
           /* When chat is open, let artifact flex-grow into the remaining

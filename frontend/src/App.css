@@ -31,14 +31,12 @@
   position: relative;
   order: 1;
   background: #FFFFFF;
-  /* Full 1px border — the 6px gap between parts is a sibling flex item
-   * (.split-divider), not a border-side removal. Only the top corner that
-   * meets chat-part is rounded; all other corners stay square so the edges
-   * running along sidebar / viewport / topbar read as continuous straight
-   * lines. Default layout has chat on the right, so round top-right only.
-   * The chat-left modifier below flips this. */
+  /* Full 1px border. When chat-part is not mounted, artifact fills the whole
+   * workspace and has no rounded corners (it reads as the page edge). The
+   * rounded corner only appears on the side that meets chat-part — see the
+   * .chat-open overrides below. Bottom corners always square. */
   border: 1px solid #DEE0E3;
-  border-radius: 0 8px 0 0;
+  border-radius: 0;
 }
 .chat-part {
   display: flex;
@@ -50,13 +48,18 @@
   order: 3;
   /* Symmetric 20px horizontal padding. 6px gap to .artifact-part is the
    * sibling .split-divider. Bottom gap is .chat-input-wrap's margin.
-   * Mirror rule of artifact-part: only the top corner that meets artifact
-   * is rounded. Default layout places chat on the right, so round top-left. */
+   * Mirror rule of artifact-part: only the top corner facing artifact is
+   * rounded. Default layout places chat on the right, so round top-left. */
   padding: 0 20px;
   border: 1px solid #DEE0E3;
   border-radius: 8px 0 0 0;
 }
 .workspace .split-divider { order: 2; }
+
+/* When chat-part is open, artifact-part rounds its top corner facing the
+ * chat panel. Default layout (chat on right) → artifact top-right; the
+ * chat-left modifier below flips both panels' rounded sides. */
+.workspace.chat-open .artifact-part { border-radius: 0 8px 0 0; }
 
 /* When the user drags the move-bar and releases on the opposite side, these
  * order reversals swap the two panels. CSS-only swap — DOM stays stable.
