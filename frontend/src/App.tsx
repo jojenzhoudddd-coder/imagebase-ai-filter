@@ -50,6 +50,13 @@ export default function App() {
    * after creating a folder (since folders can't become the activeItemId, the
    * normal auto-scroll doesn't apply). Cleared on next user-driven change. */
   const [scrollToItemId, setScrollToItemId] = useState<string | null>(null);
+  /* Pool of design ids whose <DesignPanel> (and Figma iframe) stays mounted
+   * across active-item changes. First time the user opens a design its id is
+   * pushed here; subsequent switches back to it reuse the existing iframe —
+   * preserving zoom/pan state and avoiding a fresh embed.figma.com load.
+   * Capped (most-recent-wins) to bound memory for users who tour many files. */
+  const MAX_CACHED_DESIGNS = 8;
+  const [mountedDesignIds, setMountedDesignIds] = useState<string[]>([]);
   const [activeItemType, setActiveItemType] = useState<TreeItemType>("table");
   const SIDEBAR_NAMES_KEY = "sidebar_item_names";
   const [sidebarNames, setSidebarNames] = useState<Record<string, string>>(() => {
@@ -1301,6 +1308,28 @@ export default function App() {
     if (activeTableId) localStorage.setItem("lastActiveTableId", activeTableId);
   }, [activeTableId]);
 
+  /* Track opened designs so their iframes stay mounted across switches. When
+   * the user opens a design we push its id (MRU) and cap the pool; existing
+   * ids are moved to the end so "recent" designs survive eviction.
+   * A design that's deleted from the doc is pruned so we don't carry a dead
+   * iframe around forever. */
+  useEffect(() => {
+    if (activeItemType !== "design" || !activeTableId) return;
+    setMountedDesignIds(prev => {
+      const filtered = prev.filter(id => id !== activeTableId);
+      const next = [...filtered, activeTableId];
+      return next.length > MAX_CACHED_DESIGNS ? next.slice(-MAX_CACHED_DESIGNS) : next;
+    });
+  }, [activeItemType, activeTableId]);
+
+  useEffect(() => {
+    setMountedDesignIds(prev => {
+      const validIds = new Set(documentDesigns.map(d => d.id));
+      const kept = prev.filter(id => validIds.has(id));
+      return kept.length === prev.length ? prev : kept;
+    });
+  }, [documentDesigns]);
+
   // ── Document-level SSE for sidebar sync ──
   useDocumentSync(DOCUMENT_ID, CLIENT_ID, {
     onTableCreate: useCallback((table: { id: string; name: string; order: number }) => {
@@ -1385,13 +1414,26 @@ export default function App() {
           scrollToItemId={scrollToItemId}
         />
         <div className="app-main">
-          {activeItemType === "design" ? (
-            <DesignPanel
-              designId={activeTableId}
-              designName={documentDesigns.find(d => d.id === activeTableId)?.name ?? ""}
-              onRename={(name) => handleRenameSidebarItemExtended(activeTableId, name)}
-            />
-          ) : (
+          {/* Design panels pool — every design the user has ever opened in
+           * this session stays mounted (display:none when inactive) so the
+           * Figma iframe preserves loaded state and zoom/pan across switches.
+           * Only the active design is visible; the table view below renders
+           * in parallel when no design is active. */}
+          {mountedDesignIds.map(id => {
+            const d = documentDesigns.find(x => x.id === id);
+            if (!d) return null;
+            const isActive = activeItemType === "design" && activeTableId === id;
+            return (
+              <DesignPanel
+                key={id}
+                designId={id}
+                designName={d.name}
+                onRename={(name) => handleRenameSidebarItemExtended(id, name)}
+                hidden={!isActive}
+              />
+            );
+          })}
+          {activeItemType !== "design" && (
           <>
           <ViewTabs
             views={views}

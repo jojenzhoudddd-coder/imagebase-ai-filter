@@ -4,6 +4,11 @@
   flex-direction: column;
   flex: 1;
   overflow: hidden;
+  /* Prevent 2-finger trackpad pans that reach the edge of the Figma canvas
+   * from scroll-chaining into the rest of the page (or triggering macOS
+   * swipe-to-navigate on the x-axis). Figma's iframe handles its own canvas
+   * pan; parent ancestors must not see any leftover delta. */
+  overscroll-behavior: contain;
 }
 
 .design-panel-loading,
@@ -54,6 +59,13 @@
   min-width: 0;
 }
 
+.design-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .design-panel-edit-btn {
   display: flex;
   align-items: center;
@@ -75,9 +87,39 @@
   border-color: #C9CDD4;
 }
 
+/* Icon-only variant for secondary actions (copy link, etc.) */
+.design-panel-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid #DEE0E3;
+  background: #FFFFFF;
+  color: #1F2329;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.design-panel-icon-btn:hover {
+  background: #F5F6F7;
+  border-color: #C9CDD4;
+}
+
+.design-panel-icon-btn:active {
+  background: #E8E9EB;
+}
+
 /* Iframe */
 .design-panel-iframe {
   flex: 1;
   width: 100%;
   border: none;
+  /* Same reason as .design-panel above — must be set on the iframe itself so
+   * the browser treats its scrollable area as a scroll boundary. Without this
+   * a two-finger pan in Figma's canvas can surface as a horizontal back-swipe
+   * or bubble up to the outer window. */
+  overscroll-behavior: contain;
 }
