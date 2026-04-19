@@ -32,10 +32,13 @@
   order: 1;
   background: #FFFFFF;
   /* Full 1px border — the 6px gap between parts is a sibling flex item
-   * (.split-divider), not a border-side removal. Only the top corners are
-   * rounded; bottom corners stay square per spec. */
+   * (.split-divider), not a border-side removal. Only the top corner that
+   * meets chat-part is rounded; all other corners stay square so the edges
+   * running along sidebar / viewport / topbar read as continuous straight
+   * lines. Default layout has chat on the right, so round top-right only.
+   * The chat-left modifier below flips this. */
   border: 1px solid #DEE0E3;
-  border-radius: 8px 8px 0 0;
+  border-radius: 0 8px 0 0;
 }
 .chat-part {
   display: flex;
@@ -46,19 +49,22 @@
   position: relative;
   order: 3;
   /* Symmetric 20px horizontal padding. 6px gap to .artifact-part is the
-   * sibling .split-divider. Bottom gap is .chat-input-wrap's margin. Only
-   * top corners rounded; bottom corners square. */
+   * sibling .split-divider. Bottom gap is .chat-input-wrap's margin.
+   * Mirror rule of artifact-part: only the top corner that meets artifact
+   * is rounded. Default layout places chat on the right, so round top-left. */
   padding: 0 20px;
   border: 1px solid #DEE0E3;
-  border-radius: 8px 8px 0 0;
+  border-radius: 8px 0 0 0;
 }
 .workspace .split-divider { order: 2; }
 
 /* When the user drags the move-bar and releases on the opposite side, these
- * order reversals swap the two panels. CSS-only swap — DOM stays stable. */
-.workspace.chat-left .chat-part { order: 1; }
+ * order reversals swap the two panels. CSS-only swap — DOM stays stable.
+ * The rounded-corner sides also flip so each panel keeps rounding only the
+ * edge that meets its sibling. */
+.workspace.chat-left .chat-part { order: 1; border-radius: 0 8px 0 0; }
 .workspace.chat-left .split-divider { order: 2; }
-.workspace.chat-left .artifact-part { order: 3; }
+.workspace.chat-left .artifact-part { order: 3; border-radius: 8px 0 0 0; }
 
 /* Vertical splitter — a 6px transparent gap between the two panels.
  * The workspace background (grey) shows through; the surrounding panels
