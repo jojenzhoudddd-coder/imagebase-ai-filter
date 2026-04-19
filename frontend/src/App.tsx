@@ -1060,7 +1060,7 @@ export default function App() {
   const handleCreateFolder = useCallback(async () => {
     const name = locale === "zh" ? "新建文件夹" : "New Folder";
     try {
-      const folder = await apiCreateFolder(DOCUMENT_ID, name);
+      const folder = await apiCreateFolder(name, DOCUMENT_ID);
       setDocumentFolders(prev => [...prev, folder]);
     } catch {
       toast.error("Failed to create folder");
@@ -1069,7 +1069,7 @@ export default function App() {
 
   // ── Create design ──
   const handleCreateDesign = useCallback(async (name: string, figmaUrl: string): Promise<string> => {
-    const design = await apiCreateDesign(DOCUMENT_ID, name, figmaUrl);
+    const design = await apiCreateDesign(name, figmaUrl, DOCUMENT_ID);
     setDocumentDesigns(prev => [...prev, design]);
     setActiveTableId(design.id);
     setActiveItemType("design");
@@ -1106,7 +1106,7 @@ export default function App() {
   // ── Move item ──
   const handleMoveItem = useCallback(async (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => {
     try {
-      await apiMoveItem(itemId, itemType, newParentId, DOCUMENT_ID);
+      await apiMoveItem(itemId, itemType, newParentId);
       // Optimistic update of parentId (for tree rendering)
       if (itemType === "design") {
         setDocumentDesigns(prev => prev.map(d => d.id === itemId ? { ...d, parentId: newParentId } : d));

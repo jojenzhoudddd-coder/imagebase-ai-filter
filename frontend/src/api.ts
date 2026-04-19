@@ -329,14 +329,14 @@ export async function fetchDocumentTree(docId: string): Promise<TreeData> {
 }
 
 export async function createFolder(
-  documentId: string,
   name: string,
-  parentId: string | null = null
+  documentId: string,
+  parentId?: string | null
 ): Promise<FolderBrief> {
-  const res = await mutationFetch(`${BASE}/documents/${documentId}/folders`, {
+  const res = await mutationFetch(`${BASE}/folders`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, parentId }),
+    body: JSON.stringify({ name, documentId, parentId: parentId || null }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -363,10 +363,9 @@ export async function deleteFolder(folderId: string): Promise<void> {
 export async function moveItem(
   itemId: string,
   itemType: "table" | "folder" | "design",
-  newParentId: string | null,
-  documentId: string
+  newParentId: string | null
 ): Promise<void> {
-  const res = await mutationFetch(`${BASE}/documents/${documentId}/move`, {
+  const res = await mutationFetch(`${BASE}/folders/move`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ itemId, itemType, newParentId }),
@@ -393,15 +392,15 @@ export interface DesignDetail extends DesignBrief {
 }
 
 export async function createDesign(
-  documentId: string,
   name: string,
   figmaUrl: string,
-  parentId: string | null = null
-): Promise<DesignBrief> {
-  const res = await mutationFetch(`${BASE}/documents/${documentId}/designs`, {
+  documentId: string,
+  parentId?: string | null
+): Promise<DesignDetail> {
+  const res = await mutationFetch(`${BASE}/designs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, figmaUrl, parentId }),
+    body: JSON.stringify({ name, figmaUrl, documentId, parentId: parentId || null }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
