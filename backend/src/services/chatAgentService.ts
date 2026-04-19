@@ -216,6 +216,10 @@ async function* callArkStream(input: ArkInputItem[], abortSignal?: AbortSignal):
   // Per-item accumulators (function_call arguments streams in as chunks and
   // the complete JSON only becomes callable at output_item.done time).
   const pendingCalls = new Map<string, { name?: string; args: string; callId?: string }>();
+  // Call-ids we've already yielded as tool_call_done — used to dedupe the
+  // response.completed fallback, which re-lists every function_call in the
+  // final payload. Without this, every tool call fires twice.
+  const yieldedCallIds = new Set<string>();
 
   function parseEventBlock(block: string): { event: string; data: any } | null {
     let event = "message";
@@ -327,7 +331,8 @@ async function* callArkStream(input: ArkInputItem[], abortSignal?: AbortSignal):
             const name = entry.name || item.name;
             const callId = entry.callId || item.call_id || item.id || uuidv4();
             pendingCalls.delete(itemId);
-            if (name) {
+            if (name && !yieldedCallIds.has(callId)) {
+              yieldedCallIds.add(callId);
               yield { kind: "tool_call_done", call: { callId, name, arguments: finalArgs } };
             }
           }
@@ -336,15 +341,15 @@ async function* callArkStream(input: ArkInputItem[], abortSignal?: AbortSignal):
         if (event === "response.completed" || event === "completed") {
           // Some providers embed the final response here; in case any
           // function calls only appear in the terminal payload, extract
-          // them as a fallback.
+          // them as a fallback. Dedupe via yieldedCallIds so calls already
+          // emitted at output_item.done don't fire a second time.
           const output = data?.response?.output ?? data?.output;
           if (Array.isArray(output)) {
             for (const it of output) {
               if (it?.type === "function_call" && it.name) {
                 const callId = it.call_id || it.id || uuidv4();
-                // Skip if we already yielded this call above.
-                const already = Array.from(pendingCalls.values()).some(e => e.callId === callId);
-                if (!already) {
+                if (!yieldedCallIds.has(callId)) {
+                  yieldedCallIds.add(callId);
                   yield { kind: "tool_call_done", call: { callId, name: it.name, arguments: it.arguments || "{}" } };
                 }
               }

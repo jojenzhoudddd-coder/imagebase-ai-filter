@@ -7,6 +7,11 @@
 
 ## 2026-04-20
 
+### fix: Chat Agent 工具调用重复执行（每次执行两次）
+
+- **改动点**: `backend/src/services/chatAgentService.ts` 的 `callArkStream` 增加 `yieldedCallIds` Set 去重
+- **详细说明**: ARK Responses API 在流结束时会通过 `response.completed` 事件一次性回传完整的 output 列表，其中包含所有已经在 `response.output_item.done` 中发出过的 `function_call` items。原代码用 `pendingCalls.values().some(e => e.callId === callId)` 来判断是否已发出，但 `output_item.done` 的 handler 会立即 `pendingCalls.delete(itemId)`，等 `response.completed` 做去重检查时 Map 早已被清空，每次都命中"未发出"分支导致同一个工具调用被 yield 两次。修复方式：引入独立的 `yieldedCallIds: Set<string>`，`output_item.done` 和 `response.completed` 两条路径都先查表再决定是否 yield，彻底杜绝重复。创建数据表、创建字段、批量写入记录等所有工具调用从"每次 2 次"恢复到"每次 1 次"。
+
 ### feat: Chat 对话持久化 + 欢迎页 & 刷新会话交互优化
 
 - **改动点**: 对话存储迁移到 Postgres、欢迎页文案与排版调整、刷新会话入口改版
