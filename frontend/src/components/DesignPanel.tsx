@@ -40,6 +40,11 @@ export default function DesignPanel({ designId, designName, onRename, hidden = f
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  /* Whether the Figma embed iframe has signalled that it finished first-load.
+   * Starts false; flipped true by iframe.onload OR by Figma's INITIAL_LOAD
+   * postMessage (whichever arrives first). Flipped back to false when Figma
+   * emits a NEW_STATE with isLoading=true (page switch inside the embed). */
+  const [iframeLoaded, setIframeLoaded] = useState(false);
 
   const handleCopyLink = async () => {
     if (!design) return;
@@ -60,6 +65,27 @@ export default function DesignPanel({ designId, designName, onRename, hidden = f
       .catch(() => { if (!cancelled) { setError(true); setLoading(false); } });
     return () => { cancelled = true; };
   }, [designId]);
+
+  /* Listen for messages coming from the Figma embed. Figma posts INITIAL_LOAD
+   * when its canvas is interactive and NEW_STATE with `isLoading` flag while
+   * switching pages inside a file. We flip the loading overlay accordingly so
+   * the UX during an intra-file page switch matches the first-load UX. */
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (!e.origin.includes("figma.com")) return;
+      const data = typeof e.data === "string"
+        ? (() => { try { return JSON.parse(e.data); } catch { return null; } })()
+        : e.data;
+      if (!data || typeof data !== "object") return;
+      if (data.type === "INITIAL_LOAD") {
+        setIframeLoaded(true);
+      } else if (data.type === "NEW_STATE" && data.data && typeof data.data.isLoading === "boolean") {
+        setIframeLoaded(!data.data.isLoading);
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
 
   // Figma embed URL.
   //   footer=false  — hides the bottom "Figma • Edited X ago" strip
@@ -128,12 +154,21 @@ export default function DesignPanel({ designId, designName, onRename, hidden = f
        * the wheel/pointer stream properly. Figma's own embed docs don't ask
        * for any sandbox; they host the iframe on their own `embed.figma.com`
        * origin which is already cross-origin and therefore isolated. */}
-      <iframe
-        className="design-panel-iframe"
-        src={embedUrl}
-        allow="clipboard-read; clipboard-write; fullscreen"
-        allowFullScreen
-      />
+      <div className="design-panel-iframe-wrap">
+        {/* Indeterminate progress bar: visible while the Figma embed hasn't
+         * finished its first load, or while Figma reports it's transitioning
+         * to another page. Sits above the iframe (z-index) so the user gets
+         * immediate feedback without tearing down the iframe — which would
+         * defeat the caching pool. */}
+        {!iframeLoaded && <div className="design-panel-progress" aria-hidden="true" />}
+        <iframe
+          className="design-panel-iframe"
+          src={embedUrl}
+          allow="clipboard-read; clipboard-write; fullscreen"
+          allowFullScreen
+          onLoad={() => setIframeLoaded(true)}
+        />
+      </div>
     </div>
   );
 }

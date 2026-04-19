@@ -47,7 +47,7 @@
   cursor: pointer;
   font-size: 14px;
   color: var(--color-text-secondary);
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 .sidebar-search-trigger:hover {

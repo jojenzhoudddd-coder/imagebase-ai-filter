@@ -54,8 +54,10 @@ export default function App() {
    * across active-item changes. First time the user opens a design its id is
    * pushed here; subsequent switches back to it reuse the existing iframe —
    * preserving zoom/pan state and avoiding a fresh embed.figma.com load.
-   * Capped (most-recent-wins) to bound memory for users who tour many files. */
-  const MAX_CACHED_DESIGNS = 8;
+   * Unbounded on purpose: users complained that a capped MRU made re-opening
+   * a previously-viewed design reload from scratch. We keep every opened
+   * design mounted for the lifetime of the session; the cleanup effect below
+   * still evicts ids whose design has been deleted. */
   const [mountedDesignIds, setMountedDesignIds] = useState<string[]>([]);
   const [activeItemType, setActiveItemType] = useState<TreeItemType>("table");
   const SIDEBAR_NAMES_KEY = "sidebar_item_names";
@@ -1309,17 +1311,13 @@ export default function App() {
   }, [activeTableId]);
 
   /* Track opened designs so their iframes stay mounted across switches. When
-   * the user opens a design we push its id (MRU) and cap the pool; existing
-   * ids are moved to the end so "recent" designs survive eviction.
-   * A design that's deleted from the doc is pruned so we don't carry a dead
-   * iframe around forever. */
+   * the user opens a design we append its id if not already mounted. The pool
+   * is unbounded within a session so every design the user has visited stays
+   * warm (no re-fetch of embed.figma.com on re-select). Dead ids are pruned
+   * by the cleanup effect below when a design is removed from the document. */
   useEffect(() => {
     if (activeItemType !== "design" || !activeTableId) return;
-    setMountedDesignIds(prev => {
-      const filtered = prev.filter(id => id !== activeTableId);
-      const next = [...filtered, activeTableId];
-      return next.length > MAX_CACHED_DESIGNS ? next.slice(-MAX_CACHED_DESIGNS) : next;
-    });
+    setMountedDesignIds(prev => (prev.includes(activeTableId) ? prev : [...prev, activeTableId]));
   }, [activeItemType, activeTableId]);
 
   useEffect(() => {
