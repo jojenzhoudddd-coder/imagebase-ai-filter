@@ -7,6 +7,40 @@
 
 ## 2026-04-20
 
+### feat: 支持 Add Record（工具栏 & 表格底部均可触发）
+
+- **改动点**: `TableView`、`Toolbar`、`App.tsx`、`api.ts` 联动支持「点击 + 空白行 + 首列自动进入编辑」的典型录入流
+- **详细说明**:
+  1. **API**: `frontend/src/api.ts` 新增 `createRecord(tableId, cells)`，包装后端 `POST /api/tables/:tableId/records`，返回 201 + 完整 `TableRecord`（id + cells + 时间戳）。
+  2. **TableView**: Props 新增可选 `onAddRecord?: () => Promise<string>` 返回新记录 id；`.add-record-btn` 的 onClick 绑定到本地 `handleAddRecordClick`，先 `await onAddRecord()` 再用返回的 id + `visibleFields[0].id` 进入 `editing` 状态并 `scrollIntoView`。`<tr>` 新增 `data-record-id` 属性用于定位滚动目标。`TableViewHandle` 补 `addRecord()` 方法通过 `addRecordClickRef` 暴露给父组件，让工具栏按钮可以复用同一逻辑。
+  3. **App.tsx**: 新增 `handleAddRecord()`：调 `createRecord()` → 乐观追加到 `allRecords`（与 `handleRemoteRecordCreate` 用 id 去重，避免 SSE 回声导致重复行）→ 返回新 id。同时把 `() => tableViewRef.current?.addRecord()` 传给 `<Toolbar>`。
+  4. **Toolbar**: 新增 `onAddRecord?: () => void` prop，绑定到 `.toolbar-add-record` 的 onClick。
+  5. **验证**：两个入口都能在表格最底部插入空白行（行数 102 → 103 → 104），首列 `<input>` 立即 focus 进入编辑态，DOM 结构 `td.td-editing` + `activeElement.tagName === "INPUT"`。
+
+### feat: Sidebar 新建菜单精简
+
+- **改动点**: `Sidebar.tsx` 新增 `HIDE_CREATE_MENU_KEYS` 白名单过滤
+- **详细说明**: 产品决策隐藏 6 项未完全就绪的入口（`template` / `form` / `cm_dashboard` / `cm_workflow` / `import` / `app`）。代码保留完整，仅在 `createMenuItems.filter()` 环节跳过这些 key，后续恢复只需从 Set 中移除对应 key 或清空 Set 即可。
+
+### feat: CreateTablePopover 标题 icon 统一为 Table 紫色图标
+
+- **改动点**: `CreateTablePopover.tsx` 新增 `TABLE_ICON` 常量（`#8D55ED` 紫色，镜像 Sidebar `CM_ICONS.table`），替换原 AI gradient 四芒星 icon
+- **详细说明**: 用户从 Sidebar「+」菜单 →「数据表」进入 popover 时，标题 icon 现在与菜单项 icon 一致，形成视觉上的操作链路反馈。生成 / 创建中动画沿用原 `AI_ICON`（AI 四芒星渐变），区分状态。
+
+### feat: Chat 工具卡片体验优化（title 间距 / 步骤标签 / 信息确认改版）
+
+- **改动点**: `ChatSidebar/ChatMessage/{ToolCallCard,ToolCallGroup,ThinkingIndicator,ConfirmCard}.tsx` + `ChatSidebar.css` + i18n
+- **详细说明**:
+  1. **展开卡片 title 下 8px 间距** — `.chat-expand-card-body` 顶部 padding 从 4px 调整为 8px，思考 / 工具卡片展开后标题与正文之间不再粘连。
+  2. **工具步骤状态文案** — 新增 i18n `chat.tool.step.{running,success,error,awaiting}` 与 `chat.tool.stepStart`，工具卡片展开时在每步开头明示「执行中…」「执行完成」「执行失败」「等待确认中」，减少用户对进度的猜测。
+  3. **信息确认卡片增强** — 新增 `chat.confirm.skip` / `chat.confirm.start` 与 `chat.confirm.title` i18n，`ConfirmCard` 样式和按钮语义调整；文本式 二次确认保留（用户偏好，不走卡片拦截）。
+  4. **ChatSidebar index**: 保留粘底滚动 + More 菜单 + 缓存逻辑不变，小幅调整以配合新组件。
+
+### feat: 页面标题与描述改为 Table Agent
+
+- **改动点**: `frontend/index.html` `<title>` 改为 `Table Agent · AI 智能多维表格`，并新增 `<meta name="description">`
+- **详细说明**: 与产品定位升级一致（单纯 AI 筛选 → 对话式 Table Agent），浏览器 tab / 分享卡片 / 搜索引擎抓取都会展示新品牌名。
+
 ### feat: Chat 流式输出不再强制抢走用户滚动；刷新会话菜单加 icon
 
 - **改动点**: `ChatSidebar/index.tsx` 增加 `stickToBottomRef` 粘底自动滚动 + "刷新会话" 菜单项加圆形箭头 icon

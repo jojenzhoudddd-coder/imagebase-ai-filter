@@ -216,6 +216,18 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
     ...(item.type === "table" ? [{ key: "delete", label: t("contextMenu.delete"), icon: <DeleteIcon /> }] : []),
   ];
 
+  // Hidden-by-default "+" menu entries. Code kept intact for easy re-enable:
+  // just remove the key here (or flip HIDE_CREATE_MENU_KEYS to an empty Set).
+  // Currently hidden per product decision: template center / form / dashboard
+  // / workflow / import / app.
+  const HIDE_CREATE_MENU_KEYS = new Set<string>([
+    "template",
+    "form",
+    "cm_dashboard",
+    "cm_workflow",
+    "import",
+    "app",
+  ]);
   const createMenuItems: MenuItem[] = [
     { key: "ai_create", label: t("createMenu.aiCreate"), section: t("createMenu.quickCreate"), icon: CM_ICONS.aiCreate, noop: true },
     { key: "template", label: t("createMenu.template"), icon: CM_ICONS.template, suffix: ARROW_RIGHT, noop: true },
@@ -228,7 +240,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
     { key: "folder", label: t("createMenu.folder"), section: t("createMenu.manage"), icon: CM_ICONS.folder },
     { key: "import", label: t("createMenu.import"), icon: CM_ICONS.transfer, suffix: ARROW_RIGHT, noop: true },
     { key: "app", label: t("createMenu.app"), section: t("createMenu.appSection"), icon: CM_ICONS.app, suffix: ARROW_RIGHT, noop: true },
-  ];
+  ].filter((it) => !HIDE_CREATE_MENU_KEYS.has(it.key));
 
   // Close everything handler
   const handleCloseAll = useCallback(() => {

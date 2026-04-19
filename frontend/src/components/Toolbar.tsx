@@ -14,6 +14,7 @@ interface Props {
   customizeFieldBtnRef: RefObject<HTMLButtonElement | null>;
   canUndo?: boolean;
   onUndo?: () => void;
+  onAddRecord?: () => void;
 }
 
 export default function Toolbar({
@@ -28,12 +29,13 @@ export default function Toolbar({
   customizeFieldBtnRef,
   canUndo,
   onUndo,
+  onAddRecord,
 }: Props) {
   const { t } = useTranslation();
   return (
     <div className="toolbar">
       <div className="toolbar-left">
-        <button className="toolbar-add-record">
+        <button className="toolbar-add-record" onClick={onAddRecord}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
             <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>

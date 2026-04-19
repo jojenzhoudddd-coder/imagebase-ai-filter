@@ -9,7 +9,7 @@ import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import { AddFieldPopover, useFieldSuggestions } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, fetchDocumentTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchDocumentTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, createRecord, renameTable, fetchDocument, renameDocument, fetchDocumentTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchDocumentTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign } from "./api";
 import type { GeneratedField, FolderBrief, DesignBrief } from "./api";
 import type { SidebarItem } from "./components/Sidebar";
 import type { TreeItemType } from "./types";
@@ -717,6 +717,15 @@ export default function App() {
       executeDelete(recordIds);
     }
   }, [deleteProtection, executeDelete]);
+
+  // ── Add a single empty record (from ".add-record-btn" in TableView / Toolbar) ──
+  const handleAddRecord = useCallback(async (): Promise<string> => {
+    const tableId = activeTableIdRef.current;
+    const record = await createRecord(tableId, {});
+    // Optimistically append to local state; SSE echo is deduped by id in handleRemoteRecordCreate
+    setAllRecords(prev => prev.some(r => r.id === record.id) ? prev : [...prev, record]);
+    return record.id;
+  }, []);
 
   // ── Batch clear cells (Delete key on selected cells) ──
   const executeClearCells = useCallback((cells: Array<{ recordId: string; fieldId: string }>, toastLabel?: string) => {
@@ -1471,6 +1480,7 @@ export default function App() {
             customizeFieldBtnRef={customizeFieldBtnRef}
             canUndo={canUndo}
             onUndo={performUndo}
+            onAddRecord={() => { void tableViewRef.current?.addRecord(); }}
           />
           <div className="app-content">
             <TableView
@@ -1489,6 +1499,7 @@ export default function App() {
               onClearRowCells={handleClearRowCells}
               onAddField={handleOpenAddField}
               onEditField={handleEditField}
+              onAddRecord={handleAddRecord}
             />
             {filterPanelOpen && (
               <FilterPanel
@@ -1569,6 +1580,17 @@ export default function App() {
                 open={chatAgentOpen}
                 documentId={DOCUMENT_ID}
                 onClose={() => setChatAgentOpen(false)}
+                onActiveTableChange={(tableId) => {
+                  // Virtual pointer: follow the Agent to whichever table it's
+                  // currently operating on. switchTable short-circuits when
+                  // the id is already active, so back-to-back tool calls
+                  // against the same table don't thrash the loader. For a
+                  // freshly-created table the document-level SSE may still
+                  // be en route — switchTable handles fetch itself, and the
+                  // sidebar row will light up once useDocumentSync arrives.
+                  setActiveItemType("table");
+                  void switchTable(tableId);
+                }}
               />
               <div className="part-hover-zone" aria-hidden="true" />
               <div

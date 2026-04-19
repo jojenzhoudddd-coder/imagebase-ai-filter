@@ -1,17 +1,16 @@
 import { useState } from "react";
 import type { ChatToolCall } from "../../../api";
 import { useTranslation } from "../../../i18n";
-import ToolCallCard from "./ToolCallCard";
 
 /**
- * ToolCallGroup — collapses consecutive tool calls of the same type into a
- * single expandable header row. Defaults to COLLAPSED because long action
- * sessions (e.g. creating 10 fields in a row) would otherwise swamp the
- * transcript with near-identical rows.
+ * ToolCallGroup — consecutive tool calls of the same MCP tool are grouped
+ * under a single expandable card header. Prevents batch jobs (e.g. creating
+ * 10 fields in one breath) from drowning the transcript in near-identical
+ * rows.
  *
- * Visual: same row skin as ToolCallCard (Figma 6905:40884). The right edge
- * shows a count badge + chevron indicator instead of a status dot. Clicking
- * anywhere on the header toggles the group.
+ * Header: same card chrome as ThinkingIndicator/ToolCallCard, plus a count
+ * badge. Body (when expanded): a sub-step list — one row per child call,
+ * each with its own target tag and status indicator.
  */
 export default function ToolCallGroup({
   tool,
@@ -21,37 +20,59 @@ export default function ToolCallGroup({
   items: ChatToolCall[];
 }) {
   const { t } = useTranslation();
-  // Default collapsed — per user requirement ("当有多个同类动作时，默认收起").
   const [expanded, setExpanded] = useState(false);
 
   const translated = t(`chat.tool.${tool}`);
   const label = translated === `chat.tool.${tool}` ? tool : translated;
-
-  // Overall status: error > running > awaiting > success
   const status = deriveGroupStatus(items);
 
   return (
-    <div className="chat-tool-group" data-tool={tool}>
+    <div className={`chat-expand-card chat-tool-card ${status}${expanded ? " expanded" : ""}`}>
       <button
         type="button"
-        className={`chat-tool-row chat-tool-group-header ${status}${expanded ? " expanded" : ""}`}
+        className="chat-expand-card-header"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
       >
-        <span className="chat-tool-row-icon" aria-hidden="true">
+        <span className="chat-expand-card-icon" aria-hidden="true">
           <GroupGlyph />
         </span>
-        <span className="chat-tool-row-label">
+        <span className="chat-expand-card-title">
           {label}
-          <span className="chat-tool-row-count">· {t("chat.tool.groupCount", { count: items.length })}</span>
+          <span className="chat-tool-row-count">
+            · {t("chat.tool.groupCount", { count: items.length })}
+          </span>
         </span>
-        <ChevronIcon expanded={expanded} title={expanded ? t("chat.tool.collapse") : t("chat.tool.expand")} />
+        <Chevron expanded={expanded} />
       </button>
       {expanded && (
-        <div className="chat-tool-group-children">
-          {items.map((it) => (
-            <ToolCallCard key={it.callId} call={it} />
-          ))}
+        <div className="chat-expand-card-body chat-tool-body">
+          <div className="chat-tool-body-step">
+            <span className="chat-tool-body-step-marker">{t("chat.tool.stepStart")}</span>
+            <span className="chat-tool-body-step-text">{label}</span>
+          </div>
+          <ol className="chat-tool-substeps">
+            {items.map((it) => (
+              <li
+                key={it.callId}
+                className={`chat-tool-substep ${it.status || "running"}`}
+              >
+                <span className="chat-tool-substep-marker" aria-hidden="true">
+                  <SubstepMarker status={it.status || "running"} />
+                </span>
+                <span className="chat-tool-substep-text">
+                  {extractTargetTag(it.args) || it.callId.slice(-6)}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <div className={`chat-tool-body-step result ${status}`}>
+            <span className="chat-tool-body-step-marker">
+              {t(
+                `chat.tool.step.${status === "awaiting_confirmation" ? "awaiting" : status}`
+              )}
+            </span>
+          </div>
         </div>
       )}
     </div>
@@ -74,7 +95,49 @@ function deriveGroupStatus(items: ChatToolCall[]): string {
   return "success";
 }
 
-/** Group icon — stacked-rows glyph hinting "multiple items". 14×14. */
+function extractTargetTag(args: Record<string, unknown>): string | null {
+  if (!args) return null;
+  if (typeof args.name === "string" && args.name) return args.name;
+  if (typeof args.tableId === "string") {
+    return args.tableId.length > 16 ? args.tableId.slice(0, 14) + "…" : args.tableId;
+  }
+  if (typeof args.viewId === "string") return args.viewId.slice(0, 14);
+  if (typeof args.recordId === "string") return args.recordId.slice(0, 14);
+  if (typeof args.fieldId === "string") return args.fieldId.slice(0, 14);
+  return null;
+}
+
+/** Per-substep marker: mirrors the header status glyph but in a smaller, inline form. */
+function SubstepMarker({ status }: { status: string }) {
+  if (status === "running") {
+    return <span className="chat-tool-substep-spinner" />;
+  }
+  if (status === "success") {
+    return (
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path
+          d="m3 6.2 2 2 4-4.2"
+          stroke="#17B26A"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (status === "error") {
+    return (
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path d="M3.5 3.5l5 5M8.5 3.5l-5 5" stroke="#F54A45" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (status === "awaiting_confirmation") {
+    return <span className="chat-tool-substep-awaiting" />;
+  }
+  return <span className="chat-tool-substep-idle" />;
+}
+
 function GroupGlyph() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -85,16 +148,15 @@ function GroupGlyph() {
   );
 }
 
-/** Expand/collapse chevron. Flips 180° via CSS transform when expanded. */
-function ChevronIcon({ expanded, title }: { expanded: boolean; title?: string }) {
+function Chevron({ expanded }: { expanded: boolean }) {
   return (
     <svg
       width="16"
       height="16"
       viewBox="0 0 16 16"
       fill="none"
-      className={`chat-tool-row-chevron${expanded ? " expanded" : ""}`}
-      aria-label={title}
+      className={`chat-expand-card-chevron${expanded ? " expanded" : ""}`}
+      aria-hidden="true"
     >
       <path
         d="m5 6 3 3 3-3"

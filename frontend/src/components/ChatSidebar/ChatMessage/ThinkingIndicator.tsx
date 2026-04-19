@@ -1,45 +1,70 @@
+import { useState } from "react";
+import { useTranslation } from "../../../i18n";
+
 /**
- * ThinkingIndicator — model-thinking visual cue.
+ * ThinkingIndicator — model "deep thinking" surface.
  *
- * Two modes driven by Figma:
+ * Two visual modes:
  *
- *   - active (node 6:2990): single caption line "正在分析需求..." in
- *     14/22 #646A73 with an animated ellipsis. Rendered while the model is
- *     still streaming thinking tokens.
+ *   - active: the agent is still streaming thinking tokens and no answer
+ *     has begun yet. Shows an animated caption line + skeleton preview.
  *
- *   - collapsed (node 6:5302): "深度思考" pill with a 28×28 white tool card
- *     hosting the icon_ai-deepthink_outlined glyph (14×14) + the label in
- *     12/20 #646A73. Rendered once thinking is complete and the answer has
- *     begun to stream / has finished.
+ *   - collapsed: thinking finished (or the full message is settled). Renders
+ *     an expandable card with a header ("深度思考" + deepthink icon +
+ *     chevron). Click the header to reveal the raw thinking transcript
+ *     inside, anchored to a left accent bar so it reads like a quoted aside.
  *
- * The parent decides which mode to use (based on whether the assistant
- * message still has no content / is still streaming). The label text is
- * configurable so the active caption can surface dynamic progress copy.
+ * The parent picks the mode based on whether the assistant message has
+ * started producing answer tokens; we show whichever surface fits.
  */
 
 interface Props {
-  /** 'active' → streaming caption; 'collapsed' → deepthink pill. */
   mode?: "active" | "collapsed";
   /** Caption text while active; defaults to 正在分析需求. */
   text?: string;
-  /** Label for the collapsed pill; defaults to 深度思考. */
+  /** Label for the collapsed card header; defaults to 深度思考. */
   label?: string;
+  /** Full thinking transcript rendered inside the expanded card body. */
+  thinking?: string;
 }
 
 export default function ThinkingIndicator({
   mode = "active",
   text = "正在分析需求",
-  label = "深度思考",
+  label,
+  thinking,
 }: Props) {
+  const { t } = useTranslation();
+  // Default collapsed — the thinking transcript is supplementary context,
+  // not the primary answer. Users opt in by clicking.
+  const [expanded, setExpanded] = useState(false);
+  const headerLabel = label ?? t("chat.thinking.collapsed");
+
   if (mode === "collapsed") {
+    const hasBody = Boolean(thinking && thinking.trim().length > 0);
     return (
-      <div className="chat-thinking">
-        <div className="chat-thinking-pill">
-          <span className="chat-thinking-tool" aria-hidden="true">
+      <div className={`chat-expand-card chat-thinking-card${expanded ? " expanded" : ""}`}>
+        <button
+          type="button"
+          className="chat-expand-card-header"
+          onClick={() => hasBody && setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          disabled={!hasBody}
+        >
+          <span className="chat-expand-card-icon" aria-hidden="true">
             <DeepThinkIcon size={14} />
           </span>
-          <span className="chat-thinking-label">{label}</span>
-        </div>
+          <span className="chat-expand-card-title">{headerLabel}</span>
+          {hasBody && <Chevron expanded={expanded} />}
+        </button>
+        {expanded && hasBody && (
+          <div className="chat-expand-card-body chat-thinking-body">
+            {/* Trim — ARK often prefixes thinking with "\n" and trails with
+             * whitespace; rendering those verbatim shows as empty rows at
+             * the top/bottom of the body since we use pre-wrap. */}
+            <p className="chat-thinking-body-text">{thinking?.trim()}</p>
+          </div>
+        )}
       </div>
     );
   }
@@ -53,11 +78,9 @@ export default function ThinkingIndicator({
 }
 
 /**
- * Five-row placeholder that mimics the Figma 骨架 (node
- * I6:2993;1688:46937) — a field / field-list preview that hints the
- * agent will soon produce schema output. Widths are staggered (80/65/
- * 90/55/72) so the bars don't look uniform, and the whole block gently
- * pulses via CSS keyframes (see .chat-thinking-skeleton in the stylesheet).
+ * Five-row placeholder mimicking a schema preview. Gentle opacity pulse
+ * hints the model is still working. See .chat-thinking-skeleton in the
+ * stylesheet for keyframes.
  */
 function SkeletonPreview() {
   const rows: Array<"w-80" | "w-65" | "w-90" | "w-55" | "w-72"> = [
@@ -79,20 +102,10 @@ function SkeletonPreview() {
   );
 }
 
-/**
- * `icon_ai-deepthink_outlined` — approximation of the Figma glyph.
- * A rounded square with a sparkle / brain-spark motif; 14×14 viewBox so the
- * parent .chat-thinking-tool (28×28) centres it with 7px padding.
- */
+/** icon_ai-deepthink — approximation of the Figma glyph. Sparkle + dot. */
 function DeepThinkIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 14 14"
-      fill="none"
-      aria-hidden="true"
-    >
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden="true">
       <path
         d="M7 2.2c.18 0 .34.12.4.29l.62 1.96c.13.4.45.72.86.86l1.96.62c.35.12.35.6 0 .72l-1.96.62c-.4.13-.72.45-.86.86l-.62 1.96c-.06.17-.22.29-.4.29s-.34-.12-.4-.29l-.62-1.96c-.13-.4-.45-.72-.86-.86l-1.96-.62c-.35-.12-.35-.6 0-.72l1.96-.62c.4-.13.72-.45.86-.86l.62-1.96c.06-.17.22-.29.4-.29z"
         stroke="currentColor"
@@ -100,6 +113,27 @@ function DeepThinkIcon({ size = 14 }: { size?: number }) {
         strokeLinejoin="round"
       />
       <circle cx="11" cy="11" r="1.3" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  );
+}
+
+function Chevron({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      className={`chat-expand-card-chevron${expanded ? " expanded" : ""}`}
+      aria-hidden="true"
+    >
+      <path
+        d="m5 6 3 3 3-3"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

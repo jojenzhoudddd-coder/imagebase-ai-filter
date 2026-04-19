@@ -100,9 +100,40 @@ interface Props {
   open: boolean;
   documentId: string;
   onClose: () => void;
+  /**
+   * Virtual pointer — when the Agent invokes a tool that targets a specific
+   * table, surface that tableId so the parent (App.tsx) can switch the
+   * artifacts panel to match. Fires on both tool_start (eager: follow the
+   * AI as it works) and tool_result for create_table (since the tableId
+   * only exists in the response, not the args). No-op if the extracted id
+   * is already active — App.tsx's switchTable() guards against re-fetch.
+   */
+  onActiveTableChange?: (tableId: string) => void;
 }
 
-export default function ChatSidebar({ open, documentId, onClose }: Props) {
+/**
+ * Derive the tableId a given tool call is targeting, if any. Used by the
+ * virtual-pointer effect to auto-switch the artifacts panel. Returns
+ * undefined for tools that don't touch a specific table (list_tables,
+ * unrelated tools, etc.).
+ */
+function extractTableIdFromCall(
+  tool: string,
+  args: Record<string, unknown>,
+  result?: unknown
+): string | undefined {
+  // Most mutating tools accept tableId directly in args.
+  if (typeof args?.tableId === "string" && args.tableId) return args.tableId;
+  // create_table: the id is only present in the response payload.
+  if (tool === "create_table" && result && typeof result === "object") {
+    const r = result as Record<string, unknown>;
+    if (typeof r.id === "string" && r.id) return r.id;
+    if (typeof r.tableId === "string" && r.tableId) return r.tableId;
+  }
+  return undefined;
+}
+
+export default function ChatSidebar({ open, documentId, onClose, onActiveTableChange }: Props) {
   const { t } = useTranslation();
   // Hydrate from localStorage synchronously so a refresh shows cached
   // messages immediately — no welcome-page flash while /conversations loads.
@@ -346,6 +377,10 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
         });
       },
       onToolStart: (call) => {
+        // Virtual pointer: the moment the Agent starts acting on a table,
+        // surface its id so the artifacts panel can follow along.
+        const tid = extractTableIdFromCall(call.tool, call.args);
+        if (tid) onActiveTableChange?.(tid);
         setMessages((prev) => {
           for (let i = prev.length - 1; i >= 0; i--) {
             if (prev[i].role === "assistant" && prev[i].streaming) {
@@ -357,19 +392,28 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
           return prev;
         });
       },
-      onToolResult: (callId, success, _result) => {
-        setMessages((prev) =>
-          prev.map((m) =>
+      onToolResult: (callId, success, result) => {
+        setMessages((prev) => {
+          let pointerTid: string | undefined;
+          const next = prev.map((m) =>
             m.role === "assistant"
               ? {
                   ...m,
-                  toolCalls: m.toolCalls.map((tc) =>
-                    tc.callId === callId ? { ...tc, status: success ? "success" : "error" } : tc
-                  ),
+                  toolCalls: m.toolCalls.map((tc) => {
+                    if (tc.callId !== callId) return tc;
+                    // Virtual pointer fallback: tools like create_table carry
+                    // the target tableId only in the result, not the args.
+                    if (!pointerTid) {
+                      pointerTid = extractTableIdFromCall(tc.tool, tc.args, result);
+                    }
+                    return { ...tc, status: (success ? "success" : "error") as ChatToolCall["status"] };
+                  }),
                 }
               : m
-          )
-        );
+          );
+          if (pointerTid) onActiveTableChange?.(pointerTid);
+          return next;
+        });
       },
       onConfirm: (pending) => {
         setPendingConfirm(pending);
@@ -384,7 +428,7 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
         );
       },
     });
-  }, [activeConv, inputValue, streaming]);
+  }, [activeConv, inputValue, streaming, onActiveTableChange]);
 
   const handleConfirm = useCallback(
     (confirmed: boolean) => {
@@ -422,6 +466,8 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
           });
         },
         onToolStart: (call) => {
+          const tid = extractTableIdFromCall(call.tool, call.args);
+          if (tid) onActiveTableChange?.(tid);
           setMessages((prev) => {
             for (let i = prev.length - 1; i >= 0; i--) {
               if (prev[i].role === "assistant") {
@@ -444,25 +490,32 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
             return prev;
           });
         },
-        onToolResult: (callId, success) => {
-          setMessages((prev) =>
-            prev.map((m) =>
+        onToolResult: (callId, success, result) => {
+          setMessages((prev) => {
+            let pointerTid: string | undefined;
+            const next = prev.map((m) =>
               m.role === "assistant"
                 ? {
                     ...m,
-                    toolCalls: m.toolCalls.map((tc) =>
-                      tc.callId === callId ? { ...tc, status: success ? "success" : "error" } : tc
-                    ),
+                    toolCalls: m.toolCalls.map((tc) => {
+                      if (tc.callId !== callId) return tc;
+                      if (!pointerTid) {
+                        pointerTid = extractTableIdFromCall(tc.tool, tc.args, result);
+                      }
+                      return { ...tc, status: (success ? "success" : "error") as ChatToolCall["status"] };
+                    }),
                   }
                 : m
-            )
-          );
+            );
+            if (pointerTid) onActiveTableChange?.(pointerTid);
+            return next;
+          });
         },
         onError: (code, message) => setError(`${code}: ${message}`),
         onDone: () => setStreaming(false),
       });
     },
-    [activeConv, pendingConfirm]
+    [activeConv, pendingConfirm, onActiveTableChange]
   );
 
   const handleStop = useCallback(() => {
@@ -642,7 +695,13 @@ function MessageBlock({ msg }: { msg: UiMessage }) {
   // tighter than the outer message gap (28px between successive messages).
   return (
     <div className="chat-msg-assistant-block">
-      {thinkingCollapsed && <ThinkingIndicator mode="collapsed" label={t("chat.thinking.collapsed")} />}
+      {thinkingCollapsed && (
+        <ThinkingIndicator
+          mode="collapsed"
+          label={t("chat.thinking.collapsed")}
+          thinking={msg.thinking}
+        />
+      )}
       {thinkingActive && <ThinkingIndicator mode="active" text={t("chat.thinking.caption")} />}
       <AssistantText content={msg.content} streaming={msg.streaming} />
       {groups.map((g, i) =>

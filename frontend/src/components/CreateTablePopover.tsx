@@ -28,6 +28,21 @@ const AI_ICON = (
   </svg>
 );
 
+/* Table icon — mirrors CM_ICONS.table in Sidebar.tsx (same #8D55ED glyph)
+ * so the popover title visually links back to the "+" menu entry the user
+ * clicked to get here. */
+const TABLE_ICON = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path d="M1.333 2.667C1.333 1.93 1.93 1.333 2.667 1.333h10.666C14.07 1.333 14.667 1.93 14.667 2.667v10.666c0 .737-.597 1.334-1.334 1.334H2.667c-.737 0-1.334-.597-1.334-1.334V2.667zm1.334 0v10.666h10.666V2.667H2.667z" fill="#8D55ED"/>
+    <path d="M8.333 4.667a.667.667 0 000 1.333h3a.667.667 0 000-1.333h-3z" fill="#8D55ED"/>
+    <path d="M4 5.333a.667.667 0 01.667-.666h1.333a.667.667 0 010 1.333H4.667A.667.667 0 014 5.333z" fill="#8D55ED"/>
+    <path d="M8.333 7.333a.667.667 0 000 1.334h3a.667.667 0 000-1.334h-3z" fill="#8D55ED"/>
+    <path d="M4 8a.667.667 0 01.667-.667h1.333a.667.667 0 010 1.334H4.667A.667.667 0 014 8z" fill="#8D55ED"/>
+    <path d="M8.333 10a.667.667 0 100 1.333h3a.667.667 0 100-1.333h-3z" fill="#8D55ED"/>
+    <path d="M4 10.667A.667.667 0 014.667 10h1.333a.667.667 0 010 1.333H4.667A.667.667 0 014 10.667z" fill="#8D55ED"/>
+  </svg>
+);
+
 /* Large success checkmark icon for complete state */
 const SUCCESS_ICON_LARGE = (
   <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
@@ -159,7 +174,7 @@ const CreateTablePopover = forwardRef<CreateTablePopoverHandle, Props>(
       {/* Title — hidden during generating/creating/complete */}
       {state !== "generating" && state !== "creating" && state !== "complete" && (
         <div className="create-table-popover-title">
-          {AI_ICON}
+          {TABLE_ICON}
           {t("aiTable.title")}
         </div>
       )}

@@ -21,6 +21,9 @@ interface Props {
   onClearRowCells?: (cells: Array<{ recordId: string; fieldId: string }>) => void;
   onAddField?: (anchorRect: DOMRect) => void;
   onEditField?: (fieldId: string, anchorRect: DOMRect) => void;
+  /** Create an empty record; resolves to the new record id so the caller
+   * can enter edit mode on its first cell. */
+  onAddRecord?: () => Promise<string>;
 }
 
 interface CellRange {
@@ -603,6 +606,7 @@ function getDefaultColWidth(field: { id: string; isPrimary?: boolean }): number 
 export interface TableViewHandle {
   selectAndScrollToField: (fieldId: string) => void;
   clearRowSelection: () => void;
+  addRecord: () => Promise<void>;
 }
 
 const COL_WIDTHS_KEY = "col_widths_v1";
@@ -622,7 +626,7 @@ function loadColWidths(): Record<string, number> {
 
 const CELL_DRAG_THRESHOLD = 4;
 
-const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords, onClearCells, onClearRowCells, onAddField, onEditField }, ref) {
+const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords, onClearCells, onClearRowCells, onAddField, onEditField, onAddRecord }, ref) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
@@ -680,6 +684,10 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   const dragRef = useRef<DragState | null>(null);
   const justDraggedRef = useRef(false);
 
+  // Forward ref to addRecordClickHandlerRef so the imperative handle can call
+  // the current closure (which captures latest visibleFields/onAddRecord).
+  const addRecordClickRef = useRef<() => Promise<void>>(async () => {});
+
   // Expose imperative methods to parent
   useImperativeHandle(ref, () => ({
     selectAndScrollToField(fieldId: string) {
@@ -691,6 +699,9 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     },
     clearRowSelection() {
       setSelectedRowIds(new Set());
+    },
+    async addRecord() {
+      await addRecordClickRef.current();
     },
   }), []);
 
@@ -785,6 +796,26 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     setEditing({ recordId, fieldId });
     setCellRange(null);
   }, []);
+
+  const handleAddRecordClick = useCallback(async () => {
+    if (!onAddRecord) return;
+    const firstFieldId = visibleFields[0]?.id;
+    try {
+      const newId = await onAddRecord();
+      if (firstFieldId) {
+        setEditing({ recordId: newId, fieldId: firstFieldId });
+        setCellRange(null);
+        // Scroll the new row into view
+        requestAnimationFrame(() => {
+          const el = tableRef.current?.querySelector<HTMLElement>(`tr[data-record-id="${newId}"]`);
+          el?.scrollIntoView({ block: "nearest" });
+        });
+      }
+    } catch {
+      // Errors are surfaced via toast in parent; swallow here so edit mode doesn't open
+    }
+  }, [onAddRecord, visibleFields]);
+  addRecordClickRef.current = handleAddRecordClick;
 
   const commitEdit = useCallback((recordId: string, fieldId: string, value: CellValue) => {
     onCellChange(recordId, fieldId, value);
@@ -1247,6 +1278,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
               return (
                 <tr
                   key={record.id}
+                  data-record-id={record.id}
                   className={`data-row ${isHovered ? "row-hovered" : ""} ${isRowSelected ? "row-selected" : ""}`}
                   onMouseEnter={() => setHoveredRowId(record.id)}
                   onMouseLeave={() => setHoveredRowId(null)}
@@ -1303,7 +1335,11 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
             })}
             <tr className="add-row">
               <td colSpan={visibleFields.length + 2}>
-                <button className="add-record-btn">
+                <button
+                  className="add-record-btn"
+                  onClick={handleAddRecordClick}
+                  disabled={!onAddRecord}
+                >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                     <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>

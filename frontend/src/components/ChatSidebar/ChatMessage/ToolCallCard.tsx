@@ -1,47 +1,94 @@
+import { useState } from "react";
 import type { ChatToolCall } from "../../../api";
 import { useTranslation } from "../../../i18n";
 
 /**
- * ToolCallCard — single tool-call row, pixel-aligned to Figma node
- * 6905:40884 "AI_ActionItem":
+ * ToolCallCard — a single tool invocation rendered as an expandable card.
  *
- *   ┌───────────────────────────────────────────────┐
- *   │  ▢ icon  label (ellipsis, 12/20 #646A73)  ● │
- *   └───────────────────────────────────────────────┘
+ *   ┌────────────────────────────────────────────────┐
+ *   │ 🔧  <tool label> · <target>          ⚪  ▾   │  <- header (clickable)
+ *   ├────────────────────────────────────────────────┤
+ *   │ ┃  开始执行 create_table                       │
+ *   │ ┃  参数：name="CRM 线索", documentId=…        │  <- body (left accent)
+ *   │ ┃  ✓ 执行成功                                  │
+ *   └────────────────────────────────────────────────┘
  *
- *   • Outer row: 36px height, 11px radius, #F5F6F7 background,
- *     4px horizontal padding, 8px gap.
- *   • Icon container: 28×28, 8px radius, rgba(255,255,255,0.8),
- *     0.5px #DEE0E3 border, 14×14 tool icon centred (#2B2F36).
- *   • Label: PingFang SC 12/20, #646A73, flex:1 with ellipsis.
- *   • Right side: 16×16 status indicator (spinner / check / x /
- *     awaiting-dot).
+ * The header always shows status on the right. Clicking toggles the body,
+ * which lines up with the thinking/confirm cards for visual consistency.
  */
 export default function ToolCallCard({ call }: { call: ChatToolCall }) {
   const { t } = useTranslation();
   const status = call.status || "running";
-  // Localized tool label — falls back to the raw MCP name if there's no
-  // dedicated translation key.
+  const [expanded, setExpanded] = useState(false);
+
   const translated = t(`chat.tool.${call.tool}`);
   const label = translated === `chat.tool.${call.tool}` ? call.tool : translated;
   const targetTag = extractTargetTag(call.args);
-  const statusTitle = t(`chat.tool.status.${status === "awaiting_confirmation" ? "awaiting" : status}`);
+  const statusTitle = t(
+    `chat.tool.status.${status === "awaiting_confirmation" ? "awaiting" : status}`
+  );
 
   return (
-    <div className={`chat-tool-row ${status}`} role="group" aria-label={label}>
-      <span className="chat-tool-row-icon" aria-hidden="true">
-        <ToolGlyph />
-      </span>
-      <span className="chat-tool-row-label">
-        {label}
-        {targetTag && <span className="chat-tool-row-target">「{targetTag}」</span>}
-      </span>
-      <StatusDot status={status} title={statusTitle} />
+    <div className={`chat-expand-card chat-tool-card ${status}${expanded ? " expanded" : ""}`}>
+      <button
+        type="button"
+        className="chat-expand-card-header"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        aria-label={label}
+      >
+        <span className="chat-expand-card-icon" aria-hidden="true">
+          <ToolGlyph />
+        </span>
+        <span className="chat-expand-card-title">
+          {label}
+          {targetTag && <span className="chat-tool-row-target">「{targetTag}」</span>}
+        </span>
+        <StatusDot status={status} title={statusTitle} />
+        <Chevron expanded={expanded} />
+      </button>
+      {expanded && (
+        <div className="chat-expand-card-body chat-tool-body">
+          <div className="chat-tool-body-step">
+            <span className="chat-tool-body-step-marker">{t("chat.tool.stepStart")}</span>
+            <span className="chat-tool-body-step-text">{label}</span>
+          </div>
+          {Object.keys(call.args || {}).length > 0 && (
+            <div className="chat-tool-body-args">
+              {Object.entries(call.args).map(([k, v]) => (
+                <div key={k} className="chat-tool-body-arg">
+                  <span className="chat-tool-body-arg-key">{k}</span>
+                  <span className="chat-tool-body-arg-val">{formatArgValue(v)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className={`chat-tool-body-step result ${status}`}>
+            <span className="chat-tool-body-step-marker">
+              {t(
+                `chat.tool.step.${status === "awaiting_confirmation" ? "awaiting" : status}`
+              )}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-/** Try to extract a short, human-readable target label from common tool args. */
+function formatArgValue(v: unknown): string {
+  if (v == null) return "—";
+  if (typeof v === "string") return v.length > 80 ? v.slice(0, 78) + "…" : v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try {
+    const s = JSON.stringify(v);
+    return s.length > 80 ? s.slice(0, 78) + "…" : s;
+  } catch {
+    return String(v);
+  }
+}
+
+/** Derive a short human-readable target label from common tool args. */
 function extractTargetTag(args: Record<string, unknown>): string | null {
   if (!args) return null;
   if (typeof args.name === "string" && args.name) return args.name;
@@ -54,9 +101,7 @@ function extractTargetTag(args: Record<string, unknown>): string | null {
   return null;
 }
 
-/** `icon_base-agent-table_outlined` — Figma node 6905:25839.
- * Approximated as a bracket-style "richtext / table agent" mark (two opposing
- * L-corners) that reads as "a tracked table action". 14×14 viewBox. */
+/** Bracket+grid glyph hinting "a tracked table action". 14×14. */
 function ToolGlyph() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -74,20 +119,12 @@ function ToolGlyph() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <rect
-        x="4"
-        y="4"
-        width="6"
-        height="6"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.2"
-      />
+      <rect x="4" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.2" />
     </svg>
   );
 }
 
-/** Right-edge status indicator: 16×16. Variants per status. */
+/** 16×16 status indicator on the right of the header. */
 function StatusDot({ status, title }: { status: string; title: string }) {
   if (status === "running") {
     return <span className="chat-tool-row-spinner" title={title} aria-label={title} />;
@@ -122,12 +159,7 @@ function StatusDot({ status, title }: { status: string; title: string }) {
         className="chat-tool-row-status-icon error"
         aria-label={title}
       >
-        <path
-          d="M5 5l6 6M11 5l-6 6"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
+        <path d="M5 5l6 6M11 5l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
       </svg>
     );
   }
@@ -139,4 +171,25 @@ function StatusDot({ status, title }: { status: string; title: string }) {
     );
   }
   return null;
+}
+
+function Chevron({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      className={`chat-expand-card-chevron${expanded ? " expanded" : ""}`}
+      aria-hidden="true"
+    >
+      <path
+        d="m5 6 3 3 3-3"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }

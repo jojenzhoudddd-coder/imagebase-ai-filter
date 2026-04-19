@@ -385,6 +385,224 @@
   50%      { opacity: 0.55; }
 }
 
+/* ─── Shared expandable card (thinking / tool / confirm) ───────────
+ * All three surfaces use the same chrome so the chat transcript stays
+ * visually coherent: same border, radius, spacing, and header anatomy.
+ * Variants override only what's different (primary colour, body content,
+ * right-edge adornments).
+ *
+ * Anatomy:
+ *   ┌── .chat-expand-card (border 0.5px #DEE0E3, radius 10, white bg)
+ *   │   .chat-expand-card-header (clickable, 36px, icon + title + right slot)
+ *   │   .chat-expand-card-body   (8px top padding, left accent bar #DEE0E3)
+ *   └──
+ */
+.chat-expand-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: #F5F6F7;          /* token/bg/body-overlay — default light gray */
+  border: none;                 /* framed look removed per spec */
+  border-radius: 10px;
+  overflow: hidden;
+  transition: background 120ms ease;
+}
+.chat-expand-card.expanded {
+  background: #F5F6F7;          /* same gray when expanded — no highlight swap */
+}
+.chat-expand-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 8px 0 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: #646A73;
+  box-sizing: border-box;
+  transition: background 100ms ease;
+}
+.chat-expand-card-header:hover {
+  background: #EDEFF1;          /* standard hover gray (shared with tool rows) */
+}
+.chat-expand-card-header:disabled {
+  cursor: default;
+}
+.chat-expand-card-header:disabled:hover {
+  background: transparent;
+}
+.chat-expand-card-icon {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #FFFFFF;          /* white tile for readable contrast on gray card */
+  border: 0.5px solid #DEE0E3;  /* token/line/border-card — same weight everywhere */
+  border-radius: 8px;
+  color: #2B2F36;
+}
+.chat-expand-card-title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #646A73;
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+}
+.chat-expand-card-chevron {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: #8F959E;
+  transition: transform 150ms ease;
+}
+.chat-expand-card-chevron.expanded {
+  transform: rotate(180deg);
+}
+.chat-expand-card-body {
+  padding: 8px 12px 12px 14px;
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 12px;
+  line-height: 20px;
+  color: #646A73;
+}
+
+/* ─── ThinkingIndicator body ─── */
+.chat-thinking-body {
+  /* Left accent quote-bar removed per spec — body text sits flush with the
+   * card padding, no vertical rule. */
+}
+.chat-thinking-body-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #646A73;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+/* ─── ToolCallCard body (single & group share this) ─── */
+.chat-tool-card.error .chat-expand-card-header {
+  background: #FFF5F3;
+}
+.chat-tool-card.error.expanded {
+  background: #FFF5F3;
+}
+.chat-tool-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Left accent quote-bar removed per spec. */
+}
+.chat-tool-body-step {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  color: #646A73;
+}
+.chat-tool-body-step.result.success { color: #17B26A; }
+.chat-tool-body-step.result.error   { color: #F54A45; }
+.chat-tool-body-step.result.running { color: #1456F0; }
+.chat-tool-body-step.result.awaiting_confirmation { color: #F5A623; }
+.chat-tool-body-step-marker {
+  color: inherit;
+  font-weight: 500;
+}
+.chat-tool-body-step-text {
+  color: #1F2329;
+}
+.chat-tool-body-args {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0 4px 0;
+}
+.chat-tool-body-arg {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 20px;
+}
+.chat-tool-body-arg-key {
+  flex: 0 0 auto;
+  color: #8F959E;
+  font-family: "SF Mono", ui-monospace, "PingFang SC", monospace;
+  font-size: 11px;
+}
+.chat-tool-body-arg-val {
+  flex: 1 1 0;
+  min-width: 0;
+  color: #2B2F36;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "SF Mono", ui-monospace, "PingFang SC", monospace;
+  font-size: 11px;
+}
+.chat-tool-substeps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chat-tool-substep {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+.chat-tool-substep-marker {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chat-tool-substep-text {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2B2F36;
+  font-size: 12px;
+  line-height: 20px;
+}
+.chat-tool-substep-spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.4px solid #D0D3D6;
+  border-top-color: #1456F0;
+  border-radius: 50%;
+  animation: chat-spin 0.8s linear infinite;
+}
+.chat-tool-substep-awaiting {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #F5A623;
+}
+.chat-tool-substep-idle {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #D0D3D6;
+}
+
 /* Collapsed mode: pill with deepthink tool icon + label */
 .chat-thinking-pill {
   display: inline-flex;
@@ -545,7 +763,12 @@
   padding-left: 16px;
 }
 
-/* Confirmation card */
+/* Confirmation card
+ * v2: matches the expandable-card chrome (same radius, border, typography)
+ * with a dedicated "信息确认" header row — icon + title on top, body text
+ * and action row below. The amber accent distinguishes it from neutral
+ * tool cards without stealing focus from the assistant message flow.
+ */
 .chat-confirm-card {
   background: #EFF5FF;
   border: 1px solid #BBDBFA;
@@ -554,6 +777,47 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.chat-confirm-card.v2 {
+  background: #F5F6F7;          /* same light-gray as other expandable cards */
+  border: none;                 /* framed look removed per spec */
+  border-radius: 10px;
+  padding: 0;
+}
+.chat-confirm-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px 0 4px;
+}
+.chat-confirm-card-icon {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #FFFFFF;          /* matches .chat-expand-card-icon tile */
+  border: 0.5px solid #DEE0E3;
+  border-radius: 8px;
+  color: #F5A623;               /* amber glyph stays for the warning cue */
+}
+.chat-confirm-card-title {
+  flex: 1 1 0;
+  min-width: 0;
+  color: #1F2329;
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.chat-confirm-card-body {
+  padding: 0 14px 10px 46px; /* align body text under the title (icon width + gap) */
+  color: #646A73;
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 12px;
+  line-height: 20px;
 }
 .chat-confirm-text {
   font-size: 13px;
@@ -564,6 +828,9 @@
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+.chat-confirm-card.v2 .chat-confirm-actions {
+  padding: 0 12px 12px;
 }
 .chat-confirm-btn {
   padding: 6px 14px;

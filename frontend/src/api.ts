@@ -254,6 +254,22 @@ export async function batchRestoreFields(
   return res.json();
 }
 
+export async function createRecord(
+  tableId: string,
+  cells: Record<string, any>
+): Promise<TableRecord> {
+  const res = await mutationFetch(`${BASE}/tables/${tableId}/records`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cells }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || `Failed to create record`);
+  }
+  return res.json();
+}
+
 export async function updateRecord(
   tableId: string,
   recordId: string,
