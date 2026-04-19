@@ -27,3 +27,27 @@
   overflow: hidden;
   position: relative;
 }
+
+/* ─── Placeholder pages (design, album, folder) ─── */
+
+.placeholder-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 12px;
+  color: var(--color-text-3);
+  font-size: 14px;
+  user-select: none;
+}
+
+.placeholder-page .placeholder-icon {
+  color: var(--color-text-4);
+  opacity: 0.5;
+}
+
+.placeholder-page .placeholder-label {
+  font-size: 13px;
+  color: var(--color-text-4);
+}

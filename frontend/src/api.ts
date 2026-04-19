@@ -303,6 +303,134 @@ export async function batchCreateRecords(
   return res.json();
 }
 
+// ─── Document Tree (folders + designs) ───
+
+export interface FolderBrief {
+  id: string;
+  name: string;
+  parentId: string | null;
+  order: number;
+}
+
+export interface TreeData {
+  tables: Array<{ id: string; name: string; order: number; parentId: string | null }>;
+  folders: FolderBrief[];
+  designs: DesignBrief[];
+}
+
+export async function fetchDocumentTree(docId: string): Promise<TreeData> {
+  const res = await fetch(`${BASE}/documents/${docId}/tree`);
+  if (!res.ok) {
+    // Fallback: return tables-only if endpoint doesn't exist yet
+    const tables = await fetchDocumentTables(docId);
+    return { tables: tables.map(t => ({ ...t, parentId: null })), folders: [], designs: [] };
+  }
+  return res.json();
+}
+
+export async function createFolder(
+  documentId: string,
+  name: string,
+  parentId: string | null = null
+): Promise<FolderBrief> {
+  const res = await mutationFetch(`${BASE}/documents/${documentId}/folders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, parentId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to create folder");
+  }
+  return res.json();
+}
+
+export async function renameFolder(folderId: string, name: string): Promise<{ id: string; name: string }> {
+  const res = await mutationFetch(`${BASE}/folders/${folderId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Failed to rename folder");
+  return res.json();
+}
+
+export async function deleteFolder(folderId: string): Promise<void> {
+  const res = await mutationFetch(`${BASE}/folders/${folderId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete folder");
+}
+
+export async function moveItem(
+  itemId: string,
+  itemType: "table" | "folder" | "design",
+  newParentId: string | null,
+  documentId: string
+): Promise<void> {
+  const res = await mutationFetch(`${BASE}/documents/${documentId}/move`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ itemId, itemType, newParentId }),
+  });
+  if (!res.ok) throw new Error("Failed to move item");
+}
+
+// ─── Designs ───
+
+export interface DesignBrief {
+  id: string;
+  name: string;
+  figmaUrl: string;
+  parentId: string | null;
+  order: number;
+}
+
+export interface DesignDetail extends DesignBrief {
+  figmaFileKey?: string;
+  figmaNodeId?: string;
+  thumbnailUrl?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export async function createDesign(
+  documentId: string,
+  name: string,
+  figmaUrl: string,
+  parentId: string | null = null
+): Promise<DesignBrief> {
+  const res = await mutationFetch(`${BASE}/documents/${documentId}/designs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, figmaUrl, parentId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to create design");
+  }
+  return res.json();
+}
+
+export async function fetchDesign(designId: string): Promise<DesignDetail> {
+  const res = await fetch(`${BASE}/designs/${designId}`);
+  if (!res.ok) throw new Error("Failed to fetch design");
+  return res.json();
+}
+
+export async function renameDesign(designId: string, name: string): Promise<{ id: string; name: string }> {
+  const res = await mutationFetch(`${BASE}/designs/${designId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Failed to rename design");
+  return res.json();
+}
+
+export async function deleteDesign(designId: string): Promise<void> {
+  const res = await mutationFetch(`${BASE}/designs/${designId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete design");
+}
+
 // ─── AI Field Suggestions ───
 
 export interface FieldSuggestion {

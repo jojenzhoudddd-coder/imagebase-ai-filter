@@ -9,9 +9,11 @@ import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import { AddFieldPopover, useFieldSuggestions } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, fetchDocumentTables, createTable as apiCreateTable, reorderTables, deleteTable as apiDeleteTable, resetTable, CLIENT_ID } from "./api";
-import type { GeneratedField } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, fetchDocumentTables, createTable as apiCreateTable, reorderTables, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchDocumentTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign } from "./api";
+import type { GeneratedField, FolderBrief, DesignBrief } from "./api";
 import type { SidebarItem } from "./components/Sidebar";
+import type { TreeItemType } from "./types";
+import DesignPanel from "./components/DesignPanel";
 import { useToast } from "./components/Toast/index";
 import { useTranslation } from "./i18n/index";
 import ConfirmDialog from "./components/ConfirmDialog/index";
@@ -41,6 +43,9 @@ export default function App() {
   const activeTableIdRef = useRef(activeTableId);
   activeTableIdRef.current = activeTableId;
   const [documentTables, setDocumentTables] = useState<Array<{ id: string; name: string; order: number }>>([]);
+  const [documentFolders, setDocumentFolders] = useState<FolderBrief[]>([]);
+  const [documentDesigns, setDocumentDesigns] = useState<DesignBrief[]>([]);
+  const [activeItemType, setActiveItemType] = useState<TreeItemType>("table");
   const SIDEBAR_NAMES_KEY = "sidebar_item_names";
   const [sidebarNames, setSidebarNames] = useState<Record<string, string>>(() => {
     try {
@@ -115,12 +120,17 @@ export default function App() {
   // Load initial data: document tables list, then active table data
   useEffect(() => {
     const init = async () => {
-      const [tables, doc] = await Promise.all([
+      const [tables, doc, treeData] = await Promise.all([
         fetchDocumentTables(DOCUMENT_ID),
         fetchDocument(DOCUMENT_ID).catch(() => null),
+        fetchDocumentTree(DOCUMENT_ID).catch(() => null),
       ]);
       setDocumentTables(tables);
       if (doc) setDocumentName(doc.name);
+      if (treeData) {
+        setDocumentFolders(treeData.folders);
+        setDocumentDesigns(treeData.designs);
+      }
 
       // Determine which table to activate
       const lastActive = localStorage.getItem("lastActiveTableId");
@@ -891,15 +901,32 @@ export default function App() {
       id: tbl.id,
       type: "table" as const,
       displayName: tbl.id === activeTableId ? tableName : tbl.name,
-      active: tbl.id === activeTableId,
+      active: tbl.id === activeTableId && activeItemType === "table",
       order: tbl.order,
+      parentId: null,
+    }));
+    const folderItems: SidebarItem[] = documentFolders.map(f => ({
+      id: f.id,
+      type: "folder" as const,
+      displayName: f.name,
+      active: false,
+      order: f.order,
+      parentId: f.parentId,
+    }));
+    const designItems: SidebarItem[] = documentDesigns.map(d => ({
+      id: d.id,
+      type: "design" as const,
+      displayName: d.name,
+      active: d.id === activeTableId && activeItemType === "design",
+      order: d.order,
+      parentId: d.parentId,
     }));
     const staticItems: SidebarItem[] = [
       { id: "dashboard", type: "static" as const, displayName: sidebarNames.dashboard ?? t("sidebar.dashboard"), active: false, order: Infinity },
       { id: "workflow", type: "static" as const, displayName: sidebarNames.workflow ?? t("sidebar.workflow"), active: false, order: Infinity },
     ];
-    return [...tableItems, ...staticItems];
-  }, [documentTables, activeTableId, tableName, sidebarNames, t]);
+    return [...folderItems, ...tableItems, ...designItems, ...staticItems];
+  }, [documentTables, documentFolders, documentDesigns, activeTableId, activeItemType, tableName, sidebarNames, t]);
 
   // ── Table switching ──
   const switchTable = useCallback(async (tableId: string) => {
@@ -1029,6 +1056,111 @@ export default function App() {
     }
   }, [documentTables, initFieldOrderFromView, toast, t]);
 
+  // ── Create folder ──
+  const handleCreateFolder = useCallback(async () => {
+    const name = locale === "zh" ? "新建文件夹" : "New Folder";
+    try {
+      const folder = await apiCreateFolder(DOCUMENT_ID, name);
+      setDocumentFolders(prev => [...prev, folder]);
+    } catch {
+      toast.error("Failed to create folder");
+    }
+  }, [locale, toast]);
+
+  // ── Create design ──
+  const handleCreateDesign = useCallback(async (name: string, figmaUrl: string): Promise<string> => {
+    const design = await apiCreateDesign(DOCUMENT_ID, name, figmaUrl);
+    setDocumentDesigns(prev => [...prev, design]);
+    setActiveTableId(design.id);
+    setActiveItemType("design");
+    return design.id;
+  }, []);
+
+  // ── Delete item (folder or design) ──
+  const handleDeleteItem = useCallback(async (id: string, type: TreeItemType) => {
+    try {
+      if (type === "folder") {
+        await apiDeleteFolder(id);
+        setDocumentFolders(prev => prev.filter(f => f.id !== id));
+        // Move children to root
+        setDocumentTables(prev => prev.map(t => t));
+        setDocumentDesigns(prev => prev.map(d => d.parentId === id ? { ...d, parentId: null } : d));
+      } else if (type === "design") {
+        await apiDeleteDesign(id);
+        setDocumentDesigns(prev => prev.filter(d => d.id !== id));
+        if (id === activeTableId) {
+          // Switch to first table
+          const firstTable = documentTables[0];
+          if (firstTable) {
+            setActiveTableId(firstTable.id);
+            setActiveItemType("table");
+            switchTable(firstTable.id);
+          }
+        }
+      }
+    } catch {
+      toast.error(t("toast.deleteFailed"));
+    }
+  }, [activeTableId, documentTables, switchTable, toast, t]);
+
+  // ── Move item ──
+  const handleMoveItem = useCallback(async (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => {
+    try {
+      await apiMoveItem(itemId, itemType, newParentId, DOCUMENT_ID);
+      // Optimistic update of parentId (for tree rendering)
+      if (itemType === "design") {
+        setDocumentDesigns(prev => prev.map(d => d.id === itemId ? { ...d, parentId: newParentId } : d));
+      }
+    } catch {
+      toast.error("Failed to move item");
+    }
+  }, [toast]);
+
+  // ── Select item (table or design) ──
+  const handleSelectItem = useCallback((id: string, type?: TreeItemType) => {
+    if (type === "design") {
+      setActiveTableId(id);
+      setActiveItemType("design");
+    } else if (type === "folder") {
+      // Folders are not selectable as content
+      return;
+    } else {
+      const isTable = documentTables.some(t => t.id === id);
+      if (isTable) {
+        setActiveItemType("table");
+        switchTable(id);
+      }
+    }
+  }, [documentTables, switchTable]);
+
+  // ── Rename for design/folder ──
+  const handleRenameSidebarItemExtended = useCallback(async (itemId: string, newName: string) => {
+    // Check if it's a folder
+    const isFolder = documentFolders.some(f => f.id === itemId);
+    if (isFolder) {
+      setDocumentFolders(prev => prev.map(f => f.id === itemId ? { ...f, name: newName } : f));
+      try {
+        await apiRenameFolder(itemId, newName);
+      } catch {
+        toast.error(t("toast.renameFailed"));
+      }
+      return;
+    }
+    // Check if it's a design
+    const isDesign = documentDesigns.some(d => d.id === itemId);
+    if (isDesign) {
+      setDocumentDesigns(prev => prev.map(d => d.id === itemId ? { ...d, name: newName } : d));
+      try {
+        await apiRenameDesign(itemId, newName);
+      } catch {
+        toast.error(t("toast.renameFailed"));
+      }
+      return;
+    }
+    // Fall through to original handler (tables + statics)
+    handleRenameSidebarItem(itemId, newName);
+  }, [documentFolders, documentDesigns, handleRenameSidebarItem, toast, t]);
+
   // ── Persist active table to localStorage ──
   useEffect(() => {
     if (activeTableId) localStorage.setItem("lastActiveTableId", activeTableId);
@@ -1094,20 +1226,30 @@ export default function App() {
       <div className="app-body">
         <Sidebar
           items={sidebarItems}
-          onRenameItem={handleRenameSidebarItem}
+          onRenameItem={handleRenameSidebarItemExtended}
           activeItemId={activeTableId}
-          onSelectItem={(id: string) => {
-            const isTable = documentTables.some(t => t.id === id);
-            if (isTable) switchTable(id);
-          }}
+          onSelectItem={handleSelectItem}
           onReorderTables={handleReorderTables}
           onDeleteTable={handleDeleteTable}
           tableCount={documentTables.length}
           onCreateWithAI={handleCreateWithAI}
           onResetToDefault={handleResetToDefault}
           onCreateBlank={handleCreateBlankTable}
+          folders={documentFolders.map(f => ({ id: f.id, name: f.name }))}
+          onCreateFolder={handleCreateFolder}
+          onCreateDesign={handleCreateDesign}
+          onDeleteItem={handleDeleteItem}
+          onMoveItem={handleMoveItem}
         />
         <div className="app-main">
+          {activeItemType === "design" ? (
+            <DesignPanel
+              designId={activeTableId}
+              designName={documentDesigns.find(d => d.id === activeTableId)?.name ?? ""}
+              onRename={(name) => handleRenameSidebarItemExtended(activeTableId, name)}
+            />
+          ) : (
+          <>
           <ViewTabs
             views={views}
             activeViewId={activeViewId}
@@ -1194,6 +1336,8 @@ export default function App() {
               />
             )}
           </div>
+          </>
+          )}
         </div>
       </div>
       <ConfirmDialog

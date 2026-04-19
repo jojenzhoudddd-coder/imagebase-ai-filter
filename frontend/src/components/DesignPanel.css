@@ -1,0 +1,83 @@
+/* DesignPanel — Figma embed preview with top bar */
+.design-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.design-panel-loading,
+.design-panel-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.design-panel-error button {
+  padding: 4px 16px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #DEE0E3;
+  background: #F5F6F7;
+  color: #1F2329;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.design-panel-error button:hover {
+  background: #E8E9EB;
+}
+
+/* Top bar */
+.design-panel-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(31, 35, 41, 0.15);
+  flex-shrink: 0;
+}
+
+.design-panel-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1F2329;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.design-panel-edit-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid #DEE0E3;
+  background: #FFFFFF;
+  color: #1F2329;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: var(--font-family);
+}
+
+.design-panel-edit-btn:hover {
+  background: #F5F6F7;
+  border-color: #C9CDD4;
+}
+
+/* Iframe */
+.design-panel-iframe {
+  flex: 1;
+  width: 100%;
+  border: none;
+}

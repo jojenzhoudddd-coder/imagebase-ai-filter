@@ -7,6 +7,8 @@ export const zh: TranslationKeys = {
   "sidebar.dashboard": "仪表盘",
   "sidebar.workflow": "工作流",
   "sidebar.new": "新建",
+  "sidebar.design": "设计稿",
+  "sidebar.album": "相册",
 
   // TopBar
   "topbar.menu": "菜单",
@@ -282,6 +284,8 @@ export const zh: TranslationKeys = {
   // Context menu
   "contextMenu.rename": "重命名",
   "contextMenu.delete": "删除",
+  "contextMenu.moveTo": "移动到",
+  "contextMenu.moveToRoot": "根目录",
 
   // Delete table
   "app.deleteTable": "删除数据表",
@@ -302,6 +306,8 @@ export const zh: TranslationKeys = {
   "createMenu.doc": "文档",
   "createMenu.manage": "管理",
   "createMenu.folder": "文件夹",
+  "createMenu.design": "设计稿",
+  "createMenu.album": "相册",
   "createMenu.import": "导入/同步数据",
   "createMenu.appSection": "应用",
   "createMenu.app": "应用",
@@ -325,4 +331,21 @@ export const zh: TranslationKeys = {
   "aiTable.blankCreate": "创建空白表",
   "aiTable.failed": "AI 生成失败，请重试",
   "aiTable.creating": "正在规划字段名称",
+
+  // Placeholder pages
+  "placeholder.design": "选择一个设计稿进行预览",
+  "placeholder.album": "选择一个相册查看",
+
+  // Design panel
+  "design.urlPlaceholder": "在此粘贴 Figma 链接",
+  "design.create": "创建设计稿",
+  "design.invalidUrl": "请输入有效的 Figma 链接",
+  "design.goToEdit": "在 Figma 中打开",
+  "design.loading": "正在加载设计稿...",
+  "design.notFound": "未找到设计稿",
+  "design.sharingHint": "请确保 Figma 文件已开启共享",
+
+  // Folder
+  "folder.defaultName": "新建文件夹",
+  "folder.deleteConfirm": "确定要删除此文件夹吗？文件夹中的项目将被移动到根目录。",
 };
