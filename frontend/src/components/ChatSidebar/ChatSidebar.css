@@ -751,12 +751,12 @@
   cursor: not-allowed;
 }
 
-/* Stop-generation button keeps the neutral dark skin to distinguish it from
- * the primary send state. */
+/* Stop-generation button — neutral grey circle (not black) to read as a
+ * softer "interrupt" affordance while generating. */
 .chat-input-send.stop {
-  background: #1F2329;
+  background: #8F959E;
 }
-.chat-input-send.stop:hover { background: #000000; }
+.chat-input-send.stop:hover { background: #646A73; }
 
 .chat-generating-hint {
   font-size: 12px;

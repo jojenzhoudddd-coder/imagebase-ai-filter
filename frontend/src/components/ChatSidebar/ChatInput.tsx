@@ -115,8 +115,17 @@ export default function ChatInput({
       }
       return;
     }
-    // Enter sends; Shift+Enter = newline
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Enter sends; Shift+Enter = newline.
+    // Skip when the IME is still composing (e.g. Chinese pinyin): the first
+    // Enter should commit the candidate, not submit the message. Browsers
+    // expose this via `isComposing` on the native event; legacy fallback is
+    // keyCode 229 (set while composition is active in older engines).
+    if (
+      e.key === "Enter" &&
+      !e.shiftKey &&
+      !e.nativeEvent.isComposing &&
+      e.keyCode !== 229
+    ) {
       e.preventDefault();
       if (canSend) onSend();
     }
