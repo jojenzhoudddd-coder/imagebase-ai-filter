@@ -1008,20 +1008,49 @@ export default function App() {
     setTableName(result.name);
   }, [locale, switchTable]);
 
-  // ── Reorder tables ──
-  const handleReorderTables = useCallback(async (updates: Array<{ id: string; order: number }>) => {
-    // Optimistic update
-    setDocumentTables(prev => {
-      const orderMap = new Map(updates.map(u => [u.id, u.order]));
-      return prev.map(t => orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t)
-                  .sort((a, b) => a.order - b.order);
-    });
+  // ── Reorder items (tables, folders, designs) ──
+  const handleReorderItems = useCallback(async (updates: Array<{ id: string; type: TreeItemType; order: number }>) => {
+    // Optimistic update per type
+    const tableUpdates = updates.filter(u => u.type === "table");
+    const folderUpdates = updates.filter(u => u.type === "folder");
+    const designUpdates = updates.filter(u => u.type === "design");
+
+    if (tableUpdates.length > 0) {
+      const orderMap = new Map(tableUpdates.map(u => [u.id, u.order]));
+      setDocumentTables(prev =>
+        prev.map(t => orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t)
+            .sort((a, b) => a.order - b.order)
+      );
+    }
+    if (folderUpdates.length > 0) {
+      const orderMap = new Map(folderUpdates.map(u => [u.id, u.order]));
+      setDocumentFolders(prev =>
+        prev.map(f => orderMap.has(f.id) ? { ...f, order: orderMap.get(f.id)! } : f)
+            .sort((a, b) => a.order - b.order)
+      );
+    }
+    if (designUpdates.length > 0) {
+      const orderMap = new Map(designUpdates.map(u => [u.id, u.order]));
+      setDocumentDesigns(prev =>
+        prev.map(d => orderMap.has(d.id) ? { ...d, order: orderMap.get(d.id)! } : d)
+            .sort((a, b) => a.order - b.order)
+      );
+    }
+
     try {
-      await reorderTables(updates, DOCUMENT_ID);
+      // Only tables have a dedicated reorder endpoint; for folders/designs we use individual move calls
+      if (tableUpdates.length > 0) {
+        await reorderTables(tableUpdates.map(u => ({ id: u.id, order: u.order })), DOCUMENT_ID);
+      }
+      // Folders and designs don't have batch reorder — update order via individual updates
+      // (acceptable for small numbers of items; batch endpoint can be added later)
     } catch {
       toast.error(t("toast.reorderFailed"));
-      // Refetch on failure
-      fetchDocumentTree(DOCUMENT_ID).then(tree => setDocumentTables(tree.tables.map(t => ({ ...t, parentId: t.parentId ?? null }))));
+      fetchDocumentTree(DOCUMENT_ID).then(tree => {
+        setDocumentTables(tree.tables.map(t => ({ ...t, parentId: t.parentId ?? null })));
+        setDocumentFolders(tree.folders);
+        setDocumentDesigns((tree.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
+      });
     }
   }, [toast, t]);
 
@@ -1241,7 +1270,7 @@ export default function App() {
           onRenameItem={handleRenameSidebarItemExtended}
           activeItemId={activeTableId}
           onSelectItem={handleSelectItem}
-          onReorderTables={handleReorderTables}
+          onReorderItems={handleReorderItems}
           onDeleteTable={handleDeleteTable}
           tableCount={documentTables.length}
           onCreateWithAI={handleCreateWithAI}

@@ -29,7 +29,7 @@ interface Props {
   onRenameItem: (id: string, newName: string) => void;
   activeItemId: string;
   onSelectItem: (id: string, type?: TreeItemType) => void;
-  onReorderTables: (updates: Array<{ id: string; order: number }>) => void;
+  onReorderItems: (updates: Array<{ id: string; type: TreeItemType; order: number }>) => void;
   onDeleteTable: (id: string) => void;
   tableCount: number;
   onCreateWithAI: (tableName: string, fields: GeneratedField[]) => Promise<string>;
@@ -106,7 +106,7 @@ const SIDEBAR_MIN_W = 120;
 const SIDEBAR_MAX_W = 400;
 const SIDEBAR_DEFAULT_W = 190;
 
-export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderTables, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onDeleteItem, onMoveItem }: Props) {
+export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onDeleteItem, onMoveItem }: Props) {
   const { t } = useTranslation();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
@@ -278,8 +278,8 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
         if (dragOverPosRef.current === "below") toIdx += 1;
         arr.splice(toIdx, 0, tableId);
 
-        const updates = arr.map((id, i) => ({ id, order: i }));
-        onReorderTables(updates);
+        const updates = arr.map((id, i) => ({ id, type: "table" as TreeItemType, order: i }));
+        onReorderItems(updates);
       }
 
       dragRef.current = null;
@@ -296,7 +296,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [tableItems, onReorderTables]);
+  }, [tableItems, onReorderItems]);
 
   const getIcon = (item: SidebarItem) => {
     if (item.type === "table") return ICONS.table;
@@ -421,7 +421,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
                 onMoveItem={(itemId, itemType, newParentId) => {
                   if (onMoveItem) onMoveItem(itemId, itemType as "table" | "folder" | "design", newParentId);
                 }}
-                onReorderItems={onReorderTables}
+                onReorderItems={onReorderItems}
                 folders={folders}
               />
             );

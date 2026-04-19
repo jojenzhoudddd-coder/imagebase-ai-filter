@@ -83,7 +83,7 @@ interface TreeViewProps {
   onRenameItem: (id: string, type: TreeItemType, newName: string) => void;
   onDeleteItem: (id: string, type: TreeItemType) => void;
   onMoveItem: (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => void;
-  onReorderItems: (updates: Array<{ id: string; order: number }>) => void;
+  onReorderItems: (updates: Array<{ id: string; type: TreeItemType; order: number }>) => void;
   folders: Array<{ id: string; name: string }>;
 }
 
@@ -216,9 +216,9 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
           // Move into folder
           onMoveItem(node.id, dragType, dragOverFolderRef.current);
         } else if (dragOverIdRef.current && dragOverPosRef.current) {
-          // Reorder — only among root-level nodes of the same type (tables only for now)
-          const tableNodes = nodes.filter(n => n.type === "table").map(n => n.id);
-          const arr = [...tableNodes];
+          // Reorder all root-level nodes regardless of type
+          const allIds = nodes.map(n => n.id);
+          const arr = [...allIds];
           const fromIdx = arr.indexOf(node.id);
           if (fromIdx !== -1) {
             arr.splice(fromIdx, 1);
@@ -226,7 +226,9 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
             if (toIdx !== -1) {
               if (dragOverPosRef.current === "below") toIdx += 1;
               arr.splice(toIdx, 0, node.id);
-              const updates = arr.map((id, i) => ({ id, order: i }));
+              // Build updates with type info so App can dispatch per-type
+              const nodeMap = new Map(nodes.map(n => [n.id, n.type]));
+              const updates = arr.map((id, i) => ({ id, type: nodeMap.get(id)!, order: i }));
               onReorderItems(updates);
             }
           }
