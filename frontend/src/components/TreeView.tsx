@@ -82,7 +82,7 @@ interface TreeViewProps {
   onSelectItem: (id: string, type: TreeItemType) => void;
   onRenameItem: (id: string, type: TreeItemType, newName: string) => void;
   onDeleteItem: (id: string, type: TreeItemType) => void;
-  onMoveItem: (itemId: string, itemType: "table" | "folder", newParentId: string | null) => void;
+  onMoveItem: (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => void;
   onReorderItems: (updates: Array<{ id: string; order: number }>) => void;
   folders: Array<{ id: string; name: string }>;
 }
@@ -158,9 +158,6 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
     return items;
   };
 
-  // Collect flat list of root-level item IDs for reorder
-  const rootItemIds = useMemo(() => nodes.map(n => n.id), [nodes]);
-
   // Drag handlers — reorder (above/below siblings) + move-to-folder
   const handleDragMouseDown = useCallback((e: React.MouseEvent, node: TreeNodeData) => {
     if (e.button !== 0) return;
@@ -214,21 +211,24 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
 
     const onMouseUp = () => {
       if (dragRef.current?.isDragging) {
+        const dragType = dragRef.current.type as "table" | "folder" | "design";
         if (dragOverFolderRef.current) {
           // Move into folder
-          const itemType = dragRef.current.type === "folder" ? "folder" : "table";
-          onMoveItem(node.id, itemType as "table" | "folder", dragOverFolderRef.current);
+          onMoveItem(node.id, dragType, dragOverFolderRef.current);
         } else if (dragOverIdRef.current && dragOverPosRef.current) {
-          // Reorder among siblings
-          const arr = [...rootItemIds];
+          // Reorder — only among root-level nodes of the same type (tables only for now)
+          const tableNodes = nodes.filter(n => n.type === "table").map(n => n.id);
+          const arr = [...tableNodes];
           const fromIdx = arr.indexOf(node.id);
           if (fromIdx !== -1) {
             arr.splice(fromIdx, 1);
             let toIdx = arr.indexOf(dragOverIdRef.current);
-            if (dragOverPosRef.current === "below") toIdx += 1;
-            arr.splice(toIdx, 0, node.id);
-            const updates = arr.map((id, i) => ({ id, order: i }));
-            onReorderItems(updates);
+            if (toIdx !== -1) {
+              if (dragOverPosRef.current === "below") toIdx += 1;
+              arr.splice(toIdx, 0, node.id);
+              const updates = arr.map((id, i) => ({ id, order: i }));
+              onReorderItems(updates);
+            }
           }
         }
       }
@@ -248,7 +248,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [onMoveItem, onReorderItems, rootItemIds]);
+  }, [onMoveItem, onReorderItems, nodes]);
 
   const renderNode = (node: TreeNodeData, depth: number): ReactNode => {
     const isFolder = node.type === "folder";
@@ -331,7 +331,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
                 setMenuId(null);
                 if (key === "rename") setEditingId(node.id);
                 else if (key === "delete") onDeleteItem(node.id, node.type);
-                else if (key === "moveToRoot") onMoveItem(node.id, node.type === "folder" ? "folder" : "table", null);
+                else if (key === "moveToRoot") onMoveItem(node.id, node.type as "table" | "folder" | "design", null);
                 else if (key === "moveTo") setMoveMenuId(node.id);
               }}
               onClose={() => setMenuId(null)}
@@ -347,7 +347,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
               anchorEl={moreRefs.current.get(node.id)!}
               onSelect={(folderId) => {
                 setMoveMenuId(null);
-                onMoveItem(node.id, node.type === "folder" ? "folder" : "table", folderId);
+                onMoveItem(node.id, node.type as "table" | "folder" | "design", folderId);
               }}
               onClose={() => setMoveMenuId(null)}
               width={180}
