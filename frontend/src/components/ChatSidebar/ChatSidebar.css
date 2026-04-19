@@ -76,32 +76,122 @@
   border-radius: 3px;
 }
 
-/* Empty state */
+/* ─── Empty-state welcome page ─────────────────────────────────────────
+ * Pixel-aligned to Figma export (/Users/bytedance/Desktop/用户发送 prompt.svg).
+ * Sections: hero (avatar + greeting) → "Start by telling me what you need"
+ * → 3 preset chips → "Or use a template" → 2-col template cards. */
 .chat-empty {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  text-align: center;
-  color: #646A73;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 40px 8px 16px 8px;
+  color: #1F2329;
+  text-align: left;
 }
-.chat-empty-icon {
-  margin-bottom: 16px;
-  opacity: 0.6;
+
+.chat-empty-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 32px;
 }
 .chat-empty-title {
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 30px;
   color: #1F2329;
-  margin-bottom: 8px;
+  letter-spacing: -0.2px;
+  margin: 0;
 }
-.chat-empty-subtitle {
+
+.chat-empty-section-label {
   font-size: 13px;
   line-height: 20px;
-  color: #646A73;
-  max-width: 260px;
+  color: #8F959E;
+  margin: 0 0 10px 0;
+}
+.chat-empty-section-label + .chat-empty-presets,
+.chat-empty-section-label + .chat-empty-templates {
+  margin-bottom: 28px;
+}
+
+.chat-empty-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  align-items: stretch;
+}
+.chat-preset-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #FFFFFF;
+  border: 1px solid #E5E6E8;
+  border-radius: 10px;
+  color: #1F2329;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+.chat-preset-chip:hover {
+  background: #F7F8FA;
+  border-color: #D0D3D6;
+  box-shadow: 0 1px 2px rgba(31,35,41,0.04);
+}
+.chat-preset-chip-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-preset-chip svg {
+  flex: 0 0 auto;
+  color: #8F959E;
+}
+
+.chat-empty-templates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+.chat-template-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 92px;
+  padding: 12px 14px;
+  background: #FFFFFF;
+  border: 1px solid #E5E6E8;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  text-align: left;
+}
+.chat-template-card:hover {
+  background: #F7F8FA;
+  border-color: #D0D3D6;
+  box-shadow: 0 1px 2px rgba(31,35,41,0.04);
+}
+.chat-template-title {
+  font-size: 13px;
+  line-height: 18px;
+  color: #1F2329;
+  font-weight: 500;
+}
+.chat-bot-avatar {
+  flex: 0 0 auto;
+  display: block;
 }
 
 /* User bubble (right aligned blue) */

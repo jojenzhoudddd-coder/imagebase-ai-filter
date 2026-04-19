@@ -15,7 +15,7 @@ import AssistantText from "./ChatMessage/AssistantText";
 import ThinkingIndicator from "./ChatMessage/ThinkingIndicator";
 import ToolCallCard from "./ChatMessage/ToolCallCard";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
-import { FourPointStarIcon, PlusIcon, CloseIcon } from "./icons";
+import { PlusIcon, CloseIcon } from "./icons";
 import {
   type ChatConversation,
   type ChatMessage,
@@ -348,15 +348,13 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
 
       <div className="chat-messages" ref={scrollRef}>
         {messages.length === 0 && !error && (
-          <div className="chat-empty">
-            <div className="chat-empty-icon">
-              <FourPointStarIcon size={32} />
-            </div>
-            <div className="chat-empty-title">你好，我是 Table Agent</div>
-            <div className="chat-empty-subtitle">
-              我可以帮你创建和管理数据表、字段、记录、视图。试试说"帮我创建一个项目管理表"。
-            </div>
-          </div>
+          <EmptyState
+            onPreset={(text) => {
+              setInputValue(text);
+              // kick off send on next tick once state is committed
+              setTimeout(() => handleSend(), 0);
+            }}
+          />
         )}
 
         {messages.map((m) => (
@@ -410,5 +408,115 @@ function MessageBlock({ msg }: { msg: UiMessage }) {
         <ToolCallCard key={tc.callId} call={tc} />
       ))}
     </>
+  );
+}
+
+/**
+ * Empty-state welcome page — pixel-aligned to the Figma export
+ * (/Users/bytedance/Desktop/用户发送 prompt.svg).
+ *
+ * Layout (top → bottom):
+ *   1. Hero row: 3D bot avatar + "Hi, I'm your new chatbot" title
+ *   2. Section label: "Start by telling me what you need"
+ *   3. Three preset chips (label + trailing chevron)
+ *   4. Section label: "Or use a template"
+ *   5. Two-column grid of template cards (small avatar + title)
+ *
+ * Chips/cards dispatch Chinese prompts so the Table Agent backend can
+ * actually execute them against the MCP tools.
+ */
+const PRESET_PROMPTS: Array<{ label: string; prompt: string }> = [
+  { label: "Answer questions using my bases", prompt: "请根据当前文档的表数据回答我的问题" },
+  { label: "Save new messages to my base automatically", prompt: "把新消息自动保存到当前文档对应的表中" },
+  { label: "Help me track task progress and write a weekly report", prompt: "帮我汇总任务进度并生成一份周报" },
+];
+
+const TEMPLATE_CARDS: Array<{ title: string; prompt: string; accent: string }> = [
+  { title: "Base Q&A assistant", prompt: "我想要一个基于当前 base 的问答助手", accent: "#8B63F3" },
+  { title: "Intelligent Data Analyst", prompt: "我想要一个智能数据分析助手，帮我分析表中的数据", accent: "#F3B845" },
+  { title: "Base Work Assistant", prompt: "我想要一个工作助手，帮我处理表格相关的日常任务", accent: "#4D83F5" },
+];
+
+function EmptyState({ onPreset }: { onPreset: (text: string) => void }) {
+  return (
+    <div className="chat-empty">
+      <div className="chat-empty-hero">
+        <BotAvatar size={64} accent="#8B63F3" />
+        <div className="chat-empty-title">Hi, I'm your new chatbot</div>
+      </div>
+
+      <div className="chat-empty-section-label">Start by telling me what you need</div>
+      <div className="chat-empty-presets">
+        {PRESET_PROMPTS.map((p) => (
+          <button
+            key={p.prompt}
+            type="button"
+            className="chat-preset-chip"
+            onClick={() => onPreset(p.prompt)}
+          >
+            <span className="chat-preset-chip-label">{p.label}</span>
+            <ChevronRightIcon size={14} />
+          </button>
+        ))}
+      </div>
+
+      <div className="chat-empty-section-label">Or use a template</div>
+      <div className="chat-empty-templates">
+        {TEMPLATE_CARDS.map((t) => (
+          <button
+            key={t.title}
+            type="button"
+            className="chat-template-card"
+            onClick={() => onPreset(t.prompt)}
+          >
+            <BotAvatar size={26} accent={t.accent} />
+            <span className="chat-template-title">{t.title}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Soft 3D-ish rounded-square avatar used in hero + template cards. */
+function BotAvatar({ size = 64, accent = "#8B63F3" }: { size?: number; accent?: string }) {
+  const radius = size * 0.28;
+  const gid = `bot_grad_${accent.replace("#", "")}`;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      fill="none"
+      aria-hidden="true"
+      className="chat-bot-avatar"
+    >
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor={accent} stopOpacity="0.22" />
+          <stop offset="1" stopColor={accent} stopOpacity="0.12" />
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="64" height="64" rx={radius} ry={radius} fill={`url(#${gid})`} />
+      <path
+        d="M32 14c.9 0 1.7.6 2 1.5l2.4 7.4c.5 1.5 1.7 2.7 3.2 3.2l7.4 2.4c1.8.6 1.8 3.1 0 3.7l-7.4 2.4c-1.5.5-2.7 1.7-3.2 3.2L34 45c-.6 1.8-3.1 1.8-3.7 0l-2.4-7.4c-.5-1.5-1.7-2.7-3.2-3.2L17.3 32c-1.8-.6-1.8-3.1 0-3.7l7.4-2.4c1.5-.5 2.7-1.7 3.2-3.2L30.3 15.5C30.5 14.6 31.1 14 32 14z"
+        fill={accent}
+      />
+      <circle cx="28" cy="26" r="2" fill="#FFFFFF" opacity="0.8" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M5.25 3.5l3.5 3.5-3.5 3.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

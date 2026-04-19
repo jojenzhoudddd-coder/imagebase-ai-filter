@@ -12,6 +12,126 @@
   overflow: hidden;
 }
 
+/* ─── Workspace split (artifact | 6px gap | chat) ───
+   6px white gap; each part has a 1px border so the separation reads as
+   a pair of outlined panel cards rather than a grey channel. */
+.workspace {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  overflow: hidden;
+  background: #FFFFFF;
+}
+.artifact-part {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  order: 1;
+  background: #FFFFFF;
+  /* Full 1px border — the 6px gap between parts is a sibling flex item
+   * (.split-divider), not a border-side removal. Only the top corners are
+   * rounded; bottom corners stay square per spec. */
+  border: 1px solid #DEE0E3;
+  border-radius: 8px 8px 0 0;
+}
+.chat-part {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: #FFFFFF;
+  position: relative;
+  order: 3;
+  /* Symmetric 20px horizontal padding. 6px gap to .artifact-part is the
+   * sibling .split-divider. Bottom gap is .chat-input-wrap's margin. Only
+   * top corners rounded; bottom corners square. */
+  padding: 0 20px;
+  border: 1px solid #DEE0E3;
+  border-radius: 8px 8px 0 0;
+}
+.workspace .split-divider { order: 2; }
+
+/* When the user drags the move-bar and releases on the opposite side, these
+ * order reversals swap the two panels. CSS-only swap — DOM stays stable. */
+.workspace.chat-left .chat-part { order: 1; }
+.workspace.chat-left .split-divider { order: 2; }
+.workspace.chat-left .artifact-part { order: 3; }
+
+/* Vertical splitter — a 6px transparent gap between the two panels.
+ * The workspace background (grey) shows through; the surrounding panels
+ * round off their touching edges (see .artifact-part / .chat-part radius). */
+.split-divider {
+  flex: 0 0 6px;
+  width: 6px;
+  cursor: col-resize;
+  position: relative;
+  user-select: none;
+  background: transparent;
+}
+.split-divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -2px;
+  right: -2px;
+}
+.split-divider.dragging {
+  background: rgba(20, 86, 240, 0.15);
+}
+.split-divider-grip { display: none; }
+
+/* ─── iOS/iPad-style home-indicator move bar ───
+ * Sits at the BOTTOM-center of each part. Invisible by default; reveals on
+ * hover of the bottom hover zone (or while dragging). 100px wide.
+ * Each part reserves a 40px bottom strip (see .artifact-part, .chat-part)
+ * so content doesn't overlap the bar. */
+.part-move-bar {
+  position: absolute;
+  /* 4px from the outer bottom edge of the part (iOS home-indicator vibe) */
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 4px;
+  border-radius: 2px;
+  background: #D0D3D6;
+  opacity: 0;
+  transition: opacity 160ms ease, background-color 160ms ease;
+  cursor: grab;
+  z-index: 50;
+  user-select: none;
+}
+
+/* Bottom hover zone: invisible 16px strip along each part's bottom that
+ * reveals its move bar on cursor proximity (smaller than before per spec). */
+.part-hover-zone {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 16px;
+  z-index: 40;
+  pointer-events: auto;
+}
+.part-hover-zone:hover ~ .part-move-bar,
+.part-move-bar:hover,
+.part-move-bar.dragging,
+.workspace.moving .part-move-bar {
+  opacity: 1;
+  background: #1456F0;
+}
+.part-move-bar.dragging {
+  cursor: grabbing;
+}
+.workspace.moving,
+.workspace.moving * {
+  cursor: grabbing !important;
+}
+
 .app-main {
   display: flex;
   flex-direction: column;

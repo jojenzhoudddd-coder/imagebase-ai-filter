@@ -373,6 +373,30 @@ export async function moveItem(
   if (!res.ok) throw new Error("Failed to move item");
 }
 
+export async function reorderFolders(
+  updates: Array<{ id: string; order: number }>,
+  documentId: string
+): Promise<void> {
+  const res = await mutationFetch(`${BASE}/folders/reorder`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates, documentId }),
+  });
+  if (!res.ok) throw new Error("Failed to reorder folders");
+}
+
+export async function reorderDesigns(
+  updates: Array<{ id: string; order: number }>,
+  documentId: string
+): Promise<void> {
+  const res = await mutationFetch(`${BASE}/designs/reorder`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates, documentId }),
+  });
+  if (!res.ok) throw new Error("Failed to reorder designs");
+}
+
 // ─── Designs ───
 
 export interface DesignBrief {
