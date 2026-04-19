@@ -89,6 +89,7 @@ Domain: http://www.baseimage.cn
 - `docs/design-resources.md` - 设计资源（色彩、排版、间距、组件规范、交互规范）
 - `docs/changelog.md` - 更新日志（所有发布部署记录）
 - `docs/case-study.md` - 项目案例文档（完整开发故事 + PM 协作指南）
+- `docs/chat-sidebar-plan.md` - Chat Sidebar (Table Agent) 技术方案（MCP Server + 流式对话 + 上下文管理）
 
 ## Skills（自动加载的专业指令集）
 每个 Skill 在对应场景下会被 Claude Code 自动激活，无需手动引用。
@@ -111,6 +112,7 @@ Domain: http://www.baseimage.cn
 - [ ] **更新设计资源** — `docs/design-resources.md` 如有新增颜色、组件、交互模式
 - [ ] **更新前端设计 Skill** — `.claude/skills/ux-frontend-design.md` 如有新的设计模式或规范
 - [ ] **更新更新日志** — `docs/changelog.md` 添加本次发布记录（日期、commit、改动点、详细说明）
+- [ ] **MCP 工具同步** — 如改动了 `backend/src/routes/*.ts`，必须同步更新 `backend/mcp-server/src/tools/*.ts`（见下方"MCP Server 与 REST API 的同步规则"）
 
 ### 部署流程
 ```bash
@@ -124,6 +126,33 @@ git add . && git commit
 git push origin <branch>
 ssh -i /path/to/key root@163.7.1.94 "cd /root/ai-filter-lark && git pull origin <branch> && npm run build && pm2 restart ai-filter"
 ```
+
+## MCP Server 与 REST API 的同步规则 (强制)
+
+项目包含一个独立的 MCP Server (`backend/mcp-server/`)，将 REST API 暴露为模型可调用的工具给 Chat Agent 使用。**MCP 工具是 REST API 的镜像**，任何 API 变更都必须同步到对应的 MCP 工具，否则 Agent 会用错误的 schema 调用导致失败。
+
+### 强制规则
+每次修改任何 `backend/src/routes/*.ts` 文件时，**必须**同步检查并更新同名的 `backend/mcp-server/src/tools/*.ts`：
+
+| REST 路由文件 | MCP 工具文件 | 映射关系 |
+|---------------|--------------|---------|
+| `routes/tableRoutes.ts` | `mcp-server/src/tools/tableTools.ts` | 每个 `router.post/put/delete` = 一个工具 |
+| `routes/fieldRoutes.ts` | `mcp-server/src/tools/fieldTools.ts` | 同上 |
+| `routes/recordRoutes.ts` | `mcp-server/src/tools/recordTools.ts` | 同上 |
+| `routes/viewRoutes.ts` | `mcp-server/src/tools/viewTools.ts` | 同上 |
+
+### 检查项（PR 提交前必过）
+- [ ] **新增 endpoint** → 同步新增 MCP 工具（参数 schema + 工具描述）
+- [ ] **删除 endpoint** → 同步删除对应 MCP 工具
+- [ ] **修改参数/返回** → 更新 MCP 工具的 `inputSchema` 和返回格式
+- [ ] **重命名 endpoint** → MCP 工具中的 URL 路径同步修改
+- [ ] **共享 Zod schema** → `backend/src/schemas/` 目录是唯一数据源，route validator 和 MCP inputSchema 都必须 import 同一份
+
+### 运行时校验机制
+MCP server 启动时会调用主 backend 的 `GET /api/_schemas` 端点，对比本地工具定义与后端实际路由的 schema，不一致则启动失败。不要通过注释或 `// @ts-ignore` 绕过这个校验。
+
+### 参考文档
+完整技术方案见 `docs/chat-sidebar-plan.md` Phase 1.3 "MCP 工具与 REST API 的同步机制"。
 
 ## Figma Design Assets (强制使用)
 每次涉及 UI 组件或图标的新增/修改时，**必须**：
