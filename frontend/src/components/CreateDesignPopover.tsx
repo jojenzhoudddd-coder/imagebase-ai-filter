@@ -73,9 +73,9 @@ const CreateDesignPopover = forwardRef<CreateDesignPopoverHandle, Props>(
       const name = extractNameFromUrl(figmaUrl);
       await onCreateDesign(name, figmaUrl.trim());
       onClose();
-    } catch (err) {
-      setState("error");
-      setErrorMsg((err as Error).message || "Failed to create design");
+    } catch {
+      // Error toast is handled by the parent; reset popover to input state
+      setState("input");
     }
   };
 

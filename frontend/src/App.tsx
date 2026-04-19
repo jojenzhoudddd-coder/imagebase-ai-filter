@@ -1069,12 +1069,17 @@ export default function App() {
 
   // ── Create design ──
   const handleCreateDesign = useCallback(async (name: string, figmaUrl: string): Promise<string> => {
-    const design = await apiCreateDesign(name, figmaUrl, DOCUMENT_ID);
-    setDocumentDesigns(prev => [...prev, design]);
-    setActiveTableId(design.id);
-    setActiveItemType("design");
-    return design.id;
-  }, []);
+    try {
+      const design = await apiCreateDesign(name, figmaUrl, DOCUMENT_ID);
+      setDocumentDesigns(prev => [...prev, design]);
+      setActiveTableId(design.id);
+      setActiveItemType("design");
+      return design.id;
+    } catch (err) {
+      toast.error((err as Error).message || t("toast.createTableFailed"));
+      throw err;
+    }
+  }, [toast, t]);
 
   // ── Delete item (folder or design) ──
   const handleDeleteItem = useCallback(async (id: string, type: TreeItemType) => {
