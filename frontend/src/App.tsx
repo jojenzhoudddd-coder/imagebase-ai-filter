@@ -42,7 +42,7 @@ export default function App() {
   const [activeTableId, setActiveTableId] = useState<string>("tbl_requirements");
   const activeTableIdRef = useRef(activeTableId);
   activeTableIdRef.current = activeTableId;
-  const [documentTables, setDocumentTables] = useState<Array<{ id: string; name: string; order: number }>>([]);
+  const [documentTables, setDocumentTables] = useState<Array<{ id: string; name: string; order: number; parentId: string | null }>>([]);
   const [documentFolders, setDocumentFolders] = useState<FolderBrief[]>([]);
   const [documentDesigns, setDocumentDesigns] = useState<DesignBrief[]>([]);
   const [activeItemType, setActiveItemType] = useState<TreeItemType>("table");
@@ -120,17 +120,15 @@ export default function App() {
   // Load initial data: document tables list, then active table data
   useEffect(() => {
     const init = async () => {
-      const [tables, doc, treeData] = await Promise.all([
-        fetchDocumentTables(DOCUMENT_ID),
+      const [treeData, doc] = await Promise.all([
+        fetchDocumentTree(DOCUMENT_ID),
         fetchDocument(DOCUMENT_ID).catch(() => null),
-        fetchDocumentTree(DOCUMENT_ID).catch(() => null),
       ]);
+      const tables = treeData.tables.map(t => ({ ...t, parentId: t.parentId ?? null }));
       setDocumentTables(tables);
+      setDocumentFolders(treeData.folders);
+      setDocumentDesigns((treeData.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
       if (doc) setDocumentName(doc.name);
-      if (treeData) {
-        setDocumentFolders(treeData.folders);
-        setDocumentDesigns(treeData.designs);
-      }
 
       // Determine which table to activate
       const lastActive = localStorage.getItem("lastActiveTableId");
@@ -903,7 +901,7 @@ export default function App() {
       displayName: tbl.id === activeTableId ? tableName : tbl.name,
       active: tbl.id === activeTableId && activeItemType === "table",
       order: tbl.order,
-      parentId: null,
+      parentId: tbl.parentId ?? null,
     }));
     const folderItems: SidebarItem[] = documentFolders.map(f => ({
       id: f.id,
@@ -963,7 +961,7 @@ export default function App() {
   const handleCreateWithAI = useCallback(async (aiTableName: string, generatedFields: GeneratedField[]): Promise<string> => {
     // 1. Create table
     const result = await apiCreateTable(aiTableName, DOCUMENT_ID, locale as "en" | "zh");
-    setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order }]);
+    setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order, parentId: null }]);
 
     // 2. Reset with AI fields (skip switchTable to avoid premature warmup)
     const resetResult = await resetTable(result.id, generatedFields, locale as "en" | "zh");
@@ -1005,7 +1003,7 @@ export default function App() {
   const handleCreateBlankTable = useCallback(async (): Promise<void> => {
     const baseName = locale === "zh" ? "数据表" : "Table";
     const result = await apiCreateTable(baseName, DOCUMENT_ID, locale as "en" | "zh");
-    setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order }]);
+    setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order, parentId: null }]);
     await switchTable(result.id);
     setTableName(result.name);
   }, [locale, switchTable]);
@@ -1023,7 +1021,7 @@ export default function App() {
     } catch {
       toast.error(t("toast.reorderFailed"));
       // Refetch on failure
-      fetchDocumentTables(DOCUMENT_ID).then(setDocumentTables);
+      fetchDocumentTree(DOCUMENT_ID).then(tree => setDocumentTables(tree.tables.map(t => ({ ...t, parentId: t.parentId ?? null }))));
     }
   }, [toast, t]);
 
@@ -1052,7 +1050,7 @@ export default function App() {
       await apiDeleteTable(tableId);
     } catch {
       toast.error(t("toast.deleteFailed"));
-      fetchDocumentTables(DOCUMENT_ID).then(setDocumentTables);
+      fetchDocumentTree(DOCUMENT_ID).then(tree => setDocumentTables(tree.tables.map(t => ({ ...t, parentId: t.parentId ?? null }))));
     }
   }, [documentTables, initFieldOrderFromView, toast, t]);
 
@@ -1110,16 +1108,25 @@ export default function App() {
 
   // ── Move item ──
   const handleMoveItem = useCallback(async (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => {
+    // Optimistic update FIRST
+    if (itemType === "table") {
+      setDocumentTables(prev => prev.map(t => t.id === itemId ? { ...t, parentId: newParentId } : t));
+    } else if (itemType === "folder") {
+      setDocumentFolders(prev => prev.map(f => f.id === itemId ? { ...f, parentId: newParentId } : f));
+    } else if (itemType === "design") {
+      setDocumentDesigns(prev => prev.map(d => d.id === itemId ? { ...d, parentId: newParentId } : d));
+    }
     try {
       await apiMoveItem(itemId, itemType, newParentId);
-      // Optimistic update of parentId (for tree rendering)
-      if (itemType === "design") {
-        setDocumentDesigns(prev => prev.map(d => d.id === itemId ? { ...d, parentId: newParentId } : d));
-      }
     } catch {
-      toast.error("Failed to move item");
+      // Rollback — refetch tree
+      const treeData = await fetchDocumentTree(DOCUMENT_ID);
+      setDocumentTables(treeData.tables.map(t => ({ ...t, parentId: t.parentId ?? null })));
+      setDocumentFolders(treeData.folders);
+      setDocumentDesigns((treeData.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
+      toast.error(t("toast.reorderFailed"));
     }
-  }, [toast]);
+  }, [toast, t]);
 
   // ── Select item (table or design) ──
   const handleSelectItem = useCallback((id: string, type?: TreeItemType) => {
@@ -1175,7 +1182,7 @@ export default function App() {
   useDocumentSync(DOCUMENT_ID, CLIENT_ID, {
     onTableCreate: useCallback((table: { id: string; name: string; order: number }) => {
       setDocumentTables(prev =>
-        prev.some(t => t.id === table.id) ? prev : [...prev, table].sort((a, b) => a.order - b.order)
+        prev.some(t => t.id === table.id) ? prev : [...prev, { ...table, parentId: null }].sort((a, b) => a.order - b.order)
       );
     }, []),
     onTableDelete: useCallback((tableId: string) => {
