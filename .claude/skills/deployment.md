@@ -16,7 +16,7 @@ Use this skill when deploying code to production, configuring server infrastruct
 |------|-------|
 | Server IP | `163.7.1.94` |
 | OS | Rocky Linux |
-| Domain | `www.baseimage.cn` |
+| Domain | `www.imagebase.cc` |
 | SSL | Let's Encrypt (auto-renew via certbot-renew.timer) |
 | SSH Key | `~/Desktop/baseimage.pem` |
 | App Directory | `/root/ai-filter-lark` |
@@ -179,7 +179,7 @@ curl -s http://localhost:3001/api/tables | head -c 100
 curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/
 
 # External access works
-curl -s -o /dev/null -w "%{http_code}" https://www.baseimage.cn/
+curl -s -o /dev/null -w "%{http_code}" https://www.imagebase.cc/
 ```
 
 ### SSE Connection Test

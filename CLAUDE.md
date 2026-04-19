@@ -81,7 +81,7 @@ npm run install:all
 npm run build
 pm2 restart ai-filter
 ```
-Domain: http://www.baseimage.cn
+Domain: https://www.imagebase.cc
 
 ## Project Documentation
 - `docs/design.md` - 系统设计文档（产品设计、PRD、技术方案、Edge Cases）

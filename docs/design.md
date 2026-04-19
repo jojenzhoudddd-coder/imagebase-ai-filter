@@ -510,7 +510,7 @@ GET /api/sync/documents/:docId/events?clientId=xxx
 ```
 用户浏览器
   ↓ HTTP
-Nginx (163.7.1.94:80) → www.baseimage.cn
+Nginx (163.7.1.94:443) → www.imagebase.cc
   ↓ Reverse Proxy
 Express (port 3001)
   ├── Serves static frontend (Vite build)
