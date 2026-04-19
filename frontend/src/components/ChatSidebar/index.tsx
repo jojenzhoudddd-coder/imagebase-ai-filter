@@ -16,7 +16,7 @@ import ThinkingIndicator from "./ChatMessage/ThinkingIndicator";
 import ToolCallCard from "./ChatMessage/ToolCallCard";
 import ToolCallGroup from "./ChatMessage/ToolCallGroup";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
-import { MoreIcon } from "./icons";
+import { MoreIcon, RefreshIcon } from "./icons";
 import DropdownMenu from "../DropdownMenu";
 import ConfirmDialog from "../ConfirmDialog";
 import { useTranslation } from "../../i18n";
@@ -135,6 +135,11 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
 
   const cancelRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Sticky-to-bottom auto-scroll. Stays `true` while the user is parked at
+  // the bottom; once they scroll up (even a few px), we stop yanking them
+  // back down as streaming chunks arrive. Re-enabled when they scroll back
+  // to the bottom (within SCROLL_STICKY_THRESHOLD) or send a new message.
+  const stickToBottomRef = useRef(true);
 
   // Fetch welcome-page suggestions when opened or document changes. We
   // intentionally fetch even when cached messages exist — suggestions are
@@ -212,11 +217,30 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
     });
   }, [documentId, activeConv?.id, messages, contextHint]);
 
-  // Auto-scroll to bottom on new content
+  // Auto-scroll to bottom on new content — but only if the user hasn't
+  // manually scrolled up. During streaming (thinking/message/tool_call
+  // chunks arriving every frame), yanking the viewport back to the bottom
+  // mid-read is hostile. We defer to the user's scroll position instead.
   useEffect(() => {
     if (!scrollRef.current) return;
+    if (!stickToBottomRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, pendingConfirm]);
+
+  // Scroll listener → toggle stickToBottomRef based on proximity to bottom.
+  // Threshold is a few px so small rendering jitter still counts as "at
+  // bottom" and re-enables auto-scroll once the user returns there.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const SCROLL_STICKY_THRESHOLD = 24;
+    const onScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
+      stickToBottomRef.current = distanceFromBottom <= SCROLL_STICKY_THRESHOLD;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   // ─── Streaming callbacks ──────────────────────────────────────────────
   const appendAssistantChunk = useCallback((msgId: string, chunk: string) => {
@@ -273,6 +297,11 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
 
     const userMsgId = `u_${Date.now()}`;
     const assistantMsgId = `a_${Date.now()}_pending`;
+
+    // User just submitted a new turn — snap to the bottom and re-enable
+    // sticky auto-scroll so they see their own message and the streamed
+    // reply in sequence even if they'd scrolled up in a previous turn.
+    stickToBottomRef.current = true;
 
     setMessages((prev) => [
       ...prev,
@@ -449,6 +478,7 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
     if (streaming) handleStop();
     // Reset UI first so the user sees the welcome page immediately; the new
     // conversation + context snapshot fetch happen in parallel behind it.
+    stickToBottomRef.current = true;
     setMessages([]);
     setPendingConfirm(null);
     setError(null);
@@ -504,6 +534,7 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
             {
               key: "refresh",
               label: t("chat.menu.refresh"),
+              icon: <RefreshIcon size={16} />,
             },
           ]}
           onSelect={(key) => {

@@ -7,6 +7,13 @@
 
 ## 2026-04-20
 
+### feat: Chat 流式输出不再强制抢走用户滚动；刷新会话菜单加 icon
+
+- **改动点**: `ChatSidebar/index.tsx` 增加 `stickToBottomRef` 粘底自动滚动 + "刷新会话" 菜单项加圆形箭头 icon
+- **详细说明**:
+  1. **流式输出尊重用户滚动** — 原本只要 `messages` 状态变化（每个 thinking/message/tool 事件都会触发），useEffect 就强制 `scrollTop = scrollHeight`，用户在模型吐字时想向上翻阅历史会被反复弹回底部，体验很差。改为：监听 `.chat-messages` 的 scroll 事件计算 `distanceFromBottom`，超过 24px 阈值就把 `stickToBottomRef.current` 翻为 false，auto-scroll 立刻停手；用户滚回底部附近后重新 sticky。用户点击发送或切换到新对话时强制 sticky=true，确保新一轮对话从底部开始。
+  2. **刷新会话菜单加 icon** — 原 `DropdownMenu` 只显示 "刷新会话" 文字，比较单薄。给这一项加上已有的 `RefreshIcon`（16×16 圆形箭头），与其他下拉菜单视觉风格保持一致。
+
 ### fix: Chat Agent 工具调用重复执行（每次执行两次）
 
 - **改动点**: `backend/src/services/chatAgentService.ts` 的 `callArkStream` 增加 `yieldedCallIds` Set 去重
