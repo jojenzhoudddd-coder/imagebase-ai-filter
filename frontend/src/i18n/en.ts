@@ -342,6 +342,8 @@ export const en = {
   "design.copyLink": "Copy link",
   "design.linkCopied": "Link copied",
   "design.linkCopyFailed": "Copy failed, please try again",
+  "design.panHint": "Click and drag to pan the canvas, pinch to zoom",
+  "design.panHintGotIt": "Got it",
   "design.loading": "Loading design...",
   "design.notFound": "Design not found",
   "design.sharingHint": "Make sure the Figma file has sharing enabled",

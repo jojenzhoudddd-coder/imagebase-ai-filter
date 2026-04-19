@@ -175,3 +175,71 @@ body.sidebar-resizing .design-panel-iframe {
   0%   { left: -40%; }
   100% { left: 100%; }
 }
+
+/* Interaction hint — dark pill floating at bottom-center of the Figma canvas
+ * viewport. Uses the project's dark text-primary (#1F2329) + white content
+ * pattern seen in Toast/tooltip conventions. Disappears on dismiss (stored
+ * in localStorage so it only appears once per browser). */
+.design-panel-pan-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 40px);
+  padding: 8px 8px 8px 12px;
+  background: rgba(31, 35, 41, 0.92);
+  color: #FFFFFF;
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-dropdown);
+  font-size: 13px;
+  line-height: 20px;
+  z-index: 3;
+  pointer-events: auto;
+  animation: design-panel-pan-hint-enter 180ms ease-out;
+  backdrop-filter: saturate(1.2);
+}
+
+.design-panel-pan-hint-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.82);
+  flex-shrink: 0;
+}
+
+.design-panel-pan-hint-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-panel-pan-hint-close {
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-s);
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #FFFFFF;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--font-family, inherit);
+}
+
+.design-panel-pan-hint-close:hover {
+  background: rgba(255, 255, 255, 0.20);
+}
+
+.design-panel-pan-hint-close:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@keyframes design-panel-pan-hint-enter {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}

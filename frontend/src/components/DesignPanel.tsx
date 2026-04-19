@@ -38,6 +38,11 @@ const COPY_LINK_ICON = (
  * to it on every NEW_STATE so the next session resumes where they left off. */
 const LAST_NODE_KEY = (id: string) => `figma_last_node_v1:${id}`;
 
+/* localStorage flag — once the user dismisses the Figma interaction hint
+ * tooltip we never show it again. (Stored cross-design because the gesture
+ * behaviour is the same for every design.) */
+const PAN_HINT_DISMISSED_KEY = "figma_pan_hint_dismissed_v1";
+
 function readLastNode(designId: string): string | null {
   try { return localStorage.getItem(LAST_NODE_KEY(designId)); } catch { return null; }
 }
@@ -79,6 +84,17 @@ export default function DesignPanel({ designId, designName, onRename, hidden = f
    * would force a reload and defeat the caching pool — instead the handler
    * writes directly to localStorage for the next mount to pick up. */
   const [initialNodeId] = useState<string | null>(() => readLastNode(designId));
+  /* Interaction hint tooltip: Figma's embed viewer doesn't bind two-finger
+   * trackpad pan to canvas pan (by design, to avoid scroll-jacking the host
+   * page); canvas pan requires click-drag. Tell the user once, then never
+   * again for the lifetime of their browser. */
+  const [showPanHint, setShowPanHint] = useState(() => {
+    try { return localStorage.getItem(PAN_HINT_DISMISSED_KEY) !== "1"; } catch { return true; }
+  });
+  const dismissPanHint = () => {
+    setShowPanHint(false);
+    try { localStorage.setItem(PAN_HINT_DISMISSED_KEY, "1"); } catch { /* quota */ }
+  };
 
   const handleCopyLink = async () => {
     if (!design) return;
@@ -215,6 +231,29 @@ export default function DesignPanel({ designId, designName, onRename, hidden = f
           allowFullScreen
           onLoad={() => setIframeLoaded(true)}
         />
+        {/* Interaction hint — dismissible. Floats at the bottom-center of the
+         * canvas viewport; dark pill, 13px white text, matches the project's
+         * Toast/dropdown aesthetic (shadow-dropdown, radius-m). Only shown
+         * while the iframe is active and the user hasn't dismissed it yet. */}
+        {showPanHint && iframeLoaded && (
+          <div className="design-panel-pan-hint" role="status">
+            <span className="design-panel-pan-hint-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M8 14.667A6.667 6.667 0 108 1.333a6.667 6.667 0 000 13.334z" stroke="currentColor" strokeWidth="1.3"/>
+                <path d="M8 7.333v3.334" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                <circle cx="8" cy="5.333" r="0.75" fill="currentColor"/>
+              </svg>
+            </span>
+            <span className="design-panel-pan-hint-text">{t("design.panHint")}</span>
+            <button
+              className="design-panel-pan-hint-close"
+              onClick={dismissPanHint}
+              aria-label={t("design.panHintGotIt")}
+            >
+              {t("design.panHintGotIt")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

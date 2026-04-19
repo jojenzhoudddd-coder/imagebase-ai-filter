@@ -344,6 +344,8 @@ export const zh: TranslationKeys = {
   "design.copyLink": "复制链接",
   "design.linkCopied": "链接已复制",
   "design.linkCopyFailed": "复制失败，请重试",
+  "design.panHint": "点击并拖动画布可平移，双指捏合可缩放",
+  "design.panHintGotIt": "知道了",
   "design.loading": "正在加载设计稿...",
   "design.notFound": "未找到设计稿",
   "design.sharingHint": "请确保 Figma 文件已开启共享",
