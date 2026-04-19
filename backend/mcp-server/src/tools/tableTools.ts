@@ -69,7 +69,11 @@ export const tableTools: ToolDefinition[] = [
 
   {
     name: "create_table",
-    description: "在指定文档中创建一张空白数据表（含 1 个 Text 主字段 + 5 条空记录 + 1 个默认 Grid 视图）。返回新表的 id 和 name。",
+    description:
+      "在指定文档中创建一张空白数据表（含 1 个默认 Text 主字段 + 5 条空记录 + 1 个默认 Grid 视图）。" +
+      "返回新表的 id / name 以及默认主字段 primaryField（含 id / name / type）。" +
+      "⚠️ 用户需要自定义表结构时，必须用 update_field 把 primaryField 改成期望的第一列（名称/类型/config），" +
+      "然后再继续 create_field 添加其余列。绝对不要再额外 create_field 一个同义的第一列，否则会出现重复。",
     inputSchema: {
       type: "object",
       properties: {
@@ -86,7 +90,28 @@ export const tableTools: ToolDefinition[] = [
         language: args.language || "zh",
       };
       const tbl = await apiRequest<any>("/api/tables", { method: "POST", body });
-      return toolResult({ id: tbl.id, name: tbl.name, order: tbl.order });
+      // Fetch fields so the agent gets the auto-created primary field's id and
+      // can immediately rename/retype it via update_field instead of adding a
+      // redundant first column.
+      let primaryField: { id: string; name: string; type: string } | null = null;
+      try {
+        const fields = await apiRequest<any[]>(`/api/tables/${tbl.id}/fields`, { method: "GET" });
+        const primary = Array.isArray(fields) ? fields.find((f) => f.isPrimary) ?? fields[0] : null;
+        if (primary) {
+          primaryField = { id: primary.id, name: primary.name, type: primary.type };
+        }
+      } catch {
+        // Non-fatal: agent can still call list_fields explicitly
+      }
+      return toolResult({
+        id: tbl.id,
+        name: tbl.name,
+        order: tbl.order,
+        primaryField,
+        note: primaryField
+          ? `⚠️ 已自动生成默认主字段 "${primaryField.name}" (id=${primaryField.id}, type=${primaryField.type})。若不符合用户需求，请用 update_field 修改它，不要 create_field 新增重复的第一列。`
+          : undefined,
+      });
     },
   },
 

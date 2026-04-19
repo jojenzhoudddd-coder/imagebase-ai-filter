@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-04-19
+
+### feat: Chat Sidebar 前端缓存 + 智能提示词建议
+
+- **改动点**: 4 项 Chat Sidebar 体验增强
+- **详细说明**:
+  1. **前端缓存（防刷新闪烁）** — 新增 `localStorage` key `chat_cache_v1:${documentId}`，首次挂载通过 `useState` 初始化器同步读取缓存的 `activeConvId + messages + contextHint`，无需等 `/conversations` 返回即可渲染上次对话。打开面板后后台再 revalidate，若服务端 404（例如 backend 重启）则清缓存并走常规 list/create 流程。缓存上限 100 条消息，streaming 标志在读取时被重置避免卡死动画。
+  2. **工具卡片与文字间距 12px** — `MessageBlock` 现在返回 `.chat-msg-assistant-block` 包裹 div，内部 `gap:12px`（思考指示 + 文字 + 工具卡片），外层 `.chat-messages` 保持 28px 消息间距。
+  3. **后台定时任务：智能提示词建议** — 新增 `backend/src/services/suggestionService.ts`，启动后 5s 跑首轮、每 10min 刷新，基于文档表/字段结构调 ARK 生成 3-5 条 `{label, prompt}`，附签名去重避免无变更时浪费 tokens，失败回落到默认包。新增 `GET /api/chat/suggestions` 及 `POST /api/chat/suggestions/refresh` 路由。前端 EmptyState 优先渲染动态建议，空/失败时回落到 i18n 预设；新增 `fetchChatSuggestions()` 客户端。
+  4. **create_table 主字段指引** — `backend/mcp-server/src/tools/tableTools.ts` 的 `create_table` 工具描述强化为"⚠️ 必须用 update_field 改造默认主字段，不许重复 create_field 新增第一列"，handler 回传新字段 `primaryField { id, name, type }` 和 `note` 文本。`chatAgentService.ts` 系统提示词同步新增硬规则，明确创建复杂表的正确顺序：create_table → update_field 改主字段 → create_field 追加其余 → batch_create_records。
+
+---
+
 ## 2026-04-17
 
 ### feat: 多表管理（新建、切换、拖动排序、删除）

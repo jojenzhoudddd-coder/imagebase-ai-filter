@@ -17,6 +17,11 @@ import express, { type Request, type Response } from "express";
 import * as convStore from "../services/conversationStore.js";
 import { runAgent, resumeAfterConfirm, type AgentContext, type SseEvent } from "../services/chatAgentService.js";
 import * as store from "../services/dbStore.js";
+import {
+  getSuggestions,
+  refreshSuggestions,
+  DEFAULT_SUGGESTIONS,
+} from "../services/suggestionService.js";
 
 const router = express.Router();
 
@@ -92,6 +97,55 @@ router.get("/context-snapshot", async (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({
       error: "Failed to build context snapshot",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+// GET /api/chat/suggestions?documentId=xxx
+// Returns the cached 3-5 AI-generated prompt suggestions for the document's
+// welcome page. On cache-miss, kicks off an async refresh and returns
+// defaults so the UI never shows an empty state.
+router.get("/suggestions", (req: Request, res: Response) => {
+  const documentId = (req.query.documentId as string) || "doc_default";
+  const entry = getSuggestions(documentId);
+  if (entry) {
+    res.json({
+      documentId,
+      suggestions: entry.suggestions,
+      updatedAt: entry.updatedAt,
+      stale: false,
+    });
+    return;
+  }
+  // Fire-and-forget refresh so the next call is warm
+  void refreshSuggestions(documentId);
+  res.json({
+    documentId,
+    suggestions: DEFAULT_SUGGESTIONS,
+    updatedAt: 0,
+    stale: true,
+  });
+});
+
+// POST /api/chat/suggestions/refresh
+// Force-refresh hook (e.g. after significant document edits). Returns the
+// freshly generated pack once ready — the scheduler will also pick it up on
+// its next tick, this is just an impatient shortcut.
+router.post("/suggestions/refresh", async (req: Request, res: Response) => {
+  const { documentId = "doc_default" } = (req.body as { documentId?: string }) || {};
+  try {
+    const suggestions = await refreshSuggestions(documentId);
+    const entry = getSuggestions(documentId);
+    res.json({
+      documentId,
+      suggestions,
+      updatedAt: entry?.updatedAt ?? Date.now(),
+      stale: false,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: "Failed to refresh suggestions",
       detail: err instanceof Error ? err.message : String(err),
     });
   }

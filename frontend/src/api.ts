@@ -680,6 +680,27 @@ export async function fetchChatContextSnapshot(documentId: string): Promise<Chat
   return res.json();
 }
 
+export interface ChatSuggestion {
+  label: string;
+  prompt: string;
+}
+
+export interface ChatSuggestionResponse {
+  documentId: string;
+  suggestions: ChatSuggestion[];
+  updatedAt: number;
+  stale: boolean;
+}
+
+/** Fetch AI-generated prompt suggestions for the chat welcome page.
+ * Backend runs a scheduled refresh every 10 min; this call returns the
+ * cached pack (stale=false) or a default pack (stale=true) on cache miss. */
+export async function fetchChatSuggestions(documentId: string): Promise<ChatSuggestionResponse> {
+  const res = await fetch(`${BASE}/chat/suggestions?documentId=${encodeURIComponent(documentId)}`);
+  if (!res.ok) throw new Error("Failed to fetch chat suggestions");
+  return res.json();
+}
+
 export async function createConversation(documentId: string): Promise<ChatConversation> {
   const res = await mutationFetch(`${BASE}/chat/conversations`, {
     method: "POST",

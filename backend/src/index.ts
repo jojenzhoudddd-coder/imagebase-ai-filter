@@ -15,6 +15,7 @@ import { PrismaClient } from "./generated/prisma/client.js";
 import { mockTable } from "./mockData.js";
 import { connectDB, loadTable, getTable, getDocument, updateDocument, listTablesForDocument } from "./services/dbStore.js";
 import { eventBus } from "./services/eventBus.js";
+import { startSuggestionScheduler } from "./services/suggestionService.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -147,6 +148,10 @@ async function start() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`AI Filter running on http://0.0.0.0:${PORT}`);
   });
+
+  // Kick off the chat-sidebar prompt-suggestion scheduler. Runs an initial
+  // pass on `doc_default` after a short delay and refreshes every 10 min.
+  startSuggestionScheduler(["doc_default"]);
 }
 
 start().catch((err) => {

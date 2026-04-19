@@ -85,12 +85,18 @@
   align-items: stretch;
   gap: 28px;
 }
-.chat-messages::-webkit-scrollbar {
-  width: 6px;
+/* Hide scrollbar entirely — the chat surface scrolls with wheel/trackpad but
+ * the 6px bar was visually noisy against the white sidebar. Firefox uses
+ * `scrollbar-width: none`, IE uses `-ms-overflow-style`, and WebKit hides via
+ * the pseudo-element. */
+.chat-messages {
+  scrollbar-width: none;          /* Firefox */
+  -ms-overflow-style: none;       /* IE / legacy Edge */
 }
-.chat-messages::-webkit-scrollbar-thumb {
-  background: #D0D3D6;
-  border-radius: 3px;
+.chat-messages::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;                  /* Chrome / Safari / new Edge */
 }
 
 /* ─── Empty-state welcome page ─────────────────────────────────────────
@@ -252,6 +258,21 @@
   text-align: left;
 }
 
+/* Assistant block wrapper — groups thinking indicator + text + tool cards
+ * belonging to one assistant message. Internal gap is 12px so the tool-call
+ * info card sits close under the answer text (per product spec), while the
+ * .chat-messages container keeps the 28px gap BETWEEN successive messages.
+ * Without this wrapper, all children would flatten into .chat-messages and
+ * inherit the 28px outer gap — which is too loose for sibling cards of the
+ * same turn. */
+.chat-msg-assistant-block {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+}
+
 /* ─── Assistant text ───────────────────────────────────────────────
  * Figma node 6:5307. Plain 14/22 PingFang SC body — no bubble, no bg.
  * Sits flush against the 20px page gutter; conversation rhythm handled
@@ -267,20 +288,10 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
-.chat-msg-assistant.streaming::after {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 14px;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  background: #1F2329;
-  opacity: 0.6;
-  animation: chat-cursor-blink 1s steps(2, start) infinite;
-}
-@keyframes chat-cursor-blink {
-  to { opacity: 0; }
-}
+/* Blinking cursor on streaming text was removed — "生成中" hint in the input
+ * bar + the thinking indicator above the answer communicate in-flight state.
+ * The previous `.chat-msg-assistant.streaming::after` + cursor keyframes
+ * lived here and have been dropped intentionally. */
 
 /* ─── Thinking indicator ───────────────────────────────────────────
  * Two visual states driven by Figma:
@@ -395,30 +406,91 @@
   white-space: nowrap;
 }
 
-/* Tool call card */
-.chat-tool-card {
-  background: #F8F9FA;
-  border: 1px solid #DEE0E3;
-  border-radius: 8px;
-  padding: 10px 12px;
+/* ─── Tool-call row / group ─────────────────────────────────────────
+ * Pixel-aligned to Figma node 6905:40884 "AI_ActionItem".
+ *
+ * Row skin:
+ *   • 36px tall, 11px radius, background token/bg/body-overlay #F5F6F7
+ *   • 4px horizontal padding, 8px gap, items center
+ *   • Icon box: 28×28, radius 8, bg rgba(255,255,255,0.8), 0.5px #DEE0E3
+ *   • Label: PingFang SC 12/20, #646A73, ellipsis
+ *   • Right edge: 16×16 status indicator (spinner/check/x) or chevron (group)
+ *
+ * Multiple consecutive same-tool rows collapse into a single
+ * `.chat-tool-group` with a clickable header (`button`); children indent
+ * under it when expanded.
+ */
+.chat-tool-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 4px;
+  background: #F5F6F7;            /* token/bg/body-overlay */
+  border: none;
+  border-radius: 11px;
+  color: #646A73;                 /* token/text/caption */
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   font-size: 12px;
+  font-weight: 400;
   line-height: 20px;
-  color: #2B2F36;
+  text-align: left;
+  box-sizing: border-box;
 }
-.chat-tool-card.success {
-  border-color: #CCEBD9;
+.chat-tool-row-icon {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.8);  /* token/bg/float-push */
+  border: 0.5px solid #DEE0E3;           /* token/line/border-card */
+  border-radius: 8px;
+  color: #2B2F36;                        /* token/icon/n1 */
+  position: relative;
 }
-.chat-tool-card.error {
-  border-color: #FBD1C6;
-  background: #FFF5F3;
+.chat-tool-row-label {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #646A73;
 }
-.chat-tool-card.running .chat-tool-spinner {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
+.chat-tool-row-target {
+  margin-left: 2px;
+  color: #2B2F36;                 /* slightly darker so the target stands out */
+}
+.chat-tool-row-count {
+  margin-left: 4px;
+  color: #8F959E;
+  font-weight: 400;
+}
+
+/* Status indicators (right edge). Group chevron reuses the same slot. */
+.chat-tool-row-status-icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #8F959E;
+}
+.chat-tool-row-status-icon.success { color: #17B26A; }
+.chat-tool-row-status-icon.error   { color: #F54A45; }
+.chat-tool-row-status-icon.awaiting {
+  color: #F5A623;
+  font-size: 20px;
+  line-height: 16px;
+}
+
+.chat-tool-row-spinner {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
   border: 1.5px solid #D0D3D6;
   border-top-color: #1456F0;
   border-radius: 50%;
@@ -427,25 +499,44 @@
 @keyframes chat-spin {
   to { transform: rotate(360deg); }
 }
-.chat-tool-icon {
-  flex: 0 0 14px;
-  display: inline-flex;
-  color: #646A73;
+
+/* Error row tint — subtle warm wash so failures stand out without shouting. */
+.chat-tool-row.error {
+  background: #FFF5F3;
 }
-.chat-tool-label {
-  flex: 1;
-  font-weight: 500;
+
+/* Group header — clickable button variant of .chat-tool-row. */
+.chat-tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
 }
-.chat-tool-status {
-  flex: 0 0 auto;
-  font-size: 11px;
+.chat-tool-group-header {
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.chat-tool-group-header:hover {
+  background: #EDEFF1;
+}
+.chat-tool-row-chevron {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
   color: #8F959E;
+  transition: transform 150ms ease;
 }
-.chat-tool-status.success {
-  color: #17B26A;
+.chat-tool-row-chevron.expanded {
+  transform: rotate(180deg);
 }
-.chat-tool-status.error {
-  color: #F54A45;
+
+/* Children of an expanded group — indented so the hierarchy is clear but
+ * not so far that they fall off the panel on narrow layouts. */
+.chat-tool-group-children {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 16px;
 }
 
 /* Confirmation card */

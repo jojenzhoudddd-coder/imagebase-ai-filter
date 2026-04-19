@@ -1,4 +1,5 @@
 import type { PendingConfirm } from "../../../api";
+import { useTranslation } from "../../../i18n";
 
 interface Props {
   pending: PendingConfirm;
@@ -8,9 +9,12 @@ interface Props {
 }
 
 export default function ConfirmCard({ pending, onConfirm, onCancel, disabled }: Props) {
+  const { t } = useTranslation();
   return (
     <div className="chat-confirm-card">
-      <div className="chat-confirm-text">{pending.prompt || `即将执行 ${pending.tool}`}</div>
+      <div className="chat-confirm-text">
+        {pending.prompt || t("chat.confirm.defaultPrompt", { tool: pending.tool })}
+      </div>
       <div className="chat-confirm-actions">
         <button
           type="button"
@@ -18,7 +22,7 @@ export default function ConfirmCard({ pending, onConfirm, onCancel, disabled }: 
           onClick={onCancel}
           disabled={disabled}
         >
-          取消
+          {t("chat.confirm.cancel")}
         </button>
         <button
           type="button"
@@ -26,7 +30,7 @@ export default function ConfirmCard({ pending, onConfirm, onCancel, disabled }: 
           onClick={onConfirm}
           disabled={disabled}
         >
-          确认
+          {t("chat.confirm.confirm")}
         </button>
       </div>
     </div>

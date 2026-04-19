@@ -1,59 +1,42 @@
-import { ToolCogIcon } from "../icons";
 import type { ChatToolCall } from "../../../api";
+import { useTranslation } from "../../../i18n";
 
-// User-facing labels for each tool name. Falls back to the raw tool name.
-const TOOL_LABELS: Record<string, string> = {
-  list_tables: "查询数据表",
-  get_table: "获取表详情",
-  create_table: "创建数据表",
-  rename_table: "重命名数据表",
-  delete_table: "删除数据表",
-  reset_table: "重置表结构",
-  list_fields: "查询字段",
-  create_field: "创建字段",
-  update_field: "修改字段",
-  delete_field: "删除字段",
-  batch_delete_fields: "批量删除字段",
-  query_records: "查询记录",
-  create_record: "新增记录",
-  batch_create_records: "批量新增记录",
-  update_record: "修改记录",
-  delete_record: "删除记录",
-  batch_delete_records: "批量删除记录",
-  list_views: "查询视图",
-  create_view: "创建视图",
-  update_view: "修改视图",
-  delete_view: "删除视图",
-};
-
-function statusLabel(status?: string): string {
-  switch (status) {
-    case "running":
-      return "执行中";
-    case "success":
-      return "已完成";
-    case "error":
-      return "失败";
-    case "awaiting_confirmation":
-      return "等待确认";
-    default:
-      return "";
-  }
-}
-
+/**
+ * ToolCallCard — single tool-call row, pixel-aligned to Figma node
+ * 6905:40884 "AI_ActionItem":
+ *
+ *   ┌───────────────────────────────────────────────┐
+ *   │  ▢ icon  label (ellipsis, 12/20 #646A73)  ● │
+ *   └───────────────────────────────────────────────┘
+ *
+ *   • Outer row: 36px height, 11px radius, #F5F6F7 background,
+ *     4px horizontal padding, 8px gap.
+ *   • Icon container: 28×28, 8px radius, rgba(255,255,255,0.8),
+ *     0.5px #DEE0E3 border, 14×14 tool icon centred (#2B2F36).
+ *   • Label: PingFang SC 12/20, #646A73, flex:1 with ellipsis.
+ *   • Right side: 16×16 status indicator (spinner / check / x /
+ *     awaiting-dot).
+ */
 export default function ToolCallCard({ call }: { call: ChatToolCall }) {
-  const label = TOOL_LABELS[call.tool] || call.tool;
+  const { t } = useTranslation();
   const status = call.status || "running";
+  // Localized tool label — falls back to the raw MCP name if there's no
+  // dedicated translation key.
+  const translated = t(`chat.tool.${call.tool}`);
+  const label = translated === `chat.tool.${call.tool}` ? call.tool : translated;
   const targetTag = extractTargetTag(call.args);
+  const statusTitle = t(`chat.tool.status.${status === "awaiting_confirmation" ? "awaiting" : status}`);
 
   return (
-    <div className={`chat-tool-card ${status}`}>
-      {status === "running" ? <span className="chat-tool-spinner" /> : <ToolCogIcon size={14} className="chat-tool-icon" />}
-      <span className="chat-tool-label">{label}</span>
-      {targetTag && <span className="chat-tool-status">{targetTag}</span>}
-      {status !== "running" && (
-        <span className={`chat-tool-status ${status}`}>{statusLabel(status)}</span>
-      )}
+    <div className={`chat-tool-row ${status}`} role="group" aria-label={label}>
+      <span className="chat-tool-row-icon" aria-hidden="true">
+        <ToolGlyph />
+      </span>
+      <span className="chat-tool-row-label">
+        {label}
+        {targetTag && <span className="chat-tool-row-target">「{targetTag}」</span>}
+      </span>
+      <StatusDot status={status} title={statusTitle} />
     </div>
   );
 }
@@ -68,5 +51,92 @@ function extractTargetTag(args: Record<string, unknown>): string | null {
   if (typeof args.viewId === "string") return args.viewId.slice(0, 14);
   if (typeof args.recordId === "string") return args.recordId.slice(0, 14);
   if (typeof args.fieldId === "string") return args.fieldId.slice(0, 14);
+  return null;
+}
+
+/** `icon_base-agent-table_outlined` — Figma node 6905:25839.
+ * Approximated as a bracket-style "richtext / table agent" mark (two opposing
+ * L-corners) that reads as "a tracked table action". 14×14 viewBox. */
+function ToolGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M9 1.5h2.5A1 1 0 0 1 12.5 2.5V5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5 12.5H2.5A1 1 0 0 1 1.5 11.5V9"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <rect
+        x="4"
+        y="4"
+        width="6"
+        height="6"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+}
+
+/** Right-edge status indicator: 16×16. Variants per status. */
+function StatusDot({ status, title }: { status: string; title: string }) {
+  if (status === "running") {
+    return <span className="chat-tool-row-spinner" title={title} aria-label={title} />;
+  }
+  if (status === "success") {
+    return (
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        className="chat-tool-row-status-icon success"
+        aria-label={title}
+      >
+        <path
+          d="m4.5 8.2 2.4 2.3L11.5 5.7"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (status === "error") {
+    return (
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        className="chat-tool-row-status-icon error"
+        aria-label={title}
+      >
+        <path
+          d="M5 5l6 6M11 5l-6 6"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
+  if (status === "awaiting_confirmation") {
+    return (
+      <span className="chat-tool-row-status-icon awaiting" title={title} aria-label={title}>
+        •
+      </span>
+    );
+  }
   return null;
 }

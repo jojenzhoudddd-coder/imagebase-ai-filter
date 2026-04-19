@@ -14,18 +14,22 @@ import UserBubble from "./ChatMessage/UserBubble";
 import AssistantText from "./ChatMessage/AssistantText";
 import ThinkingIndicator from "./ChatMessage/ThinkingIndicator";
 import ToolCallCard from "./ChatMessage/ToolCallCard";
+import ToolCallGroup from "./ChatMessage/ToolCallGroup";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
 import { RefreshIcon } from "./icons";
+import { useTranslation } from "../../i18n";
 import {
   type ChatConversation,
   type ChatContextSnapshot,
   type ChatMessage,
+  type ChatSuggestion,
   type ChatToolCall,
   type PendingConfirm,
   createConversation,
   listConversations,
   getConversationMessages,
   fetchChatContextSnapshot,
+  fetchChatSuggestions,
   streamChatMessage,
   sendChatConfirmation,
   stopChatTurn,
@@ -42,6 +46,54 @@ interface UiMessage {
   error?: { code: string; message: string };
 }
 
+// ─── LocalStorage cache ──────────────────────────────────────────────
+// Why: every refresh used to flash the welcome page for a beat while the
+// /conversations + /messages GETs resolved. We now hydrate state from
+// cache synchronously, render instantly, and revalidate in the background.
+const CACHE_KEY_PREFIX = "chat_cache_v1:";
+const CACHE_MAX_MESSAGES = 100; // cap per-document to avoid localStorage bloat
+
+interface CachedState {
+  activeConvId: string;
+  messages: UiMessage[];
+  contextHint: ChatContextSnapshot | null;
+}
+
+function readCache(documentId: string): CachedState | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY_PREFIX + documentId);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedState;
+    if (!parsed.activeConvId || !Array.isArray(parsed.messages)) return null;
+    // Drop any streaming flag left over from an interrupted session so the
+    // UI doesn't show a hanging spinner after a reload.
+    parsed.messages = parsed.messages.map((m) => ({ ...m, streaming: false }));
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(documentId: string, state: CachedState) {
+  try {
+    const trimmed: CachedState = {
+      ...state,
+      messages: state.messages.slice(-CACHE_MAX_MESSAGES),
+    };
+    localStorage.setItem(CACHE_KEY_PREFIX + documentId, JSON.stringify(trimmed));
+  } catch {
+    // Quota / disabled storage — silently skip
+  }
+}
+
+function clearCache(documentId: string) {
+  try {
+    localStorage.removeItem(CACHE_KEY_PREFIX + documentId);
+  } catch {
+    // ignore
+  }
+}
+
 interface Props {
   open: boolean;
   documentId: string;
@@ -49,8 +101,14 @@ interface Props {
 }
 
 export default function ChatSidebar({ open, documentId, onClose }: Props) {
-  const [activeConv, setActiveConv] = useState<ChatConversation | null>(null);
-  const [messages, setMessages] = useState<UiMessage[]>([]);
+  const { t } = useTranslation();
+  // Hydrate from localStorage synchronously so a refresh shows cached
+  // messages immediately — no welcome-page flash while /conversations loads.
+  const initialCache = useRef<CachedState | null>(readCache(documentId)).current;
+  const [activeConv, setActiveConv] = useState<ChatConversation | null>(
+    initialCache ? ({ id: initialCache.activeConvId } as ChatConversation) : null
+  );
+  const [messages, setMessages] = useState<UiMessage[]>(initialCache?.messages ?? []);
   const [inputValue, setInputValue] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
@@ -59,20 +117,62 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
   // user knows what the Agent will see before their first prompt. Kept
   // separate from the full Document Snapshot, which is rebuilt inside the
   // backend agent service on every message.
-  const [contextHint, setContextHint] = useState<ChatContextSnapshot | null>(null);
+  const [contextHint, setContextHint] = useState<ChatContextSnapshot | null>(
+    initialCache?.contextHint ?? null
+  );
+  // AI-generated prompt suggestions for the welcome page. Backend refreshes
+  // every ~10 minutes via a scheduled task; we fetch once on open and after
+  // handleNewConversation to keep it fresh.
+  const [suggestions, setSuggestions] = useState<ChatSuggestion[]>([]);
 
   const cancelRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // ─── Ensure a conversation exists when the sidebar opens ───────────────
+  // Fetch welcome-page suggestions when opened or document changes. We
+  // intentionally fetch even when cached messages exist — suggestions are
+  // only shown on the empty state so there's no flicker cost, and we want
+  // them warm for the next "新对话" click. */
   useEffect(() => {
     if (!open) return;
-    if (activeConv) return;
+    let cancelled = false;
+    fetchChatSuggestions(documentId)
+      .then((r) => {
+        if (!cancelled) setSuggestions(r.suggestions);
+      })
+      .catch(() => {
+        // Fall back to hard-coded i18n presets on failure
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, documentId]);
+
+  // ─── Ensure a conversation exists when the sidebar opens ───────────────
+  // With the cache primer we may already have an activeConv stub — but the
+  // server record still needs to be fetched/refreshed so the agent loop has
+  // the real `conversation` row. We revalidate quietly in the background.
+  useEffect(() => {
+    if (!open) return;
+    // If cache seeded an activeConv id, revalidate it against the server.
+    // Otherwise fall back to list-then-create flow.
     (async () => {
       try {
+        if (activeConv?.id) {
+          // Revalidate cached conversation — if it still exists server-side,
+          // merge the server messages (source of truth) on top of our cache.
+          try {
+            const { conversation, messages: serverMsgs } = await getConversationMessages(activeConv.id);
+            setActiveConv(conversation);
+            setMessages(serverMsgs.map(serverToUi));
+            return;
+          } catch {
+            // Conversation no longer exists (server restart, etc.) — drop cache
+            // and fall through to fresh bootstrap below.
+            clearCache(documentId);
+          }
+        }
         const list = await listConversations(documentId);
         if (list.length > 0) {
-          // Load the most recent conversation
           const conv = list[0];
           const { messages: msgs } = await getConversationMessages(conv.id);
           setActiveConv(conv);
@@ -86,7 +186,23 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
         setError((err as Error).message);
       }
     })();
-  }, [open, documentId, activeConv]);
+    // Only on open / documentId switch. Intentionally not depending on
+    // activeConv — we read it once from the primer ref above, and subsequent
+    // conversation changes come from handleNewConversation directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, documentId]);
+
+  // ─── Persist active conversation + messages to cache ─────────────────
+  // Write on every settled state change. Streaming intermediate states are
+  // included (cheap JSON.stringify; capped at 100 messages by writeCache).
+  useEffect(() => {
+    if (!activeConv?.id) return;
+    writeCache(documentId, {
+      activeConvId: activeConv.id,
+      messages,
+      contextHint,
+    });
+  }, [documentId, activeConv?.id, messages, contextHint]);
 
   // Auto-scroll to bottom on new content
   useEffect(() => {
@@ -357,8 +473,8 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
           <button
             type="button"
             className="chat-header-btn"
-            title={messages.length === 0 ? "当前已是新对话" : "刷新对话"}
-            aria-label="刷新对话"
+            title={messages.length === 0 ? t("chat.refreshDisabled") : t("chat.refresh")}
+            aria-label={t("chat.refresh")}
             // Disable on the welcome page — there is nothing to reset, so the
             // button greys out to hint that it's a no-op in that state.
             disabled={messages.length === 0 && !streaming}
@@ -372,6 +488,7 @@ export default function ChatSidebar({ open, documentId, onClose }: Props) {
         {messages.length === 0 && !error && (
           <EmptyState
             contextHint={contextHint}
+            suggestions={suggestions}
             onPreset={(text) => {
               // Fill the input only — do NOT auto-send. User reviews/edits
               // and presses send themselves.
@@ -433,6 +550,7 @@ function serverToUi(m: ChatMessage): UiMessage {
  *     arrived from the stream.
  */
 function MessageBlock({ msg }: { msg: UiMessage }) {
+  const { t } = useTranslation();
   if (msg.role === "user") return <UserBubble content={msg.content} />;
 
   const hasThinking = Boolean(msg.thinking && msg.thinking.length > 0);
@@ -442,16 +560,41 @@ function MessageBlock({ msg }: { msg: UiMessage }) {
   const thinkingCollapsed = hasThinking && (hasAnswer || !msg.streaming);
   const thinkingActive = msg.streaming && !hasAnswer;
 
+  // Group consecutive tool calls sharing the same MCP tool name — 2+ in a
+  // run collapse into a single header with an expand chevron so the
+  // transcript doesn't get buried under near-identical rows.
+  const groups = groupConsecutiveTools(msg.toolCalls);
+
+  // Wrap in a single block so the inner gap (text ↔ tool cards = 12px) is
+  // tighter than the outer message gap (28px between successive messages).
   return (
-    <>
-      {thinkingCollapsed && <ThinkingIndicator mode="collapsed" />}
-      {thinkingActive && <ThinkingIndicator mode="active" />}
+    <div className="chat-msg-assistant-block">
+      {thinkingCollapsed && <ThinkingIndicator mode="collapsed" label={t("chat.thinking.collapsed")} />}
+      {thinkingActive && <ThinkingIndicator mode="active" text={t("chat.thinking.caption")} />}
       <AssistantText content={msg.content} streaming={msg.streaming} />
-      {msg.toolCalls.map((tc) => (
-        <ToolCallCard key={tc.callId} call={tc} />
-      ))}
-    </>
+      {groups.map((g, i) =>
+        g.items.length === 1 ? (
+          <ToolCallCard key={g.items[0].callId} call={g.items[0]} />
+        ) : (
+          <ToolCallGroup key={`tg-${msg.id}-${i}`} tool={g.tool} items={g.items} />
+        )
+      )}
+    </div>
   );
+}
+
+/** Run-length grouping by tool name — keeps ordering stable so the transcript
+ * still reads top-to-bottom in the sequence the agent called them. */
+function groupConsecutiveTools(
+  calls: ChatToolCall[]
+): Array<{ tool: string; items: ChatToolCall[] }> {
+  const groups: Array<{ tool: string; items: ChatToolCall[] }> = [];
+  for (const call of calls) {
+    const last = groups[groups.length - 1];
+    if (last && last.tool === call.tool) last.items.push(call);
+    else groups.push({ tool: call.tool, items: [call] });
+  }
+  return groups;
 }
 
 /**
@@ -465,19 +608,31 @@ function MessageBlock({ msg }: { msg: UiMessage }) {
  *   4. Three preset chips — clicking fills the input but does NOT auto-send;
  *      the user reviews/edits and presses send themselves.
  */
-const PRESET_PROMPTS: Array<{ label: string; prompt: string }> = [
-  { label: "Answer questions using my bases", prompt: "请根据当前文档的表数据回答我的问题" },
-  { label: "Save new messages to my base automatically", prompt: "把新消息自动保存到当前文档对应的表中" },
-  { label: "Help me track task progress and write a weekly report", prompt: "帮我汇总任务进度并生成一份周报" },
-];
+/** Fallback preset keys — used when the backend suggestion service hasn't
+ * populated yet (very first request before the 5 s warm-up delay) OR when
+ * the fetch fails. Labels + prompts both live in the i18n table. */
+const FALLBACK_PRESET_KEYS = ["answer", "save", "report"] as const;
 
 function EmptyState({
   onPreset,
   contextHint,
+  suggestions,
 }: {
   onPreset: (text: string) => void;
   contextHint: ChatContextSnapshot | null;
+  suggestions: ChatSuggestion[];
 }) {
+  const { t } = useTranslation();
+
+  // Prefer dynamic, AI-generated suggestions; fall back to static presets.
+  const effective: ChatSuggestion[] =
+    suggestions.length > 0
+      ? suggestions
+      : FALLBACK_PRESET_KEYS.map((key) => ({
+          label: t(`chat.empty.preset.${key}.label`),
+          prompt: t(`chat.empty.preset.${key}.prompt`),
+        }));
+
   // Welcome page: hero (mascot IP + title), context-hint pill, preset chips.
   // "Or use a template" section removed per product direction.
   return (
@@ -490,28 +645,33 @@ function EmptyState({
           aria-hidden="true"
           draggable={false}
         />
-        <div className="chat-empty-title">Hi, I'm your new chatbot</div>
+        <div className="chat-empty-title">{t("chat.empty.title")}</div>
       </div>
 
       {contextHint && (
         <div className="chat-empty-context-hint" title={`documentId: ${contextHint.documentId}`}>
           <span className="dot" aria-hidden="true" />
-          已加载 {contextHint.tableCount} 张表 · {contextHint.fieldCount} 个字段 · {contextHint.recordCount} 条记录
+          {t("chat.empty.contextHint", {
+            tables: contextHint.tableCount,
+            fields: contextHint.fieldCount,
+            records: contextHint.recordCount,
+          })}
         </div>
       )}
 
       <div className="chat-empty-sections">
         <div className="chat-empty-section">
-          <div className="chat-empty-section-label">Start by telling me what you need</div>
+          <div className="chat-empty-section-label">{t("chat.empty.sectionLabel")}</div>
           <div className="chat-empty-presets">
-            {PRESET_PROMPTS.map((p) => (
+            {effective.map((s, idx) => (
               <button
-                key={p.prompt}
+                key={`${idx}-${s.label}`}
                 type="button"
                 className="chat-preset-chip"
-                onClick={() => onPreset(p.prompt)}
+                onClick={() => onPreset(s.prompt)}
+                title={s.prompt}
               >
-                <span className="chat-preset-chip-label">{p.label}</span>
+                <span className="chat-preset-chip-label">{s.label}</span>
                 <SpaceRightIcon size={12} />
               </button>
             ))}

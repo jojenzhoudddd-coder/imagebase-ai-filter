@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { AtIcon, MicIcon, SendIcon, StopIcon } from "./icons";
 import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
+import { useTranslation } from "../../i18n";
 
 interface Props {
   value: string;
@@ -34,16 +35,31 @@ export default function ChatInput({
   onStop,
   disabled,
   streaming,
-  placeholder = "输入你的问题",
+  placeholder,
 }: Props) {
+  const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // ── Voice input (reused from FilterPanel) ──
   // We preserve whatever the user had typed before starting voice so the
   // transcript appends rather than replaces. Long-press space also triggers
   // voice for parity with the AI filter input.
+  //
+  // Space-key strategy: we ALWAYS preventDefault on a space keydown while
+  // the input is focused, then re-inject a literal " " only on a short-tap
+  // release (<500ms). A long-press (≥500ms) starts voice recognition and
+  // the space character is silently dropped so it doesn't leak into the
+  // textarea / recorded transcript.
   const queryBeforeVoiceRef = useRef("");
   const spaceHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // True once the long-press timer has fired (so keyup must NOT re-inject
+  // a space character — the keystroke has been "consumed" by voice).
+  const spaceConsumedRef = useRef(false);
+  const valueRef = useRef(value);
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
   const {
     isSupported: speechSupported,
     isListening,
@@ -77,15 +93,27 @@ export default function ChatInput({
   const canSend = !disabled && !streaming && value.trim().length > 0;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Long-press space (500ms) → enter voice input (mirrors FilterPanel).
-    if (e.key === " " && speechSupported && !isListening && !streaming && !disabled) {
-      if (!spaceHoldTimerRef.current && !e.repeat) {
+    // Space handling — only intercept when voice is a plausible action.
+    // We preventDefault to hold back the character; keyup decides whether
+    // to re-inject it (short-tap) or drop it (long-press → voice started).
+    if (e.key === " " && speechSupported && !streaming && !disabled) {
+      e.preventDefault();
+      // Suppress browser key repeat — we only care about the first down.
+      if (e.repeat) return;
+      if (isListening) {
+        // Already recording — swallow repeated spacebar presses.
+        spaceConsumedRef.current = true;
+        return;
+      }
+      if (!spaceHoldTimerRef.current) {
         spaceHoldTimerRef.current = setTimeout(() => {
           spaceHoldTimerRef.current = null;
-          queryBeforeVoiceRef.current = value;
+          spaceConsumedRef.current = true;
+          queryBeforeVoiceRef.current = valueRef.current;
           startSpeech();
         }, 500);
       }
+      return;
     }
     // Enter sends; Shift+Enter = newline
     if (e.key === "Enter" && !e.shiftKey) {
@@ -95,14 +123,42 @@ export default function ChatInput({
   };
 
   const handleKeyUp = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === " ") {
-      if (spaceHoldTimerRef.current) {
-        clearTimeout(spaceHoldTimerRef.current);
-        spaceHoldTimerRef.current = null;
-      } else if (isListening) {
-        stopSpeech();
+    if (e.key !== " ") return;
+    if (spaceHoldTimerRef.current) {
+      // Short-tap (<500ms) — cancel the voice timer and insert a literal
+      // space at the current caret position (simulating the character we
+      // swallowed on keydown).
+      clearTimeout(spaceHoldTimerRef.current);
+      spaceHoldTimerRef.current = null;
+      const el = textareaRef.current;
+      if (el) {
+        const start = el.selectionStart ?? value.length;
+        const end = el.selectionEnd ?? value.length;
+        const next = value.slice(0, start) + " " + value.slice(end);
+        onChange(next);
+        // Restore caret after the inserted space on the next tick (React
+        // re-render resets selection otherwise).
+        const caret = start + 1;
+        requestAnimationFrame(() => {
+          if (textareaRef.current) {
+            textareaRef.current.selectionStart = caret;
+            textareaRef.current.selectionEnd = caret;
+          }
+        });
       }
+      spaceConsumedRef.current = false;
+    } else if (isListening || spaceConsumedRef.current) {
+      // Long-press release → stop recording. The space keyup default is
+      // harmless (no character inserted) but we still flag this keystroke
+      // as consumed so no trailing " " slips through.
+      e.preventDefault();
+      if (isListening) stopSpeech();
+      spaceConsumedRef.current = false;
     }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onChange(e.target.value);
   };
 
   return (
@@ -114,10 +170,10 @@ export default function ChatInput({
             className="chat-input-textarea"
             rows={1}
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={handleChange}
             onKeyDown={handleKeyDown}
             onKeyUp={handleKeyUp}
-            placeholder={placeholder}
+            placeholder={placeholder ?? t("chat.input.placeholder")}
             disabled={disabled}
           />
         </div>
@@ -126,8 +182,8 @@ export default function ChatInput({
             <button
               type="button"
               className="chat-input-mention-btn"
-              title="提及"
-              aria-label="提及"
+              title={t("chat.input.mention")}
+              aria-label={t("chat.input.mention")}
             >
               <AtIcon size={14} />
             </button>
@@ -140,7 +196,7 @@ export default function ChatInput({
                   <span />
                   <span />
                 </span>
-                生成中
+                {t("chat.input.generating")}
               </span>
             )}
             {/* Voice button sits immediately to the LEFT of send, inside the
@@ -156,12 +212,12 @@ export default function ChatInput({
                 disabled={isStopping || disabled}
                 title={
                   isStopping
-                    ? "正在结束录音…"
+                    ? t("chat.input.voice.stopping")
                     : isListening
-                      ? "停止语音输入"
-                      : "语音输入（长按空格）"
+                      ? t("chat.input.voice.listening")
+                      : t("chat.input.voice.idle")
                 }
-                aria-label="语音输入"
+                aria-label={t("chat.input.voice.idle")}
               >
                 <MicIcon size={14} />
                 {isListening && !isStopping && <span className="chat-input-voice-pulse" />}
@@ -173,7 +229,8 @@ export default function ChatInput({
                 type="button"
                 className="chat-input-send stop"
                 onClick={onStop}
-                title="停止生成"
+                title={t("chat.input.stop")}
+                aria-label={t("chat.input.stop")}
               >
                 <StopIcon size={12} />
               </button>
@@ -183,7 +240,8 @@ export default function ChatInput({
                 className="chat-input-send primary"
                 onClick={onSend}
                 disabled={!canSend}
-                title="发送"
+                title={t("chat.input.send")}
+                aria-label={t("chat.input.send")}
               >
                 <SendIcon size={14} />
               </button>
