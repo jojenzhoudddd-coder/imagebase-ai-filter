@@ -234,13 +234,18 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
         const rect = el.getBoundingClientRect();
         if (ev.clientY >= rect.top && ev.clientY <= rect.bottom) {
           const isFolder = el.getAttribute("data-type") === "folder";
-          // When a folder is expanded, skip the "drop into folder" middle-
-          // third target so the user can drop precisely among its visible
-          // children instead. For collapsed folders, keep the middle-third
-          // shortcut that moves the dragged item into the folder (placed at
-          // the end of its children).
-          const isExpandedFolder = isFolder && expandedIds.has(id);
-          if (isFolder && !isExpandedFolder) {
+          // Keep the middle-third "drop into folder" shortcut for two cases:
+          //   1) collapsed folder — children aren't rendered so the user has
+          //      no other way to drop into it;
+          //   2) expanded but EMPTY folder — there are no child rows to drop
+          //      between, so without this the user still couldn't aim into it.
+          // Only when the folder is expanded AND has children do we disable
+          // the middle-third shortcut, letting the user drop precisely among
+          // the visible children via above/below instead.
+          const folderNode = isFolder ? nodeById.get(id) : undefined;
+          const isExpandedWithChildren =
+            isFolder && expandedIds.has(id) && !!folderNode?.children?.length;
+          if (isFolder && !isExpandedWithChildren) {
             const third = rect.height / 3;
             if (ev.clientY > rect.top + third && ev.clientY < rect.bottom - third) {
               overFolder = id;
