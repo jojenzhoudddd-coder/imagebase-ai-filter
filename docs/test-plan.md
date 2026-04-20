@@ -430,6 +430,45 @@
 
 ---
 
+## 18. Agent Identity（Phase 1 · OpenClaw-style）
+
+### P0 — 功能可用性
+
+| ID | 用例 | 预期结果 |
+|----|------|----------|
+| AI-01 | 首次启动后端 | console 打印 seed 信息；`~/.imagebase/agents/agent_default/` 自动创建，含 soul.md / profile.md / config.json / memory/ 子目录 |
+| AI-02 | `GET /api/agents` | 返回数组，至少包含 `{id: "agent_default", name: "Claw", userId: "user_default"}` |
+| AI-03 | `GET /api/agents/agent_default/identity` | 返回 `{soul, profile, config}` 三字段，soul 和 profile 是非空 markdown 字符串 |
+| AI-04 | `PUT /api/agents/agent_default/identity/profile`（合法内容） | 返回 `{ok: true}`；readback 得到新内容；filesystem 上 profile.md 同步更新 |
+| AI-05 | `PUT /identity/soul`（空字符串 / 全空格） | 400，不写入 filesystem |
+| AI-06 | `PUT /identity/profile`（> 64 KiB） | 400 "内容超过 64 KiB 上限" |
+| AI-07 | 打开 ChatSidebar → header 点击 IdentityIcon | 打开 Agent Identity Modal，显示当前 Claw 的 soul.md + profile.md |
+| AI-08 | Modal 里修改 profile 后点 "保存" | footer 显示 "已保存"；后端 filesystem 同步；关闭 Modal 后重开，修改仍在 |
+| AI-09 | Modal 仅改了 profile | 只对 profile 发 PUT（Network tab 验证，soul 不发） |
+| AI-10 | Modal 无修改时点 "保存" | 按钮 disabled；不发请求 |
+| AI-11 | Modal 按 Esc 关闭 | 不提交；本地修改丢失（符合预期，不提示） |
+| AI-12 | 创建新对话 → 问 "你是谁" | 回复（或 thinking 过程）包含 soul.md 里的关键词（"OpenClaw"、"长期 Agent"、"属于用户" 等之一） |
+| AI-13 | 编辑 profile.md 加入 "我的时区是 GMT+8" 后再对话 | Agent 在对话中能体现这条偏好（如询问时间相关问题时使用 GMT+8） |
+| AI-14 | 对话中请 Agent 记住一件事（如 "记住我偏好中文回复"） | Agent 调用 `update_profile` 或 `create_memory`；回答后端 filesystem 可见新内容 / 新 episodic md |
+| AI-15 | 请 Agent 执行危险操作（如删除表） | Agent 不直接执行；必须先征求用户同意（Layer 1 META 约束） |
+| AI-16 | 新建对话时不传 `agentId` | 后端默认 fallback 到 `agent_default`，对话可正常进行 |
+| AI-17 | DELETE agent 后原对话 | 对话 `agentId` 变 NULL（DB 验证）；仍可继续，走 agent_default fallback |
+
+### P1 — 产品体验
+
+| ID | 用例 | 预期结果 |
+|----|------|----------|
+| AI-18 | IdentityIcon 按钮视觉 | 圆头 + 肩部剪影，与 MoreIcon 同 color token；hover 有反馈 |
+| AI-19 | Modal loading / saving 态 | 加载期间显示 "加载身份中…"；保存中按钮显示 "保存中…" |
+| AI-20 | i18n 切换 | 中文显示 "Agent 身份 / Soul · 我是谁 / Profile · Agent 了解的你"；英文显示 "Agent identity / Soul — who I am / Profile — what I know about you" |
+| AI-21 | Modal 宽度 | 680px，max-width `calc(100vw - 40px)`（小屏不溢出） |
+| AI-22 | textarea 字体 | monospace（Menlo/Monaco/Consolas），markdown 源码阅读友好 |
+| AI-23 | 保存失败（如网络断开） | footer 红色显示错误信息；按钮可重试；不清空本地输入 |
+| AI-24 | `AGENT_HOME` 环境变量 | 指向临时目录时，启动不读 `~/.imagebase/agents`，测试隔离 |
+| AI-25 | `phase1-meta-smoke.ts` | `cd backend && npx tsx src/scripts/phase1-meta-smoke.ts` 输出全部 `{ok: true}`，"empty content rejection" 返回 `{ok: false}` |
+
+---
+
 ## 执行检查清单
 
 - [ ] 所有 P0 用例通过

@@ -282,6 +282,60 @@ Every AI service prompt in this project follows this structure:
 | Output | `{ logic, conditions }` | `[{ name, type }]` | `[{ name, type, isPrimary, config }]` |
 | Complexity | ★★★★ | ★★ | ★★★★★ |
 
+## Chat Agent · Three-Layer System Prompt (Phase 1)
+
+`backend/src/services/chatAgentService.ts` uses Seed 2.0 pro with thinking
+enabled and compose the system prompt from four ordered parts. Order matters:
+Layer 1 is immutable and higher-priority than everything below.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ [Layer 1 · META]           HARDCODED, immutable              │
+│   - When to call update_profile / update_soul / create_memory│
+│   - Safety red lines (danger confirm, cross-workspace)       │
+│   - Output constraints (no markdown code blocks, etc.)       │
+│   - Layer 1 MUST NOT be overridden by lower layers           │
+├─────────────────────────────────────────────────────────────┤
+│ [Layer 2 · Identity]       DYNAMIC, reread every request     │
+│   # Layer 2 · Identity (Claw · agentId=agent_default)        │
+│   ## Soul   ← <soul.md full text>                             │
+│   ## Profile ← <profile.md full text>                         │
+├─────────────────────────────────────────────────────────────┤
+│ [Tier 1 Core MCP]          Operational knowledge             │
+│   - Tool-use playbooks for Table Agent                       │
+│   - Preserved from the pre-Phase-1 Chat Agent                │
+├─────────────────────────────────────────────────────────────┤
+│ [Layer 3 · Turn Context]   DYNAMIC, rebuilt per request      │
+│   Workspace snapshot: N tables, their fields, their views    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+`buildIdentityLayer(agentId)` fails gracefully if filesystem reads error — it
+returns an empty identity block so the conversation can still proceed rather
+than bringing the whole chat down.
+
+### Meta-tools (Tier 0, write-only in Phase 1)
+
+| Tool | Args | Effect |
+|------|------|--------|
+| `update_profile` | `{content}` (<= 64 KiB) | Replaces `profile.md` wholesale |
+| `update_soul` | `{content}` (<= 64 KiB) | Replaces `soul.md` wholesale |
+| `create_memory` | `{title, body, tags?}` | Appends a dated `.md` to `memory/episodic/` |
+
+All three receive `agentId` through `ToolContext` (second handler arg),
+injected by the agent loop. `resolveAgentId` falls back to `args.agentId`,
+then `ctx.agentId`, then `"agent_default"` — so the model never has to pass
+`agentId` explicitly, but MCP stdio callers / ad-hoc tests still can.
+
+### When the Agent should self-edit
+
+Layer 1 rules (paraphrased; verbatim text lives in `META_SYSTEM_PROMPT`):
+- User explicitly asks ("记住我偏好中文回复") → `update_profile`
+- User redefines the Agent's role or tone → `update_soul`
+- Significant one-time event worth remembering → `create_memory`
+- Don't silently rewrite soul/profile every turn — these are LONG-LIVED docs,
+  not a scratchpad. Changes should be intentional and narratable.
+
 ## Checklist for New AI Features
 
 - [ ] Define temperature based on precision vs. creativity needs

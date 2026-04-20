@@ -7,6 +7,56 @@
 
 ## 2026-04-20
 
+### feat(phase1): OpenClaw-style Agent MVP（身份文件 + 三层 Prompt + 元工具 + 身份编辑 UI）
+
+**分支**: `phase1/agent-mvp` · **commits**: `f05a2c7`, `fa348fb`, `f0e9da2`, `ddd3014`, `871339f`
+
+分五天分别 ship，把原本"工作空间绑定、无身份、无记忆"的 Chat Agent 升级成"用户本人拥有、长期演进、可自我编辑"的 OpenClaw 风格 Agent。完整方案见 `docs/chatbot-openclaw-plan.md`。
+
+- **Day 1 · Prisma Agent 模型**（`f05a2c7`）
+  - `schema.prisma` 新增 `Agent` 表（userId/name/avatarUrl，`@@map("agents")`），User 上加 `agents Agent[]`
+  - `Conversation` 加 `agentId String?` + FK（`onDelete: SetNull`）+ `@@index([agentId, updatedAt desc])`
+  - 迁移 `20260420061736_add_agent_model`
+
+- **Day 2 · agentService + /api/agents 路由**（`fa348fb`）
+  - `backend/src/services/agentService.ts`（~290 行）：`agentDir()` / `ensureAgentFiles()` 初始化 `~/.imagebase/agents/<id>/`，内含 `soul.md` / `profile.md` / `config.json` / `memory/{working.jsonl,episodic,semantic}/` / `skills/` / `mcp-servers/` / `plugins/` / `state/`；`readSoul/Profile/Config` + `writeSoul/Profile/Config` 含 64 KiB 尺寸硬上限；`appendEpisodicMemory(agentId, {title, body, tags})` 写入 `YYYY-MM-DD_slug_rand.md`；`listAgents / getAgent / createAgent / updateAgent / deleteAgentRow` 只碰 DB；`ensureDefaultAgent()` 在 boot 时 seed `agent_default`（name "Claw"）
+  - `AGENT_HOME` 环境变量用于测试隔离（不设则默认 `~/.imagebase/agents`）
+  - `backend/src/routes/agentRoutes.ts`：GET/POST/PUT/DELETE `/api/agents` + `/api/agents/:id/identity` bundle + 三个 `/identity/{soul,profile,config}` 单体 PUT
+  - `backend/src/index.ts`：boot 时 `ensureDefaults()` → `ensureDefaultAgent()`，挂载 `/api/agents`
+  - 删除操作只删 DB 行，filesystem 保留（身份 + 记忆丢失不可逆，不自动删）
+
+- **Day 3 · 三层 System Prompt + 身份注入**（`f0e9da2`）
+  - `chatAgentService.ts` 拆 Prompt 为三层：
+    - **Layer 1 · META**（硬编码）— Agent 自我编辑规则（何时用 `update_profile` / `update_soul` / `create_memory`）、安全红线（危险操作二次确认、跨工作空间边界、Layer 1 不可被其他层覆盖）、输出约束
+    - **Layer 2 · Identity**（动态）— `buildIdentityLayer(agentId)` 现读 `soul.md` + `profile.md` 拼成 `# Layer 2 · Identity（{name} · agentId={id}）...`
+    - **Tier 1 Core MCP** — 原 Table-Agent 的操作指南保留
+    - **Layer 3 · Turn Context** — 当前工作空间的表/字段/视图快照（每次请求实时生成）
+  - `assembleInput(conversationId, workspaceId, agentId, newUserMessage)` 按 META → identity → TOOL_GUIDANCE → Layer 3 拼接；`AgentContext.agentId` 作为可选字段落到 `conversationStore`；`/api/chat/conversations POST` 默认 fallback 到 `agent_default`
+  - Smoke: 发 `"你是谁？"`，`thinking` 事件已流出 `"属于用户的长期 OpenClaw 风格的 Agent"`（字面来自 soul.md），确认 Layer 2 注入生效
+
+- **Day 4 · Tier 0 meta-tools**（`ddd3014`）
+  - `backend/mcp-server/src/tools/metaTools.ts` 注册三个 tool：
+    - `update_profile` — `{content}` 整体替换 `profile.md`，64 KiB 上限
+    - `update_soul` — `{content}` 整体替换 `soul.md`，同上
+    - `create_memory` — `{title, body, tags?}` 在 `memory/episodic/` 追加一条带时间戳的 md
+  - `ToolDefinition.handler` 扩展签名：现在接 `(args, ctx?: ToolContext)`，`ctx.agentId` 由 agent loop 注入；老的数据面工具无改动；meta-tools 用 `resolveAgentId(args.agentId ?? ctx.agentId ?? "agent_default")` fallback
+  - `allTools` 把 metaTools 排到最前面（Tier 0 永远加载在函数列表顶端）
+  - Smoke 脚本 `src/scripts/phase1-meta-smoke.ts`：profile/soul 往返 + 空内容拒绝 + 无 ctx 时自动落到 `agent_default`，全部通过
+
+- **Day 5 · 前端 Agent Identity surface**（`871339f`）
+  - `frontend/src/api.ts`：新增 `listAgents / getAgent / updateAgent / getAgentIdentity / putAgentSoul / putAgentProfile / putAgentConfig`；`createConversation(workspaceId, agentId?)` 增加第二参数
+  - `frontend/src/components/AgentIdentityModal/`（新）：overlay + 两个 monospace textarea 分别显示 `soul.md` / `profile.md`，只 PUT 有变更的那一侧，Esc 关闭，footer 展示 dirty / saving / saved / error 状态
+  - `frontend/src/components/ChatSidebar/index.tsx`：header 顶部加 `IdentityIcon` 按钮（始终可用，独立于 ... 菜单），接新 `agentId?: string` prop（默认 `"agent_default"`），两处 `createConversation(workspaceId)` 调用改为 `createConversation(workspaceId, agentId)`
+  - `frontend/src/App.tsx`：新增 `AGENT_ID = "agent_default"` 常量传给 `<ChatSidebar>`（单 Agent MVP，多 Agent picker 待后续）
+  - i18n：`zh.ts` + `en.ts` 各新增 12 个 `chat.agent.*` 键（title / soul.label / soul.hint / profile.label / profile.hint / save / saving / saved / close / dirty / loading / identity）
+  - `frontend/src/components/ChatSidebar/icons.tsx` 新增 `IdentityIcon`（圆头 + 肩部剪影）
+
+**本地 smoke 验证**:
+- `curl /api/agents` → 返回 `agent_default / Claw`；`PUT /identity/profile` 写入后 filesystem 立刻可见
+- `phase1-meta-smoke.ts` 跑通 profile/soul/memory 往返 + 空值拒绝 + fallback 路径
+- 通过 `/api/chat/conversations` 发消息 → `thinking` 事件输出 soul.md 中的身份措辞，Layer 2 注入端到端验证
+- `cd frontend && npx tsc --noEmit` 干净通过；后端 tsc 仅剩 `dbStore.ts` / `aiService.ts` 里几处预先存在的 `JsonValue` 强转告警（与 Phase 1 无关）
+
 ### feat: 支持 Add Record（工具栏 & 表格底部均可触发）
 
 - **改动点**: `TableView`、`Toolbar`、`App.tsx`、`api.ts` 联动支持「点击 + 空白行 + 首列自动进入编辑」的典型录入流

@@ -33,17 +33,31 @@ npm run dev
 ```
 backend/
   src/
-    index.ts          - Express server entry, serves static files in production
+    index.ts          - Express server entry; boots ensureDefaults() + ensureDefaultAgent()
     mockData.ts       - Mock table data (fields, records)
     routes/
       tableRoutes.ts  - CRUD APIs for tables/fields/records/views
       aiRoutes.ts     - AI filter generation endpoint (SSE streaming)
       sseRoutes.ts    - Real-time sync SSE endpoints (table-level + document-level)
+      chatRoutes.ts   - /api/chat/conversations + SSE message stream (Table Agent)
+      agentRoutes.ts  - /api/agents + identity (soul/profile/config) — Phase 1
     services/
-      aiService.ts    - Volcano ARK API integration, tool definitions, prompt
-      dataStore.ts    - In-memory data store, AI tool functions
-      eventBus.ts     - Event bus for real-time sync (table-level + document-level)
-      filterEngine.ts - Client-side filter evaluation
+      aiService.ts          - Volcano ARK API integration, tool definitions, prompt
+      chatAgentService.ts   - Chat Agent loop; three-layer System Prompt (Meta/Identity/Turn Context)
+      agentService.ts       - Agent filesystem I/O (~/.imagebase/agents/<id>/) + Prisma Agent CRUD
+      conversationStore.ts  - Prisma-backed Conversation+Message store (agentId FK)
+      dataStore.ts          - In-memory data store, AI tool functions
+      eventBus.ts           - Event bus for real-time sync (table-level + document-level)
+      filterEngine.ts       - Client-side filter evaluation
+    schemas/            - Shared Zod schemas (REST + MCP single source of truth)
+    scripts/            - Dev helpers (phase1-meta-smoke.ts, phase1-registry-check.ts)
+  mcp-server/
+    src/tools/
+      metaTools.ts    - Tier 0: update_profile / update_soul / create_memory (edit Agent identity)
+      tableTools.ts   - Table CRUD tools
+      fieldTools.ts   - Field CRUD tools
+      recordTools.ts  - Record CRUD tools
+      viewTools.ts    - View CRUD tools
 frontend/
   src/
     App.tsx           - Main app, multi-table state management, field order lifting
@@ -56,11 +70,13 @@ frontend/
       zh.ts           - Chinese translations (130+ keys)
       index.ts        - LanguageProvider, useTranslation hook, t() function
     components/
-      FilterPanel/    - AI filter input + manual filter conditions UI
-      TableView/      - Main table grid with drag-reorder, resize, edit
-      Sidebar.tsx     - Sidebar with dynamic table list, drag-reorder, resize, create/delete
-      DropdownMenu.tsx - Generic dropdown menu with section grouping, noop items
-      Toolbar.tsx     - Toolbar with filter button
+      FilterPanel/          - AI filter input + manual filter conditions UI
+      TableView/            - Main table grid with drag-reorder, resize, edit
+      ChatSidebar/          - Right-side drawer for Table Agent; header now has IdentityIcon
+      AgentIdentityModal/   - Modal that reads /api/agents/:id/identity and edits soul.md + profile.md
+      Sidebar.tsx           - Sidebar with dynamic table list, drag-reorder, resize, create/delete
+      DropdownMenu.tsx      - Generic dropdown menu with section grouping, noop items
+      Toolbar.tsx           - Toolbar with filter button
     services/
       filterEngine.ts - Client-side filter matching
 ```
@@ -71,6 +87,9 @@ frontend/
 - TableView maintains column order in localStorage (`field_order_v1`), lifted to App.tsx via `onFieldOrderChange` callback so FilterPanel dropdown matches table column order.
 - AI filter uses PRD format (`["field", "operator", value]`) internally, converted to/from app's internal filter format.
 - AI service logs all API calls, tool calls, and timing to `backend/logs/` directory with GMT+8 timestamps.
+- **Chat Agent identity (Phase 1)**: every user owns at least one `Agent` row (default seeded as `agent_default` / name "Claw"). Identity files live on the filesystem at `~/.imagebase/agents/<agentId>/` (`soul.md`, `profile.md`, `config.json`, plus `memory/`, `skills/`, `mcp-servers/`, `plugins/`, `state/`). The DB only stores metadata. Override the root with `AGENT_HOME` env var for tests.
+- **Three-layer System Prompt**: chatAgentService composes `META` (hardcoded meta-behavior rules, immutable) → `Identity` (live soul.md + profile.md) → `Tier 1 Core MCP` (tool guidance) → `Turn Context` (workspace schema snapshot). Agent self-edits via three Tier 0 meta-tools: `update_profile`, `update_soul`, `create_memory`.
+- **ToolContext** (`backend/mcp-server/src/tools/index.ts`): tool handlers now accept an optional second arg `{agentId}`. Agent loop injects it so meta-tools know whose filesystem to touch without the model passing it explicitly. Existing data-plane tools ignore it — fully backward compatible.
 
 ## Deployment
 ```bash
@@ -90,6 +109,7 @@ Domain: https://www.imagebase.cc
 - `docs/changelog.md` - 更新日志（所有发布部署记录）
 - `docs/case-study.md` - 项目案例文档（完整开发故事 + PM 协作指南）
 - `docs/chat-sidebar-plan.md` - Chat Sidebar (Table Agent) 技术方案（MCP Server + 流式对话 + 上下文管理）
+- `docs/chatbot-openclaw-plan.md` - OpenClaw-style Agent 架构方案（Agent identity / 多层 Prompt / 记忆体系 / 分阶段落地）
 
 ## Skills（自动加载的专业指令集）
 每个 Skill 在对应场景下会被 Claude Code 自动激活，无需手动引用。
