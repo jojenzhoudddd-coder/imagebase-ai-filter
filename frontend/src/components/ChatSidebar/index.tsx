@@ -16,10 +16,9 @@ import ThinkingIndicator from "./ChatMessage/ThinkingIndicator";
 import ToolCallCard from "./ChatMessage/ToolCallCard";
 import ToolCallGroup from "./ChatMessage/ToolCallGroup";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
-import { IdentityIcon, MoreIcon, RefreshIcon } from "./icons";
+import { MoreIcon, RefreshIcon } from "./icons";
 import DropdownMenu from "../DropdownMenu";
 import ConfirmDialog from "../ConfirmDialog";
-import AgentIdentityModal from "../AgentIdentityModal";
 import { useTranslation } from "../../i18n";
 import {
   type ChatConversation,
@@ -178,10 +177,13 @@ export default function ChatSidebar({
   const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Agent Identity modal — view/edit soul.md + profile.md for the active
-  // agent. Separate from any per-conversation context; the Agent identity
-  // outlives individual chats.
-  const [identityOpen, setIdentityOpen] = useState(false);
+  // NOTE: Agent identity (soul.md / profile.md) is intentionally NOT exposed
+  // as an interactive UI surface in Phase 1. Users can only inspect or modify
+  // it through natural-language conversation with the Agent — the Agent reads
+  // its own identity via Layer 2 prompt injection and self-edits via the
+  // Tier 0 meta-tools (`update_profile`, `update_soul`, `create_memory`).
+  // The backend REST endpoints stay available for those meta-tools; this
+  // sidebar just doesn't render a modal for them.
 
   const cancelRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -580,22 +582,10 @@ export default function ChatSidebar({
     <aside className={`chat-sidebar${open ? " open" : ""}`} aria-hidden={!open}>
       <header className="chat-header">
         <div className="chat-header-actions">
-          {/* Identity button — always available, opens a modal that reads
-              soul.md + profile.md from the backend. Lets users audit or seed
-              what the Agent "knows about itself" / "knows about me" without
-              having to drive it through a chat turn. */}
-          <button
-            type="button"
-            className="chat-header-btn"
-            title={t("chat.agent.identity")}
-            aria-label={t("chat.agent.identity")}
-            onClick={() => setIdentityOpen(true)}
-          >
-            <IdentityIcon size={16} />
-          </button>
-          {/* Welcome page has nothing to refresh — hide the overflow entry
-              entirely there. Shown once a conversation has any content, or
-              while a turn is streaming. */}
+          {/* Phase 1 decision: the Agent's soul.md / profile.md are NOT
+              exposed as an interactive UI surface. Users read/write them
+              only through chat (the Agent self-edits via Tier 0 meta-tools).
+              The "..." overflow is still available for refresh-conversation. */}
           {(messages.length > 0 || streaming) && (
             <button
               ref={moreBtnRef}
@@ -612,11 +602,6 @@ export default function ChatSidebar({
           )}
         </div>
       </header>
-      <AgentIdentityModal
-        open={identityOpen}
-        agentId={agentId}
-        onClose={() => setIdentityOpen(false)}
-      />
       {menuOpen && moreBtnRef.current && (
         <DropdownMenu
           anchorEl={moreBtnRef.current}

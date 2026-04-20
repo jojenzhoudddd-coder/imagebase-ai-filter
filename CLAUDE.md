@@ -72,8 +72,8 @@ frontend/
     components/
       FilterPanel/          - AI filter input + manual filter conditions UI
       TableView/            - Main table grid with drag-reorder, resize, edit
-      ChatSidebar/          - Right-side drawer for Table Agent; header now has IdentityIcon
-      AgentIdentityModal/   - Modal that reads /api/agents/:id/identity and edits soul.md + profile.md
+      ChatSidebar/          - Right-side drawer for Table Agent; Phase 1 header intentionally has no identity surface (only overflow ... menu)
+      AgentIdentityModal/   - Dormant in Phase 1 (not imported anywhere); preserved for Phase 2+ when a user-facing identity editor may return
       Sidebar.tsx           - Sidebar with dynamic table list, drag-reorder, resize, create/delete
       DropdownMenu.tsx      - Generic dropdown menu with section grouping, noop items
       Toolbar.tsx           - Toolbar with filter button

@@ -43,13 +43,11 @@
   - `allTools` 把 metaTools 排到最前面（Tier 0 永远加载在函数列表顶端）
   - Smoke 脚本 `src/scripts/phase1-meta-smoke.ts`：profile/soul 往返 + 空内容拒绝 + 无 ctx 时自动落到 `agent_default`，全部通过
 
-- **Day 5 · 前端 Agent Identity surface**（`871339f`）
+- **Day 5 · 前端 Agent 接线**（`871339f` + 后续修订）
   - `frontend/src/api.ts`：新增 `listAgents / getAgent / updateAgent / getAgentIdentity / putAgentSoul / putAgentProfile / putAgentConfig`；`createConversation(workspaceId, agentId?)` 增加第二参数
-  - `frontend/src/components/AgentIdentityModal/`（新）：overlay + 两个 monospace textarea 分别显示 `soul.md` / `profile.md`，只 PUT 有变更的那一侧，Esc 关闭，footer 展示 dirty / saving / saved / error 状态
-  - `frontend/src/components/ChatSidebar/index.tsx`：header 顶部加 `IdentityIcon` 按钮（始终可用，独立于 ... 菜单），接新 `agentId?: string` prop（默认 `"agent_default"`），两处 `createConversation(workspaceId)` 调用改为 `createConversation(workspaceId, agentId)`
+  - `frontend/src/components/ChatSidebar/index.tsx`：接新 `agentId?: string` prop（默认 `"agent_default"`），两处 `createConversation(workspaceId)` 调用改为 `createConversation(workspaceId, agentId)`
   - `frontend/src/App.tsx`：新增 `AGENT_ID = "agent_default"` 常量传给 `<ChatSidebar>`（单 Agent MVP，多 Agent picker 待后续）
-  - i18n：`zh.ts` + `en.ts` 各新增 12 个 `chat.agent.*` 键（title / soul.label / soul.hint / profile.label / profile.hint / save / saving / saved / close / dirty / loading / identity）
-  - `frontend/src/components/ChatSidebar/icons.tsx` 新增 `IdentityIcon`（圆头 + 肩部剪影）
+  - **Phase 1 产品决策修订**：soul / profile 不对用户暴露为交互式 UI。ChatSidebar header 移除 IdentityIcon 按钮与 AgentIdentityModal 渲染；Modal 组件文件保留但不再被 import，作为 Phase 2+ 复用素材。用户只能通过与 Agent 对话读写身份（Agent 通过 Tier 0 元工具自编辑）。`IdentityIcon` 在 `icons.tsx` 中保留、i18n 的 `chat.agent.*` 键保留但不再被渲染层消费。
 
 **本地 smoke 验证**:
 - `curl /api/agents` → 返回 `agent_default / Claw`；`PUT /identity/profile` 写入后 filesystem 立刻可见
