@@ -24,6 +24,7 @@ import * as convStore from "./conversationStore.js";
 import type { Message, ToolCall } from "./conversationStore.js";
 import * as store from "./dbStore.js";
 import { readSoul, readProfile, getAgent } from "./agentService.js";
+import * as agentSvc from "./agentService.js";
 
 const ARK_BASE_URL = process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 const SEED_MODEL = process.env.SEED_MODEL || process.env.ARK_MODEL || "ep-20260412192731-vwdh7";
@@ -143,6 +144,45 @@ async function buildIdentityLayer(agentId: string): Promise<string> {
   ].join("\n");
 }
 
+// ─── Auto-recall (Day 3): surface top memories for the current turn ─────
+//
+// Every turn we run recallMemories(userMessage) and inject the top-K hits
+// into Layer 3. This is cheap (filesystem scan + scoring, no LLM call) and
+// means the Agent doesn't have to explicitly call recall_memory to notice
+// "we've talked about this before" — the relevant history is already in
+// context.
+//
+// Tight budget on purpose: top 3 hits, previews only. The Agent can still
+// call read_memory / recall_memory for more depth if it needs the full body.
+
+const AUTO_RECALL_LIMIT = 3;
+
+export async function buildRecalledMemoriesSection(
+  agentId: string,
+  userMessage: string
+): Promise<string> {
+  try {
+    const hits = await agentSvc.recallMemories(agentId, userMessage, {
+      limit: AUTO_RECALL_LIMIT,
+    });
+    if (!hits.length) return "";
+    const lines: string[] = [
+      `# 自动召回的相关长期记忆（top ${hits.length}，供参考，不一定都有关）`,
+    ];
+    for (const h of hits) {
+      const ts = h.timestamp ? h.timestamp.slice(0, 10) : "(no-date)";
+      const tagStr = h.tags.length ? ` [${h.tags.map((t) => `#${t}`).join(" ")}]` : "";
+      lines.push(`- (${ts}) **${h.title}**${tagStr}`);
+      if (h.preview) lines.push(`  ${h.preview}`);
+      lines.push(`  filename: ${h.filename}（想看全文就调用 read_memory）`);
+    }
+    return lines.join("\n");
+  } catch (err) {
+    // Never let auto-recall kill a turn.
+    return `# 自动召回的相关长期记忆\n(召回失败: ${err instanceof Error ? err.message : String(err)})`;
+  }
+}
+
 // ─── Workspace snapshot (context injection) ──────────────────────────────
 
 async function buildWorkspaceSnapshot(workspaceId: string): Promise<string> {
@@ -186,17 +226,22 @@ async function assembleInput(
   agentId: string,
   newUserMessage: string
 ): Promise<ArkInputItem[]> {
-  const [identity, snapshot] = await Promise.all([
+  const [identity, snapshot, recalled] = await Promise.all([
     buildIdentityLayer(agentId),
     buildWorkspaceSnapshot(workspaceId),
+    buildRecalledMemoriesSection(agentId, newUserMessage),
   ]);
   // Layer 1 + Layer 2 + Tool Guidance + Layer 3. Layer 1 is hardcoded at the
   // very top so no amount of identity mutation can override meta behavior.
+  // Layer 3 Turn Context stacks workspace snapshot + auto-recalled memories
+  // (Phase 2 Day 3); if either is empty we skip it to keep the prompt tight.
+  const layer3Parts = [snapshot];
+  if (recalled) layer3Parts.push(recalled);
   const systemText = [
     META_SYSTEM_PROMPT,
     identity,
     TOOL_GUIDANCE_ZH,
-    `# Layer 3 · Turn Context\n${snapshot}`,
+    `# Layer 3 · Turn Context\n${layer3Parts.join("\n\n")}`,
   ].join("\n\n");
 
   const history = await convStore.getMessages(conversationId);

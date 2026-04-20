@@ -148,7 +148,20 @@ async function main() {
     throw new Error("blank recall not sorted by recency");
   }
 
-  console.log("\n✅ Phase 2 Day 1+2 smoke passed.");
+  // ── Day 3: auto-recall section rendering ──────────────────────────────
+
+  const { buildRecalledMemoriesSection } = await import("../services/chatAgentService.js");
+
+  const autoHit = await buildRecalledMemoriesSection(agentId, "帮我看看之前 CRM 系统做到哪了");
+  console.log("\nauto-recall section (CRM query):\n" + autoHit);
+  if (!/CRM/i.test(autoHit)) throw new Error("auto-recall did not surface CRM memory");
+  if (!/read_memory/.test(autoHit)) throw new Error("auto-recall should hint at read_memory for full body");
+
+  const autoEmpty = await buildRecalledMemoriesSection(agentId, "今天北京天气怎么样");
+  console.log("\nauto-recall section (unrelated query):\n[" + autoEmpty + "]");
+  if (autoEmpty !== "") throw new Error("unrelated query should produce empty recall (so prompt stays tight)");
+
+  console.log("\n✅ Phase 2 Day 1+2+3 smoke passed.");
 }
 
 main().catch((e) => {
