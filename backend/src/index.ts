@@ -8,8 +8,6 @@ import aiRoutes from "./routes/aiRoutes.js";
 import sseRoutes from "./routes/sseRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import folderRoutes from "./routes/folderRoutes.js";
-import designRoutes from "./routes/designRoutes.js";
-import tasteRoutes from "./routes/tasteRoutes.js";
 import agentRoutes from "./routes/agentRoutes.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -71,8 +69,6 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/sync", sseRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/folders", folderRoutes);
-app.use("/api/designs", designRoutes);
-app.use("/api/designs", tasteRoutes);
 app.use("/api/agents", agentRoutes);
 
 // Serve uploaded SVG files
