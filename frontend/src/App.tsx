@@ -82,6 +82,27 @@ export default function App() {
     try { localStorage.setItem("chat_agent_open_v1", String(chatAgentOpen)); } catch { /* ignore */ }
   }, [chatAgentOpen]);
 
+  // Phase 4 Day 3 — unread inbox count for the four-pointed star button.
+  // Polled every 30 s; also refetched whenever the chat drawer opens/closes so
+  // the badge clears promptly after the user reads messages inside the chat.
+  const [agentUnread, setAgentUnread] = useState<number>(0);
+  useEffect(() => {
+    let alive = true;
+    const fetchUnread = async () => {
+      try {
+        const res = await fetch(`/api/agents/${AGENT_ID}/inbox?unread=1&limit=1`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (alive && typeof data?.unreadCount === "number") {
+          setAgentUnread(data.unreadCount);
+        }
+      } catch { /* network blip — try again on next tick */ }
+    };
+    fetchUnread();
+    const id = window.setInterval(fetchUnread, 30_000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, [chatAgentOpen]);
+
   // Which side the chat panel is on. Persisted in localStorage so swap sticks.
   const [chatSide, setChatSide] = useState<"left" | "right">(() => {
     try {
@@ -1387,6 +1408,7 @@ export default function App() {
         onRenameDocument={handleRenameDocument}
         onOpenChatAgent={() => setChatAgentOpen((v) => !v)}
         chatAgentOpen={chatAgentOpen}
+        agentUnreadCount={agentUnread}
       />
       <div className={`workspace${chatAgentOpen ? " chat-open" : ""}${chatAgentOpen && chatSide === "left" ? " chat-left" : ""}${movingPart ? " moving" : ""}`} ref={workspaceRef}>
         <div

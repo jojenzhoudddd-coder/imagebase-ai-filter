@@ -27,6 +27,7 @@ import { viewTools } from "./viewTools.js";
 import { metaTools } from "./metaTools.js";
 import { memoryTools } from "./memoryTools.js";
 import { skillRouterTools } from "./skillRouterTools.js";
+import { cronTools } from "./cronTools.js";
 import { allSkills, skillsByName } from "../skills/index.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
@@ -34,11 +35,12 @@ import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
 const TIER1_NAMES = new Set(["list_tables", "get_table"]);
 
-/** Tier 0 — identity + memory + skill routing. Always loaded. */
+/** Tier 0 — identity + memory + skill routing + cron. Always loaded. */
 export const tier0Tools: ToolDefinition[] = [
   ...metaTools,
   ...memoryTools,
   ...skillRouterTools,
+  ...cronTools,
 ];
 
 /** Tier 1 — core workspace navigation. Always loaded. */

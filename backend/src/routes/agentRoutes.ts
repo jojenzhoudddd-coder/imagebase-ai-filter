@@ -16,6 +16,14 @@
  *   PUT    /api/agents/:agentId/identity/soul     — { content } replaces soul.md
  *   PUT    /api/agents/:agentId/identity/profile  — { content } replaces profile.md
  *   PUT    /api/agents/:agentId/identity/config   — JSON patch merged into config.json
+ *
+ * Runtime state (filesystem, Phase 4):
+ *   GET    /api/agents/:agentId/inbox             — list messages (?unread=1 filter, ?limit=N)
+ *   POST   /api/agents/:agentId/inbox/:msgId/ack  — mark one message as read
+ *   GET    /api/agents/:agentId/cron              — list cron jobs
+ *   POST   /api/agents/:agentId/cron              — add cron { schedule, prompt, workspaceId?, skills? }
+ *   DELETE /api/agents/:agentId/cron/:jobId       — remove cron job
+ *   GET    /api/agents/:agentId/heartbeat         — recent heartbeat entries (?tail=N)
  */
 
 import express, { type Request, type Response } from "express";
@@ -31,8 +39,17 @@ import {
   writeProfile,
   readConfig,
   writeConfig,
+  readInbox,
+  ackInboxMessage,
+  inboxUnreadCount,
+  readHeartbeatLog,
   type AgentConfig,
 } from "../services/agentService.js";
+import {
+  addCronJob,
+  removeCronJob,
+  listCronJobs,
+} from "../services/cronScheduler.js";
 
 const router = express.Router();
 
@@ -180,6 +197,137 @@ router.put("/:agentId/identity/config", async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error("[agents] config write error:", err);
     res.status(400).json({ error: err.message ?? "write failed" });
+  }
+});
+
+// ─── Runtime state: inbox / cron / heartbeat (Phase 4) ───
+
+router.get("/:agentId/inbox", async (req: Request, res: Response) => {
+  try {
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    const onlyUnread = req.query.unread === "1" || req.query.unread === "true";
+    const limitRaw = req.query.limit;
+    const limit = typeof limitRaw === "string" ? parseInt(limitRaw, 10) : undefined;
+    const messages = await readInbox(agent.id, {
+      onlyUnread,
+      limit: Number.isFinite(limit) && limit! > 0 ? limit : undefined,
+    });
+    const unreadCount = await inboxUnreadCount(agent.id);
+    res.json({ messages, unreadCount });
+  } catch (err: any) {
+    console.error("[agents] inbox read error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+router.post("/:agentId/inbox/:msgId/ack", async (req: Request, res: Response) => {
+  try {
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    const msg = await ackInboxMessage(agent.id, req.params.msgId);
+    if (!msg) {
+      res.status(404).json({ error: "message not found" });
+      return;
+    }
+    res.json(msg);
+  } catch (err: any) {
+    console.error("[agents] inbox ack error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+router.get("/:agentId/cron", async (req: Request, res: Response) => {
+  try {
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    const jobs = await listCronJobs(agent.id);
+    res.json(jobs);
+  } catch (err: any) {
+    console.error("[agents] cron list error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+router.post("/:agentId/cron", async (req: Request, res: Response) => {
+  try {
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    const { schedule, prompt, workspaceId, skills, meta } = req.body ?? {};
+    if (typeof schedule !== "string" || !schedule.trim()) {
+      res.status(400).json({ error: "schedule 必须是非空字符串 (cron expression)" });
+      return;
+    }
+    if (typeof prompt !== "string" || !prompt.trim()) {
+      res.status(400).json({ error: "prompt 必须是非空字符串" });
+      return;
+    }
+    if (skills !== undefined && !Array.isArray(skills)) {
+      res.status(400).json({ error: "skills 必须是字符串数组" });
+      return;
+    }
+    const job = await addCronJob(agent.id, {
+      schedule: schedule.trim(),
+      prompt: prompt.trim(),
+      workspaceId: typeof workspaceId === "string" ? workspaceId : undefined,
+      skills: Array.isArray(skills) ? skills.filter((s) => typeof s === "string") : undefined,
+      meta: typeof meta === "object" && meta !== null && !Array.isArray(meta) ? meta : undefined,
+    });
+    res.status(201).json(job);
+  } catch (err: any) {
+    console.error("[agents] cron add error:", err);
+    const status = /invalid cron schedule/.test(err?.message ?? "") ? 400 : 500;
+    res.status(status).json({ error: err.message ?? "internal error" });
+  }
+});
+
+router.delete("/:agentId/cron/:jobId", async (req: Request, res: Response) => {
+  try {
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    const ok = await removeCronJob(agent.id, req.params.jobId);
+    if (!ok) {
+      res.status(404).json({ error: "job not found" });
+      return;
+    }
+    res.status(204).end();
+  } catch (err: any) {
+    console.error("[agents] cron remove error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+router.get("/:agentId/heartbeat", async (req: Request, res: Response) => {
+  try {
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    const tailRaw = req.query.tail;
+    const tail = typeof tailRaw === "string" ? parseInt(tailRaw, 10) : 50;
+    const entries = await readHeartbeatLog(agent.id, {
+      tail: Number.isFinite(tail) && tail > 0 ? tail : 50,
+    });
+    res.json(entries);
+  } catch (err: any) {
+    console.error("[agents] heartbeat read error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
   }
 });
 

@@ -19,6 +19,8 @@ import { connectDB, loadTable, getTable, getWorkspace, updateWorkspace, listTabl
 import { eventBus } from "./services/eventBus.js";
 import { startSuggestionScheduler } from "./services/suggestionService.js";
 import { ensureDefaultAgent } from "./services/agentService.js";
+import { startHeartbeat, stopHeartbeat } from "./services/runtimeService.js";
+import { evaluateCron } from "./services/cronScheduler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -174,6 +176,55 @@ async function start() {
   // Kick off the chat-sidebar prompt-suggestion scheduler. Runs an initial
   // pass on `doc_default` after a short delay and refreshes every 10 min.
   startSuggestionScheduler(["doc_default"]);
+
+  // Phase 4 Day 1+2 · Agent heartbeat. Day 1 plumbing + Day 2 cron handler:
+  // on each tick we read the agent's state/cron.json and fire any due jobs
+  // into state/inbox.jsonl. More subsystems (inbox consumers, haiku triage)
+  // compose into the same handler in later days. Disabled via
+  // RUNTIME_DISABLED=1 so smoke tests and one-off scripts don't spawn a
+  // background timer.
+  if (process.env.RUNTIME_DISABLED !== "1") {
+    startHeartbeat({
+      onTick: async (ctx) => {
+        const cronResult = await evaluateCron(ctx.agentId, ctx.firedAt);
+        const details: Record<string, unknown> = {};
+        if (cronResult.fired.length > 0) {
+          details.cronFired = cronResult.fired.map(({ job, inboxMessage }) => ({
+            jobId: job.id,
+            schedule: job.schedule,
+            inboxMessageId: inboxMessage.id,
+          }));
+        }
+        const invalid = cronResult.skipped.filter((s) => s.reason === "invalid-expression");
+        if (invalid.length > 0) {
+          details.cronInvalid = invalid.map((s) => ({
+            jobId: s.job.id,
+            schedule: s.job.schedule,
+          }));
+        }
+        const outcome = cronResult.fired.length > 0 ? "triggered" : "idle";
+        return Object.keys(details).length > 0
+          ? { outcome, details }
+          : { outcome };
+      },
+    });
+  } else {
+    console.log("[runtime] heartbeat disabled via RUNTIME_DISABLED=1");
+  }
+
+  // Graceful shutdown: let any in-flight tick finish before exiting so we
+  // don't leave a half-written heartbeat.log line on SIGTERM.
+  const shutdown = async (signal: string) => {
+    console.log(`[runtime] received ${signal}, stopping heartbeat…`);
+    try {
+      await stopHeartbeat();
+    } catch (err) {
+      console.error("[runtime] error during shutdown:", err);
+    }
+    process.exit(0);
+  };
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
 start().catch((err) => {

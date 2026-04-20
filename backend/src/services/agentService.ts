@@ -91,6 +91,17 @@ export async function ensureAgentFiles(agentId: string): Promise<void> {
   if (!(await fileExists(configPath)))
     await fs.writeFile(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2), "utf8");
   if (!(await fileExists(workingPath))) await fs.writeFile(workingPath, "", "utf8");
+
+  // Phase 4 Day 1: runtime state files. All three are append-only or
+  // JSON-patch, so we pre-create them empty to keep read paths simple
+  // (no ENOENT branches in hot loops).
+  const inboxPath = path.join(root, "state", "inbox.jsonl");
+  const cronPath = path.join(root, "state", "cron.json");
+  const heartbeatPath = path.join(root, "state", "heartbeat.log");
+  if (!(await fileExists(inboxPath))) await fs.writeFile(inboxPath, "", "utf8");
+  if (!(await fileExists(cronPath)))
+    await fs.writeFile(cronPath, JSON.stringify({ jobs: [] }, null, 2), "utf8");
+  if (!(await fileExists(heartbeatPath))) await fs.writeFile(heartbeatPath, "", "utf8");
 }
 
 async function fileExists(p: string): Promise<boolean> {
@@ -700,4 +711,219 @@ export async function ensureDefaultAgent(): Promise<AgentMeta> {
     userId: DEFAULT_USER_ID,
     name: "Claw",
   });
+}
+
+// ─── Phase 4 · Runtime state files ───
+//
+// state/ holds three runtime artifacts. They live on the filesystem (not DB)
+// for the same reason soul.md does — the Agent owns them, they should be
+// greppable for humans, and a rogue heartbeat loop won't DoS Postgres.
+//
+//   state/heartbeat.log   — append-only JSONL, one line per tick
+//   state/inbox.jsonl     — append-only JSONL, one line per inbound message
+//   state/cron.json       — { jobs: [{ id, schedule, prompt, ... }] }
+
+/** Cross-user listing used by the runtime loop to iterate every agent. */
+export async function listAllAgents(): Promise<AgentMeta[]> {
+  return prisma.agent.findMany({ orderBy: { createdAt: "asc" } });
+}
+
+export interface HeartbeatLogEntry {
+  timestamp: string; // ISO
+  tickId: string;    // uuid-lite, unique per loop tick
+  outcome: "idle" | "triggered" | "error";
+  // Free-form details keyed by subsystem (inbox/cron/consolidator). Kept
+  // loose in Day 1 so later phases can grow the payload without schema churn.
+  details?: Record<string, unknown>;
+}
+
+function heartbeatLogPath(agentId: string): string {
+  return path.join(agentDir(agentId), "state", "heartbeat.log");
+}
+
+export async function appendHeartbeatLog(
+  agentId: string,
+  entry: HeartbeatLogEntry
+): Promise<void> {
+  await ensureAgentFiles(agentId);
+  const line = JSON.stringify(entry) + "\n";
+  await fs.appendFile(heartbeatLogPath(agentId), line, "utf8");
+}
+
+export async function readHeartbeatLog(
+  agentId: string,
+  opts?: { tail?: number }
+): Promise<HeartbeatLogEntry[]> {
+  await ensureAgentFiles(agentId);
+  let raw: string;
+  try {
+    raw = await fs.readFile(heartbeatLogPath(agentId), "utf8");
+  } catch (err: any) {
+    if (err?.code === "ENOENT") return [];
+    throw err;
+  }
+  const all: HeartbeatLogEntry[] = [];
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    try {
+      all.push(JSON.parse(t));
+    } catch {
+      // Skip corrupted line, keep going.
+    }
+  }
+  const tail = opts?.tail;
+  return tail && tail > 0 && all.length > tail ? all.slice(-tail) : all;
+}
+
+export interface InboxMessage {
+  id: string;
+  timestamp: string; // ISO
+  source: "cron" | "mention" | "webhook" | "system";
+  subject: string;
+  body?: string;
+  /** If set, the message is unread. Cleared when the Agent processes it. */
+  unread: boolean;
+  /** Free-form payload carried from the producer. */
+  meta?: Record<string, unknown>;
+}
+
+function inboxPath(agentId: string): string {
+  return path.join(agentDir(agentId), "state", "inbox.jsonl");
+}
+
+export async function appendInboxMessage(
+  agentId: string,
+  msg: Omit<InboxMessage, "id" | "timestamp" | "unread"> & { id?: string; timestamp?: string; unread?: boolean }
+): Promise<InboxMessage> {
+  await ensureAgentFiles(agentId);
+  const full: InboxMessage = {
+    id: msg.id ?? `inbox_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: msg.timestamp ?? new Date().toISOString(),
+    source: msg.source,
+    subject: msg.subject,
+    body: msg.body,
+    unread: msg.unread ?? true,
+    meta: msg.meta,
+  };
+  await fs.appendFile(inboxPath(agentId), JSON.stringify(full) + "\n", "utf8");
+  return full;
+}
+
+export async function readInbox(
+  agentId: string,
+  opts?: { onlyUnread?: boolean; limit?: number }
+): Promise<InboxMessage[]> {
+  await ensureAgentFiles(agentId);
+  let raw: string;
+  try {
+    raw = await fs.readFile(inboxPath(agentId), "utf8");
+  } catch (err: any) {
+    if (err?.code === "ENOENT") return [];
+    throw err;
+  }
+  const out: InboxMessage[] = [];
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    try {
+      const msg = JSON.parse(t) as InboxMessage;
+      if (opts?.onlyUnread && !msg.unread) continue;
+      out.push(msg);
+    } catch {
+      // Skip corrupted line.
+    }
+  }
+  const limit = opts?.limit;
+  return limit && limit > 0 && out.length > limit ? out.slice(-limit) : out;
+}
+
+/**
+ * Mark one inbox message as read (unread=false). Rewrites inbox.jsonl in
+ * full — fine at our scale where inboxes are small. Returns the updated
+ * message or `null` if the id wasn't found.
+ */
+export async function ackInboxMessage(
+  agentId: string,
+  messageId: string
+): Promise<InboxMessage | null> {
+  await ensureAgentFiles(agentId);
+  let raw: string;
+  try {
+    raw = await fs.readFile(inboxPath(agentId), "utf8");
+  } catch (err: any) {
+    if (err?.code === "ENOENT") return null;
+    throw err;
+  }
+  const all: InboxMessage[] = [];
+  let found: InboxMessage | null = null;
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    try {
+      const msg = JSON.parse(t) as InboxMessage;
+      if (msg.id === messageId && msg.unread) {
+        msg.unread = false;
+        found = msg;
+      } else if (msg.id === messageId) {
+        // Already read — return it but no rewrite needed yet; keep going
+        // to preserve JSONL layout.
+        found = msg;
+      }
+      all.push(msg);
+    } catch {
+      // Skip corrupted line; preserving it would re-corrupt the rewrite.
+    }
+  }
+  if (!found) return null;
+  // Atomic-ish rewrite: write to temp path then rename.
+  const target = inboxPath(agentId);
+  const tmp = `${target}.tmp`;
+  await fs.writeFile(tmp, all.map((m) => JSON.stringify(m)).join("\n") + "\n", "utf8");
+  await fs.rename(tmp, target);
+  return found;
+}
+
+export async function inboxUnreadCount(agentId: string): Promise<number> {
+  const msgs = await readInbox(agentId, { onlyUnread: true });
+  return msgs.length;
+}
+
+export interface CronJob {
+  id: string;
+  schedule: string;    // cron expression, e.g. "0 17 * * 5"
+  prompt: string;      // Task the Agent should run when fired
+  workspaceId?: string;
+  skills?: string[];
+  /** ISO timestamp of last fire, or null if never. */
+  lastFiredAt?: string | null;
+  /** Freeform meta the scheduler can stash (next-fire cache, retry count, etc.). */
+  meta?: Record<string, unknown>;
+}
+
+export interface CronFile {
+  jobs: CronJob[];
+}
+
+function cronPath(agentId: string): string {
+  return path.join(agentDir(agentId), "state", "cron.json");
+}
+
+export async function readCron(agentId: string): Promise<CronFile> {
+  await ensureAgentFiles(agentId);
+  const raw = await fs.readFile(cronPath(agentId), "utf8");
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.jobs)) return parsed as CronFile;
+  } catch {
+    // fallthrough to default
+  }
+  return { jobs: [] };
+}
+
+export async function writeCron(agentId: string, file: CronFile): Promise<void> {
+  await ensureAgentFiles(agentId);
+  const serialized = JSON.stringify(file, null, 2);
+  assertSize(serialized, "state/cron.json");
+  await fs.writeFile(cronPath(agentId), serialized, "utf8");
 }

@@ -7,6 +7,99 @@
 
 ## 2026-04-20
 
+### feat(phase4 day2+day3): Cron 调度 + 定时触达 Inbox + Agent 自登记定时任务 + 前端未读徽章
+
+**分支**: `phase3/skills` · **commits**: 待提交
+
+Day 1 把"每 5 分钟能稳定 tick"这件事做稳了，Day 2+3 把第一个有用的行为塞进去——**Agent 能定时给自己发消息**，用户也能在顶栏看到未读红点。
+
+- **Day 2 · Cron 解析器 + 调度器**
+  - 新增 `backend/src/services/cronScheduler.ts`（零依赖）：
+    - `parseCron(expr)`：支持 5 字段 `minute hour dom month dow` 和 `@hourly / @daily / @weekly / @monthly / @yearly` 别名；支持 `*` / 列表 `9,17` / 区间 `1-5` / 步进 `*/15`；不合法输入返回 `null`（**绝不抛错**——cron 写错了不能把心跳打挂）
+    - `cronMatches(parsed, date)`：字段逐个比对，Vixie-cron 的 "day OR" 语义保留——当 dom 和 dow 都被限制时，任一命中即算匹配
+    - `nextFireAfter(parsed, from, {limitMinutes = 2y})`：从 `from + 1 minute` 开始逐分钟搜，绝不返回 `from` 本身，走到上限返回 `null`
+    - `evaluateCron(agentId, now)`：核心算子。baseline = `lastFiredAt ?? now-1h` 防止新登记的 job 被回放触发；每个到期 job 最多触发一次，写一条 `InboxMessage{source:"cron", meta:{cronJobId, schedule, workspaceId?, skills?}}` 并 bump `lastFiredAt`；非法表达式写 `skipped.invalid-expression` 不抛错
+    - CRUD helpers `addCronJob / removeCronJob / listCronJobs`：写入前先 `parseCron` 校验
+  - `backend/src/index.ts` 把 `evaluateCron` 作为 heartbeat 的 `onTick`：每 5 分钟跑一次，触发的 job 列表塞进 heartbeat.log 的 `details.cronFired`，方便回溯
+
+- **Day 3 · Inbox / Cron REST + Tier 0 定时工具 + 前端未读徽章**
+  - `backend/src/routes/agentRoutes.ts` 新增运行时状态端点：
+    - `GET /api/agents/:id/inbox[?unread=1&limit=N]` → `{messages, unreadCount}`
+    - `POST /api/agents/:id/inbox/:msgId/ack` → 原子回写（`.tmp + rename`），已读消息再调一次返回同一条不抖
+    - `GET / POST / DELETE /api/agents/:id/cron`：创建前 400-validate cron 表达式
+    - `GET /api/agents/:id/heartbeat?tail=N`（默认 50）
+  - `backend/mcp-server/src/tools/cronTools.ts` 新增三个 Tier 0 MCP 工具，Chat Agent 每轮都看得到：
+    - `schedule_task { schedule, prompt, workspaceId?, skills? }` —— 让 Agent 自己登记"每周五 17:00 帮我总结本周表结构变化"；返回 `{ok, jobId, nextFireAt}`
+    - `list_scheduled_tasks` —— 列出当前所有定时任务，带 `nextFireAt` 和 `parseError` 标记
+    - `cancel_task { jobId }` —— 删除；找不到 id 返回 `{ok:false, error}` 而不是抛
+    - 工具描述写得像"给自己留的便签"（"注意：这个工具**不会立刻执行**任何事，只是登记进 cron.json"），减少模型误调
+  - `frontend/src/components/TopBar.tsx` 四芒星按钮右上角加红色未读徽章（`#F54A45`，`min-width 14px`，9+ 截断），`title` 也带未读数
+  - `frontend/src/components/TopBar.css` 新增 `.topbar-agent-btn { position: relative }` + `.topbar-agent-badge` 定位/字号
+  - `frontend/src/App.tsx` 每 30s 轮询 `/api/agents/agent_default/inbox?unread=1&limit=1`，chat 打开/关闭时也刷一次，传 `agentUnreadCount` 到 TopBar
+
+- **`backend/src/scripts/phase4-runtime-smoke.ts` 扩展到 18 个断言**
+  - Day 2 新增：parseCron 合法 + 非法、Vixie OR 语义、`nextFireAfter` 总向前、`addCronJob` 拒绝 garbage、`evaluateCron` 同 `now` 调两次第二次 no-op、异常 job 不抛、heartbeat+evaluateCron 端到端落 `cronFired`
+  - Day 3 新增：`ackInboxMessage` unread→read、二次 ack 仍返回同条但 unread 不变、未知 id 返回 null、`inboxUnreadCount` 反映 ack 状态；`schedule_task` 校验并返回 `nextFireAt`、非法表达式返回 `{ok:false}` 不抛、`list_scheduled_tasks` 对坏 job 标 `parseError`、`cancel_task` 幂等（第二次返回 `{ok:false, error}`）
+  - 结果：✅ `Phase 4 Day 1+2+3 smoke: PASS`
+  - Phase 2、Phase 3 的旧 smoke 脚本回归无影响
+
+**设计取舍**：
+- **为什么零依赖手写 cron 解析**？我们只需要 5 字段 + 几个别名，`cron-parser` 这类包会带 `luxon` / `moment` 进来（~100KB + 一堆 peer deps），而这个解析一个小时就能写完、50 行 + 测试覆盖全。生产环境对 cron 语义要求不高（多是 `@daily` / `@weekly`）。
+- **为什么 `baseline = lastFiredAt ?? now - 1h`**？新登记的 job 如果没有这个兜底，第一次 evaluate 就会扫到所有过去的触发点（比如 `@daily` 会回放 365 次），把 inbox 冲垮。给个 1 小时的回溯窗口够宽容（cron 最密也就每分钟一次），又不会批量回放。
+- **为什么 inbox ack 用 `.tmp + rename`**？inbox.jsonl 是 append-only 到最后需要**整体重写**才能改字段；直接改文件中途崩溃就丢数据。`fs.rename` 在同一 fs 里是原子的，写到一半宕机 `.tmp` 可以丢弃。
+- **为什么 `schedule_task` 不跑 Haiku 路由而是直接走 cronTools**？定时任务这种指令明确、接近 CRUD 的东西用 tool_call 最直，上 LLM 路由反而增加幻觉面。Haiku 留给 Day 4 的"要不要现在打扰用户"这种模糊判断。
+- **为什么前端是 30s 轮询而不是 SSE**？inbox 事件很稀疏（大多数 agent 几小时才一条），长连接会占 Nginx worker 名额；30s 轮询一次只多几 KB 流量，未来真需要实时可以再上 SSE。
+
+**未解决 / Day 4**：
+- Haiku 低成本判断"现在该不该把这条 cron inbox 弹成系统通知"，还是安静留在红点里等用户自己打开看
+
+
+### feat(phase4 day1): Agent Runtime 心跳层 — heartbeat loop + state/ 文件骨架
+
+**分支**: `phase3/skills` · **commits**: 待提交
+
+Phase 3 把"被动回应 + 按需加载工具"做完，Phase 4 开始让 Agent **主动有节奏**——后台每 5 分钟 tick 一次，未来挂载 Cron / Inbox / Memory Consolidator / Haiku 触发器。Day 1 先把管线铺到位，行为先设为 no-op，证明 fanout / 错误隔离 / graceful shutdown 都稳。
+
+- **`backend/src/services/runtimeService.ts` 新增**
+  - `startHeartbeat({ intervalMs, onTick, listAgents, logger })` / `stopHeartbeat()` / `tickNow()` / `getRuntimeState()`
+  - 默认 5 分钟（`RUNTIME_HEARTBEAT_MS` 环境变量覆盖，最小 1s）；`RUNTIME_DISABLED=1` 关掉
+  - 再入保护：上一个 tick 未结束就跳过下一个，不堆叠；`timer.unref()` 不阻止 Node 进程退出
+  - 错误隔离：某个 agent 的 handler 抛异常只写一条 `outcome: "error"` 日志，不影响同 tick 其他 agent；单个 agent 写日志失败也不会让 tick 全部失败
+  - `listAgents` 可注入，smoke 测试不依赖 Postgres
+
+- **`backend/src/services/agentService.ts` 扩展**
+  - `ensureAgentFiles()` 额外 bootstrap `state/heartbeat.log`（空）、`state/inbox.jsonl`（空）、`state/cron.json`（`{ jobs: [] }`）——读取路径不需要再处理 ENOENT
+  - 新增跨用户 `listAllAgents()`（runtime 遍历用）
+  - 新增 `HeartbeatLogEntry` + `appendHeartbeatLog` / `readHeartbeatLog({ tail })`
+  - 新增 `InboxMessage` + `appendInboxMessage` / `readInbox({ onlyUnread, limit })`
+  - 新增 `CronJob` / `CronFile` + `readCron` / `writeCron`（size-capped，合并 `DEFAULT_CONFIG` 逻辑复用 `assertSize`）
+
+- **`backend/src/index.ts` 接线**
+  - `start()` 末尾 `startHeartbeat()`（受 `RUNTIME_DISABLED` 开关控制）
+  - SIGINT/SIGTERM 里 `await stopHeartbeat()`，等当前 tick 落盘再退出，防止 PM2 reload 写半截 heartbeat.log
+
+- **`backend/src/scripts/phase4-runtime-smoke.ts` 新增**（覆盖 7 个断言）
+  - ensureAgentFiles bootstrap 三个 state 文件
+  - cron.json 读写 round-trip
+  - inbox unread 过滤 + 默认字段填充
+  - startHeartbeat 幂等（重复调用返回同一个 state）
+  - tickNow 驱动，两次 tick 后 `ticksFired === 2`，每个 agent 各自得到 2 条 heartbeat.log
+  - **错误隔离**：同一个 tick 里 agent_beta 抛错，agent_alpha 照样记 `idle`；beta 第二次才抛的设计也被 round-trip 校验
+  - `readHeartbeatLog({ tail: 1 })` 返回最新 1 条
+  - `stopHeartbeat()` 结束后 `getRuntimeState() === null`
+  - 结果：✅ `Phase 4 Day 1 smoke: PASS`
+
+**设计取舍**：
+- 为什么在 Express 同进程？——Phase 4 行为本身很轻（每 5 分钟一次，不调 LLM），fork 子进程只会让部署复杂度上升。未来 Haiku 调用如果耗时长，再拆到独立 worker。
+- 为什么 `state/` 是文件而不是 DB 表？——和 `soul.md` / `profile.md` 同一哲学：Agent 自己的状态要能 `grep` / `tail -f`，也不要让一个失控的 heartbeat 写挂 Postgres。
+- 为什么 Day 1 handler 是 no-op？——先把"每 5 分钟能不能稳定 tick、异常能不能隔离、SIGTERM 能不能优雅退出"这三件事验了，再往里塞业务逻辑。Cron 调度 / Inbox 消费 / Haiku 触发都会作为独立 Day 增量加进来。
+
+**未解决 / Day 2 起步**：
+- Day 2：cron schedule 求值（最小实现：每 tick 扫描 jobs，按 `schedule` 对比 now，到期就把 `{source:"cron", prompt}` 追加到 `inbox.jsonl`，同时更新 `lastFiredAt`）
+- Day 3：Inbox 到达时，若 Chat Sidebar 在线就浮红点；若不在线就下次打开再提示
+- Day 4：Haiku 低成本轮询——"现在要不要打扰用户"
+
+
 ### feat(phase3): Tier 2 技能体系 — 可激活 Skill 包 + 工具按需加载 + 系统 Prompt 技能目录
 
 **分支**: `phase3/skills` · **commits**: `6cfe7a9`, `00e2f4d`, `a8655e1`

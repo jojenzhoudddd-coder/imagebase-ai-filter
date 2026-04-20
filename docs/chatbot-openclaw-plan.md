@@ -422,9 +422,10 @@ COMMIT;
 - Skill 卸载策略
 
 ### Phase 4：Runtime（2 周）
-- Heartbeat 进程
-- Cron 调度
-- Inbox 消息流
+- Heartbeat 进程 ✅ Day 1（`runtimeService.ts`，默认 5min、可注入 listAgents、err isolation、SIGINT/SIGTERM 优雅退出、`state/heartbeat.log` + `inbox.jsonl` + `cron.json` 在 `ensureAgentFiles` 里 bootstrap，smoke 脚本 `phase4-runtime-smoke.ts` 通过）
+- Cron 调度 ✅ Day 2（`cronScheduler.ts`，支持 5 字段表达式 + @daily/@hourly/@weekly/@monthly/@yearly 别名 + Vixie-cron OR 语义、parseCron 不抛错、nextFireAfter 步进不卡死、evaluateCron baseline = lastFiredAt ?? now-1h 防回放，heartbeat 在 `index.ts` 里 wire 成 onTick，每个 tick 触发到期 job 追加 `InboxMessage{source:"cron"}`）
+- Inbox 消息流 ✅ Day 3（`agentRoutes.ts` 新增 `/api/agents/:id/inbox`（list+ack）、`/cron`（CRUD）、`/heartbeat`（tail）；MCP Tier 0 新增 `schedule_task / list_scheduled_tasks / cancel_task` 让 Agent 自己登记/取消定时；前端 TopBar 四芒星按钮右上角加红色未读徽章 + App.tsx 每 30s 轮询 `/inbox?unread=1`）
+- Haiku 低成本轮询 "是否打扰用户"（Day 4）
 
 ### Phase 5：Plugin + 多 Agent（2 周）
 - Plugin 独立子进程 + 沙箱
