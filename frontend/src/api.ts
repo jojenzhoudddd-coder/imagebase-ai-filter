@@ -802,11 +802,14 @@ export async function fetchChatSuggestions(workspaceId: string): Promise<ChatSug
   return res.json();
 }
 
-export async function createConversation(workspaceId: string): Promise<ChatConversation> {
+export async function createConversation(
+  workspaceId: string,
+  agentId?: string
+): Promise<ChatConversation> {
   const res = await mutationFetch(`${BASE}/chat/conversations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workspaceId }),
+    body: JSON.stringify({ workspaceId, ...(agentId ? { agentId } : {}) }),
   });
   if (!res.ok) throw new Error("Failed to create conversation");
   return res.json();
@@ -989,4 +992,113 @@ export async function stopChatTurn(conversationId: string): Promise<void> {
   await mutationFetch(`${BASE}/chat/conversations/${encodeURIComponent(conversationId)}/stop`, {
     method: "POST",
   });
+}
+
+// ─── Agents (Phase 1) ──────────────────────────────────────────────
+// Agent identity lives at ~/.imagebase/agents/<agentId>/ on the server.
+// These wrappers let the UI read/edit soul.md + profile.md + config.json
+// so the user can inspect and tweak what the chat Agent "knows about itself"
+// and "knows about me". See docs/chatbot-openclaw-plan.md Phase 1.
+
+export interface AgentMeta {
+  id: string;
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+  createdAt: string | number | Date;
+  updatedAt: string | number | Date;
+}
+
+export interface AgentConfig {
+  language?: "zh" | "en";
+  timezone?: string;
+  allow_danger_without_confirm?: boolean;
+  tool_allowlist?: string[] | null;
+  tool_denylist?: string[] | null;
+}
+
+export interface AgentIdentity {
+  soul: string;
+  profile: string;
+  config: AgentConfig;
+}
+
+export async function listAgents(): Promise<AgentMeta[]> {
+  const res = await fetch(`${BASE}/agents`);
+  if (!res.ok) throw new Error("Failed to list agents");
+  return res.json();
+}
+
+export async function getAgent(agentId: string): Promise<AgentMeta> {
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}`);
+  if (!res.ok) throw new Error("Failed to load agent");
+  return res.json();
+}
+
+export async function updateAgent(
+  agentId: string,
+  patch: { name?: string; avatarUrl?: string | null }
+): Promise<AgentMeta> {
+  const res = await mutationFetch(`${BASE}/agents/${encodeURIComponent(agentId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error("Failed to update agent");
+  return res.json();
+}
+
+export async function getAgentIdentity(agentId: string): Promise<AgentIdentity> {
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/identity`);
+  if (!res.ok) throw new Error("Failed to load agent identity");
+  return res.json();
+}
+
+export async function putAgentSoul(agentId: string, content: string): Promise<void> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/identity/soul`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    }
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+}
+
+export async function putAgentProfile(agentId: string, content: string): Promise<void> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/identity/profile`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    }
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+}
+
+export async function putAgentConfig(
+  agentId: string,
+  patch: Partial<AgentConfig>
+): Promise<AgentConfig> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/identity/config`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
 }

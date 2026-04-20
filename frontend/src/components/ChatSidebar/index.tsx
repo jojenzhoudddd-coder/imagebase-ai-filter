@@ -16,9 +16,10 @@ import ThinkingIndicator from "./ChatMessage/ThinkingIndicator";
 import ToolCallCard from "./ChatMessage/ToolCallCard";
 import ToolCallGroup from "./ChatMessage/ToolCallGroup";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
-import { MoreIcon, RefreshIcon } from "./icons";
+import { IdentityIcon, MoreIcon, RefreshIcon } from "./icons";
 import DropdownMenu from "../DropdownMenu";
 import ConfirmDialog from "../ConfirmDialog";
+import AgentIdentityModal from "../AgentIdentityModal";
 import { useTranslation } from "../../i18n";
 import {
   type ChatConversation,
@@ -99,6 +100,13 @@ function clearCache(workspaceId: string) {
 interface Props {
   open: boolean;
   workspaceId: string;
+  /**
+   * Active Agent id (identity owner). Defaults to `agent_default` — the
+   * seeded agent created on first boot. The Agent is intentionally
+   * workspace-agnostic: a user has one long-lived Agent that spans every
+   * workspace and owns the persistent soul.md / profile.md / memory.
+   */
+  agentId?: string;
   onClose: () => void;
   /**
    * Virtual pointer — when the Agent invokes a tool that targets a specific
@@ -133,7 +141,13 @@ function extractTableIdFromCall(
   return undefined;
 }
 
-export default function ChatSidebar({ open, workspaceId, onClose, onActiveTableChange }: Props) {
+export default function ChatSidebar({
+  open,
+  workspaceId,
+  agentId = "agent_default",
+  onClose,
+  onActiveTableChange,
+}: Props) {
   const { t } = useTranslation();
   // Hydrate from localStorage synchronously so a refresh shows cached
   // messages immediately — no welcome-page flash while /conversations loads.
@@ -163,6 +177,11 @@ export default function ChatSidebar({ open, workspaceId, onClose, onActiveTableC
   const [menuOpen, setMenuOpen] = useState(false);
   const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Agent Identity modal — view/edit soul.md + profile.md for the active
+  // agent. Separate from any per-conversation context; the Agent identity
+  // outlives individual chats.
+  const [identityOpen, setIdentityOpen] = useState(false);
 
   const cancelRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -222,7 +241,7 @@ export default function ChatSidebar({ open, workspaceId, onClose, onActiveTableC
           setActiveConv(conv);
           setMessages(msgs.map(serverToUi));
         } else {
-          const conv = await createConversation(workspaceId);
+          const conv = await createConversation(workspaceId, agentId);
           setActiveConv(conv);
           setMessages([]);
         }
@@ -538,7 +557,7 @@ export default function ChatSidebar({ open, workspaceId, onClose, onActiveTableC
     setContextHint(null);
     try {
       const [conv, snapshot] = await Promise.all([
-        createConversation(workspaceId),
+        createConversation(workspaceId, agentId),
         fetchChatContextSnapshot(workspaceId).catch(() => null),
       ]);
       setActiveConv(conv);
@@ -546,7 +565,7 @@ export default function ChatSidebar({ open, workspaceId, onClose, onActiveTableC
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [workspaceId, streaming, handleStop]);
+  }, [workspaceId, agentId, streaming, handleStop]);
 
   // ─── Render ─────────────────────────────────────────────────────────
   // Header row re-added per Figma node 6:5309 "AI header": no title, just a
@@ -561,6 +580,19 @@ export default function ChatSidebar({ open, workspaceId, onClose, onActiveTableC
     <aside className={`chat-sidebar${open ? " open" : ""}`} aria-hidden={!open}>
       <header className="chat-header">
         <div className="chat-header-actions">
+          {/* Identity button — always available, opens a modal that reads
+              soul.md + profile.md from the backend. Lets users audit or seed
+              what the Agent "knows about itself" / "knows about me" without
+              having to drive it through a chat turn. */}
+          <button
+            type="button"
+            className="chat-header-btn"
+            title={t("chat.agent.identity")}
+            aria-label={t("chat.agent.identity")}
+            onClick={() => setIdentityOpen(true)}
+          >
+            <IdentityIcon size={16} />
+          </button>
           {/* Welcome page has nothing to refresh — hide the overflow entry
               entirely there. Shown once a conversation has any content, or
               while a turn is streaming. */}
@@ -580,6 +612,11 @@ export default function ChatSidebar({ open, workspaceId, onClose, onActiveTableC
           )}
         </div>
       </header>
+      <AgentIdentityModal
+        open={identityOpen}
+        agentId={agentId}
+        onClose={() => setIdentityOpen(false)}
+      />
       {menuOpen && moreBtnRef.current && (
         <DropdownMenu
           anchorEl={moreBtnRef.current}

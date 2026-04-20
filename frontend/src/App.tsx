@@ -24,6 +24,11 @@ import { useSplitResize } from "./hooks/useSplitResize";
 import ChatSidebar from "./components/ChatSidebar/index";
 
 const WORKSPACE_ID = "doc_default";
+// Phase 1 MVP: the user has exactly one Agent (seeded on first boot as
+// `agent_default`, display name "Claw"). It's workspace-agnostic — the same
+// Agent follows you across every workspace and owns the persistent identity
+// / memory. When multi-agent support lands this becomes a state + picker.
+const AGENT_ID = "agent_default";
 
 const MAX_UNDO = 20;
 type CellValue = string | number | boolean | string[] | null;
@@ -1546,6 +1551,7 @@ export default function App() {
               <ChatSidebar
                 open={chatAgentOpen}
                 workspaceId={WORKSPACE_ID}
+                agentId={AGENT_ID}
                 onClose={() => setChatAgentOpen(false)}
                 onActiveTableChange={(tableId) => {
                   // Virtual pointer: follow the Agent to whichever table it's

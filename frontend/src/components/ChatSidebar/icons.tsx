@@ -170,6 +170,22 @@ export function MicIcon({ size = 14, className }: IconProps) {
   );
 }
 
+/** Identity / persona glyph — circular head + shoulder silhouette.
+ * Used in the chat header to open the Agent identity modal. */
+export function IdentityIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <circle cx="8" cy="5.5" r="2.6" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M2.8 13.5c.7-2.4 2.7-3.7 5.2-3.7s4.5 1.3 5.2 3.7"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function ToolCogIcon({ size = 14, className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 14 14" fill="none" className={className}>
