@@ -14,12 +14,15 @@ import { fieldTools } from "./fieldTools.js";
 import { recordTools } from "./recordTools.js";
 import { viewTools } from "./viewTools.js";
 import { metaTools } from "./metaTools.js";
+import { memoryTools } from "./memoryTools.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
-// Tier 0 meta-tools come first so they're always visible even if the model
-// only reads the top of the function list. Data-plane tools follow.
+// Tier 0 identity + memory tools come first so they're always visible even
+// if the model only reads the top of the function list. Data-plane tools
+// follow.
 export const allTools: ToolDefinition[] = [
   ...metaTools,
+  ...memoryTools,
   ...tableTools,
   ...fieldTools,
   ...recordTools,

@@ -200,6 +200,157 @@ export async function appendEpisodicMemory(
   return { path: full, filename };
 }
 
+// ─── Episodic memory (read) ───
+
+export interface EpisodicMemorySummary {
+  filename: string;
+  title: string;
+  timestamp: string | null; // ISO-ish string from the `Timestamp:` line, or null
+  tags: string[];
+  preview: string; // first ~200 chars of body, for listing
+  bytes: number;
+}
+
+export interface EpisodicMemoryFull extends EpisodicMemorySummary {
+  body: string; // full body excluding the header metadata
+}
+
+/**
+ * Parse a single episodic markdown file into structured metadata + body.
+ * Matches the format written by `appendEpisodicMemory`:
+ *   # <title>
+ *   Tags: #tag1 #tag2          (optional)
+ *   Timestamp: 2026-04-20T...
+ *
+ *   <body...>
+ */
+function parseEpisodicMemory(filename: string, raw: string): EpisodicMemoryFull {
+  const lines = raw.split(/\r?\n/);
+  let title = filename.replace(/\.md$/, "");
+  let timestamp: string | null = null;
+  const tags: string[] = [];
+
+  // Header region: "# title" line, then 0+ blank/metadata lines (Tags:, Timestamp:),
+  // then a blank separator, then body. We consume any prefix that looks like
+  // header metadata and treat everything after as body. Metadata lines can
+  // appear in any order; blank lines between them are tolerated.
+  let i = 0;
+  if (lines[0]?.startsWith("# ")) {
+    title = lines[0].slice(2).trim();
+    i = 1;
+  }
+  const HEADER_MAX = 12;
+  let lastHeaderIdx = i - 1;
+  for (; i < Math.min(lines.length, HEADER_MAX); i++) {
+    const line = lines[i];
+    if (line.trim() === "") continue; // blank gap inside header
+    const tagMatch = line.match(/^Tags:\s*(.+)$/);
+    if (tagMatch) {
+      tagMatch[1]
+        .split(/\s+/)
+        .map((t) => t.replace(/^#/, "").trim())
+        .filter(Boolean)
+        .forEach((t) => tags.push(t));
+      lastHeaderIdx = i;
+      continue;
+    }
+    const tsMatch = line.match(/^Timestamp:\s*(.+)$/);
+    if (tsMatch) {
+      timestamp = tsMatch[1].trim();
+      lastHeaderIdx = i;
+      continue;
+    }
+    // First non-blank non-metadata line → start of body.
+    break;
+  }
+  // Skip one blank separator line between header and body if present.
+  let bodyStart = lastHeaderIdx + 1;
+  while (bodyStart < lines.length && lines[bodyStart].trim() === "") bodyStart++;
+
+  const body = lines.slice(bodyStart).join("\n").trim();
+  const preview = body.slice(0, 200).replace(/\s+/g, " ").trim();
+  return {
+    filename,
+    title,
+    timestamp,
+    tags,
+    preview,
+    bytes: Buffer.byteLength(raw, "utf8"),
+    body,
+  };
+}
+
+/**
+ * List episodic memory summaries, newest first (by file mtime).
+ * Returns previews only — for the full body, use `readEpisodicMemory`.
+ */
+export async function listEpisodicMemories(
+  agentId: string,
+  opts?: { limit?: number; tag?: string }
+): Promise<EpisodicMemorySummary[]> {
+  await ensureAgentFiles(agentId);
+  const dir = path.join(agentDir(agentId), "memory", "episodic");
+  let files: string[] = [];
+  try {
+    files = await fs.readdir(dir);
+  } catch {
+    return [];
+  }
+  const mdFiles = files.filter((f) => f.endsWith(".md"));
+
+  // Sort by mtime desc — filename prefix is a date but not precise enough
+  // when multiple episodes land on the same day.
+  const withStat = await Promise.all(
+    mdFiles.map(async (f) => {
+      const full = path.join(dir, f);
+      const stat = await fs.stat(full);
+      return { filename: f, mtimeMs: stat.mtimeMs };
+    })
+  );
+  withStat.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  const limit = Math.max(1, Math.min(opts?.limit ?? 20, 100));
+  const picked = withStat.slice(0, limit);
+
+  const summaries: EpisodicMemorySummary[] = [];
+  for (const { filename } of picked) {
+    try {
+      const raw = await fs.readFile(path.join(dir, filename), "utf8");
+      const parsed = parseEpisodicMemory(filename, raw);
+      if (opts?.tag && !parsed.tags.includes(opts.tag.toLowerCase())) continue;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { body: _body, ...summary } = parsed;
+      summaries.push(summary);
+    } catch {
+      // Skip unreadable files; they shouldn't block the whole list.
+    }
+  }
+  return summaries;
+}
+
+/** Load one episodic memory file by filename. Returns null if not found. */
+export async function readEpisodicMemory(
+  agentId: string,
+  filename: string
+): Promise<EpisodicMemoryFull | null> {
+  // Guard against path traversal.
+  if (!filename || filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
+    throw new Error(`invalid filename: ${filename}`);
+  }
+  if (!filename.endsWith(".md")) {
+    throw new Error(`expected .md filename: ${filename}`);
+  }
+  await ensureAgentFiles(agentId);
+  const full = path.join(agentDir(agentId), "memory", "episodic", filename);
+  try {
+    const raw = await fs.readFile(full, "utf8");
+    return parseEpisodicMemory(filename, raw);
+  } catch (err: any) {
+    if (err?.code === "ENOENT") return null;
+    throw err;
+  }
+}
+
 // ─── Prisma CRUD ───
 
 export interface AgentMeta {
