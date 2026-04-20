@@ -17,66 +17,66 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspaces WorkspaceMember[]
-  documents  Document[]
+  orgs       OrgMember[]
+  workspaces Workspace[]
 
   @@map("users")
 }
 
-// ─── 工作空间（Phase 2 实现） ───
+// ─── 组织（Phase 0 前原名 Workspace，现作为 User → Org → Workspace → Artifact 的最上层） ───
 
-model Workspace {
+model Org {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members   WorkspaceMember[]
-  documents Document[]
+  members    OrgMember[]
+  workspaces Workspace[]
 
-  @@map("workspaces")
+  @@map("orgs")
 }
 
-model WorkspaceMember {
-  id          String   @id @default(cuid())
-  workspaceId String
-  userId      String
-  role        String   @default("editor")
-  joinedAt    DateTime @default(now())
+model OrgMember {
+  id       String   @id @default(cuid())
+  orgId    String
+  userId   String
+  role     String   @default("editor")
+  joinedAt DateTime @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([workspaceId, userId])
-  @@map("workspace_members")
+  @@unique([orgId, userId])
+  @@map("org_members")
 }
 
-// ─── 文档（Phase 2 实现） ───
+// ─── 工作空间（Phase 0 前原名 Document，现为实际承载 artifact 的容器） ───
 
-model Document {
+model Workspace {
   id          String   @id @default(cuid())
-  workspaceId String
+  orgId       String
   createdById String
   name        String
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy User      @relation(fields: [createdById], references: [id])
+  org       Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id])
   tables    Table[]
   folders   Folder[]
   designs   Design[]
 
-  @@index([workspaceId])
-  @@map("documents")
+  @@index([orgId])
+  @@map("workspaces")
 }
 
 // ─── 数据表（fields + views 作为 JSONB 存储） ───
 
 model Table {
   id                 String   @id @default(cuid())
-  documentId         String
+  workspaceId        String
   name               String
   parentId           String?
   order              Int      @default(0)
@@ -86,10 +86,10 @@ model Table {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  records  Record[]
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  records   Record[]
 
-  @@index([documentId])
+  @@index([workspaceId])
   @@index([parentId])
   @@map("tables")
 }
@@ -115,19 +115,19 @@ model Record {
 // ─── 文件夹（树形结构，自引用） ───
 
 model Folder {
-  id         String   @id @default(cuid())
-  documentId String
-  name       String
-  parentId   String?
-  order      Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  parentId    String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  parent   Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children Folder[] @relation("FolderTree")
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent    Folder?   @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[]  @relation("FolderTree")
 
-  @@index([documentId])
+  @@index([workspaceId])
   @@index([parentId])
   @@map("folders")
 }
@@ -137,7 +137,7 @@ model Folder {
 
 model Conversation {
   id           String   @id @default(cuid())
-  documentId   String
+  workspaceId  String
   title        String   @default("新对话")
   summary      String?
   messageCount Int      @default(0)
@@ -146,7 +146,7 @@ model Conversation {
 
   messages Message[]
 
-  @@index([documentId, updatedAt(sort: Desc)])
+  @@index([workspaceId, updatedAt(sort: Desc)])
   @@map("conversations")
 }
 
@@ -170,7 +170,7 @@ model Message {
 
 model Design {
   id           String   @id @default(cuid())
-  documentId   String
+  workspaceId  String
   name         String
   parentId     String?
   order        Int      @default(0)
@@ -180,9 +180,9 @@ model Design {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  @@index([documentId])
+  @@index([workspaceId])
   @@index([parentId])
   @@map("designs")
 }
