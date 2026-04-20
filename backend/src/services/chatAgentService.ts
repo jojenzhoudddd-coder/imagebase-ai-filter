@@ -2,7 +2,7 @@
  * Chat Agent Service — the core of the Table Agent feature.
  *
  * Responsibilities:
- *  - Accept a user message + conversation history + documentId
+ *  - Accept a user message + conversation history + workspaceId
  *  - Call Volcano ARK (Seed 2.0 pro) with thinking enabled, streaming output
  *  - Run a multi-turn tool loop: intercept tool calls, execute via in-process
  *    MCP tools registry, feed results back to the model
@@ -78,15 +78,15 @@ const SYSTEM_PROMPT_ZH = `# 角色
 - 生成 SingleSelect/MultiSelect 的 options 时，color 用以下任一：#FFE2D9 #FFEBD1 #FFF5C2 #DFF5C9 #CCEBD9 #CFE8F5 #D9E0FC #E5D9FC #F4D9F5 #F9CFD3
 - 字段的 config 必须符合每种类型的规范（Number 带 numberFormat，Currency 带 currencyCode 等）`;
 
-// ─── Document snapshot (context injection) ───────────────────────────────
+// ─── Workspace snapshot (context injection) ──────────────────────────────
 
-async function buildDocumentSnapshot(documentId: string): Promise<string> {
+async function buildWorkspaceSnapshot(workspaceId: string): Promise<string> {
   try {
-    const tables = await store.listTablesForDocument(documentId);
+    const tables = await store.listTablesForWorkspace(workspaceId);
     if (!tables || tables.length === 0) {
-      return `# 当前文档状态\n文档 ${documentId} 目前没有数据表。`;
+      return `# 当前工作空间状态\n工作空间 ${workspaceId} 目前没有数据表。`;
     }
-    const lines: string[] = [`# 当前文档状态（${documentId}）`];
+    const lines: string[] = [`# 当前工作空间状态（${workspaceId}）`];
     for (const t of tables) {
       const detail = await store.getTable(t.id);
       if (!detail) continue;
@@ -99,7 +99,7 @@ async function buildDocumentSnapshot(documentId: string): Promise<string> {
     }
     return lines.join("\n");
   } catch (err) {
-    return `# 当前文档状态\n(获取失败: ${err instanceof Error ? err.message : String(err)})`;
+    return `# 当前工作空间状态\n(获取失败: ${err instanceof Error ? err.message : String(err)})`;
   }
 }
 
@@ -115,8 +115,8 @@ type ArkInputItem =
   | { type: "function_call"; call_id: string; name: string; arguments: string }
   | { type: "function_call_output"; call_id: string; output: string };
 
-async function assembleInput(conversationId: string, documentId: string, newUserMessage: string): Promise<ArkInputItem[]> {
-  const snapshot = await buildDocumentSnapshot(documentId);
+async function assembleInput(conversationId: string, workspaceId: string, newUserMessage: string): Promise<ArkInputItem[]> {
+  const snapshot = await buildWorkspaceSnapshot(workspaceId);
   const systemText = SYSTEM_PROMPT_ZH + "\n\n" + snapshot;
 
   const history = await convStore.getMessages(conversationId);
@@ -380,7 +380,7 @@ export interface SseEvent {
 
 export interface AgentContext {
   conversationId: string;
-  documentId: string;
+  workspaceId: string;
   /** Per-call mapping of pending confirmations. When the user confirms via
    * POST /confirm, the agent resumes with this callId's args patched with
    * confirmed=true. */
@@ -401,7 +401,7 @@ export async function* runAgent(
   userMessage: string,
   abortSignal?: AbortSignal
 ): AsyncGenerator<SseEvent, void, undefined> {
-  const { conversationId, documentId } = ctx;
+  const { conversationId, workspaceId } = ctx;
   const assistantMsgId = `msg_${uuidv4()}`;
 
   yield { event: "start", data: { messageId: assistantMsgId } };
@@ -413,7 +413,7 @@ export async function* runAgent(
   });
 
   // Running copy of ARK input — appended as tool calls happen.
-  const input = await assembleInput(conversationId, documentId, userMessage);
+  const input = await assembleInput(conversationId, workspaceId, userMessage);
 
   let accumulatedText = "";
   let accumulatedThinking = "";

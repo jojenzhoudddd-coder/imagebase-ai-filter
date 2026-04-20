@@ -37,7 +37,7 @@ export interface Message {
 
 export interface Conversation {
   id: string;
-  documentId: string;
+  workspaceId: string;
   title: string;
   summary?: string;
   messageCount: number;
@@ -55,7 +55,7 @@ const prisma = new PrismaClient({ adapter });
 
 function toConversation(row: {
   id: string;
-  documentId: string;
+  workspaceId: string;
   title: string;
   summary: string | null;
   messageCount: number;
@@ -64,7 +64,7 @@ function toConversation(row: {
 }): Conversation {
   return {
     id: row.id,
-    documentId: row.documentId,
+    workspaceId: row.workspaceId,
     title: row.title,
     summary: row.summary ?? undefined,
     messageCount: row.messageCount,
@@ -97,21 +97,21 @@ function toMessage(row: {
 
 // ─── Public API ──────────────────────────────────────────────────────────
 
-export async function listConversations(documentId: string): Promise<Conversation[]> {
+export async function listConversations(workspaceId: string): Promise<Conversation[]> {
   const rows = await prisma.conversation.findMany({
-    where: { documentId },
+    where: { workspaceId },
     orderBy: { updatedAt: "desc" },
   });
   return rows.map(toConversation);
 }
 
 export async function createConversation(
-  documentId: string,
+  workspaceId: string,
   title?: string
 ): Promise<Conversation> {
   const row = await prisma.conversation.create({
     data: {
-      documentId,
+      workspaceId,
       title: title || "新对话",
     },
   });

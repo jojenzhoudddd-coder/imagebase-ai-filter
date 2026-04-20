@@ -2,7 +2,7 @@ import { EventEmitter } from "events";
 
 export interface TableChangeEvent {
   type:
-    | "document:update"
+    | "workspace:update"
     | "table:update"
     | "record:create"
     | "record:update"
@@ -24,12 +24,12 @@ export interface TableChangeEvent {
   payload: Record<string, any>;
 }
 
-export interface DocumentChangeEvent {
+export interface WorkspaceChangeEvent {
   type: "table:create" | "table:delete" | "table:reorder" | "table:rename"
     | "folder:create" | "folder:rename" | "folder:delete" | "folder:reorder"
     | "item:move"
     | "design:create" | "design:rename" | "design:delete" | "design:reorder";
-  documentId: string;
+  workspaceId: string;
   clientId: string;
   timestamp: number;
   payload: Record<string, any>;
@@ -50,18 +50,18 @@ class TableEventBus extends EventEmitter {
     return () => this.off(`table:${tableId}`, listener);
   }
 
-  emitDocumentChange(event: DocumentChangeEvent): void {
-    const listeners = this.listenerCount(`document:${event.documentId}`);
-    console.log(`[EventBus] ${event.type} doc=${event.documentId} client=${event.clientId} → ${listeners} subscriber(s)`);
-    this.emit(`document:${event.documentId}`, event);
+  emitWorkspaceChange(event: WorkspaceChangeEvent): void {
+    const listeners = this.listenerCount(`workspace:${event.workspaceId}`);
+    console.log(`[EventBus] ${event.type} ws=${event.workspaceId} client=${event.clientId} → ${listeners} subscriber(s)`);
+    this.emit(`workspace:${event.workspaceId}`, event);
   }
 
-  subscribeDocument(
-    documentId: string,
-    listener: (event: DocumentChangeEvent) => void,
+  subscribeWorkspace(
+    workspaceId: string,
+    listener: (event: WorkspaceChangeEvent) => void,
   ): () => void {
-    this.on(`document:${documentId}`, listener);
-    return () => this.off(`document:${documentId}`, listener);
+    this.on(`workspace:${workspaceId}`, listener);
+    return () => this.off(`workspace:${workspaceId}`, listener);
   }
 }
 
