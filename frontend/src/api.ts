@@ -423,10 +423,26 @@ export interface DesignBrief {
   order: number;
 }
 
+export interface TasteBrief {
+  id: string;
+  designId: string;
+  name: string;
+  fileName: string;
+  filePath: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  order: number;
+  source: "upload" | "figma";
+  figmaUrl: string | null;
+}
+
 export interface DesignDetail extends DesignBrief {
   figmaFileKey?: string;
   figmaNodeId?: string;
   thumbnailUrl?: string;
+  tastes?: TasteBrief[];
   createdAt: number;
   updatedAt: number;
 }
@@ -468,6 +484,69 @@ export async function renameDesign(designId: string, name: string): Promise<{ id
 export async function deleteDesign(designId: string): Promise<void> {
   const res = await mutationFetch(`${BASE}/designs/${designId}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete design");
+}
+
+// ─── Tastes (SVG artifacts within a Design canvas) ───
+
+export async function fetchTastes(designId: string): Promise<TasteBrief[]> {
+  const res = await fetch(`${BASE}/designs/${designId}/tastes`);
+  if (!res.ok) throw new Error("Failed to fetch tastes");
+  return res.json();
+}
+
+export async function uploadTastes(designId: string, files: File[]): Promise<TasteBrief[]> {
+  const fd = new FormData();
+  for (const f of files) fd.append("files", f);
+  const res = await mutationFetch(`${BASE}/designs/${designId}/tastes/upload`, {
+    method: "POST",
+    body: fd,
+  });
+  if (!res.ok) throw new Error("Failed to upload SVG files");
+  return res.json();
+}
+
+export async function importFigmaSvg(designId: string, figmaUrl: string): Promise<TasteBrief> {
+  const res = await mutationFetch(`${BASE}/designs/${designId}/tastes/from-figma`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ figmaUrl }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to import from Figma");
+  }
+  return res.json();
+}
+
+export async function updateTaste(
+  designId: string,
+  tasteId: string,
+  data: Partial<Pick<TasteBrief, "x" | "y" | "width" | "height" | "name">>,
+): Promise<TasteBrief> {
+  const res = await mutationFetch(`${BASE}/designs/${designId}/tastes/${tasteId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to update taste");
+  return res.json();
+}
+
+export async function batchUpdateTastes(
+  designId: string,
+  updates: Array<{ id: string; x: number; y: number }>,
+): Promise<void> {
+  const res = await mutationFetch(`${BASE}/designs/${designId}/tastes/batch-update`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates }),
+  });
+  if (!res.ok) throw new Error("Failed to batch update tastes");
+}
+
+export async function deleteTaste(designId: string, tasteId: string): Promise<void> {
+  const res = await mutationFetch(`${BASE}/designs/${designId}/tastes/${tasteId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete taste");
 }
 
 // ─── AI Field Suggestions ───

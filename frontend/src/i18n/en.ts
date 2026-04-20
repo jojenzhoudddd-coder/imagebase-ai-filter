@@ -301,10 +301,10 @@ export const en = {
   "createMenu.form": "Form",
   "createMenu.dashboard": "Dashboard",
   "createMenu.workflow": "Workflow",
-  "createMenu.doc": "Document",
+  "createMenu.doc": "Idea",
   "createMenu.manage": "Manage",
   "createMenu.folder": "Folder",
-  "createMenu.design": "Design",
+  "createMenu.design": "Taste",
   "createMenu.album": "Album",
   "createMenu.import": "Import / Sync Data",
   "createMenu.appSection": "App",
@@ -335,7 +335,6 @@ export const en = {
   "placeholder.album": "Select an album to view",
 
   // Design panel
-  "design.urlPlaceholder": "Paste Figma URL here",
   "design.create": "Create Design",
   "design.invalidUrl": "Please enter a valid Figma URL",
   "design.goToEdit": "Open in Figma",
@@ -347,6 +346,17 @@ export const en = {
   "design.loading": "Loading design...",
   "design.notFound": "Design not found",
   "design.sharingHint": "Make sure the Figma file has sharing enabled",
+  "design.importFigma": "Import from Figma",
+  "design.uploadSvg": "Upload SVG",
+  "design.dropHint": "Drop SVG files here",
+  "design.autoLayout": "Auto Layout",
+  "design.importingFigma": "Importing from Figma...",
+  "design.figmaImportFailed": "Failed to import from Figma",
+  "design.uploadFailed": "Failed to upload SVG",
+  "design.emptyCanvas": "Drop SVG files or click Upload to get started",
+  "design.figmaUrlPlaceholder": "Paste Figma node URL",
+  "design.import": "Import",
+  "design.deleteItem": "Delete",
 
   // Folder
   "folder.defaultName": "New Folder",

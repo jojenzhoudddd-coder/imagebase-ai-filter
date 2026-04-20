@@ -303,10 +303,10 @@ export const zh: TranslationKeys = {
   "createMenu.form": "收集表",
   "createMenu.dashboard": "仪表盘",
   "createMenu.workflow": "工作流",
-  "createMenu.doc": "文档",
+  "createMenu.doc": "灵感",
   "createMenu.manage": "管理",
   "createMenu.folder": "文件夹",
-  "createMenu.design": "设计稿",
+  "createMenu.design": "创意",
   "createMenu.album": "相册",
   "createMenu.import": "导入/同步数据",
   "createMenu.appSection": "应用",
@@ -337,7 +337,6 @@ export const zh: TranslationKeys = {
   "placeholder.album": "选择一个相册查看",
 
   // Design panel
-  "design.urlPlaceholder": "在此粘贴 Figma 链接",
   "design.create": "创建设计稿",
   "design.invalidUrl": "请输入有效的 Figma 链接",
   "design.goToEdit": "在 Figma 中打开",
@@ -349,6 +348,17 @@ export const zh: TranslationKeys = {
   "design.loading": "正在加载设计稿...",
   "design.notFound": "未找到设计稿",
   "design.sharingHint": "请确保 Figma 文件已开启共享",
+  "design.importFigma": "从 Figma 导入",
+  "design.uploadSvg": "上传 SVG",
+  "design.dropHint": "将 SVG 文件拖放到此处",
+  "design.autoLayout": "自动排列",
+  "design.importingFigma": "正在从 Figma 导入...",
+  "design.figmaImportFailed": "Figma 导入失败",
+  "design.uploadFailed": "SVG 上传失败",
+  "design.emptyCanvas": "拖放 SVG 文件或点击上传开始",
+  "design.figmaUrlPlaceholder": "粘贴 Figma 节点链接",
+  "design.import": "导入",
+  "design.deleteItem": "删除",
 
   // Folder
   "folder.defaultName": "新建文件夹",

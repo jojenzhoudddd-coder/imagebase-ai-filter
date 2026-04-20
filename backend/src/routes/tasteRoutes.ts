@@ -67,6 +67,58 @@ async function uniqueTasteName(designId: string, baseName: string): Promise<stri
   return `${baseName} ${i}`;
 }
 
+/**
+ * 在已有 taste 的画布里，为一个新矩形（w × h）找一个不与任何已存在矩形重叠的位置。
+ *
+ * 策略：
+ *   - 把已有 taste 看作障碍矩形（外扩 gap 作为呼吸空间）
+ *   - 候选位置 = (0,0) + 每个已有矩形的 4 条边的外侧贴边点（右 / 下 / 左 / 上）
+ *   - 按 y 升序、x 升序排序（优先放靠上靠左），取第一个与所有障碍都不重叠的点
+ *   - 全都碰撞则回退到 "所有 taste 的底边 + gap"，另起一行
+ *
+ * 够用、可读、O(n²) 的简单算法；n 在 taste 画布场景里不会大。
+ */
+function findEmptyPosition(
+  existing: { x: number; y: number; width: number; height: number }[],
+  w: number,
+  h: number,
+  gap: number = 40,
+): { x: number; y: number } {
+  if (existing.length === 0) return { x: 0, y: 0 };
+
+  // 障碍矩形 = 已存在 taste 外扩 gap（让 candidate 只要贴着边就不会重叠）
+  type Box = { x: number; y: number; w: number; h: number };
+  const obstacles: Box[] = existing.map((t) => ({
+    x: t.x - gap,
+    y: t.y - gap,
+    w: t.width + 2 * gap,
+    h: t.height + 2 * gap,
+  }));
+
+  const overlaps = (x: number, y: number): boolean =>
+    obstacles.some(
+      (b) => x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + h > b.y,
+    );
+
+  const candidates: { x: number; y: number }[] = [{ x: 0, y: 0 }];
+  for (const t of existing) {
+    candidates.push({ x: t.x + t.width + gap, y: t.y }); // 右
+    candidates.push({ x: t.x, y: t.y + t.height + gap }); // 下
+    candidates.push({ x: t.x - w - gap, y: t.y });        // 左
+    candidates.push({ x: t.x, y: t.y - h - gap });        // 上
+  }
+  // 优先靠上、其次靠左
+  candidates.sort((a, b) => a.y - b.y || a.x - b.x);
+
+  for (const c of candidates) {
+    if (!overlaps(c.x, c.y)) return c;
+  }
+
+  // 全都撞 → 所有 taste 的底边下方另起一行，从 x=0 开始
+  const maxBottom = existing.reduce((m, t) => Math.max(m, t.y + t.height), 0);
+  return { x: 0, y: maxBottom + gap };
+}
+
 /** Parse SVG string to extract width/height from viewBox or explicit attrs. */
 function parseSvgDimensions(svgContent: string): { width: number; height: number } {
   // Try viewBox first: viewBox="minX minY width height"
@@ -109,17 +161,19 @@ router.post(
       return;
     }
 
-    // Compute starting order + x offset
+    // 已有 taste 作为 findEmptyPosition 的障碍列表
     const existing = await prisma.taste.findMany({
       where: { designId },
       orderBy: { order: "asc" },
     });
     let nextOrder = existing.length;
-    let nextX = 0;
-    if (existing.length > 0) {
-      const last = existing[existing.length - 1];
-      nextX = last.x + last.width + 40; // 40px gap
-    }
+    // 每放一张，都把它加入 obstacles，保证同一批内多张不会互相覆盖
+    const obstacles = existing.map((t) => ({
+      x: t.x,
+      y: t.y,
+      width: t.width,
+      height: t.height,
+    }));
 
     const created = [];
     for (const file of files) {
@@ -131,14 +185,16 @@ router.post(
       const baseName = decoded.replace(/\.svg$/i, "");
       const name = await uniqueTasteName(designId, baseName);
 
+      const pos = findEmptyPosition(obstacles, dims.width, dims.height);
+
       const taste = await prisma.taste.create({
         data: {
           designId,
           name,
           fileName: decoded,
           filePath: relativePath,
-          x: nextX,
-          y: 0,
+          x: pos.x,
+          y: pos.y,
           width: dims.width,
           height: dims.height,
           order: nextOrder,
@@ -146,7 +202,7 @@ router.post(
         },
       });
       created.push(taste);
-      nextX += dims.width + 40;
+      obstacles.push({ x: pos.x, y: pos.y, width: dims.width, height: dims.height });
       nextOrder++;
     }
 
@@ -218,11 +274,13 @@ router.post("/:designId/tastes/from-figma", async (req: Request, res: Response) 
       where: { designId },
       orderBy: { order: "asc" },
     });
-    let nextX = 0;
-    if (existing.length > 0) {
-      const last = existing[existing.length - 1];
-      nextX = last.x + last.width + 40;
-    }
+    const obstacles = existing.map((t) => ({
+      x: t.x,
+      y: t.y,
+      width: t.width,
+      height: t.height,
+    }));
+    const pos = findEmptyPosition(obstacles, dims.width, dims.height);
 
     const taste = await prisma.taste.create({
       data: {
@@ -230,8 +288,8 @@ router.post("/:designId/tastes/from-figma", async (req: Request, res: Response) 
         name: await uniqueTasteName(designId, "Figma Import"),
         fileName,
         filePath: `uploads/svgs/${designId}/${fileName}`,
-        x: nextX,
-        y: 0,
+        x: pos.x,
+        y: pos.y,
         width: dims.width,
         height: dims.height,
         order: existing.length,
@@ -300,22 +358,6 @@ router.delete("/:designId/tastes/:tasteId", async (req: Request, res: Response) 
   }
 
   res.json({ ok: true });
-});
-
-// GET /api/designs/:designId/tastes/:tasteId/source — get raw SVG source
-router.get("/:designId/tastes/:tasteId/source", async (req: Request, res: Response) => {
-  const taste = await prisma.taste.findUnique({ where: { id: req.params.tasteId } });
-  if (!taste || !taste.filePath) {
-    res.status(404).json({ error: "Taste not found or no file" });
-    return;
-  }
-  try {
-    const absPath = path.resolve(__dirname, "../../..", taste.filePath);
-    const content = await fs.readFile(absPath, "utf-8");
-    res.type("text/plain").send(content);
-  } catch {
-    res.status(404).json({ error: "SVG file not found on disk" });
-  }
 });
 
 export default router;

@@ -1223,9 +1223,9 @@ export default function App() {
   }, [locale, toast]);
 
   // ── Create design ──
-  const handleCreateDesign = useCallback(async (name: string, figmaUrl: string): Promise<string> => {
+  const handleCreateDesign = useCallback(async (name: string, figmaUrl?: string): Promise<string> => {
     try {
-      const design = await apiCreateDesign(name, figmaUrl, DOCUMENT_ID);
+      const design = await apiCreateDesign(name, figmaUrl ?? "", DOCUMENT_ID);
       setDocumentDesigns(prev => [...prev, design]);
       setActiveTableId(design.id);
       setActiveItemType("design");
