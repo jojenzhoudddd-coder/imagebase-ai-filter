@@ -13,9 +13,13 @@ import { tableTools } from "./tableTools.js";
 import { fieldTools } from "./fieldTools.js";
 import { recordTools } from "./recordTools.js";
 import { viewTools } from "./viewTools.js";
-import type { ToolDefinition } from "./tableTools.js";
+import { metaTools } from "./metaTools.js";
+import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
+// Tier 0 meta-tools come first so they're always visible even if the model
+// only reads the top of the function list. Data-plane tools follow.
 export const allTools: ToolDefinition[] = [
+  ...metaTools,
   ...tableTools,
   ...fieldTools,
   ...recordTools,
@@ -39,4 +43,4 @@ export function toArkToolFormat() {
   }));
 }
 
-export type { ToolDefinition };
+export type { ToolDefinition, ToolContext };

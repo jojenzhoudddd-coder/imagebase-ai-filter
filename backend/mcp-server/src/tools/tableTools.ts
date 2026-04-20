@@ -5,6 +5,19 @@
 
 import { apiRequest, toolResult, confirmationRequired } from "../dataStoreClient.js";
 
+/**
+ * Runtime context passed alongside each tool invocation. Populated by the
+ * in-process agent loop so tools that need "who am I operating for" (e.g.
+ * Tier 0 meta-tools writing to soul.md / profile.md) can read it without
+ * the model having to pass it as an arg.
+ *
+ * MCP stdio callers don't set ctx — they either don't need it (data-plane
+ * tools like create_table) or supply the identifier explicitly in args.
+ */
+export interface ToolContext {
+  agentId?: string;
+}
+
 export interface ToolDefinition {
   name: string;
   description: string;
@@ -14,7 +27,7 @@ export interface ToolDefinition {
     required?: string[];
   };
   danger?: boolean;
-  handler: (args: Record<string, any>) => Promise<string>;
+  handler: (args: Record<string, any>, ctx?: ToolContext) => Promise<string>;
 }
 
 export const tableTools: ToolDefinition[] = [

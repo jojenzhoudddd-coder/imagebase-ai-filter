@@ -614,7 +614,7 @@ export async function* runAgent(
       let toolOutput: string;
       let success = true;
       try {
-        toolOutput = await tool.handler(parsedArgs);
+        toolOutput = await tool.handler(parsedArgs, { agentId });
       } catch (err) {
         success = false;
         toolOutput = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
@@ -706,8 +706,9 @@ export async function* resumeAfterConfirm(
   yield { event: "tool_start", data: { callId, tool: pending.tool, args: pending.args } };
   let output: string;
   let success = true;
+  const resumeAgentId = ctx.agentId || DEFAULT_AGENT_ID;
   try {
-    output = await tool.handler({ ...pending.args, confirmed: true });
+    output = await tool.handler({ ...pending.args, confirmed: true }, { agentId: resumeAgentId });
   } catch (err) {
     success = false;
     output = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
