@@ -19,7 +19,15 @@
 import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
 import path from "path";
-import { allTools, toolsByName, isDangerousTool, toArkToolFormat } from "../../mcp-server/src/tools/index.js";
+import {
+  allTools,
+  toolsByName,
+  isDangerousTool,
+  toArkToolFormat,
+  resolveActiveTools,
+} from "../../mcp-server/src/tools/index.js";
+import { allSkills, skillsByName } from "../../mcp-server/src/skills/index.js";
+import type { ToolDefinition, ToolContext } from "../../mcp-server/src/tools/tableTools.js";
 import * as convStore from "./conversationStore.js";
 import type { Message, ToolCall } from "./conversationStore.js";
 import * as store from "./dbStore.js";
@@ -38,6 +46,88 @@ const WORKING_MEMORY_COMPRESS_THRESHOLD = 10;
 // gives thinking + final answer enough room so long multi-step plans don't
 // get truncated.
 const MAX_OUTPUT_TOKENS = 32768;
+
+// ─── Phase 3 · Per-conversation skill activation state ─────────────────
+//
+// Skills (Tier 2) are opt-in. We track the set of active skills per
+// conversationId in-memory — losing it on backend restart just means the
+// Agent has to re-activate the skill one more time, which is cheap
+// (a single round-trip to call `activate_skill`). Persisting to DB would be
+// over-engineering until we see eviction thrash in real traffic.
+//
+// Eviction: if a skill's tools haven't been invoked for
+// SKILL_EVICTION_TURNS consecutive assistant turns on this conversation,
+// it's dropped from the active set. Keeps context lean on long-running
+// conversations that pivot away from a skill's domain.
+const SKILL_EVICTION_TURNS = 10;
+
+interface ConvSkillState {
+  /** Skill names currently active for this conversation. */
+  active: Set<string>;
+  /** turnIndex at which each active skill was last used. */
+  lastUsedTurn: Map<string, number>;
+  /** Monotonically-incrementing turn counter for this conversation. */
+  turnIndex: number;
+}
+
+const skillStateByConv = new Map<string, ConvSkillState>();
+
+function getOrInitSkillState(conversationId: string): ConvSkillState {
+  let s = skillStateByConv.get(conversationId);
+  if (!s) {
+    s = { active: new Set(), lastUsedTurn: new Map(), turnIndex: 0 };
+    skillStateByConv.set(conversationId, s);
+  }
+  return s;
+}
+
+/** Map tool-name → owning skill name (for tracking lastUsedTurn on tool invocation). */
+const skillNameForTool: Map<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const s of allSkills) {
+    for (const t of s.tools) m.set(t.name, s.name);
+  }
+  return m;
+})();
+
+/**
+ * Auto-activate any skill whose `triggers` match the user's turn message.
+ * Mutates `state.active` in place. Called once per turn before we build the
+ * tool list for ARK. Keeps the user out of the "explicit activate_skill"
+ * round trip when their intent is obvious from keywords.
+ */
+function autoActivateByTriggers(state: ConvSkillState, userMessage: string): string[] {
+  const added: string[] = [];
+  for (const skill of allSkills) {
+    if (state.active.has(skill.name)) continue;
+    const hit = skill.triggers.some((pat) =>
+      typeof pat === "string" ? userMessage.includes(pat) : pat.test(userMessage)
+    );
+    if (hit) {
+      state.active.add(skill.name);
+      state.lastUsedTurn.set(skill.name, state.turnIndex);
+      added.push(skill.name);
+    }
+  }
+  return added;
+}
+
+/**
+ * Evict skills whose tools haven't been invoked for SKILL_EVICTION_TURNS
+ * consecutive turns. Called at end-of-turn. Returns the dropped names.
+ */
+function evictStaleSkills(state: ConvSkillState): string[] {
+  const dropped: string[] = [];
+  for (const name of state.active) {
+    const lastUsed = state.lastUsedTurn.get(name) ?? state.turnIndex;
+    if (state.turnIndex - lastUsed >= SKILL_EVICTION_TURNS) {
+      state.active.delete(name);
+      state.lastUsedTurn.delete(name);
+      dropped.push(name);
+    }
+  }
+  return dropped;
+}
 
 // ─── Logging ───
 const LOG_DIR = path.resolve("logs");
@@ -308,7 +398,11 @@ type ArkStreamEvent =
   | { kind: "done" }
   | { kind: "error"; message: string };
 
-async function* callArkStream(input: ArkInputItem[], abortSignal?: AbortSignal): AsyncGenerator<ArkStreamEvent> {
+async function* callArkStream(
+  input: ArkInputItem[],
+  abortSignal?: AbortSignal,
+  tools?: ToolDefinition[]
+): AsyncGenerator<ArkStreamEvent> {
   const apiKey = process.env.ARK_API_KEY;
   if (!apiKey) throw new Error("ARK_API_KEY not configured");
 
@@ -319,7 +413,9 @@ async function* callArkStream(input: ArkInputItem[], abortSignal?: AbortSignal):
     temperature: 0.1,
     stream: true,
     thinking: { type: "enabled" },
-    tools: toArkToolFormat(),
+    // Phase 3: the caller supplies a tools subset (Tier 0 + Tier 1 + active
+    // skills). Fall back to every tool for legacy callers / smoke tests.
+    tools: toArkToolFormat(tools),
   };
 
   const res = await fetch(`${ARK_BASE_URL}/responses`, {
@@ -547,6 +643,37 @@ export async function* runAgent(
     content: userMessage,
   });
 
+  // ── Phase 3: skill activation ───────────────────────────────────────
+  const skillState = getOrInitSkillState(conversationId);
+  skillState.turnIndex += 1;
+  const autoActivated = autoActivateByTriggers(skillState, userMessage);
+  if (autoActivated.length) {
+    logAgent({
+      event: "skill_auto_activated",
+      conversationId,
+      skills: autoActivated,
+      reason: "trigger_match",
+    });
+  }
+
+  // Build the tool context once — the handlers see the live activation set
+  // and can mutate it via the callbacks (used by skillRouterTools).
+  const toolCtx = {
+    agentId,
+    activeSkills: [...skillState.active],
+    onActivateSkill: (name: string) => {
+      if (!skillsByName[name]) return;
+      skillState.active.add(name);
+      skillState.lastUsedTurn.set(name, skillState.turnIndex);
+      logAgent({ event: "skill_activated", conversationId, skill: name, reason: "explicit" });
+    },
+    onDeactivateSkill: (name: string) => {
+      skillState.active.delete(name);
+      skillState.lastUsedTurn.delete(name);
+      logAgent({ event: "skill_deactivated", conversationId, skill: name });
+    },
+  };
+
   // Running copy of ARK input — appended as tool calls happen.
   const input = await assembleInput(conversationId, workspaceId, agentId, userMessage);
 
@@ -554,7 +681,13 @@ export async function* runAgent(
   let accumulatedThinking = "";
   const accumulatedToolCalls: ToolCall[] = [];
 
-  logAgent({ event: "turn_start", conversationId, userMessage });
+  logAgent({
+    event: "turn_start",
+    conversationId,
+    userMessage,
+    activeSkills: [...skillState.active],
+    turnIndex: skillState.turnIndex,
+  });
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     if (abortSignal?.aborted) {
@@ -562,13 +695,19 @@ export async function* runAgent(
       break;
     }
 
+    // Build the current tool subset before each ARK call. Re-compute per
+    // round because an `activate_skill` call in this very turn should
+    // expose that skill's tools on the NEXT round.
+    toolCtx.activeSkills = [...skillState.active];
+    const activeTools = resolveActiveTools(toolCtx.activeSkills);
+
     // Consume the ARK stream, forwarding deltas to the client in real time
     // and collecting tool calls to execute after the stream ends.
     const funcCalls: RawFunctionCall[] = [];
     let roundText = "";
     let streamErrored: string | null = null;
     try {
-      for await (const ev of callArkStream(input, abortSignal)) {
+      for await (const ev of callArkStream(input, abortSignal, activeTools)) {
         if (ev.kind === "text_delta") {
           roundText += ev.text;
           accumulatedText += ev.text;
@@ -665,7 +804,13 @@ export async function* runAgent(
       let toolOutput: string;
       let success = true;
       try {
-        toolOutput = await tool.handler(parsedArgs, { agentId });
+        // Pass the live skill context so skillRouterTools can mutate state.
+        toolOutput = await tool.handler(parsedArgs, toolCtx);
+        // Bump lastUsedTurn on the owning skill, if any.
+        const owningSkill = skillNameForTool.get(fc.name);
+        if (owningSkill && skillState.active.has(owningSkill)) {
+          skillState.lastUsedTurn.set(owningSkill, skillState.turnIndex);
+        }
       } catch (err) {
         success = false;
         toolOutput = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
@@ -735,6 +880,12 @@ export async function* runAgent(
       });
     });
 
+  // End-of-turn: drop skills that haven't been used for N turns.
+  const evicted = evictStaleSkills(skillState);
+  if (evicted.length) {
+    logAgent({ event: "skill_evicted", conversationId, skills: evicted, reason: "idle_turns" });
+  }
+
   yield { event: "done", data: { messageId: assistantMsgId } };
   logAgent({
     event: "turn_end",
@@ -742,6 +893,7 @@ export async function* runAgent(
     textLen: accumulatedText.length,
     thinkingLen: accumulatedThinking.length,
     toolCalls: accumulatedToolCalls.length,
+    activeSkills: [...skillState.active],
   });
 }
 
@@ -790,8 +942,32 @@ export async function* resumeAfterConfirm(
   let output: string;
   let success = true;
   const resumeAgentId = ctx.agentId || DEFAULT_AGENT_ID;
+  // Reuse the per-conversation skill state so that if the confirmed tool
+  // happens to be a skill-router tool (today none are danger=true, but keep
+  // it defensively consistent), activation callbacks still mutate the same
+  // state the next turn will read.
+  const resumeSkillState = getOrInitSkillState(ctx.conversationId);
+  const resumeToolCtx: ToolContext = {
+    agentId: resumeAgentId,
+    activeSkills: [...resumeSkillState.active],
+    onActivateSkill: (name: string) => {
+      if (!skillsByName[name]) return;
+      resumeSkillState.active.add(name);
+      resumeSkillState.lastUsedTurn.set(name, resumeSkillState.turnIndex);
+    },
+    onDeactivateSkill: (name: string) => {
+      resumeSkillState.active.delete(name);
+      resumeSkillState.lastUsedTurn.delete(name);
+    },
+  };
+  // Bump lastUsedTurn for the owning skill so it doesn't get evicted just
+  // because the confirmation round-tripped across turns.
+  const owningSkill = skillNameForTool.get(pending.tool);
+  if (owningSkill && resumeSkillState.active.has(owningSkill)) {
+    resumeSkillState.lastUsedTurn.set(owningSkill, resumeSkillState.turnIndex);
+  }
   try {
-    output = await tool.handler({ ...pending.args, confirmed: true }, { agentId: resumeAgentId });
+    output = await tool.handler({ ...pending.args, confirmed: true }, resumeToolCtx);
   } catch (err) {
     success = false;
     output = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
