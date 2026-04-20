@@ -7,6 +7,41 @@
 
 ## 2026-04-20
 
+### feat(phase3): Tier 2 技能体系 — 可激活 Skill 包 + 工具按需加载 + 系统 Prompt 技能目录
+
+**分支**: `phase3/skills` · **commits**: `6cfe7a9`, `00e2f4d`, `a8655e1`
+
+Phase 1/2 把 Agent 的"身份 + 记忆"做好了，但所有工具（26 个）每轮都全量塞进 ARK 请求。Phase 3 按 OpenClaw 四层能力模型（`docs/chatbot-openclaw-plan.md` §4）切出 Tier 0/1/2，Tier 2 以 **Skill** 为单位按需激活。Agent 默认只看得到 10 个核心工具，用户一说"加个字段"触发自动激活，模型也能通过 `activate_skill` 显式挂载。
+
+- **Day 1 · Skill 抽象 + table-skill 首个包**（`6cfe7a9`）
+  - `mcp-server/src/skills/types.ts` 新增 `SkillDefinition`（name / displayName / description / artifacts / when / triggers / tools）
+  - `mcp-server/src/skills/tableSkill.ts`：打包 `fieldTools` + `recordTools` + `viewTools` + 3 个 table 写入工具（create/rename/delete/reset，不含 list/get）。触发器覆盖中文"创建/删除/修改/批量/筛选"+ 英文 create/add/delete/remove/rename/batch 等
+  - `mcp-server/src/skills/index.ts`：`allSkills` / `skillsByName` 注册
+  - `mcp-server/src/tools/skillRouterTools.ts`：Tier 0 三件套 `find_skill` / `activate_skill` / `deactivate_skill`，通过 `ctx.onActivateSkill` 回调避免 skills → agent-service 的循环 import
+  - `mcp-server/src/tools/tableTools.ts` 扩展 `ToolContext`：`{agentId, activeSkills, onActivateSkill, onDeactivateSkill}`
+  - `mcp-server/src/tools/index.ts` 重写：`tier0Tools` / `tier1Tools` / `resolveActiveTools(activeSkillNames)` / `toArkToolFormat(tools?)`；`allTools` 仍包含全量用于 `toolsByName` 查找
+
+- **Day 2 · 每会话 skill 状态 + Tier-aware 工具加载**（`00e2f4d`）
+  - `chatAgentService.ts` 新增 `skillStateByConv: Map<conversationId, {active:Set, lastUsedTurn:Map, turnIndex:number}>`。`SKILL_EVICTION_TURNS = 10`，turn 末尾自动驱逐闲置 skill
+  - `autoActivateByTriggers(state, userMessage)`：每轮 turn 开始前跑一次正则匹配，命中即加入 `state.active`，日志 `skill_auto_activated`
+  - `runAgent` 构建 `toolCtx = {agentId, activeSkills, onActivate..., onDeactivate...}`，每一 round 用 `resolveActiveTools([...active])` 拿到当前工具子集，经 `toArkToolFormat(activeTools)` 只传给 ARK 它需要的那些
+  - 每次工具执行命中时 bump 该工具 owning skill 的 `lastUsedTurn`；turn 末尾 `evictStaleSkills` 清理，日志 `skill_evicted`
+  - `resumeAfterConfirm`（危险操作二次确认回流）同步重建 `toolCtx`，bump owning skill 的 `lastUsedTurn` 避免 round-trip 期间被驱逐
+
+- **Day 3 · 系统 Prompt 技能目录 + ✅ 激活标记**（`a8655e1`）
+  - `chatAgentService.buildSkillCatalog(activeSkillNames)`：把 `allSkills` 渲染成 `- **name** (displayName, N 个工具) — when`，已激活的前置 ✅ 标记
+  - `assembleInput(..., activeSkillNames)` 把目录块塞在 Layer 2 Identity 和 Tool Guidance 之间——模型读完"我是谁"就看到"我能装什么能力"
+  - `runAgent` 传 `[...skillState.active]` 进去：auto-activated 的 skill 在第一轮 ARK 请求的系统 Prompt 里就已经带 ✅，避免模型重复调 `activate_skill`
+
+- **Day 4 · 烟囱脚本 + 文档**
+  - `backend/src/scripts/phase3-skills-smoke.ts` 覆盖：baseline 工具严格 tier0+1（10 个）、激活 table-skill 后 +19 个、`find_skill` / `activate_skill` / `deactivate_skill` 走通回调、触发器命中 "帮我创建一个字段" 等典型句、不误伤 "你好"/"今天星期几"、`toolsByName` 无 orphan、`toArkToolFormat` 输出结构正确
+  - CLAUDE.md Architecture Notes 新增 Tier 2 skills 说明（分层/激活/驱逐/目录）
+
+**本地 smoke 验证**:
+- `npx tsx backend/src/scripts/phase3-skills-smoke.ts` → `baseline tools=10, +table-skill=29, total registered=29, skills=1` ✅
+- 现有 Phase 2 smoke (`phase2-memory-smoke.ts`) 仍然跑通，未破坏任何记忆链路
+- `tsc --noEmit` 在 `chatAgentService` / `skills/` / `skillRouterTools` / 新脚本上零新增错误；dbStore / aiService / designRoutes / fieldSuggestService 的历史告警未动
+
 ### feat(phase2): Agent 记忆召回 — read_memory / recall_memory / 自动召回 / working→episodic 压缩
 
 **分支**: `phase2/memory-recall` · **commits**: `c3285f8`, `5fe53d9`, `7209c1d`, `55aa8dd`

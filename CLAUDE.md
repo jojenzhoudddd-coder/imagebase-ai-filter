@@ -50,15 +50,21 @@ backend/
       eventBus.ts           - Event bus for real-time sync (table-level + document-level)
       filterEngine.ts       - Client-side filter evaluation
     schemas/            - Shared Zod schemas (REST + MCP single source of truth)
-    scripts/            - Dev helpers (phase1-meta-smoke.ts, phase1-registry-check.ts, phase2-memory-smoke.ts)
+    scripts/            - Dev helpers (phase1-meta-smoke.ts, phase1-registry-check.ts, phase2-memory-smoke.ts, phase3-skills-smoke.ts)
   mcp-server/
     src/tools/
-      metaTools.ts    - Tier 0 identity: update_profile / update_soul / create_memory (write-only)
-      memoryTools.ts  - Tier 0 memory (Phase 2): read_memory (list/load) + recall_memory (keyword+tag+recency ranked)
-      tableTools.ts   - Table CRUD tools
-      fieldTools.ts   - Field CRUD tools
-      recordTools.ts  - Record CRUD tools
-      viewTools.ts    - View CRUD tools
+      metaTools.ts        - Tier 0 identity: update_profile / update_soul / create_memory (write-only)
+      memoryTools.ts      - Tier 0 memory (Phase 2): read_memory (list/load) + recall_memory (keyword+tag+recency ranked)
+      skillRouterTools.ts - Tier 0 skill routing (Phase 3): find_skill / activate_skill / deactivate_skill
+      tableTools.ts       - Table CRUD tools (list/get are Tier 1; write ops live in table-skill)
+      fieldTools.ts       - Field CRUD tools (bundled into table-skill)
+      recordTools.ts      - Record CRUD tools (bundled into table-skill)
+      viewTools.ts        - View CRUD tools (bundled into table-skill)
+      index.ts            - Tier partitioning: tier0Tools / tier1Tools / resolveActiveTools(activeSkillNames)
+    src/skills/
+      types.ts         - SkillDefinition (name / when / triggers / tools)
+      tableSkill.ts    - Bundles field + record + view + table-write tools; triggers on 创建/删除/修改字段等
+      index.ts         - allSkills / skillsByName registries
 frontend/
   src/
     App.tsx           - Main app, multi-table state management, field order lifting
@@ -91,7 +97,8 @@ frontend/
 - **Chat Agent identity (Phase 1)**: every user owns at least one `Agent` row (default seeded as `agent_default` / name "Claw"). Identity files live on the filesystem at `~/.imagebase/agents/<agentId>/` (`soul.md`, `profile.md`, `config.json`, plus `memory/`, `skills/`, `mcp-servers/`, `plugins/`, `state/`). The DB only stores metadata. Override the root with `AGENT_HOME` env var for tests.
 - **Three-layer System Prompt**: chatAgentService composes `META` (hardcoded meta-behavior rules, immutable) → `Identity` (live soul.md + profile.md) → `Tier 1 Core MCP` (tool guidance) → `Turn Context` (workspace schema snapshot + auto-recalled memories). Agent self-edits via three Tier 0 meta-tools: `update_profile`, `update_soul`, `create_memory`.
 - **Agent memory (Phase 2)**: two Tier 0 read tools complement the Phase 1 write tool. `read_memory` lists recent episodic memories (newest first) or loads one by filename. `recall_memory` ranks by `3·keyword + 2·tag + 1·recency` (half-life ≈ 10 days) and returns top-K. Every chat turn auto-runs `recallMemories(userMessage, limit=3)` and injects hits into Layer 3 Turn Context, so Agent sees relevant history without having to explicitly call. Completed turns are appended to `memory/working.jsonl`; once 10 turns accumulate, the next turn fires a deterministic compression that folds them into one episodic `.md` (tagged `working-memory-compaction`) and truncates the working log. Compression runs fire-and-forget so the user's `done` event isn't delayed.
-- **ToolContext** (`backend/mcp-server/src/tools/index.ts`): tool handlers now accept an optional second arg `{agentId}`. Agent loop injects it so meta-tools know whose filesystem to touch without the model passing it explicitly. Existing data-plane tools ignore it — fully backward compatible.
+- **ToolContext** (`backend/mcp-server/src/tools/index.ts`): tool handlers accept an optional second arg. Phase 1 used `{agentId}`; Phase 3 extends it to `{agentId, activeSkills, onActivateSkill, onDeactivateSkill}`. The agent loop injects it so meta-tools know whose filesystem to touch and skill-router tools can mutate activation state. Data-plane tools ignore everything they don't need — fully backward compatible.
+- **Tier 2 skills (Phase 3)**: Tools are now partitioned into four tiers (plan in `docs/chatbot-openclaw-plan.md` §4). Tier 0 = identity + memory + skill routing (always on, ~8 tools). Tier 1 = `list_tables` + `get_table` (workspace nav, always on). Tier 2 = opt-in skills registered as `SkillDefinition` objects under `mcp-server/src/skills/`. Today that's just `table-skill` (field/record/view/table-write = 19 tools). Per-conversation `skillStateByConv` in chatAgentService tracks active skills + `lastUsedTurn`; the chat loop calls `resolveActiveTools([...active])` every round so the model only sees the tools it needs. Activation happens two ways: (a) auto-match against `skill.triggers` before the first ARK call, (b) explicit `activate_skill` by the model. Skills idle for 10 turns are evicted end-of-turn. The system prompt now includes a compact skill catalog (name / when / tool count, ✅ for already-active) between Layer 2 and Tool Guidance so the model can discover bundles without a `find_skill` round trip.
 
 ## Deployment
 ```bash
