@@ -191,6 +191,39 @@ const META_SYSTEM_PROMPT = `# Layer 1 · Meta（OpenClaw Agent 元规则）
 // Table Agent-specific operational knowledge. Until the table-skill lands in
 // Phase 3 this stays in the prompt; it lives below the Identity block so the
 // model treats it as "current tool guidance" rather than identity.
+// ─── Phase 3 Day 3 · Skill catalog block for system prompt ──────────────
+//
+// Tier 2 skills are hidden behind `activate_skill` by default, so without
+// some form of advertisement the model has no way to know they exist. We
+// render a compact catalog (name + when + tool count + active flag) and
+// inject it just after the tool-guidance block so Seed can spot the right
+// bundle without having to call `find_skill` first.
+//
+// Keep this tight: each skill is one line. Heavy per-tool detail stays in
+// the tools themselves once they're activated.
+function buildSkillCatalog(activeSkillNames: string[]): string {
+  if (!allSkills.length) return "";
+  const activeSet = new Set(activeSkillNames);
+  const lines: string[] = [
+    "# Tier 2 · 可激活技能目录（Skill Catalog）",
+    "默认只有 Tier 0（记忆 / 身份 / skill 路由）和 Tier 1（list_tables / get_table）工具。",
+    "当用户的需求落在以下场景时，先调 activate_skill({name}) 把对应技能挂进来，下一轮就能调用里面的工具。",
+    "已 active 的技能会标记为 ✅；无需重复激活。",
+    "",
+  ];
+  for (const s of allSkills) {
+    const flag = activeSet.has(s.name) ? "✅ " : "";
+    lines.push(
+      `- ${flag}**${s.name}** (${s.displayName}, ${s.tools.length} 个工具) — ${s.when}`
+    );
+  }
+  lines.push("");
+  lines.push(
+    "触发匹配时我们会自动替你激活（如用户说「创建字段」「删除记录」「加视图」），你只需关心业务逻辑。找不到对应能力时先 find_skill 看完整目录。"
+  );
+  return lines.join("\n");
+}
+
 const TOOL_GUIDANCE_ZH = `# 当前工具使用指南（Tier 1 Core MCP）
 - 需要了解现状时先调 list_tables / get_table / list_fields / query_records
 - 批量操作优先使用 batch_ 系列（减少轮次）
@@ -317,25 +350,29 @@ async function assembleInput(
   conversationId: string,
   workspaceId: string,
   agentId: string,
-  newUserMessage: string
+  newUserMessage: string,
+  activeSkillNames: string[] = []
 ): Promise<ArkInputItem[]> {
   const [identity, snapshot, recalled] = await Promise.all([
     buildIdentityLayer(agentId),
     buildWorkspaceSnapshot(workspaceId),
     buildRecalledMemoriesSection(agentId, newUserMessage),
   ]);
-  // Layer 1 + Layer 2 + Tool Guidance + Layer 3. Layer 1 is hardcoded at the
-  // very top so no amount of identity mutation can override meta behavior.
-  // Layer 3 Turn Context stacks workspace snapshot + auto-recalled memories
-  // (Phase 2 Day 3); if either is empty we skip it to keep the prompt tight.
+  // Layer 1 + Layer 2 + Skill Catalog + Tool Guidance + Layer 3. Layer 1 is
+  // hardcoded at the very top so no amount of identity mutation can override
+  // meta behavior. The skill catalog sits between identity and tool guidance
+  // so the model reads "who am I → what bundles can I pull in → how do I use
+  // the ones already loaded" in order. Layer 3 Turn Context stacks workspace
+  // snapshot + auto-recalled memories (Phase 2 Day 3); we skip empty pieces
+  // to keep the prompt tight.
   const layer3Parts = [snapshot];
   if (recalled) layer3Parts.push(recalled);
-  const systemText = [
-    META_SYSTEM_PROMPT,
-    identity,
-    TOOL_GUIDANCE_ZH,
-    `# Layer 3 · Turn Context\n${layer3Parts.join("\n\n")}`,
-  ].join("\n\n");
+  const skillCatalog = buildSkillCatalog(activeSkillNames);
+  const systemParts = [META_SYSTEM_PROMPT, identity];
+  if (skillCatalog) systemParts.push(skillCatalog);
+  systemParts.push(TOOL_GUIDANCE_ZH);
+  systemParts.push(`# Layer 3 · Turn Context\n${layer3Parts.join("\n\n")}`);
+  const systemText = systemParts.join("\n\n");
 
   const history = await convStore.getMessages(conversationId);
   // Sliding window: last 20 messages (plan Phase 3.2)
@@ -674,8 +711,16 @@ export async function* runAgent(
     },
   };
 
-  // Running copy of ARK input — appended as tool calls happen.
-  const input = await assembleInput(conversationId, workspaceId, agentId, userMessage);
+  // Running copy of ARK input — appended as tool calls happen. Pass the
+  // currently-active skills so the system prompt's skill catalog can mark
+  // them as ✅ already-loaded (prevents the model from re-activating).
+  const input = await assembleInput(
+    conversationId,
+    workspaceId,
+    agentId,
+    userMessage,
+    [...skillState.active]
+  );
 
   let accumulatedText = "";
   let accumulatedThinking = "";
