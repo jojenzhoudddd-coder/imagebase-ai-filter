@@ -37,7 +37,10 @@ export interface Message {
 
 export interface Conversation {
   id: string;
-  documentId: string;
+  workspaceId: string;
+  /** Owning Agent. Nullable on legacy rows; runtime falls back to the
+   * default agent when unset. */
+  agentId: string | null;
   title: string;
   summary?: string;
   messageCount: number;
@@ -55,7 +58,8 @@ const prisma = new PrismaClient({ adapter });
 
 function toConversation(row: {
   id: string;
-  documentId: string;
+  workspaceId: string;
+  agentId?: string | null;
   title: string;
   summary: string | null;
   messageCount: number;
@@ -64,7 +68,8 @@ function toConversation(row: {
 }): Conversation {
   return {
     id: row.id,
-    documentId: row.documentId,
+    workspaceId: row.workspaceId,
+    agentId: row.agentId ?? null,
     title: row.title,
     summary: row.summary ?? undefined,
     messageCount: row.messageCount,
@@ -97,21 +102,23 @@ function toMessage(row: {
 
 // ─── Public API ──────────────────────────────────────────────────────────
 
-export async function listConversations(documentId: string): Promise<Conversation[]> {
+export async function listConversations(workspaceId: string): Promise<Conversation[]> {
   const rows = await prisma.conversation.findMany({
-    where: { documentId },
+    where: { workspaceId },
     orderBy: { updatedAt: "desc" },
   });
   return rows.map(toConversation);
 }
 
 export async function createConversation(
-  documentId: string,
-  title?: string
+  workspaceId: string,
+  title?: string,
+  agentId?: string | null
 ): Promise<Conversation> {
   const row = await prisma.conversation.create({
     data: {
-      documentId,
+      workspaceId,
+      agentId: agentId ?? null,
       title: title || "新对话",
     },
   });

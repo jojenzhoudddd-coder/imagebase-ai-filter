@@ -285,3 +285,65 @@ reorderTables(updates, documentId)
 - Document IDs: `doc_` + static (currently `doc_default`)
 - Client IDs: UUID v4 (frontend-generated per tab)
 - Option IDs: `opt_` + random 4 chars (AI-generated for select fields)
+- Agent IDs: `cuid()` (Prisma-generated); default seed uses fixed `agent_default`
+- Conversation IDs: `cuid()` (Prisma-generated); `conv_` prefix when exposed over SSE
+- Message IDs: `msg_` + UUID v4 when surfaced via SSE events
+
+## Phase 1 · Agent Identity Endpoints
+
+The Chat Agent's identity lives on the filesystem at `~/.imagebase/agents/<agentId>/`
+but is accessed through this REST surface. Override the root with the
+`AGENT_HOME` env var (used by tests).
+
+```
+GET    /api/agents                       — list agents for default user
+POST   /api/agents                       — create agent { name?, avatarUrl? }
+GET    /api/agents/:agentId              — agent metadata
+PUT    /api/agents/:agentId              — { name?, avatarUrl? }
+DELETE /api/agents/:agentId              — remove DB row (filesystem preserved!)
+
+GET    /api/agents/:agentId/identity         — { soul, profile, config } bundle
+PUT    /api/agents/:agentId/identity/soul    — { content } — replaces soul.md
+PUT    /api/agents/:agentId/identity/profile — { content } — replaces profile.md
+PUT    /api/agents/:agentId/identity/config  — JSON patch merged into config.json
+```
+
+Conventions specific to identity writes:
+- **Size cap**: 64 KiB per file. Over → `400 { error: "内容超过 64 KiB 上限" }`.
+- **Empty rejection**: soul/profile PUT with empty string or whitespace-only
+  content → `400 { error: "content 不能为空" }`.
+- **Delete semantics**: DELETE `/api/agents/:id` removes the DB row ONLY. The
+  filesystem (identity + memory) is NEVER auto-deleted — irreversible loss
+  avoidance. Operators clean up `~/.imagebase/agents/<id>/` manually if
+  desired.
+- **Fallback**: when a chat conversation has `agentId = NULL` (e.g. after its
+  Agent was deleted), chatAgentService falls back to `agent_default` and the
+  conversation continues.
+
+## Phase 1 · Agent binding on chat conversations
+
+`POST /api/chat/conversations` accepts an optional `agentId` in the body:
+
+```jsonc
+{ "workspaceId": "doc_default", "agentId": "agent_default" }
+```
+
+If omitted, server defaults to `"agent_default"`. The conversation row stores
+`agentId` (nullable FK), and `chatAgentService` threads it into both the
+three-layer system prompt (Layer 2 reads `<agent>/soul.md + profile.md`) and
+into `ToolContext` so meta-tools can edit the right filesystem.
+
+## ToolContext convention (MCP tools)
+
+Tool handler signature is now:
+
+```typescript
+type ToolHandler = (args: any, ctx?: ToolContext) => Promise<string>;
+interface ToolContext { agentId: string; }
+```
+
+Data-plane tools (tableTools / fieldTools / recordTools / viewTools) ignore
+`ctx`. Meta-tools (update_profile / update_soul / create_memory) use
+`resolveAgentId(args.agentId ?? ctx.agentId ?? "agent_default")` so MCP stdio
+callers and ad-hoc tests can still pass `agentId` explicitly; the in-process
+agent loop always injects `ctx.agentId`.

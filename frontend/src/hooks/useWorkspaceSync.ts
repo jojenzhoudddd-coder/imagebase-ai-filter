@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 
-export interface DocumentSyncHandlers {
+export interface WorkspaceSyncHandlers {
   onTableCreate: (table: { id: string; name: string; order: number }) => void;
   onTableDelete: (tableId: string) => void;
   onTableReorder: (updates: Array<{ id: string; order: number }>) => void;
   onTableRename: (tableId: string, name: string) => void;
 }
 
-export function useDocumentSync(
-  documentId: string,
+export function useWorkspaceSync(
+  workspaceId: string,
   clientId: string,
-  handlers: DocumentSyncHandlers,
+  handlers: WorkspaceSyncHandlers,
 ): { connected: boolean } {
   const [connected, setConnected] = useState(false);
   const handlersRef = useRef(handlers);
@@ -20,7 +20,7 @@ export function useDocumentSync(
 
   const doFullSync = useCallback(() => {
     // On reconnect, refetch the table list
-    fetch(`/api/documents/${documentId}/tables`)
+    fetch(`/api/workspaces/${workspaceId}/tables`)
       .then(r => r.json())
       .then((tables: Array<{ id: string; name: string; order: number }>) => {
         // Emit as individual creates — the handler in App.tsx will reconcile
@@ -28,11 +28,11 @@ export function useDocumentSync(
           handlersRef.current.onTableCreate(t);
         }
       })
-      .catch(err => console.warn("[useDocumentSync] full-sync failed:", err));
-  }, [documentId]);
+      .catch(err => console.warn("[useWorkspaceSync] full-sync failed:", err));
+  }, [workspaceId]);
 
   useEffect(() => {
-    const url = `/api/sync/documents/${documentId}/events?clientId=${encodeURIComponent(clientId)}`;
+    const url = `/api/sync/workspaces/${workspaceId}/events?clientId=${encodeURIComponent(clientId)}`;
     const es = new EventSource(url);
 
     es.addEventListener("connected", () => {
@@ -43,7 +43,7 @@ export function useDocumentSync(
       isReconnect.current = true;
     });
 
-    es.addEventListener("document-change", (e) => {
+    es.addEventListener("workspace-change", (e) => {
       try {
         const event = JSON.parse(e.data);
         if (event.clientId === clientId) return;
@@ -66,7 +66,7 @@ export function useDocumentSync(
             break;
         }
       } catch (err) {
-        console.warn("[useDocumentSync] failed to parse event:", err);
+        console.warn("[useWorkspaceSync] failed to parse event:", err);
       }
     });
 
@@ -77,7 +77,7 @@ export function useDocumentSync(
     return () => {
       es.close();
     };
-  }, [documentId, clientId, doFullSync]);
+  }, [workspaceId, clientId, doFullSync]);
 
   return { connected };
 }

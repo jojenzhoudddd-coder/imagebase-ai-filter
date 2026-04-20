@@ -1,15 +1,15 @@
 /**
- * Suggestion Service — scheduled task that, for each known document,
+ * Suggestion Service — scheduled task that, for each known workspace,
  * generates 3-5 context-aware prompt suggestions the Chat Sidebar shows on
  * its welcome page. Without this the welcome page shows three hard-coded
  * chips ("答一个问题" / "帮我新建表" / "总结我的数据") that ignore what's
- * actually in the document.
+ * actually in the workspace.
  *
  * Flow:
- *   1. `refreshSuggestions(documentId)` — builds a thin document snapshot
+ *   1. `refreshSuggestions(workspaceId)` — builds a thin workspace snapshot
  *      (table names + field names) and asks ARK to produce 3-5 JSON items
  *      like `{ label, prompt }`. Results are cached in memory.
- *   2. `getSuggestions(documentId)` — synchronously returns cached data.
+ *   2. `getSuggestions(workspaceId)` — synchronously returns cached data.
  *      Returns `null` on cache miss; the route handler then kicks off a
  *      `refreshSuggestions` in the background and returns the default pack
  *      so the UI always has something to show.
@@ -52,13 +52,13 @@ const inflight = new Map<string, Promise<Suggestion[]>>();
 /** Stable, low-entropy summary of what tables/fields exist in the document.
  * Used both as model input AND as the cache signature — identical signature
  * means re-running would waste tokens. */
-async function buildDocumentOutline(documentId: string): Promise<{ outline: string; signature: string }> {
+async function buildWorkspaceOutline(workspaceId: string): Promise<{ outline: string; signature: string }> {
   try {
-    const tables = await store.listTablesForDocument(documentId);
+    const tables = await store.listTablesForWorkspace(workspaceId);
     if (!tables || tables.length === 0) {
       return {
-        outline: `文档 ${documentId} 目前没有任何数据表。`,
-        signature: `empty:${documentId}`,
+        outline: `文档 ${workspaceId} 目前没有任何数据表。`,
+        signature: `empty:${workspaceId}`,
       };
     }
     const lines: string[] = [];
@@ -77,7 +77,7 @@ async function buildDocumentOutline(documentId: string): Promise<{ outline: stri
   } catch (err) {
     return {
       outline: `(文档读取失败: ${err instanceof Error ? err.message : String(err)})`,
-      signature: `error:${documentId}:${Date.now()}`,
+      signature: `error:${workspaceId}:${Date.now()}`,
     };
   }
 }
@@ -186,59 +186,59 @@ function parseSuggestions(raw: string): Suggestion[] {
 }
 
 /** Synchronously read from cache. Returns null if never refreshed. */
-export function getSuggestions(documentId: string): CacheEntry | null {
-  return cache.get(documentId) ?? null;
+export function getSuggestions(workspaceId: string): CacheEntry | null {
+  return cache.get(workspaceId) ?? null;
 }
 
 /** Force a refresh; deduplicates concurrent calls for the same document. */
-export async function refreshSuggestions(documentId: string): Promise<Suggestion[]> {
-  const existing = inflight.get(documentId);
+export async function refreshSuggestions(workspaceId: string): Promise<Suggestion[]> {
+  const existing = inflight.get(workspaceId);
   if (existing) return existing;
 
   const p = (async () => {
-    const { outline, signature } = await buildDocumentOutline(documentId);
+    const { outline, signature } = await buildWorkspaceOutline(workspaceId);
     // Skip if signature unchanged — saves tokens when the doc didn't shift
-    const cached = cache.get(documentId);
+    const cached = cache.get(workspaceId);
     if (cached && cached.signature === signature) {
       return cached.suggestions;
     }
     try {
       const suggestions = await callArkForSuggestions(outline);
-      cache.set(documentId, {
+      cache.set(workspaceId, {
         suggestions,
         updatedAt: Date.now(),
         signature,
       });
-      console.log(`[suggestionService] refreshed ${documentId}: ${suggestions.length} items`);
+      console.log(`[suggestionService] refreshed ${workspaceId}: ${suggestions.length} items`);
       return suggestions;
     } catch (err) {
-      console.warn(`[suggestionService] refresh failed for ${documentId}:`, err instanceof Error ? err.message : err);
+      console.warn(`[suggestionService] refresh failed for ${workspaceId}:`, err instanceof Error ? err.message : err);
       // Keep previous cache on failure; expose defaults only if we have nothing
       if (!cached) {
-        cache.set(documentId, {
+        cache.set(workspaceId, {
           suggestions: DEFAULT_SUGGESTIONS,
           updatedAt: Date.now(),
           signature: `default:${signature}`,
         });
       }
-      return cache.get(documentId)!.suggestions;
+      return cache.get(workspaceId)!.suggestions;
     }
   })();
 
-  inflight.set(documentId, p);
+  inflight.set(workspaceId, p);
   try {
     return await p;
   } finally {
-    inflight.delete(documentId);
+    inflight.delete(workspaceId);
   }
 }
 
 /** Called on server startup. Runs once now, then every 10 minutes. */
-export function startSuggestionScheduler(seedDocumentIds: string[] = ["doc_default"]) {
+export function startSuggestionScheduler(seedWorkspaceIds: string[] = ["doc_default"]) {
   const tick = async () => {
-    for (const docId of seedDocumentIds) {
+    for (const wsId of seedWorkspaceIds) {
       try {
-        await refreshSuggestions(docId);
+        await refreshSuggestions(wsId);
       } catch {
         // refreshSuggestions already logs; swallow so setInterval stays alive
       }

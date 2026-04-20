@@ -126,46 +126,46 @@ export async function updateViewFilter(
   return res.json();
 }
 
-export async function fetchDocument(
-  docId: string
+export async function fetchWorkspace(
+  workspaceId: string
 ): Promise<{ id: string; name: string }> {
-  const res = await fetch(`${BASE}/documents/${docId}`);
-  if (!res.ok) throw new Error("Failed to fetch document");
+  const res = await fetch(`${BASE}/workspaces/${workspaceId}`);
+  if (!res.ok) throw new Error("Failed to fetch workspace");
   return res.json();
 }
 
-export async function renameDocument(
-  docId: string,
+export async function renameWorkspace(
+  workspaceId: string,
   name: string
 ): Promise<{ id: string; name: string }> {
-  const res = await mutationFetch(`${BASE}/documents/${docId}`, {
+  const res = await mutationFetch(`${BASE}/workspaces/${workspaceId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).error || "Failed to rename document");
+    throw new Error((err as any).error || "Failed to rename workspace");
   }
   return res.json();
 }
 
-export async function fetchDocumentTables(
-  docId: string
+export async function fetchWorkspaceTables(
+  workspaceId: string
 ): Promise<Array<{ id: string; name: string; order: number }>> {
-  const res = await fetch(`${BASE}/documents/${docId}/tables`);
+  const res = await fetch(`${BASE}/workspaces/${workspaceId}/tables`);
   return res.json();
 }
 
 export async function createTable(
   name: string,
-  documentId: string,
+  workspaceId: string,
   language: "en" | "zh"
 ): Promise<{ id: string; name: string; order: number }> {
   const res = await mutationFetch(`${BASE}/tables`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, documentId, language }),
+    body: JSON.stringify({ name, workspaceId, language }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -176,12 +176,12 @@ export async function createTable(
 
 export async function reorderTables(
   updates: Array<{ id: string; order: number }>,
-  documentId: string
+  workspaceId: string
 ): Promise<void> {
   const res = await mutationFetch(`${BASE}/tables/reorder`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ updates, documentId }),
+    body: JSON.stringify({ updates, workspaceId }),
   });
   if (!res.ok) throw new Error("Failed to reorder tables");
 }
@@ -319,7 +319,7 @@ export async function batchCreateRecords(
   return res.json();
 }
 
-// ─── Document Tree (folders + designs) ───
+// ─── Workspace Tree (folders + designs) ───
 
 export interface FolderBrief {
   id: string;
@@ -334,11 +334,11 @@ export interface TreeData {
   designs: DesignBrief[];
 }
 
-export async function fetchDocumentTree(docId: string): Promise<TreeData> {
-  const res = await fetch(`${BASE}/documents/${docId}/tree`);
+export async function fetchWorkspaceTree(workspaceId: string): Promise<TreeData> {
+  const res = await fetch(`${BASE}/workspaces/${workspaceId}/tree`);
   if (!res.ok) {
     // Fallback: return tables-only if endpoint doesn't exist yet
-    const tables = await fetchDocumentTables(docId);
+    const tables = await fetchWorkspaceTables(workspaceId);
     return { tables: tables.map(t => ({ ...t, parentId: null })), folders: [], designs: [] };
   }
   return res.json();
@@ -346,13 +346,13 @@ export async function fetchDocumentTree(docId: string): Promise<TreeData> {
 
 export async function createFolder(
   name: string,
-  documentId: string,
+  workspaceId: string,
   parentId?: string | null
 ): Promise<FolderBrief> {
   const res = await mutationFetch(`${BASE}/folders`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, documentId, parentId: parentId || null }),
+    body: JSON.stringify({ name, workspaceId, parentId: parentId || null }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -391,24 +391,24 @@ export async function moveItem(
 
 export async function reorderFolders(
   updates: Array<{ id: string; order: number }>,
-  documentId: string
+  workspaceId: string
 ): Promise<void> {
   const res = await mutationFetch(`${BASE}/folders/reorder`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ updates, documentId }),
+    body: JSON.stringify({ updates, workspaceId }),
   });
   if (!res.ok) throw new Error("Failed to reorder folders");
 }
 
 export async function reorderDesigns(
   updates: Array<{ id: string; order: number }>,
-  documentId: string
+  workspaceId: string
 ): Promise<void> {
   const res = await mutationFetch(`${BASE}/designs/reorder`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ updates, documentId }),
+    body: JSON.stringify({ updates, workspaceId }),
   });
   if (!res.ok) throw new Error("Failed to reorder designs");
 }
@@ -450,13 +450,13 @@ export interface DesignDetail extends DesignBrief {
 export async function createDesign(
   name: string,
   figmaUrl: string,
-  documentId: string,
+  workspaceId: string,
   parentId?: string | null
 ): Promise<DesignDetail> {
   const res = await mutationFetch(`${BASE}/designs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, figmaUrl, documentId, parentId: parentId || null }),
+    body: JSON.stringify({ name, figmaUrl, workspaceId, parentId: parentId || null }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -744,7 +744,7 @@ export interface ChatMessage {
 
 export interface ChatConversation {
   id: string;
-  documentId: string;
+  workspaceId: string;
   title: string;
   summary?: string;
   messageCount: number;
@@ -752,14 +752,14 @@ export interface ChatConversation {
   updatedAt: number;
 }
 
-export async function listConversations(documentId: string): Promise<ChatConversation[]> {
-  const res = await fetch(`${BASE}/chat/conversations?documentId=${encodeURIComponent(documentId)}`);
+export async function listConversations(workspaceId: string): Promise<ChatConversation[]> {
+  const res = await fetch(`${BASE}/chat/conversations?workspaceId=${encodeURIComponent(workspaceId)}`);
   if (!res.ok) throw new Error("Failed to list conversations");
   return res.json();
 }
 
 export interface ChatContextSnapshot {
-  documentId: string;
+  workspaceId: string;
   tableCount: number;
   fieldCount: number;
   recordCount: number;
@@ -767,10 +767,10 @@ export interface ChatContextSnapshot {
 
 /** Warm-up endpoint used by the chat sidebar's refresh / new-conversation
  * flow to show "已加载 N 张表、M 个字段" as an affordance before the user's
- * first prompt. The Agent still rebuilds its own Document Snapshot on each
+ * first prompt. The Agent still rebuilds its own Workspace Snapshot on each
  * request — this is purely a UX hint. */
-export async function fetchChatContextSnapshot(documentId: string): Promise<ChatContextSnapshot> {
-  const res = await fetch(`${BASE}/chat/context-snapshot?documentId=${encodeURIComponent(documentId)}`);
+export async function fetchChatContextSnapshot(workspaceId: string): Promise<ChatContextSnapshot> {
+  const res = await fetch(`${BASE}/chat/context-snapshot?workspaceId=${encodeURIComponent(workspaceId)}`);
   if (!res.ok) throw new Error("Failed to fetch context snapshot");
   return res.json();
 }
@@ -781,7 +781,7 @@ export interface ChatSuggestion {
 }
 
 export interface ChatSuggestionResponse {
-  documentId: string;
+  workspaceId: string;
   suggestions: ChatSuggestion[];
   updatedAt: number;
   stale: boolean;
@@ -790,17 +790,20 @@ export interface ChatSuggestionResponse {
 /** Fetch AI-generated prompt suggestions for the chat welcome page.
  * Backend runs a scheduled refresh every 10 min; this call returns the
  * cached pack (stale=false) or a default pack (stale=true) on cache miss. */
-export async function fetchChatSuggestions(documentId: string): Promise<ChatSuggestionResponse> {
-  const res = await fetch(`${BASE}/chat/suggestions?documentId=${encodeURIComponent(documentId)}`);
+export async function fetchChatSuggestions(workspaceId: string): Promise<ChatSuggestionResponse> {
+  const res = await fetch(`${BASE}/chat/suggestions?workspaceId=${encodeURIComponent(workspaceId)}`);
   if (!res.ok) throw new Error("Failed to fetch chat suggestions");
   return res.json();
 }
 
-export async function createConversation(documentId: string): Promise<ChatConversation> {
+export async function createConversation(
+  workspaceId: string,
+  agentId?: string
+): Promise<ChatConversation> {
   const res = await mutationFetch(`${BASE}/chat/conversations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ documentId }),
+    body: JSON.stringify({ workspaceId, ...(agentId ? { agentId } : {}) }),
   });
   if (!res.ok) throw new Error("Failed to create conversation");
   return res.json();
@@ -983,4 +986,113 @@ export async function stopChatTurn(conversationId: string): Promise<void> {
   await mutationFetch(`${BASE}/chat/conversations/${encodeURIComponent(conversationId)}/stop`, {
     method: "POST",
   });
+}
+
+// ─── Agents (Phase 1) ──────────────────────────────────────────────
+// Agent identity lives at ~/.imagebase/agents/<agentId>/ on the server.
+// These wrappers let the UI read/edit soul.md + profile.md + config.json
+// so the user can inspect and tweak what the chat Agent "knows about itself"
+// and "knows about me". See docs/chatbot-openclaw-plan.md Phase 1.
+
+export interface AgentMeta {
+  id: string;
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+  createdAt: string | number | Date;
+  updatedAt: string | number | Date;
+}
+
+export interface AgentConfig {
+  language?: "zh" | "en";
+  timezone?: string;
+  allow_danger_without_confirm?: boolean;
+  tool_allowlist?: string[] | null;
+  tool_denylist?: string[] | null;
+}
+
+export interface AgentIdentity {
+  soul: string;
+  profile: string;
+  config: AgentConfig;
+}
+
+export async function listAgents(): Promise<AgentMeta[]> {
+  const res = await fetch(`${BASE}/agents`);
+  if (!res.ok) throw new Error("Failed to list agents");
+  return res.json();
+}
+
+export async function getAgent(agentId: string): Promise<AgentMeta> {
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}`);
+  if (!res.ok) throw new Error("Failed to load agent");
+  return res.json();
+}
+
+export async function updateAgent(
+  agentId: string,
+  patch: { name?: string; avatarUrl?: string | null }
+): Promise<AgentMeta> {
+  const res = await mutationFetch(`${BASE}/agents/${encodeURIComponent(agentId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error("Failed to update agent");
+  return res.json();
+}
+
+export async function getAgentIdentity(agentId: string): Promise<AgentIdentity> {
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/identity`);
+  if (!res.ok) throw new Error("Failed to load agent identity");
+  return res.json();
+}
+
+export async function putAgentSoul(agentId: string, content: string): Promise<void> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/identity/soul`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    }
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+}
+
+export async function putAgentProfile(agentId: string, content: string): Promise<void> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/identity/profile`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    }
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+}
+
+export async function putAgentConfig(
+  agentId: string,
+  patch: Partial<AgentConfig>
+): Promise<AgentConfig> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/identity/config`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
 }

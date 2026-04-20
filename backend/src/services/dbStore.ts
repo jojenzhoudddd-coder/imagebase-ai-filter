@@ -110,16 +110,16 @@ function toTable(row: { id: string; name: string; fields: unknown; views: unknow
   };
 }
 
-// ─── Document ───
+// ─── Workspace ───
 
-export async function getDocument(id: string): Promise<{ id: string; name: string } | null> {
-  const row = await prisma.document.findUnique({ where: { id } });
+export async function getWorkspace(id: string): Promise<{ id: string; name: string } | null> {
+  const row = await prisma.workspace.findUnique({ where: { id } });
   if (!row) return null;
   return { id: row.id, name: row.name };
 }
 
-export async function updateDocument(id: string, dto: { name?: string }): Promise<{ id: string; name: string } | null> {
-  const row = await prisma.document.findUnique({ where: { id } });
+export async function updateWorkspace(id: string, dto: { name?: string }): Promise<{ id: string; name: string } | null> {
+  const row = await prisma.workspace.findUnique({ where: { id } });
   if (!row) return null;
 
   const data: Record<string, any> = {};
@@ -130,7 +130,7 @@ export async function updateDocument(id: string, dto: { name?: string }): Promis
   }
   if (Object.keys(data).length === 0) return null;
 
-  const updated = await prisma.document.update({ where: { id }, data });
+  const updated = await prisma.workspace.update({ where: { id }, data });
   return { id: updated.id, name: updated.name };
 }
 
@@ -154,12 +154,12 @@ export async function getTable(id: string): Promise<Table | undefined> {
 }
 
 export async function createTable(dto: CreateTableDTO): Promise<Table & { order: number }> {
-  const docId = dto.documentId || DEFAULT_DOCUMENT_ID;
+  const wsId = dto.workspaceId || DEFAULT_WORKSPACE_ID;
   const fieldName = dto.language === "en" ? "Text" : "文本";
 
   // Compute next order
   const maxOrder = await prisma.table.aggregate({
-    where: { documentId: docId },
+    where: { workspaceId: wsId },
     _max: { order: true },
   });
   const nextOrder = (maxOrder._max.order ?? -1) + 1;
@@ -187,7 +187,7 @@ export async function createTable(dto: CreateTableDTO): Promise<Table & { order:
   const row = await prisma.table.create({
     data: {
       name: sanitizeName(dto.name),
-      documentId: docId,
+      workspaceId: wsId,
       order: nextOrder,
       fields: [defaultField] as any,
       views: [defaultView] as any,
@@ -317,14 +317,14 @@ export async function updateTable(id: string, dto: { name?: string }): Promise<T
 
 // ─── Table helpers (multi-table) ───
 
-export async function getTableDocumentId(tableId: string): Promise<string | null> {
-  const row = await prisma.table.findUnique({ where: { id: tableId }, select: { documentId: true } });
-  return row?.documentId ?? null;
+export async function getTableWorkspaceId(tableId: string): Promise<string | null> {
+  const row = await prisma.table.findUnique({ where: { id: tableId }, select: { workspaceId: true } });
+  return row?.workspaceId ?? null;
 }
 
-export async function listTablesForDocument(documentId: string): Promise<Array<{ id: string; name: string; order: number }>> {
+export async function listTablesForWorkspace(workspaceId: string): Promise<Array<{ id: string; name: string; order: number }>> {
   const rows = await prisma.table.findMany({
-    where: { documentId },
+    where: { workspaceId },
     orderBy: { order: "asc" },
     select: { id: true, name: true, order: true },
   });
@@ -338,9 +338,9 @@ export async function batchReorderTables(updates: Array<{ id: string; order: num
   return true;
 }
 
-export async function generateTableName(documentId: string, baseName: string): Promise<string> {
+export async function generateTableName(workspaceId: string, baseName: string): Promise<string> {
   const existing = await prisma.table.findMany({
-    where: { documentId },
+    where: { workspaceId },
     select: { name: true },
   });
   const names = new Set(existing.map(t => t.name));
@@ -906,7 +906,7 @@ export async function loadTable(table: Table): Promise<void> {
     },
     create: {
       id: table.id,
-      documentId: DEFAULT_DOCUMENT_ID,
+      workspaceId: DEFAULT_WORKSPACE_ID,
       name: table.name,
       fields: table.fields as any,
       views: table.views as any,
@@ -934,21 +934,22 @@ export async function loadTable(table: Table): Promise<void> {
 export async function clearAll(): Promise<void> {
   await prisma.record.deleteMany();
   await prisma.table.deleteMany();
-  await prisma.document.deleteMany();
-  await prisma.workspaceMember.deleteMany();
   await prisma.workspace.deleteMany();
+  await prisma.orgMember.deleteMany();
+  await prisma.org.deleteMany();
   await prisma.user.deleteMany();
 }
 
 // ─── Default scaffold ───
 
 const DEFAULT_USER_ID = "user_default";
-const DEFAULT_WORKSPACE_ID = "ws_default";
-const DEFAULT_DOCUMENT_ID = "doc_default";
+const DEFAULT_ORG_ID = "org_default";
+// Note: 保留 ID 字面值 "doc_default" 以兼容历史数据库记录。
+const DEFAULT_WORKSPACE_ID = "doc_default";
 
 let defaultsEnsured = false;
 
-async function ensureDefaults(): Promise<void> {
+export async function ensureDefaults(): Promise<void> {
   if (defaultsEnsured) return;
 
   await prisma.user.upsert({
@@ -957,26 +958,26 @@ async function ensureDefaults(): Promise<void> {
     create: { id: DEFAULT_USER_ID, email: "default@local", name: "Default User" },
   });
 
+  await prisma.org.upsert({
+    where: { id: DEFAULT_ORG_ID },
+    update: {},
+    create: { id: DEFAULT_ORG_ID, name: "Default Org" },
+  });
+
+  await prisma.orgMember.upsert({
+    where: { orgId_userId: { orgId: DEFAULT_ORG_ID, userId: DEFAULT_USER_ID } },
+    update: {},
+    create: { orgId: DEFAULT_ORG_ID, userId: DEFAULT_USER_ID, role: "owner" },
+  });
+
   await prisma.workspace.upsert({
     where: { id: DEFAULT_WORKSPACE_ID },
     update: {},
-    create: { id: DEFAULT_WORKSPACE_ID, name: "Default Workspace" },
-  });
-
-  await prisma.workspaceMember.upsert({
-    where: { workspaceId_userId: { workspaceId: DEFAULT_WORKSPACE_ID, userId: DEFAULT_USER_ID } },
-    update: {},
-    create: { workspaceId: DEFAULT_WORKSPACE_ID, userId: DEFAULT_USER_ID, role: "owner" },
-  });
-
-  await prisma.document.upsert({
-    where: { id: DEFAULT_DOCUMENT_ID },
-    update: {},
     create: {
-      id: DEFAULT_DOCUMENT_ID,
-      workspaceId: DEFAULT_WORKSPACE_ID,
+      id: DEFAULT_WORKSPACE_ID,
+      orgId: DEFAULT_ORG_ID,
       createdById: DEFAULT_USER_ID,
-      name: "Default Document",
+      name: "Default Workspace",
     },
   });
 

@@ -192,6 +192,32 @@
   border-radius: 50%;
 }
 
+/* Phase 4 Day 3 — unread badge on the Agent sparkle button.
+ * Small red dot with a count; uses the system alert-red and sits in the
+ * top-right corner of the icon. `position: relative` on the button is
+ * inherited from `.topbar-icon-btn`. */
+.topbar-agent-btn {
+  position: relative;
+}
+.topbar-agent-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: #F54A45;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  border: 1.5px solid #fff;
+  pointer-events: none;
+}
+
 .topbar-avatar {
   width: 32px;
   height: 32px;

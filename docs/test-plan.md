@@ -430,6 +430,45 @@
 
 ---
 
+## 18. Agent Identity（Phase 1 · OpenClaw-style）
+
+### P0 — 功能可用性
+
+| ID | 用例 | 预期结果 |
+|----|------|----------|
+| AI-01 | 首次启动后端 | console 打印 seed 信息；`~/.imagebase/agents/agent_default/` 自动创建，含 soul.md / profile.md / config.json / memory/ 子目录 |
+| AI-02 | `GET /api/agents` | 返回数组，至少包含 `{id: "agent_default", name: "Claw", userId: "user_default"}` |
+| AI-03 | `GET /api/agents/agent_default/identity` | 返回 `{soul, profile, config}` 三字段，soul 和 profile 是非空 markdown 字符串 |
+| AI-04 | `PUT /api/agents/agent_default/identity/profile`（合法内容） | 返回 `{ok: true}`；readback 得到新内容；filesystem 上 profile.md 同步更新 |
+| AI-05 | `PUT /identity/soul`（空字符串 / 全空格） | 400，不写入 filesystem |
+| AI-06 | `PUT /identity/profile`（> 64 KiB） | 400 "内容超过 64 KiB 上限" |
+| AI-07 | ChatSidebar header 不再暴露 Identity 入口 | header 只有 "..." 溢出按钮；没有 IdentityIcon / Modal 可打开（Phase 1 决策：soul/profile 仅通过对话读写） |
+| AI-08 | _(已并入 AI-14 — Agent 自编辑走对话路径)_ | — |
+| AI-09 | _(已并入 AI-14)_ | — |
+| AI-10 | _(删除：无 UI 表单)_ | — |
+| AI-11 | _(删除：无 UI 表单)_ | — |
+| AI-12 | 创建新对话 → 问 "你是谁" | 回复（或 thinking 过程）包含 soul.md 里的关键词（"OpenClaw"、"长期 Agent"、"属于用户" 等之一） |
+| AI-13 | 编辑 profile.md 加入 "我的时区是 GMT+8" 后再对话 | Agent 在对话中能体现这条偏好（如询问时间相关问题时使用 GMT+8） |
+| AI-14 | 对话中请 Agent 记住一件事（如 "记住我偏好中文回复"） | Agent 调用 `update_profile` 或 `create_memory`；回答后端 filesystem 可见新内容 / 新 episodic md |
+| AI-15 | 请 Agent 执行危险操作（如删除表） | Agent 不直接执行；必须先征求用户同意（Layer 1 META 约束） |
+| AI-16 | 新建对话时不传 `agentId` | 后端默认 fallback 到 `agent_default`，对话可正常进行 |
+| AI-17 | DELETE agent 后原对话 | 对话 `agentId` 变 NULL（DB 验证）；仍可继续，走 agent_default fallback |
+
+### P1 — 产品体验
+
+| ID | 用例 | 预期结果 |
+|----|------|----------|
+| AI-18 | _(删除：Phase 1 无 IdentityIcon UI)_ | — |
+| AI-19 | _(删除：Phase 1 无 Modal UI)_ | — |
+| AI-20 | _(删除：Phase 1 无 Modal 专属 i18n 键需显示给用户)_ | — |
+| AI-21 | _(删除：Phase 1 无 Modal)_ | — |
+| AI-22 | _(删除：Phase 1 无 textarea)_ | — |
+| AI-23 | 对话中让 Agent 自改 soul/profile 失败时 | Agent 回复中告知失败原因（如超 64 KiB / 网络断开）；不污染 filesystem；后续对话仍可重试 |
+| AI-24 | `AGENT_HOME` 环境变量 | 指向临时目录时，启动不读 `~/.imagebase/agents`，测试隔离 |
+| AI-25 | `phase1-meta-smoke.ts` | `cd backend && npx tsx src/scripts/phase1-meta-smoke.ts` 输出全部 `{ok: true}`，"empty content rejection" 返回 `{ok: false}` |
+
+---
+
 ## 执行检查清单
 
 - [ ] 所有 P0 用例通过

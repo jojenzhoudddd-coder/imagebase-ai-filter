@@ -340,7 +340,7 @@ export interface GeneratedField {
   config?: Record<string, any>;
 }
 
-export interface CreateTableDTO { name: string; documentId?: string; language?: "en" | "zh"; }
+export interface CreateTableDTO { name: string; workspaceId?: string; language?: "en" | "zh"; }
 export interface CreateFieldDTO { name: string; type: FieldType; config?: FieldConfig; }
 export interface UpdateFieldDTO { name?: string; type?: FieldType; config?: FieldConfig; }
 export interface CreateRecordDTO { cells: Record<string, CellValue>; }

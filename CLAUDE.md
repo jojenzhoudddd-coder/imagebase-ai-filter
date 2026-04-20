@@ -33,17 +33,41 @@ npm run dev
 ```
 backend/
   src/
-    index.ts          - Express server entry, serves static files in production
+    index.ts          - Express server entry; boots ensureDefaults() + ensureDefaultAgent()
     mockData.ts       - Mock table data (fields, records)
     routes/
       tableRoutes.ts  - CRUD APIs for tables/fields/records/views
       aiRoutes.ts     - AI filter generation endpoint (SSE streaming)
       sseRoutes.ts    - Real-time sync SSE endpoints (table-level + document-level)
+      chatRoutes.ts   - /api/chat/conversations + SSE message stream (Table Agent)
+      agentRoutes.ts  - /api/agents + identity (soul/profile/config) + Phase 4 runtime state (inbox list/ack, cron CRUD, heartbeat tail)
     services/
-      aiService.ts    - Volcano ARK API integration, tool definitions, prompt
-      dataStore.ts    - In-memory data store, AI tool functions
-      eventBus.ts     - Event bus for real-time sync (table-level + document-level)
-      filterEngine.ts - Client-side filter evaluation
+      aiService.ts          - Volcano ARK API integration, tool definitions, prompt
+      chatAgentService.ts   - Chat Agent loop; three-layer System Prompt (Meta/Identity/Turn Context)
+      agentService.ts       - Agent filesystem I/O (~/.imagebase/agents/<id>/) + Prisma Agent CRUD + Phase 4 state/ helpers (heartbeat.log, inbox.jsonl, cron.json)
+      runtimeService.ts     - Phase 4 heartbeat loop: ticks every RUNTIME_HEARTBEAT_MS (default 5min), fans out to per-agent onTick handler, appends to state/heartbeat.log
+      cronScheduler.ts      - Phase 4 Day 2 cron parser + evaluator: 5-field + @aliases, Vixie OR day semantics, evaluateCron appends InboxMessage{source:"cron"} and bumps lastFiredAt; CRUD helpers addCronJob/removeCronJob/listCronJobs (validate before write)
+      conversationStore.ts  - Prisma-backed Conversation+Message store (agentId FK)
+      dataStore.ts          - In-memory data store, AI tool functions
+      eventBus.ts           - Event bus for real-time sync (table-level + document-level)
+      filterEngine.ts       - Client-side filter evaluation
+    schemas/            - Shared Zod schemas (REST + MCP single source of truth)
+    scripts/            - Dev helpers (phase1-meta-smoke.ts, phase1-registry-check.ts, phase2-memory-smoke.ts, phase3-skills-smoke.ts, phase4-runtime-smoke.ts)
+  mcp-server/
+    src/tools/
+      metaTools.ts        - Tier 0 identity: update_profile / update_soul / create_memory (write-only)
+      memoryTools.ts      - Tier 0 memory (Phase 2): read_memory (list/load) + recall_memory (keyword+tag+recency ranked)
+      skillRouterTools.ts - Tier 0 skill routing (Phase 3): find_skill / activate_skill / deactivate_skill
+      cronTools.ts        - Tier 0 cron meta-tools (Phase 4 Day 3): schedule_task / list_scheduled_tasks / cancel_task — Agent self-registers recurring work into cron.json, heartbeat fires them
+      tableTools.ts       - Table CRUD tools (list/get are Tier 1; write ops live in table-skill)
+      fieldTools.ts       - Field CRUD tools (bundled into table-skill)
+      recordTools.ts      - Record CRUD tools (bundled into table-skill)
+      viewTools.ts        - View CRUD tools (bundled into table-skill)
+      index.ts            - Tier partitioning: tier0Tools / tier1Tools / resolveActiveTools(activeSkillNames)
+    src/skills/
+      types.ts         - SkillDefinition (name / when / triggers / tools)
+      tableSkill.ts    - Bundles field + record + view + table-write tools; triggers on 创建/删除/修改字段等
+      index.ts         - allSkills / skillsByName registries
 frontend/
   src/
     App.tsx           - Main app, multi-table state management, field order lifting
@@ -56,11 +80,13 @@ frontend/
       zh.ts           - Chinese translations (130+ keys)
       index.ts        - LanguageProvider, useTranslation hook, t() function
     components/
-      FilterPanel/    - AI filter input + manual filter conditions UI
-      TableView/      - Main table grid with drag-reorder, resize, edit
-      Sidebar.tsx     - Sidebar with dynamic table list, drag-reorder, resize, create/delete
-      DropdownMenu.tsx - Generic dropdown menu with section grouping, noop items
-      Toolbar.tsx     - Toolbar with filter button
+      FilterPanel/          - AI filter input + manual filter conditions UI
+      TableView/            - Main table grid with drag-reorder, resize, edit
+      ChatSidebar/          - Right-side drawer for Table Agent; Phase 1 header intentionally has no identity surface (only overflow ... menu)
+      AgentIdentityModal/   - Dormant in Phase 1 (not imported anywhere); preserved for Phase 2+ when a user-facing identity editor may return
+      Sidebar.tsx           - Sidebar with dynamic table list, drag-reorder, resize, create/delete
+      DropdownMenu.tsx      - Generic dropdown menu with section grouping, noop items
+      Toolbar.tsx           - Toolbar with filter button
     services/
       filterEngine.ts - Client-side filter matching
 ```
@@ -71,6 +97,14 @@ frontend/
 - TableView maintains column order in localStorage (`field_order_v1`), lifted to App.tsx via `onFieldOrderChange` callback so FilterPanel dropdown matches table column order.
 - AI filter uses PRD format (`["field", "operator", value]`) internally, converted to/from app's internal filter format.
 - AI service logs all API calls, tool calls, and timing to `backend/logs/` directory with GMT+8 timestamps.
+- **Chat Agent identity (Phase 1)**: every user owns at least one `Agent` row (default seeded as `agent_default` / name "Claw"). Identity files live on the filesystem at `~/.imagebase/agents/<agentId>/` (`soul.md`, `profile.md`, `config.json`, plus `memory/`, `skills/`, `mcp-servers/`, `plugins/`, `state/`). The DB only stores metadata. Override the root with `AGENT_HOME` env var for tests.
+- **Three-layer System Prompt**: chatAgentService composes `META` (hardcoded meta-behavior rules, immutable) → `Identity` (live soul.md + profile.md) → `Tier 1 Core MCP` (tool guidance) → `Turn Context` (workspace schema snapshot + auto-recalled memories). Agent self-edits via three Tier 0 meta-tools: `update_profile`, `update_soul`, `create_memory`.
+- **Agent memory (Phase 2)**: two Tier 0 read tools complement the Phase 1 write tool. `read_memory` lists recent episodic memories (newest first) or loads one by filename. `recall_memory` ranks by `3·keyword + 2·tag + 1·recency` (half-life ≈ 10 days) and returns top-K. Every chat turn auto-runs `recallMemories(userMessage, limit=3)` and injects hits into Layer 3 Turn Context, so Agent sees relevant history without having to explicitly call. Completed turns are appended to `memory/working.jsonl`; once 10 turns accumulate, the next turn fires a deterministic compression that folds them into one episodic `.md` (tagged `working-memory-compaction`) and truncates the working log. Compression runs fire-and-forget so the user's `done` event isn't delayed.
+- **ToolContext** (`backend/mcp-server/src/tools/index.ts`): tool handlers accept an optional second arg. Phase 1 used `{agentId}`; Phase 3 extends it to `{agentId, activeSkills, onActivateSkill, onDeactivateSkill}`. The agent loop injects it so meta-tools know whose filesystem to touch and skill-router tools can mutate activation state. Data-plane tools ignore everything they don't need — fully backward compatible.
+- **Tier 2 skills (Phase 3)**: Tools are now partitioned into four tiers (plan in `docs/chatbot-openclaw-plan.md` §4). Tier 0 = identity + memory + skill routing (always on, ~8 tools). Tier 1 = `list_tables` + `get_table` (workspace nav, always on). Tier 2 = opt-in skills registered as `SkillDefinition` objects under `mcp-server/src/skills/`. Today that's just `table-skill` (field/record/view/table-write = 19 tools). Per-conversation `skillStateByConv` in chatAgentService tracks active skills + `lastUsedTurn`; the chat loop calls `resolveActiveTools([...active])` every round so the model only sees the tools it needs. Activation happens two ways: (a) auto-match against `skill.triggers` before the first ARK call, (b) explicit `activate_skill` by the model. Skills idle for 10 turns are evicted end-of-turn. The system prompt now includes a compact skill catalog (name / when / tool count, ✅ for already-active) between Layer 2 and Tool Guidance so the model can discover bundles without a `find_skill` round trip.
+- **Runtime heartbeat (Phase 4 Day 1)**: `runtimeService.startHeartbeat()` runs an in-process `setInterval` (default 5 min, override via `RUNTIME_HEARTBEAT_MS`; disable via `RUNTIME_DISABLED=1`). Each tick calls `listAllAgents()` and fans out to a per-agent `onTick(ctx)` handler, appending one `HeartbeatLogEntry` to `<agentDir>/state/heartbeat.log` per agent. The loop has per-agent error isolation via try/catch, a re-entrancy guard that skips overlapping ticks, and an `unref()`-ed timer so it doesn't hold the event loop open on its own. `ensureAgentFiles()` also bootstraps `state/heartbeat.log`, `state/inbox.jsonl`, and `state/cron.json` (`{ jobs: [] }`). `index.ts` wires a SIGINT/SIGTERM handler that awaits `stopHeartbeat()` so we don't corrupt heartbeat.log on PM2 reloads.
+- **Cron scheduler (Phase 4 Day 2)**: `cronScheduler.ts` provides a zero-dep cron parser (5-field `minute hour dom month dow` + `@hourly / @daily / @weekly / @monthly / @yearly` aliases, with Vixie-cron day OR semantics when both dom and dow are restricted). `parseCron()` returns `null` on malformed input (never throws), `nextFireAfter(parsed, from)` steps strictly forward up to 2 years. `evaluateCron(agentId, now)` is the heartbeat's workhorse: baseline = `lastFiredAt ?? now-1h` prevents back-firing a brand-new job; each due job fires exactly once per call, appends one `InboxMessage{source:"cron", meta:{cronJobId, schedule, workspaceId?, skills?}}` and bumps `lastFiredAt`. `index.ts` wires `evaluateCron` as the heartbeat's `onTick`, and the entry's `details.cronFired` lists which jobs triggered. CRUD helpers `addCronJob / removeCronJob / listCronJobs` validate the schedule before writing.
+- **Runtime REST + agent cron self-registration (Phase 4 Day 3)**: `agentRoutes.ts` exposes the runtime state surface: `GET /api/agents/:id/inbox[?unread=1&limit=N]` → `{messages, unreadCount}`, `POST /inbox/:msgId/ack` flips unread→read (atomic rewrite via `.tmp + rename`), `GET/POST/DELETE /cron`, `GET /heartbeat?tail=N`. Three Tier 0 MCP tools (`schedule_task`, `list_scheduled_tasks`, `cancel_task` in `cronTools.ts`) let the Agent self-register recurring work — the chat loop now sees these by default. Frontend: `TopBar.tsx` renders a small red badge on the four-pointed-star button; `App.tsx` polls `/api/agents/agent_default/inbox?unread=1&limit=1` every 30s and also refetches on chat open/close transitions. Badge truncates to `9+`.
 
 ## Deployment
 ```bash
@@ -90,6 +124,7 @@ Domain: https://www.imagebase.cc
 - `docs/changelog.md` - 更新日志（所有发布部署记录）
 - `docs/case-study.md` - 项目案例文档（完整开发故事 + PM 协作指南）
 - `docs/chat-sidebar-plan.md` - Chat Sidebar (Table Agent) 技术方案（MCP Server + 流式对话 + 上下文管理）
+- `docs/chatbot-openclaw-plan.md` - OpenClaw-style Agent 架构方案（Agent identity / 多层 Prompt / 记忆体系 / 分阶段落地）
 
 ## Skills（自动加载的专业指令集）
 每个 Skill 在对应场景下会被 Claude Code 自动激活，无需手动引用。

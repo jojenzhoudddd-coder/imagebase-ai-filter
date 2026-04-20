@@ -8,14 +8,19 @@ import aiRoutes from "./routes/aiRoutes.js";
 import sseRoutes from "./routes/sseRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import folderRoutes from "./routes/folderRoutes.js";
+import agentRoutes from "./routes/agentRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
+import tasteRoutes from "./routes/tasteRoutes.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { mockTable } from "./mockData.js";
-import { connectDB, loadTable, getTable, getDocument, updateDocument, listTablesForDocument } from "./services/dbStore.js";
+import { connectDB, loadTable, getTable, getWorkspace, updateWorkspace, listTablesForWorkspace, ensureDefaults } from "./services/dbStore.js";
 import { eventBus } from "./services/eventBus.js";
 import { startSuggestionScheduler } from "./services/suggestionService.js";
+import { ensureDefaultAgent } from "./services/agentService.js";
+import { startHeartbeat, stopHeartbeat } from "./services/runtimeService.js";
+import { evaluateCron } from "./services/cronScheduler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -68,51 +73,60 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/sync", sseRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/folders", folderRoutes);
+app.use("/api/agents", agentRoutes);
+// designRoutes 和 tasteRoutes 都挂在 /api/designs 下：
+//  - designRoutes: 基础 CRUD (POST /, PUT /:designId, DELETE /:designId, PUT /reorder)
+//  - tasteRoutes : /:designId/tastes/* (upload / from-figma / batch-update / 单条 CRUD / source)
+// 路径不冲突，Express 会按 handler 顺序匹配。
 app.use("/api/designs", designRoutes);
+app.use("/api/designs", tasteRoutes);
 
-// ═══════ Document API ═══════
+// Serve uploaded SVG files
+app.use("/uploads", express.static(path.resolve(__dirname, "../../uploads")));
 
-// GET /api/documents/:docId
-app.get("/api/documents/:docId", async (req, res) => {
-  const doc = await getDocument(req.params.docId);
-  if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
-  res.json(doc);
+// ═══════ Workspace API ═══════
+
+// GET /api/workspaces/:workspaceId
+app.get("/api/workspaces/:workspaceId", async (req, res) => {
+  const ws = await getWorkspace(req.params.workspaceId);
+  if (!ws) { res.status(404).json({ error: "Workspace not found" }); return; }
+  res.json(ws);
 });
 
-// PUT /api/documents/:docId — rename document
-app.put("/api/documents/:docId", async (req, res) => {
+// PUT /api/workspaces/:workspaceId — rename workspace
+app.put("/api/workspaces/:workspaceId", async (req, res) => {
   const { name } = req.body;
   if (!name || typeof name !== "string" || !name.trim()) {
-    res.status(400).json({ error: "文档名不能为空" }); return;
+    res.status(400).json({ error: "工作空间名不能为空" }); return;
   }
-  const doc = await updateDocument(req.params.docId, { name: name.trim() });
-  if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+  const ws = await updateWorkspace(req.params.workspaceId, { name: name.trim() });
+  if (!ws) { res.status(404).json({ error: "Workspace not found" }); return; }
   const clientId = (req.headers["x-client-id"] as string) || "unknown";
-  // Broadcast to all tables under this document
+  // Broadcast to all tables under this workspace
   eventBus.emitChange({
-    type: "document:update",
+    type: "workspace:update",
     tableId: "tbl_requirements", // primary table for SSE channel
     clientId,
     timestamp: Date.now(),
-    payload: { documentId: doc.id, name: doc.name },
+    payload: { workspaceId: ws.id, name: ws.name },
   });
-  res.json(doc);
+  res.json(ws);
 });
 
-// GET /api/documents/:docId/tables — list tables in document
-app.get("/api/documents/:docId/tables", async (req, res) => {
-  const tables = await listTablesForDocument(req.params.docId);
+// GET /api/workspaces/:workspaceId/tables — list tables in workspace
+app.get("/api/workspaces/:workspaceId/tables", async (req, res) => {
+  const tables = await listTablesForWorkspace(req.params.workspaceId);
   res.json(tables);
 });
 
-// GET /api/documents/:docId/tree — full tree (folders + tables + designs)
-app.get("/api/documents/:docId/tree", async (req, res) => {
+// GET /api/workspaces/:workspaceId/tree — full tree (folders + tables + designs)
+app.get("/api/workspaces/:workspaceId/tree", async (req, res) => {
   try {
-    const docId = req.params.docId;
+    const wsId = req.params.workspaceId;
     const [folders, tables, designs] = await Promise.all([
-      treePrisma.folder.findMany({ where: { documentId: docId }, orderBy: { order: "asc" } }),
-      treePrisma.table.findMany({ where: { documentId: docId }, orderBy: { order: "asc" } }),
-      treePrisma.design.findMany({ where: { documentId: docId }, orderBy: { order: "asc" } }),
+      treePrisma.folder.findMany({ where: { workspaceId: wsId }, orderBy: { order: "asc" } }),
+      treePrisma.table.findMany({ where: { workspaceId: wsId }, orderBy: { order: "asc" } }),
+      treePrisma.design.findMany({ where: { workspaceId: wsId }, orderBy: { order: "asc" } }),
     ]);
     res.json({ folders, tables, designs });
   } catch (err: any) {
@@ -145,6 +159,16 @@ async function start() {
     console.log("Table already exists, skipping seed");
   }
 
+  // Ensure the default Agent exists (DB row + identity filesystem).
+  // ensureDefaults() seeds the default user/org/workspace the agent depends on.
+  try {
+    await ensureDefaults();
+    const agent = await ensureDefaultAgent();
+    console.log(`Default agent ready: ${agent.id} (${agent.name})`);
+  } catch (err) {
+    console.error("Failed to ensure default agent:", err);
+  }
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`AI Filter running on http://0.0.0.0:${PORT}`);
   });
@@ -152,6 +176,55 @@ async function start() {
   // Kick off the chat-sidebar prompt-suggestion scheduler. Runs an initial
   // pass on `doc_default` after a short delay and refreshes every 10 min.
   startSuggestionScheduler(["doc_default"]);
+
+  // Phase 4 Day 1+2 · Agent heartbeat. Day 1 plumbing + Day 2 cron handler:
+  // on each tick we read the agent's state/cron.json and fire any due jobs
+  // into state/inbox.jsonl. More subsystems (inbox consumers, haiku triage)
+  // compose into the same handler in later days. Disabled via
+  // RUNTIME_DISABLED=1 so smoke tests and one-off scripts don't spawn a
+  // background timer.
+  if (process.env.RUNTIME_DISABLED !== "1") {
+    startHeartbeat({
+      onTick: async (ctx) => {
+        const cronResult = await evaluateCron(ctx.agentId, ctx.firedAt);
+        const details: Record<string, unknown> = {};
+        if (cronResult.fired.length > 0) {
+          details.cronFired = cronResult.fired.map(({ job, inboxMessage }) => ({
+            jobId: job.id,
+            schedule: job.schedule,
+            inboxMessageId: inboxMessage.id,
+          }));
+        }
+        const invalid = cronResult.skipped.filter((s) => s.reason === "invalid-expression");
+        if (invalid.length > 0) {
+          details.cronInvalid = invalid.map((s) => ({
+            jobId: s.job.id,
+            schedule: s.job.schedule,
+          }));
+        }
+        const outcome = cronResult.fired.length > 0 ? "triggered" : "idle";
+        return Object.keys(details).length > 0
+          ? { outcome, details }
+          : { outcome };
+      },
+    });
+  } else {
+    console.log("[runtime] heartbeat disabled via RUNTIME_DISABLED=1");
+  }
+
+  // Graceful shutdown: let any in-flight tick finish before exiting so we
+  // don't leave a half-written heartbeat.log line on SIGTERM.
+  const shutdown = async (signal: string) => {
+    console.log(`[runtime] received ${signal}, stopping heartbeat…`);
+    try {
+      await stopHeartbeat();
+    } catch (err) {
+      console.error("[runtime] error during shutdown:", err);
+    }
+    process.exit(0);
+  };
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
 start().catch((err) => {

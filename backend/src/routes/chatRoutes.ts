@@ -2,8 +2,8 @@
  * /api/chat/* routes — Table Agent chat endpoints.
  *
  * REST:
- *   GET    /api/chat/conversations?documentId=xxx  — list conversations
- *   POST   /api/chat/conversations                  — create conversation { documentId }
+ *   GET    /api/chat/conversations?workspaceId=xxx  — list conversations
+ *   POST   /api/chat/conversations                  — create conversation { workspaceId }
  *   GET    /api/chat/conversations/:id/messages     — fetch message history
  *   DELETE /api/chat/conversations/:id              — delete conversation
  *
@@ -70,16 +70,16 @@ function writeEvent(res: Response, e: SseEvent) {
 
 // ─── REST endpoints ──────────────────────────────────────────────────────
 
-// GET /api/chat/context-snapshot?documentId=xxx
+// GET /api/chat/context-snapshot?workspaceId=xxx
 // Thin summary of the current document — used by the chat sidebar's
 // "refresh / new conversation" flow to render a "已加载 N 张表、M 个字段"
 // hint so the user knows what the Agent will see before their first prompt.
 // The full context (Document Snapshot) is still built inside chatAgentService
 // on each message; this endpoint is purely a UX warm-up.
 router.get("/context-snapshot", async (req: Request, res: Response) => {
-  const documentId = (req.query.documentId as string) || "doc_default";
+  const workspaceId = (req.query.workspaceId as string) || "doc_default";
   try {
-    const tables = await store.listTablesForDocument(documentId);
+    const tables = await store.listTablesForWorkspace(workspaceId);
     let fieldCount = 0;
     let recordCount = 0;
     for (const t of tables) {
@@ -89,7 +89,7 @@ router.get("/context-snapshot", async (req: Request, res: Response) => {
       recordCount += detail.records.length;
     }
     res.json({
-      documentId,
+      workspaceId,
       tableCount: tables.length,
       fieldCount,
       recordCount,
@@ -102,16 +102,16 @@ router.get("/context-snapshot", async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/chat/suggestions?documentId=xxx
+// GET /api/chat/suggestions?workspaceId=xxx
 // Returns the cached 3-5 AI-generated prompt suggestions for the document's
 // welcome page. On cache-miss, kicks off an async refresh and returns
 // defaults so the UI never shows an empty state.
 router.get("/suggestions", (req: Request, res: Response) => {
-  const documentId = (req.query.documentId as string) || "doc_default";
-  const entry = getSuggestions(documentId);
+  const workspaceId = (req.query.workspaceId as string) || "doc_default";
+  const entry = getSuggestions(workspaceId);
   if (entry) {
     res.json({
-      documentId,
+      workspaceId,
       suggestions: entry.suggestions,
       updatedAt: entry.updatedAt,
       stale: false,
@@ -119,9 +119,9 @@ router.get("/suggestions", (req: Request, res: Response) => {
     return;
   }
   // Fire-and-forget refresh so the next call is warm
-  void refreshSuggestions(documentId);
+  void refreshSuggestions(workspaceId);
   res.json({
-    documentId,
+    workspaceId,
     suggestions: DEFAULT_SUGGESTIONS,
     updatedAt: 0,
     stale: true,
@@ -133,12 +133,12 @@ router.get("/suggestions", (req: Request, res: Response) => {
 // freshly generated pack once ready — the scheduler will also pick it up on
 // its next tick, this is just an impatient shortcut.
 router.post("/suggestions/refresh", async (req: Request, res: Response) => {
-  const { documentId = "doc_default" } = (req.body as { documentId?: string }) || {};
+  const { workspaceId = "doc_default" } = (req.body as { workspaceId?: string }) || {};
   try {
-    const suggestions = await refreshSuggestions(documentId);
-    const entry = getSuggestions(documentId);
+    const suggestions = await refreshSuggestions(workspaceId);
+    const entry = getSuggestions(workspaceId);
     res.json({
-      documentId,
+      workspaceId,
       suggestions,
       updatedAt: entry?.updatedAt ?? Date.now(),
       stale: false,
@@ -151,21 +151,26 @@ router.post("/suggestions/refresh", async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/chat/conversations?documentId=xxx
+// GET /api/chat/conversations?workspaceId=xxx
 router.get("/conversations", async (req: Request, res: Response) => {
-  const documentId = (req.query.documentId as string) || "doc_default";
-  const list = await convStore.listConversations(documentId);
+  const workspaceId = (req.query.workspaceId as string) || "doc_default";
+  const list = await convStore.listConversations(workspaceId);
   res.json(list);
 });
 
 // POST /api/chat/conversations
+// Body: { workspaceId, agentId? } — agentId defaults to "agent_default"
 router.post("/conversations", async (req: Request, res: Response) => {
-  const { documentId } = req.body as { documentId?: string };
-  if (!documentId) {
-    res.status(400).json({ error: "documentId is required" });
+  const { workspaceId, agentId } = req.body as { workspaceId?: string; agentId?: string };
+  if (!workspaceId) {
+    res.status(400).json({ error: "workspaceId is required" });
     return;
   }
-  const conv = await convStore.createConversation(documentId);
+  const conv = await convStore.createConversation(
+    workspaceId,
+    undefined,
+    agentId ?? "agent_default"
+  );
   res.json(conv);
 });
 
@@ -223,7 +228,8 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
 
   const ctx: AgentContext = {
     conversationId: req.params.id,
-    documentId: conv.documentId,
+    workspaceId: conv.workspaceId,
+    agentId: conv.agentId ?? undefined,
     pendingConfirmations: state.pendingConfirmations,
   };
 
@@ -269,7 +275,8 @@ router.post("/conversations/:id/confirm", async (req: Request, res: Response) =>
 
   const ctx: AgentContext = {
     conversationId: req.params.id,
-    documentId: conv.documentId,
+    workspaceId: conv.workspaceId,
+    agentId: conv.agentId ?? undefined,
     pendingConfirmations: state.pendingConfirmations,
   };
 
