@@ -117,3 +117,36 @@
   background: #94BFFF;
   cursor: not-allowed;
 }
+
+.create-design-popover-btn.blank {
+  width: 100%;
+  background: #F5F6F7;
+  color: #1F2329;
+  border: 1px dashed #DEE0E3;
+}
+
+.create-design-popover-btn.blank:hover {
+  background: #EEF0F3;
+  border-color: #C0C4CC;
+}
+
+.create-design-popover-btn.blank:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.create-design-popover-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8F959E;
+  font-size: 12px;
+}
+
+.create-design-popover-divider::before,
+.create-design-popover-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #DEE0E3;
+}

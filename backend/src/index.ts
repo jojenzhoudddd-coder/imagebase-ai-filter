@@ -9,6 +9,8 @@ import sseRoutes from "./routes/sseRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import folderRoutes from "./routes/folderRoutes.js";
 import agentRoutes from "./routes/agentRoutes.js";
+import designRoutes from "./routes/designRoutes.js";
+import tasteRoutes from "./routes/tasteRoutes.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
@@ -70,6 +72,12 @@ app.use("/api/sync", sseRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/folders", folderRoutes);
 app.use("/api/agents", agentRoutes);
+// designRoutes 和 tasteRoutes 都挂在 /api/designs 下：
+//  - designRoutes: 基础 CRUD (POST /, PUT /:designId, DELETE /:designId, PUT /reorder)
+//  - tasteRoutes : /:designId/tastes/* (upload / from-figma / batch-update / 单条 CRUD / source)
+// 路径不冲突，Express 会按 handler 顺序匹配。
+app.use("/api/designs", designRoutes);
+app.use("/api/designs", tasteRoutes);
 
 // Serve uploaded SVG files
 app.use("/uploads", express.static(path.resolve(__dirname, "../../uploads")));
