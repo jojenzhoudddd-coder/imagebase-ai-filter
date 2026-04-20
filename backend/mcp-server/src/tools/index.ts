@@ -5,8 +5,19 @@
  *  1. `backend/mcp-server/src/index.ts` — standalone MCP server entry (stdio transport)
  *  2. `backend/src/services/chatAgentService.ts` — in-process consumer (fast path for the chat agent)
  *
- * Keeping a single source avoids drift between "what external MCP clients see"
- * and "what the in-process agent uses".
+ * ── Phase 3 (tiered loading) ──────────────────────────────────────────────
+ * Tools are now classified into Tiers so the chat agent can send a small
+ * default context and let the model opt into bigger bundles via
+ * `activate_skill`. External stdio MCP callers still see every tool via
+ * `allTools` — tier filtering is an in-process concern only.
+ *
+ *   Tier 0 (always on): metaTools + memoryTools + skillRouterTools
+ *     → identity, memory, and skill routing. ~8 tools, ~1.5 k tokens.
+ *   Tier 1 (always on): list_tables + get_table
+ *     → workspace navigation. The agent can always peek at state without
+ *       activating any skill.
+ *   Tier 2 skills (opt-in): tableSkill (field / record / view / write-table)
+ *     → loaded only after activate_skill.
  */
 
 import { tableTools } from "./tableTools.js";
@@ -15,18 +26,53 @@ import { recordTools } from "./recordTools.js";
 import { viewTools } from "./viewTools.js";
 import { metaTools } from "./metaTools.js";
 import { memoryTools } from "./memoryTools.js";
+import { skillRouterTools } from "./skillRouterTools.js";
+import { allSkills, skillsByName } from "../skills/index.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
-// Tier 0 identity + memory tools come first so they're always visible even
-// if the model only reads the top of the function list. Data-plane tools
-// follow.
-export const allTools: ToolDefinition[] = [
+// ── Tier partitioning ────────────────────────────────────────────────────
+
+const TIER1_NAMES = new Set(["list_tables", "get_table"]);
+
+/** Tier 0 — identity + memory + skill routing. Always loaded. */
+export const tier0Tools: ToolDefinition[] = [
   ...metaTools,
   ...memoryTools,
-  ...tableTools,
-  ...fieldTools,
-  ...recordTools,
-  ...viewTools,
+  ...skillRouterTools,
+];
+
+/** Tier 1 — core workspace navigation. Always loaded. */
+export const tier1Tools: ToolDefinition[] = tableTools.filter((t) =>
+  TIER1_NAMES.has(t.name)
+);
+
+/**
+ * Resolve the tool list for an in-process agent turn given the active skills.
+ * External MCP stdio callers use `allTools` directly.
+ */
+export function resolveActiveTools(activeSkillNames: string[] = []): ToolDefinition[] {
+  const active: ToolDefinition[] = [...tier0Tools, ...tier1Tools];
+  const seen = new Set(active.map((t) => t.name));
+  for (const name of activeSkillNames) {
+    const skill = skillsByName[name];
+    if (!skill) continue;
+    for (const t of skill.tools) {
+      if (seen.has(t.name)) continue; // dedupe (shouldn't happen but defensive)
+      active.push(t);
+      seen.add(t.name);
+    }
+  }
+  return active;
+}
+
+// ── Legacy: the full always-loaded list (every tool). Used by:
+//   - stdio MCP server, which shouldn't filter by skill
+//   - `isDangerousTool` / `toolsByName` lookups that must resolve any name
+export const allTools: ToolDefinition[] = [
+  ...tier0Tools,
+  ...tier1Tools,
+  // Flatten every skill's tools so the lookup map covers everything.
+  ...allSkills.flatMap((s) => s.tools),
 ];
 
 export const toolsByName: Record<string, ToolDefinition> =
@@ -36,9 +82,12 @@ export function isDangerousTool(name: string): boolean {
   return Boolean(toolsByName[name]?.danger);
 }
 
-/** Convert to Volcano ARK Responses API tool format (function calling). */
-export function toArkToolFormat() {
-  return allTools.map((t) => ({
+/**
+ * Convert tools to Volcano ARK Responses API tool format.
+ * @param tools Optional subset (e.g. from `resolveActiveTools`). Defaults to every tool.
+ */
+export function toArkToolFormat(tools: ToolDefinition[] = allTools) {
+  return tools.map((t) => ({
     type: "function" as const,
     name: t.name,
     description: t.description,

@@ -16,6 +16,15 @@ import { apiRequest, toolResult, confirmationRequired } from "../dataStoreClient
  */
 export interface ToolContext {
   agentId?: string;
+  /**
+   * Phase 3: currently-active skill names for the live conversation.
+   * Populated by the in-process agent loop; stdio MCP callers leave it
+   * undefined (which all data-plane tools ignore).
+   */
+  activeSkills?: string[];
+  /** Callback fired by skill-router tools to mutate activation state. */
+  onActivateSkill?: (name: string) => void;
+  onDeactivateSkill?: (name: string) => void;
 }
 
 export interface ToolDefinition {
