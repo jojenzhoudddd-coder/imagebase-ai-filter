@@ -30,17 +30,17 @@ router.get("/", async (_req: Request, res: Response) => {
 
 // POST /api/tables — create table
 router.post("/", async (req: Request, res: Response) => {
-  const { name, documentId, language } = req.body;
+  const { name, workspaceId, language } = req.body;
   if (!name || typeof name !== "string") {
     res.status(400).json({ error: "表名不能为空" });
     return;
   }
-  const docId = documentId || "doc_default";
-  const finalName = await store.generateTableName(docId, name);
-  const table = await store.createTable({ name: finalName, documentId: docId, language });
-  eventBus.emitDocumentChange({
+  const wsId = workspaceId || "doc_default";
+  const finalName = await store.generateTableName(wsId, name);
+  const table = await store.createTable({ name: finalName, workspaceId: wsId, language });
+  eventBus.emitWorkspaceChange({
     type: "table:create",
-    documentId: docId,
+    workspaceId: wsId,
     clientId: getClientId(req),
     timestamp: Date.now(),
     payload: { table: { id: table.id, name: table.name, order: table.order } },
@@ -50,15 +50,15 @@ router.post("/", async (req: Request, res: Response) => {
 
 // PUT /api/tables/reorder — batch reorder tables (must be before /:tableId)
 router.put("/reorder", async (req: Request, res: Response) => {
-  const { updates, documentId } = req.body;
+  const { updates, workspaceId } = req.body;
   if (!Array.isArray(updates)) {
     res.status(400).json({ error: "updates must be an array" });
     return;
   }
   await store.batchReorderTables(updates);
-  eventBus.emitDocumentChange({
+  eventBus.emitWorkspaceChange({
     type: "table:reorder",
-    documentId: documentId || "doc_default",
+    workspaceId: workspaceId || "doc_default",
     clientId: getClientId(req),
     timestamp: Date.now(),
     payload: { updates },
@@ -73,9 +73,9 @@ router.delete("/:tableId", async (req: Request, res: Response) => {
     res.status(404).json({ error: "Table not found" });
     return;
   }
-  eventBus.emitDocumentChange({
+  eventBus.emitWorkspaceChange({
     type: "table:delete",
-    documentId: "doc_default",
+    workspaceId: "doc_default",
     clientId: getClientId(req),
     timestamp: Date.now(),
     payload: { tableId },
@@ -100,12 +100,12 @@ router.put("/:tableId", async (req: Request, res: Response) => {
     timestamp: Date.now(),
     payload: { name: table.name },
   });
-  // Document-level event (for sidebar table list sync)
-  const docId = await store.getTableDocumentId(req.params.tableId);
-  if (docId) {
-    eventBus.emitDocumentChange({
+  // Workspace-level event (for sidebar table list sync)
+  const wsId = await store.getTableWorkspaceId(req.params.tableId);
+  if (wsId) {
+    eventBus.emitWorkspaceChange({
       type: "table:rename",
-      documentId: docId,
+      workspaceId: wsId,
       clientId: getClientId(req),
       timestamp: Date.now(),
       payload: { tableId: req.params.tableId, name: table.name },

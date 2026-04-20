@@ -1,11 +1,11 @@
 import { Router, Request, Response } from "express";
-import { eventBus, TableChangeEvent, DocumentChangeEvent } from "../services/eventBus.js";
+import { eventBus, TableChangeEvent, WorkspaceChangeEvent } from "../services/eventBus.js";
 
 const router = Router();
 
-// GET /api/sync/documents/:docId/events?clientId=xxx — document-level SSE (must be before /:tableId)
-router.get("/documents/:docId/events", (req: Request, res: Response) => {
-  const { docId } = req.params;
+// GET /api/sync/workspaces/:workspaceId/events?clientId=xxx — workspace-level SSE (must be before /:tableId)
+router.get("/workspaces/:workspaceId/events", (req: Request, res: Response) => {
+  const { workspaceId } = req.params;
   const clientId = req.query.clientId as string;
 
   if (!clientId) {
@@ -19,16 +19,16 @@ router.get("/documents/:docId/events", (req: Request, res: Response) => {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  console.log(`[SSE] client=${clientId} connected (document=${docId})`);
+  console.log(`[SSE] client=${clientId} connected (workspace=${workspaceId})`);
   res.write(
     `event: connected\ndata: ${JSON.stringify({ clientId, timestamp: Date.now() })}\n\n`,
   );
 
-  const unsubscribe = eventBus.subscribeDocument(
-    docId,
-    (event: DocumentChangeEvent) => {
+  const unsubscribe = eventBus.subscribeWorkspace(
+    workspaceId,
+    (event: WorkspaceChangeEvent) => {
       res.write(
-        `event: document-change\ndata: ${JSON.stringify(event)}\n\n`,
+        `event: workspace-change\ndata: ${JSON.stringify(event)}\n\n`,
       );
     },
   );
@@ -38,7 +38,7 @@ router.get("/documents/:docId/events", (req: Request, res: Response) => {
   }, 30_000);
 
   req.on("close", () => {
-    console.log(`[SSE] client=${clientId} disconnected (document=${docId})`);
+    console.log(`[SSE] client=${clientId} disconnected (workspace=${workspaceId})`);
     unsubscribe();
     clearInterval(heartbeat);
   });

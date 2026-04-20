@@ -9,11 +9,12 @@ import sseRoutes from "./routes/sseRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import folderRoutes from "./routes/folderRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
+import tasteRoutes from "./routes/tasteRoutes.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { mockTable } from "./mockData.js";
-import { connectDB, loadTable, getTable, getDocument, updateDocument, listTablesForDocument } from "./services/dbStore.js";
+import { connectDB, loadTable, getTable, getWorkspace, updateWorkspace, listTablesForWorkspace } from "./services/dbStore.js";
 import { eventBus } from "./services/eventBus.js";
 import { startSuggestionScheduler } from "./services/suggestionService.js";
 
@@ -69,50 +70,54 @@ app.use("/api/sync", sseRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/folders", folderRoutes);
 app.use("/api/designs", designRoutes);
+app.use("/api/designs", tasteRoutes);
 
-// ═══════ Document API ═══════
+// Serve uploaded SVG files
+app.use("/uploads", express.static(path.resolve(__dirname, "../../uploads")));
 
-// GET /api/documents/:docId
-app.get("/api/documents/:docId", async (req, res) => {
-  const doc = await getDocument(req.params.docId);
-  if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
-  res.json(doc);
+// ═══════ Workspace API ═══════
+
+// GET /api/workspaces/:workspaceId
+app.get("/api/workspaces/:workspaceId", async (req, res) => {
+  const ws = await getWorkspace(req.params.workspaceId);
+  if (!ws) { res.status(404).json({ error: "Workspace not found" }); return; }
+  res.json(ws);
 });
 
-// PUT /api/documents/:docId — rename document
-app.put("/api/documents/:docId", async (req, res) => {
+// PUT /api/workspaces/:workspaceId — rename workspace
+app.put("/api/workspaces/:workspaceId", async (req, res) => {
   const { name } = req.body;
   if (!name || typeof name !== "string" || !name.trim()) {
-    res.status(400).json({ error: "文档名不能为空" }); return;
+    res.status(400).json({ error: "工作空间名不能为空" }); return;
   }
-  const doc = await updateDocument(req.params.docId, { name: name.trim() });
-  if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+  const ws = await updateWorkspace(req.params.workspaceId, { name: name.trim() });
+  if (!ws) { res.status(404).json({ error: "Workspace not found" }); return; }
   const clientId = (req.headers["x-client-id"] as string) || "unknown";
-  // Broadcast to all tables under this document
+  // Broadcast to all tables under this workspace
   eventBus.emitChange({
-    type: "document:update",
+    type: "workspace:update",
     tableId: "tbl_requirements", // primary table for SSE channel
     clientId,
     timestamp: Date.now(),
-    payload: { documentId: doc.id, name: doc.name },
+    payload: { workspaceId: ws.id, name: ws.name },
   });
-  res.json(doc);
+  res.json(ws);
 });
 
-// GET /api/documents/:docId/tables — list tables in document
-app.get("/api/documents/:docId/tables", async (req, res) => {
-  const tables = await listTablesForDocument(req.params.docId);
+// GET /api/workspaces/:workspaceId/tables — list tables in workspace
+app.get("/api/workspaces/:workspaceId/tables", async (req, res) => {
+  const tables = await listTablesForWorkspace(req.params.workspaceId);
   res.json(tables);
 });
 
-// GET /api/documents/:docId/tree — full tree (folders + tables + designs)
-app.get("/api/documents/:docId/tree", async (req, res) => {
+// GET /api/workspaces/:workspaceId/tree — full tree (folders + tables + designs)
+app.get("/api/workspaces/:workspaceId/tree", async (req, res) => {
   try {
-    const docId = req.params.docId;
+    const wsId = req.params.workspaceId;
     const [folders, tables, designs] = await Promise.all([
-      treePrisma.folder.findMany({ where: { documentId: docId }, orderBy: { order: "asc" } }),
-      treePrisma.table.findMany({ where: { documentId: docId }, orderBy: { order: "asc" } }),
-      treePrisma.design.findMany({ where: { documentId: docId }, orderBy: { order: "asc" } }),
+      treePrisma.folder.findMany({ where: { workspaceId: wsId }, orderBy: { order: "asc" } }),
+      treePrisma.table.findMany({ where: { workspaceId: wsId }, orderBy: { order: "asc" } }),
+      treePrisma.design.findMany({ where: { workspaceId: wsId }, orderBy: { order: "asc" } }),
     ]);
     res.json({ folders, tables, designs });
   } catch (err: any) {

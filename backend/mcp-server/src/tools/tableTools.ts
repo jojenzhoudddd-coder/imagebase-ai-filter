@@ -20,16 +20,16 @@ export interface ToolDefinition {
 export const tableTools: ToolDefinition[] = [
   {
     name: "list_tables",
-    description: "列出指定文档下所有数据表。返回表 id、名称、字段数、记录数。",
+    description: "列出指定工作空间下所有数据表。返回表 id、名称、字段数、记录数。",
     inputSchema: {
       type: "object",
       properties: {
-        documentId: { type: "string", description: "文档 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
       },
     },
     handler: async (args) => {
-      const docId = args.documentId || "doc_default";
-      const tables = await apiRequest<unknown>(`/api/documents/${encodeURIComponent(docId)}/tables`);
+      const wsId = args.workspaceId || "doc_default";
+      const tables = await apiRequest<unknown>(`/api/workspaces/${encodeURIComponent(wsId)}/tables`);
       return toolResult(tables);
     },
   },
@@ -70,7 +70,7 @@ export const tableTools: ToolDefinition[] = [
   {
     name: "create_table",
     description:
-      "在指定文档中创建一张空白数据表（含 1 个默认 Text 主字段 + 5 条空记录 + 1 个默认 Grid 视图）。" +
+      "在指定工作空间中创建一张空白数据表（含 1 个默认 Text 主字段 + 5 条空记录 + 1 个默认 Grid 视图）。" +
       "返回新表的 id / name 以及默认主字段 primaryField（含 id / name / type）。" +
       "⚠️ 用户需要自定义表结构时，必须用 update_field 把 primaryField 改成期望的第一列（名称/类型/config），" +
       "然后再继续 create_field 添加其余列。绝对不要再额外 create_field 一个同义的第一列，否则会出现重复。",
@@ -78,7 +78,7 @@ export const tableTools: ToolDefinition[] = [
       type: "object",
       properties: {
         name: { type: "string", description: "表名称，如 '客户管理'" },
-        documentId: { type: "string", description: "所属文档 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "所属工作空间 id，默认 doc_default" },
         language: { type: "string", enum: ["en", "zh"], description: "默认字段名语言" },
       },
       required: ["name"],
@@ -86,7 +86,7 @@ export const tableTools: ToolDefinition[] = [
     handler: async (args) => {
       const body = {
         name: String(args.name),
-        documentId: args.documentId || "doc_default",
+        workspaceId: args.workspaceId || "doc_default",
         language: args.language || "zh",
       };
       const tbl = await apiRequest<any>("/api/tables", { method: "POST", body });

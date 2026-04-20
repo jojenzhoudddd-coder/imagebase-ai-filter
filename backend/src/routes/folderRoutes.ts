@@ -13,18 +13,18 @@ function getClientId(req: Request): string {
 }
 
 /**
- * Ensure folder name is unique within the document. Mirrors the table naming
+ * Ensure folder name is unique within the workspace. Mirrors the table naming
  * behaviour in `dbStore.generateTableName`: if `baseName` already exists,
  * append " 1", " 2", … until free. Optional `excludeId` lets rename-flows
  * skip over the folder's own current name.
  */
 async function generateUniqueFolderName(
-  documentId: string,
+  workspaceId: string,
   baseName: string,
   excludeId?: string,
 ): Promise<string> {
   const existing = await prisma.folder.findMany({
-    where: { documentId, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
+    where: { workspaceId, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
     select: { name: true },
   });
   const names = new Set(existing.map(f => f.name));
@@ -38,18 +38,18 @@ const router = Router();
 
 // POST /api/folders — create folder
 router.post("/", async (req: Request, res: Response) => {
-  const { name, parentId, documentId } = req.body;
+  const { name, parentId, workspaceId } = req.body;
   if (!name || typeof name !== "string" || !name.trim()) {
     res.status(400).json({ error: "文件夹名不能为空" });
     return;
   }
-  const docId = documentId || "doc_default";
+  const docId = workspaceId || "doc_default";
 
   // New folder should appear at the bottom of the sidebar at its level, so
   // compute the max order across all sibling items (folders + tables +
   // designs) rather than only folder siblings. This matches user expectation
   // that "new folder appears at the bottom just like new tables/designs".
-  const parentFilter = { documentId: docId, parentId: parentId || null };
+  const parentFilter = { workspaceId: docId, parentId: parentId || null };
   const [folderSibs, tableSibs, designSibs] = await Promise.all([
     prisma.folder.findMany({ where: parentFilter, select: { order: true } }),
     prisma.table.findMany({ where: parentFilter, select: { order: true } }),
@@ -64,15 +64,15 @@ router.post("/", async (req: Request, res: Response) => {
   const folder = await prisma.folder.create({
     data: {
       name: uniqueName,
-      documentId: docId,
+      workspaceId: docId,
       parentId: parentId || null,
       order: maxOrder + 1,
     },
   });
 
-  eventBus.emitDocumentChange({
+  eventBus.emitWorkspaceChange({
     type: "folder:create",
-    documentId: docId,
+    workspaceId: docId,
     clientId: getClientId(req),
     timestamp: Date.now(),
     payload: { folder: { id: folder.id, name: folder.name, parentId: folder.parentId, order: folder.order } },
@@ -129,9 +129,9 @@ router.put("/move", async (req: Request, res: Response) => {
     return;
   }
 
-  eventBus.emitDocumentChange({
+  eventBus.emitWorkspaceChange({
     type: "item:move",
-    documentId: "doc_default",
+    workspaceId: "doc_default",
     clientId: getClientId(req),
     timestamp: Date.now(),
     payload: { itemId, itemType, newParentId: parentId },
@@ -142,20 +142,20 @@ router.put("/move", async (req: Request, res: Response) => {
 
 // PUT /api/folders/reorder — batch reorder folders (must be before /:folderId)
 router.put("/reorder", async (req: Request, res: Response) => {
-  const { updates, documentId } = req.body;
+  const { updates, workspaceId } = req.body;
   if (!Array.isArray(updates)) {
     res.status(400).json({ error: "updates must be an array" });
     return;
   }
-  const docId = documentId || "doc_default";
+  const docId = workspaceId || "doc_default";
   await Promise.all(
     updates.map((u: { id: string; order: number }) =>
       prisma.folder.update({ where: { id: u.id }, data: { order: u.order } })
     )
   );
-  eventBus.emitDocumentChange({
+  eventBus.emitWorkspaceChange({
     type: "folder:reorder",
-    documentId: docId,
+    workspaceId: docId,
     clientId: getClientId(req),
     timestamp: Date.now(),
     payload: { updates },
@@ -173,18 +173,18 @@ router.put("/:folderId", async (req: Request, res: Response) => {
   try {
     const existing = await prisma.folder.findUnique({
       where: { id: req.params.folderId },
-      select: { documentId: true },
+      select: { workspaceId: true },
     });
     if (!existing) throw new Error("not found");
     const trimmed = name.trim().slice(0, 100);
-    const uniqueName = await generateUniqueFolderName(existing.documentId, trimmed, req.params.folderId);
+    const uniqueName = await generateUniqueFolderName(existing.workspaceId, trimmed, req.params.folderId);
     const folder = await prisma.folder.update({
       where: { id: req.params.folderId },
       data: { name: uniqueName },
     });
-    eventBus.emitDocumentChange({
+    eventBus.emitWorkspaceChange({
       type: "folder:rename",
-      documentId: folder.documentId,
+      workspaceId: folder.workspaceId,
       clientId: getClientId(req),
       timestamp: Date.now(),
       payload: { folderId: folder.id, name: folder.name },
@@ -217,9 +217,9 @@ router.delete("/:folderId", async (req: Request, res: Response) => {
 
   await prisma.folder.delete({ where: { id: folder.id } });
 
-  eventBus.emitDocumentChange({
+  eventBus.emitWorkspaceChange({
     type: "folder:delete",
-    documentId: folder.documentId,
+    workspaceId: folder.workspaceId,
     clientId: getClientId(req),
     timestamp: Date.now(),
     payload: { folderId: folder.id },
