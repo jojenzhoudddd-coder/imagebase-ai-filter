@@ -19,8 +19,28 @@ model User {
 
   orgs       OrgMember[]
   workspaces Workspace[]
+  agents     Agent[]
 
   @@map("users")
+}
+
+// ─── Agent（属于用户，跨 Workspace 的长期 Agent 身份） ───
+// 身份文件（soul.md / profile.md / config.json）落在文件系统
+// ~/.imagebase/agents/<id>/ 下；DB 只保存元数据与关系。
+
+model Agent {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   @default("Agent")
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@index([userId])
+  @@map("agents")
 }
 
 // ─── 组织（Phase 0 前原名 Workspace，现作为 User → Org → Workspace → Artifact 的最上层） ───
@@ -138,15 +158,18 @@ model Folder {
 model Conversation {
   id           String   @id @default(cuid())
   workspaceId  String
+  agentId      String?
   title        String   @default("新对话")
   summary      String?
   messageCount Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  agent    Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
   messages Message[]
 
   @@index([workspaceId, updatedAt(sort: Desc)])
+  @@index([agentId, updatedAt(sort: Desc)])
   @@map("conversations")
 }
 
@@ -166,7 +189,7 @@ model Message {
   @@map("messages")
 }
 
-// ─── 设计稿（Figma 链接） ───
+// ─── 设计稿（SVG 矢量画布） ───
 
 model Design {
   id           String   @id @default(cuid())
@@ -181,8 +204,33 @@ model Design {
   updatedAt    DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tastes    Taste[]
 
   @@index([workspaceId])
   @@index([parentId])
   @@map("designs")
+}
+
+// ─── Taste（设计资源，通过 designId 关联，如 Record 之于 Table） ───
+
+model Taste {
+  id         String   @id @default(cuid())
+  designId   String
+  name       String
+  fileName   String
+  filePath   String?
+  x          Float    @default(0)
+  y          Float    @default(0)
+  width      Float    @default(200)
+  height     Float    @default(200)
+  order      Int      @default(0)
+  source     String   @default("upload")
+  figmaUrl   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  design Design @relation(fields: [designId], references: [id], onDelete: Cascade)
+
+  @@index([designId])
+  @@map("tastes")
 }
