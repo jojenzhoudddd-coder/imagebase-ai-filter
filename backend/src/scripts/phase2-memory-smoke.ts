@@ -98,7 +98,57 @@ async function main() {
   const parsedLim = JSON.parse(limited);
   if (parsedLim.count !== 1) throw new Error("limit=1 did not limit results");
 
-  console.log("\n✅ Phase 2 Day 1 smoke passed.");
+  // ── Day 2: recall_memory ──────────────────────────────────────────────
+
+  // Keyword match.
+  const recallCrm = await memory["recall_memory"].handler({ query: "CRM" }, { agentId });
+  console.log("\nrecall_memory (query=CRM):", recallCrm);
+  const parsedRecallCrm = JSON.parse(recallCrm);
+  if (!parsedRecallCrm.ok || parsedRecallCrm.count < 1) {
+    throw new Error("query=CRM returned no hits");
+  }
+  if (!/crm|CRM/i.test(parsedRecallCrm.hits[0].title + parsedRecallCrm.hits[0].preview)) {
+    throw new Error(`top hit for CRM doesn't look like CRM memory: ${parsedRecallCrm.hits[0].title}`);
+  }
+
+  // Tag match only (no query).
+  const recallTag = await memory["recall_memory"].handler({ tags: ["phase2"] }, { agentId });
+  console.log("\nrecall_memory (tags=[phase2]):", recallTag);
+  const parsedRecallTag = JSON.parse(recallTag);
+  if (parsedRecallTag.count !== 1 || !parsedRecallTag.hits[0].tags.includes("phase2")) {
+    throw new Error("tag-only recall failed");
+  }
+
+  // Both query + tags should boost the CRM hit higher than a weak keyword.
+  const recallBoth = await memory["recall_memory"].handler(
+    { query: "系统", tags: ["crm"] },
+    { agentId }
+  );
+  console.log("\nrecall_memory (query=系统 tags=[crm]):", recallBoth);
+  const parsedRecallBoth = JSON.parse(recallBoth);
+  if (parsedRecallBoth.count < 1 || !parsedRecallBoth.hits[0].tags.includes("crm")) {
+    throw new Error("combined query+tag did not rank CRM first");
+  }
+
+  // Non-matching query returns empty.
+  const recallMiss = await memory["recall_memory"].handler({ query: "完全不存在的词" }, { agentId });
+  console.log("\nrecall_memory (no match):", recallMiss);
+  const parsedRecallMiss = JSON.parse(recallMiss);
+  if (parsedRecallMiss.count !== 0) {
+    throw new Error("non-matching query should return 0 hits");
+  }
+
+  // No query, no tags → falls back to recency (returns top-K newest).
+  const recallBlank = await memory["recall_memory"].handler({}, { agentId });
+  console.log("\nrecall_memory (blank → recency fallback):", recallBlank);
+  const parsedRecallBlank = JSON.parse(recallBlank);
+  if (parsedRecallBlank.count < 2) throw new Error("blank recall should list all memories by recency");
+  // Newest first.
+  if (parsedRecallBlank.hits[0].reasons.mtimeMs < parsedRecallBlank.hits[1].reasons.mtimeMs) {
+    throw new Error("blank recall not sorted by recency");
+  }
+
+  console.log("\n✅ Phase 2 Day 1+2 smoke passed.");
 }
 
 main().catch((e) => {

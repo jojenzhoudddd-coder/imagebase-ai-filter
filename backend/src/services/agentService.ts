@@ -328,6 +328,125 @@ export async function listEpisodicMemories(
   return summaries;
 }
 
+export interface RecallHit extends EpisodicMemorySummary {
+  score: number;
+  /** Debug: how the score was composed. Useful for tuning + for the Agent to know why a hit surfaced. */
+  reasons: {
+    keyword: number; // 0..1
+    tag: number; // 0..1
+    recency: number; // 0..1
+    mtimeMs: number;
+  };
+}
+
+function tokenize(q: string): string[] {
+  // Latin words + CJK runs, lowercased.
+  const matches = q.toLowerCase().match(/[a-z0-9_]+|[\u4e00-\u9fa5]+/g);
+  return matches ? matches.filter((t) => t.length > 0) : [];
+}
+
+function countHits(haystack: string, tokens: string[]): number {
+  if (!tokens.length) return 0;
+  const hay = haystack.toLowerCase();
+  let hits = 0;
+  for (const t of tokens) {
+    if (hay.includes(t)) hits++;
+  }
+  return hits;
+}
+
+/**
+ * Rank episodic memories by keyword + tag + recency and return the top N.
+ *
+ * Scoring (deterministic, no LLM):
+ *   score = 3·keywordScore + 2·tagScore + 1·recencyScore
+ *   keywordScore = hits / tokens.length, where a "hit" is any query token
+ *                  appearing in title, body, or tags (case-insensitive).
+ *   tagScore     = matched / requested, where matched is tags that appear in
+ *                  the memory's tag set (case-insensitive, exact).
+ *   recencyScore = exp(-days_ago / 14), i.e. half-life ≈ 10 days.
+ *
+ * Hits with score ≤ 0 (no keyword hit AND no tag match AND no query given)
+ * fall back to pure recency ranking so `recall_memory` without args still
+ * does something reasonable.
+ */
+export async function recallMemories(
+  agentId: string,
+  query: string,
+  opts?: { tags?: string[]; limit?: number }
+): Promise<RecallHit[]> {
+  await ensureAgentFiles(agentId);
+  const dir = path.join(agentDir(agentId), "memory", "episodic");
+  let files: string[] = [];
+  try {
+    files = await fs.readdir(dir);
+  } catch {
+    return [];
+  }
+  const mdFiles = files.filter((f) => f.endsWith(".md"));
+  if (mdFiles.length === 0) return [];
+
+  const tokens = tokenize(query || "");
+  const requestedTags = (opts?.tags || []).map((t) => t.toLowerCase()).filter(Boolean);
+  const now = Date.now();
+  const limit = Math.max(1, Math.min(opts?.limit ?? 5, 20));
+
+  const hits: RecallHit[] = [];
+  for (const filename of mdFiles) {
+    const full = path.join(dir, filename);
+    let stat;
+    try {
+      stat = await fs.stat(full);
+    } catch {
+      continue;
+    }
+    let raw: string;
+    try {
+      raw = await fs.readFile(full, "utf8");
+    } catch {
+      continue;
+    }
+    const parsed = parseEpisodicMemory(filename, raw);
+
+    const kwHaystack = `${parsed.title}\n${parsed.body}\n${parsed.tags.join(" ")}`;
+    const kwCount = countHits(kwHaystack, tokens);
+    const keywordScore = tokens.length ? kwCount / tokens.length : 0;
+
+    const tagHits = requestedTags.filter((t) => parsed.tags.includes(t)).length;
+    const tagScore = requestedTags.length ? tagHits / requestedTags.length : 0;
+
+    const daysAgo = Math.max(0, (now - stat.mtimeMs) / (1000 * 60 * 60 * 24));
+    const recencyScore = Math.exp(-daysAgo / 14);
+
+    const score =
+      tokens.length || requestedTags.length
+        ? 3 * keywordScore + 2 * tagScore + recencyScore
+        : recencyScore; // pure recency when caller gives no signal
+
+    // Drop entries that clearly don't match a non-empty query. Recency-only
+    // queries keep everything.
+    if ((tokens.length || requestedTags.length) && keywordScore === 0 && tagScore === 0) {
+      continue;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { body: _b, ...summary } = parsed;
+    hits.push({
+      ...summary,
+      score,
+      reasons: {
+        keyword: keywordScore,
+        tag: tagScore,
+        recency: recencyScore,
+        mtimeMs: stat.mtimeMs,
+      },
+    });
+  }
+
+  hits.sort((a, b) => b.score - a.score);
+  return hits.slice(0, limit);
+}
+
 /** Load one episodic memory file by filename. Returns null if not found. */
 export async function readEpisodicMemory(
   agentId: string,

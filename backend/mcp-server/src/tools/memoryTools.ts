@@ -16,6 +16,7 @@
 import {
   listEpisodicMemories,
   readEpisodicMemory,
+  recallMemories,
   ensureAgentFiles,
 } from "../../../src/services/agentService.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
@@ -81,6 +82,52 @@ export const memoryTools: ToolDefinition[] = [
         agentId,
         count: summaries.length,
         memories: summaries,
+      });
+    },
+  },
+
+  {
+    name: "recall_memory",
+    description:
+      "用关键词 / 标签 / 近因的加权排序找最相关的 episodic 记忆（top-K 摘要）。调用时机：你要回答一个用户过去已经说过的问题，或在某个主题上延续之前的上下文（比不带参数列出全部更聚焦）。排序：3·关键词命中率 + 2·标签匹配率 + 1·近因衰减（半衰期约 10 天）。query 和 tags 至少传一个。不传时回退为纯近因排序（等价于 read_memory 无过滤）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "自由文本。支持中英文，会切分成 token 去匹配 title / body / tags。",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "可选标签过滤，小写英文关键词；命中率参与评分。",
+        },
+        limit: {
+          type: "number",
+          description: "可选，默认 5，最大 20。",
+        },
+        agentId: {
+          type: "string",
+          description: "可选；默认读取当前 Agent 的记忆。",
+        },
+      },
+    },
+    handler: async (args, ctx) => {
+      const agentId = resolveAgentId(args, ctx);
+      await ensureAgentFiles(agentId);
+      const query = typeof args.query === "string" ? args.query : "";
+      const tags = Array.isArray(args.tags)
+        ? args.tags.filter((t: unknown): t is string => typeof t === "string")
+        : undefined;
+      const limit = typeof args.limit === "number" ? args.limit : undefined;
+      const hits = await recallMemories(agentId, query, { tags, limit });
+      return JSON.stringify({
+        ok: true,
+        agentId,
+        count: hits.length,
+        query,
+        tags: tags || [],
+        hits,
       });
     },
   },
