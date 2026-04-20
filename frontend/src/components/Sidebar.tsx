@@ -37,7 +37,7 @@ interface Props {
   onCreateBlank: () => Promise<void>;
   folders?: Array<{ id: string; name: string }>;
   onCreateFolder?: () => void;
-  onCreateDesign?: (name: string, figmaUrl: string) => Promise<string>;
+  onCreateDesign?: (name: string, figmaUrl?: string) => Promise<string>;
   onDeleteItem?: (id: string, type: TreeItemType) => void;
   onMoveItem?: (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => void;
   /** When set, the TreeView scrolls the node with this id into view on the

@@ -7,7 +7,7 @@ interface Props {
   anchorItemEl: HTMLElement;
   menuEl: HTMLElement;
   onClose: () => void;
-  onCreateDesign: (name: string, figmaUrl: string) => Promise<string>;
+  onCreateDesign: (name: string, figmaUrl?: string) => Promise<string>;
 }
 
 export type DesignPopoverState = "input" | "creating" | "error";
@@ -44,7 +44,7 @@ const CreateDesignPopover = forwardRef<CreateDesignPopoverHandle, Props>(
     getState: () => state,
   }), [state]);
 
-  // Position to the right of menu, Y-aligned with anchorItemEl (same as CreateTablePopover)
+  // Position to the right of menu, Y-aligned with anchorItemEl
   useLayoutEffect(() => {
     const menuRect = menuEl.getBoundingClientRect();
     const itemRect = anchorItemEl.getBoundingClientRect();
@@ -54,7 +54,6 @@ const CreateDesignPopover = forwardRef<CreateDesignPopoverHandle, Props>(
     });
   }, [menuEl, anchorItemEl, state]);
 
-  // Auto focus
   useLayoutEffect(() => {
     const timer = setTimeout(() => inputRef.current?.focus(), 50);
     return () => clearTimeout(timer);
@@ -62,7 +61,19 @@ const CreateDesignPopover = forwardRef<CreateDesignPopoverHandle, Props>(
 
   const isValidUrl = FIGMA_URL_REGEX.test(figmaUrl.trim());
 
-  const handleCreate = async () => {
+  // Create blank canvas
+  const handleCreateBlank = async () => {
+    setState("creating");
+    try {
+      await onCreateDesign("Untitled Canvas");
+      onClose();
+    } catch {
+      setState("input");
+    }
+  };
+
+  // Create from Figma URL
+  const handleCreateFromFigma = async () => {
     if (!isValidUrl) {
       setErrorMsg(t("design.invalidUrl"));
       return;
@@ -74,7 +85,6 @@ const CreateDesignPopover = forwardRef<CreateDesignPopoverHandle, Props>(
       await onCreateDesign(name, figmaUrl.trim());
       onClose();
     } catch {
-      // Error toast is handled by the parent; reset popover to input state
       setState("input");
     }
   };
@@ -96,13 +106,26 @@ const CreateDesignPopover = forwardRef<CreateDesignPopoverHandle, Props>(
         {t("createMenu.design")}
       </div>
 
+      {/* Blank canvas button */}
+      <button
+        className="create-design-popover-btn blank"
+        onClick={handleCreateBlank}
+        disabled={state === "creating"}
+      >
+        {t("design.createBlank")}
+      </button>
+
+      <div className="create-design-popover-divider">
+        <span>or</span>
+      </div>
+
       <input
         ref={inputRef}
         className="create-design-popover-input"
         placeholder={t("design.urlPlaceholder")}
         value={figmaUrl}
         onChange={(e) => { setFigmaUrl(e.target.value); setErrorMsg(""); }}
-        onKeyDown={(e) => { if (e.key === "Enter" && isValidUrl) handleCreate(); }}
+        onKeyDown={(e) => { if (e.key === "Enter" && isValidUrl) handleCreateFromFigma(); }}
         disabled={state === "creating"}
       />
 
@@ -113,10 +136,10 @@ const CreateDesignPopover = forwardRef<CreateDesignPopoverHandle, Props>(
       <div className="create-design-popover-actions">
         <button
           className="create-design-popover-btn primary"
-          onClick={handleCreate}
+          onClick={handleCreateFromFigma}
           disabled={!isValidUrl || state === "creating"}
         >
-          {state === "creating" ? t("design.loading") : t("design.create")}
+          {state === "creating" ? t("design.loading") : t("design.importFigma")}
         </button>
       </div>
     </div>,

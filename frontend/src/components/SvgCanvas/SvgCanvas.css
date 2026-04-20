@@ -1,0 +1,544 @@
+/* ─── SVG Canvas Panel ─── */
+
+.svg-canvas-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-bg);
+}
+
+/* ─── Top Bar ─── */
+
+.svg-canvas-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-elevated, #fff);
+  flex-shrink: 0;
+}
+
+.svg-canvas-topbar-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.svg-canvas-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* Toolbar-style buttons: no border, transparent bg, icon+text, hover fill */
+.svg-canvas-topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-s, 4px);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.svg-canvas-topbar-btn svg {
+  flex-shrink: 0;
+}
+
+.svg-canvas-topbar-btn:hover {
+  background: var(--color-bg-hover, #f0f0f0);
+  color: var(--color-text-primary);
+}
+
+.svg-canvas-topbar-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+}
+
+.svg-canvas-topbar-btn:disabled:hover {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.svg-canvas-topbar-btn.primary {
+  color: var(--color-primary);
+}
+
+.svg-canvas-topbar-btn.primary:hover {
+  background: var(--color-primary-light, rgba(20, 86, 240, 0.08));
+}
+
+.svg-canvas-topbar-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--color-border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.svg-canvas-zoom-label {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  min-width: 36px;
+  text-align: center;
+  user-select: none;
+}
+
+/* ─── Canvas Body ─── */
+
+.svg-canvas-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  cursor: default;
+  /* Dot grid background — stays fixed relative to viewport */
+  background-color: var(--color-bg);
+  background-image: radial-gradient(circle, #d4d6d9 0.8px, transparent 0.8px);
+  background-size: 20px 20px;
+}
+
+/* Panning mode: space held or two-finger drag */
+.svg-canvas-body.panning {
+  cursor: grab;
+}
+
+.svg-canvas-body.panning:active {
+  cursor: grabbing;
+}
+
+/* ─── Canvas Surface (the pannable/zoomable content — no fixed size) ─── */
+
+.svg-canvas-surface {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* No width/height, no will-change — avoids GPU layer bitmap caching
+   * that would destroy SVG vector quality when zoomed */
+}
+
+/* ─── Individual SVG Item ─── */
+
+.svg-canvas-item {
+  position: absolute;
+  cursor: pointer;
+  border: 2px solid transparent;
+  border-radius: var(--radius-s, 4px);
+  transition: border-color 0.12s, box-shadow 0.12s;
+  box-sizing: content-box;
+  background: #fff;
+}
+
+/* Hover state: light border */
+.svg-canvas-item:hover {
+  border-color: #c0c4cc;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+/* Selected state: blue border */
+.svg-canvas-item.selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(20, 86, 240, 0.15);
+}
+
+/* Selected + hover keeps blue */
+.svg-canvas-item.selected:hover {
+  border-color: var(--color-primary);
+}
+
+/* Panning mode: items not clickable */
+.svg-canvas-body.panning .svg-canvas-item {
+  cursor: grab;
+  pointer-events: none;
+}
+
+/* Inline SVG container — true vector rendering at any zoom */
+.svg-canvas-item-inner {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+  overflow: hidden;
+}
+
+.svg-canvas-item-inner svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Fallback <img> while SVG content is loading */
+.svg-canvas-item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Item name — above the item, outside the border, left-aligned.
+ * Uses transform-origin + scale to stay at fixed screen-space size
+ * regardless of canvas zoom. The --canvas-scale var is set inline. */
+.svg-canvas-item-name {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: 2;
+  transform-origin: bottom left;
+  transform: scale(var(--inv-scale, 1));
+  pointer-events: auto;
+  padding-bottom: 0;
+}
+
+.svg-canvas-item-name-text {
+  display: inline-block;
+  max-width: 260px;
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+  user-select: none;
+}
+
+.svg-canvas-item:hover .svg-canvas-item-name-text,
+.svg-canvas-item.selected .svg-canvas-item-name-text {
+  color: var(--color-text-secondary);
+}
+
+.svg-canvas-item-name-input {
+  font-size: 12px;
+  line-height: 18px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--color-primary);
+  border-radius: 2px;
+  background: #fff;
+  color: var(--color-text-primary);
+  outline: none;
+  min-width: 80px;
+  max-width: 260px;
+  box-sizing: border-box;
+}
+
+/* ─── Drop Zone Overlay ─── */
+
+.svg-canvas-dropzone {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 86, 240, 0.06);
+  border: 2px dashed var(--color-primary);
+  border-radius: var(--radius-m, 6px);
+  pointer-events: none;
+}
+
+.svg-canvas-dropzone-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--color-primary);
+}
+
+/* ─── Empty State ─── */
+
+.svg-canvas-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+}
+
+.svg-canvas-empty-icon {
+  width: 48px;
+  height: 48px;
+  opacity: 0.4;
+}
+
+.svg-canvas-empty-text {
+  font-size: 14px;
+}
+
+/* ─── Source Viewer Panel ─── */
+
+.svg-source-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 380px;
+  background: var(--color-bg-elevated, #fff);
+  border-left: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+  animation: svgSourceSlideIn 0.2s ease-out;
+}
+
+@keyframes svgSourceSlideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.svg-source-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.svg-source-header-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.svg-source-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.svg-source-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  border-radius: var(--radius-s, 4px);
+}
+
+.svg-source-close:hover {
+  background: var(--color-bg-hover, #f0f0f0);
+  color: var(--color-text-primary);
+}
+
+.svg-source-content {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+}
+
+.svg-source-content pre {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ─── Figma Import Popover ─── */
+
+.figma-import-popover {
+  position: absolute;
+  top: 48px;
+  right: 12px;
+  z-index: 30;
+  width: 320px;
+  background: var(--color-bg-elevated, #fff);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m, 6px);
+  box-shadow: var(--shadow-dropdown, 0 4px 16px rgba(0, 0, 0, 0.12));
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.figma-import-popover input {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-s, 4px);
+  font-size: 13px;
+  color: var(--color-text-primary);
+  background: var(--color-bg);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.figma-import-popover input:focus {
+  border-color: var(--color-primary);
+}
+
+.figma-import-row {
+  display: flex;
+  gap: 8px;
+}
+
+/* Override: popover buttons need visible fills */
+.figma-import-row .svg-canvas-topbar-btn.primary {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+}
+
+.figma-import-row .svg-canvas-topbar-btn.primary:hover {
+  background: #2860E1;
+}
+
+.figma-import-row .svg-canvas-topbar-btn.primary:disabled {
+  background: #94BFFF;
+  opacity: 1;
+}
+
+.figma-import-row .svg-canvas-topbar-btn:not(.primary) {
+  border: 1px solid var(--color-border);
+  background: #fff;
+}
+
+.figma-import-error {
+  font-size: 12px;
+  color: var(--color-error, #e53e3e);
+}
+
+/* ─── Item dragging state ─── */
+
+.svg-canvas-item.dragging {
+  opacity: 0.85;
+  z-index: 100;
+  cursor: grabbing;
+}
+
+/* ─── Snap guide lines ─── */
+
+.snap-guide {
+  position: absolute;
+  z-index: 15;
+  pointer-events: none;
+}
+
+.snap-guide-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  border-left: 1px dashed var(--color-primary);
+}
+
+.snap-guide-h {
+  left: 0;
+  right: 0;
+  height: 1px;
+  border-top: 1px dashed var(--color-primary);
+}
+
+
+/* ─── Alt distance indicators ─── */
+
+.alt-distance {
+  position: absolute;
+  z-index: 16;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.alt-distance-h {
+  height: 1px;
+  background: #F54A45;
+}
+
+.alt-distance-v {
+  width: 1px;
+  background: #F54A45;
+  flex-direction: column;
+}
+
+.alt-distance-label {
+  background: #F54A45;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+/* ─── Context menu ─── */
+
+.taste-context-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 160px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m, 6px);
+  box-shadow: var(--shadow-dropdown, 0 4px 16px rgba(0, 0, 0, 0.12));
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.taste-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: var(--radius-s, 4px);
+  text-align: left;
+  width: 100%;
+}
+
+.taste-context-menu-item:hover {
+  background: var(--color-bg-hover, #f0f0f0);
+}
+
+.taste-context-menu-item.danger {
+  color: #F54A45;
+}
+
+.taste-context-menu-item.danger:hover {
+  background: rgba(245, 74, 69, 0.06);
+}
+
+.taste-context-menu-item svg {
+  flex-shrink: 0;
+}
+
+.taste-context-menu-sep {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
+}
