@@ -50,10 +50,11 @@ backend/
       eventBus.ts           - Event bus for real-time sync (table-level + document-level)
       filterEngine.ts       - Client-side filter evaluation
     schemas/            - Shared Zod schemas (REST + MCP single source of truth)
-    scripts/            - Dev helpers (phase1-meta-smoke.ts, phase1-registry-check.ts)
+    scripts/            - Dev helpers (phase1-meta-smoke.ts, phase1-registry-check.ts, phase2-memory-smoke.ts)
   mcp-server/
     src/tools/
-      metaTools.ts    - Tier 0: update_profile / update_soul / create_memory (edit Agent identity)
+      metaTools.ts    - Tier 0 identity: update_profile / update_soul / create_memory (write-only)
+      memoryTools.ts  - Tier 0 memory (Phase 2): read_memory (list/load) + recall_memory (keyword+tag+recency ranked)
       tableTools.ts   - Table CRUD tools
       fieldTools.ts   - Field CRUD tools
       recordTools.ts  - Record CRUD tools
@@ -88,7 +89,8 @@ frontend/
 - AI filter uses PRD format (`["field", "operator", value]`) internally, converted to/from app's internal filter format.
 - AI service logs all API calls, tool calls, and timing to `backend/logs/` directory with GMT+8 timestamps.
 - **Chat Agent identity (Phase 1)**: every user owns at least one `Agent` row (default seeded as `agent_default` / name "Claw"). Identity files live on the filesystem at `~/.imagebase/agents/<agentId>/` (`soul.md`, `profile.md`, `config.json`, plus `memory/`, `skills/`, `mcp-servers/`, `plugins/`, `state/`). The DB only stores metadata. Override the root with `AGENT_HOME` env var for tests.
-- **Three-layer System Prompt**: chatAgentService composes `META` (hardcoded meta-behavior rules, immutable) → `Identity` (live soul.md + profile.md) → `Tier 1 Core MCP` (tool guidance) → `Turn Context` (workspace schema snapshot). Agent self-edits via three Tier 0 meta-tools: `update_profile`, `update_soul`, `create_memory`.
+- **Three-layer System Prompt**: chatAgentService composes `META` (hardcoded meta-behavior rules, immutable) → `Identity` (live soul.md + profile.md) → `Tier 1 Core MCP` (tool guidance) → `Turn Context` (workspace schema snapshot + auto-recalled memories). Agent self-edits via three Tier 0 meta-tools: `update_profile`, `update_soul`, `create_memory`.
+- **Agent memory (Phase 2)**: two Tier 0 read tools complement the Phase 1 write tool. `read_memory` lists recent episodic memories (newest first) or loads one by filename. `recall_memory` ranks by `3·keyword + 2·tag + 1·recency` (half-life ≈ 10 days) and returns top-K. Every chat turn auto-runs `recallMemories(userMessage, limit=3)` and injects hits into Layer 3 Turn Context, so Agent sees relevant history without having to explicitly call. Completed turns are appended to `memory/working.jsonl`; once 10 turns accumulate, the next turn fires a deterministic compression that folds them into one episodic `.md` (tagged `working-memory-compaction`) and truncates the working log. Compression runs fire-and-forget so the user's `done` event isn't delayed.
 - **ToolContext** (`backend/mcp-server/src/tools/index.ts`): tool handlers now accept an optional second arg `{agentId}`. Agent loop injects it so meta-tools know whose filesystem to touch without the model passing it explicitly. Existing data-plane tools ignore it — fully backward compatible.
 
 ## Deployment

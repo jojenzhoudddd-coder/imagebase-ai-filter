@@ -7,6 +7,42 @@
 
 ## 2026-04-20
 
+### feat(phase2): Agent 记忆召回 — read_memory / recall_memory / 自动召回 / working→episodic 压缩
+
+**分支**: `phase2/memory-recall` · **commits**: `c3285f8`, `5fe53d9`, `7209c1d`, `55aa8dd`
+
+在 Phase 1 只能 **写** 记忆（`create_memory`）的基础上补齐 **读** + **自动召回** + **压缩** 三件事。Agent 现在可以在对话里"想起以前发生过什么"，而不是每一轮从零开始。完整方案见 `docs/chatbot-openclaw-plan.md` §4。
+
+- **Day 1 · `read_memory` Tier 0 工具**（`c3285f8`）
+  - `backend/src/services/agentService.ts` 新增 `listEpisodicMemories` / `readEpisodicMemory`：按 mtime 倒序列出、`tag` 过滤、`limit` 上限 100；文件名走 path-traversal 守卫；header parser 容忍 `# title` / `Tags:` / `Timestamp:` 之间的空白行
+  - `backend/mcp-server/src/tools/memoryTools.ts`：单一 `read_memory` 工具，两种模式（不传 filename → 列出摘要；传 filename → 取全文）；与 metaTools 共用 `(args.agentId, ctx.agentId, "agent_default")` 解析顺序
+  - `tools/index.ts` 把 memoryTools 挂在 metaTools 之后，Tier 0 三件套（identity + memory）统一停靠在函数列表顶端
+  - Meta Prompt 加了 read_memory 的调用指引
+  - Smoke: `backend/src/scripts/phase2-memory-smoke.ts` 验证列表顺序、tag filter、filename 加载、traversal 拒绝、missing 文件、limit；全部通过
+
+- **Day 2 · `recall_memory` 评分检索**（`5fe53d9`）
+  - `recallMemories(agentId, query, {tags?, limit?})`：`score = 3·keyword + 2·tag + 1·recency`；关键词切词支持 Latin 单词 + CJK 连续段；近因走 `exp(-days/14)` 半衰期 ≈ 10 天；命中为 0 且非空 query 的条目会被丢弃；空 query + 空 tags 则回退为纯近因排序
+  - 每个 hit 返回 `reasons`（keyword / tag / recency / mtimeMs）便于人工调参
+  - `recall_memory` MCP 工具落地 + Meta Prompt 调整为优先 recall_memory、再 fallback 到 read_memory
+  - Smoke 新增：keyword 命中、tag-only、query+tag 组合加权、非匹配返回 0、空参数回退近因
+
+- **Day 3 · 每轮自动召回注入 Layer 3**（`7209c1d`）
+  - `chatAgentService.buildRecalledMemoriesSection(agentId, userMessage)`：每一轮 run recallMemories(limit=3)，把 top-K 摘要拼成一段 `# 自动召回的相关长期记忆` 塞进 Layer 3 Turn Context；不相关 query 直接产出空串不占 prompt
+  - 每个 hit 渲染 title / 标签 badge / 日期 / 200 字预览 / `filename:...（想看全文就调用 read_memory）` 提示，引导 Agent 按需深挖
+  - 故障隔离：召回异常被捕获并以占位文本返回，绝不打断 turn
+  - Smoke: CRM query 产出 CRM 记忆；"今天天气怎么样" 产出空串
+
+- **Day 4 · working.jsonl → episodic 压缩**（`55aa8dd`）
+  - `agentService`：`WorkingMemoryEntry` + `appendWorkingMemory` / `readWorkingMemory` / `clearWorkingMemory` / `compressWorkingMemory`。压缩走确定性合成（token 频次 + 工具调用频次 + 日期区间），不调 LLM，方便测试且零 API 消耗
+  - `chatAgentService.runAgent` 在每一轮 turn 结束、assistant message 持久化之后 **fire-and-forget** 一次 `appendWorkingMemory` + 条件性 `compressWorkingMemory`（阈值 10 轮）；过程异常只写日志、不抛错
+  - 压缩成功会产出一条带 `working-memory-compaction` tag 的 episodic 记忆（title 包含 top 3 keyword）并清空 working.jsonl
+  - Smoke: 注入 12 轮 → 阈值 100 时跳过、阈值 10 时压缩成功、working.jsonl 清空、episodic 文件可被 read_memory 列出
+
+**本地 smoke 验证**:
+- `AGENT_HOME=/tmp/imagebase-phase2-smoke npx --prefix backend tsx backend/src/scripts/phase2-memory-smoke.ts` 一次跑通 Day 1+2+3+4 所有断言
+- `backend/src/scripts/phase1-registry-check.ts` 显示 `total tools: 25`，顶端 5 个为 `update_profile, update_soul, create_memory, read_memory, list_tables`（第 6 个已扩展为 `recall_memory`）
+- Phase 2 新增代码在 `chatAgentService` / `agentService` / `memoryTools` / `phase2-memory-smoke` 中 `tsc --noEmit` 无新增报错；仅剩 dbStore / fieldSuggestService 预先存在的 JsonValue 告警（与 Phase 2 无关）
+
 ### feat(phase1): OpenClaw-style Agent MVP（身份文件 + 三层 Prompt + 元工具 + 身份编辑 UI）
 
 **分支**: `phase1/agent-mvp` · **commits**: `f05a2c7`, `fa348fb`, `f0e9da2`, `ddd3014`, `871339f`
