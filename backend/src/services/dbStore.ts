@@ -949,7 +949,7 @@ const DEFAULT_WORKSPACE_ID = "doc_default";
 
 let defaultsEnsured = false;
 
-async function ensureDefaults(): Promise<void> {
+export async function ensureDefaults(): Promise<void> {
   if (defaultsEnsured) return;
 
   await prisma.user.upsert({

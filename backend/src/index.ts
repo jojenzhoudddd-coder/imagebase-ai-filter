@@ -10,13 +10,15 @@ import chatRoutes from "./routes/chatRoutes.js";
 import folderRoutes from "./routes/folderRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
 import tasteRoutes from "./routes/tasteRoutes.js";
+import agentRoutes from "./routes/agentRoutes.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { mockTable } from "./mockData.js";
-import { connectDB, loadTable, getTable, getWorkspace, updateWorkspace, listTablesForWorkspace } from "./services/dbStore.js";
+import { connectDB, loadTable, getTable, getWorkspace, updateWorkspace, listTablesForWorkspace, ensureDefaults } from "./services/dbStore.js";
 import { eventBus } from "./services/eventBus.js";
 import { startSuggestionScheduler } from "./services/suggestionService.js";
+import { ensureDefaultAgent } from "./services/agentService.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -71,6 +73,7 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/folders", folderRoutes);
 app.use("/api/designs", designRoutes);
 app.use("/api/designs", tasteRoutes);
+app.use("/api/agents", agentRoutes);
 
 // Serve uploaded SVG files
 app.use("/uploads", express.static(path.resolve(__dirname, "../../uploads")));
@@ -148,6 +151,16 @@ async function start() {
     console.log("Mock data seeded (first run)");
   } else {
     console.log("Table already exists, skipping seed");
+  }
+
+  // Ensure the default Agent exists (DB row + identity filesystem).
+  // ensureDefaults() seeds the default user/org/workspace the agent depends on.
+  try {
+    await ensureDefaults();
+    const agent = await ensureDefaultAgent();
+    console.log(`Default agent ready: ${agent.id} (${agent.name})`);
+  } catch (err) {
+    console.error("Failed to ensure default agent:", err);
   }
 
   app.listen(PORT, "0.0.0.0", () => {
