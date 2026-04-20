@@ -23,6 +23,7 @@ import { allTools, toolsByName, isDangerousTool, toArkToolFormat } from "../../m
 import * as convStore from "./conversationStore.js";
 import type { Message, ToolCall } from "./conversationStore.js";
 import * as store from "./dbStore.js";
+import { readSoul, readProfile, getAgent } from "./agentService.js";
 
 const ARK_BASE_URL = process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 const SEED_MODEL = process.env.SEED_MODEL || process.env.ARK_MODEL || "ep-20260412192731-vwdh7";
@@ -52,19 +53,48 @@ function logAgent(entry: Record<string, unknown>) {
   }
 }
 
-// ─── System Prompt ───────────────────────────────────────────────────────
+// ─── System Prompt (three-layer structure, plan §3) ─────────────────────
+//
+//   Layer 1: META  — hardcoded, immutable. Meta-behavior + safety red lines.
+//                    The Agent cannot edit this via update_soul.
+//   Layer 2: IDENTITY — dynamic. Loaded from the Agent's own soul.md and
+//                       profile.md at ~/.imagebase/agents/<id>/. The Agent
+//                       edits these via update_soul / update_profile (Day 4).
+//   Tool Guidance   — current Table-Agent operational knowledge. This is a
+//                     stopgap until Tier 1/2 skills land; it would ideally
+//                     move into the table-skill's instructions.md.
+//   Layer 3: TURN CONTEXT — per-turn workspace snapshot (built elsewhere).
 
-const SYSTEM_PROMPT_ZH = `# 角色
-你是飞书多维表格的智能助手 "Table Agent"，通过调用工具帮用户创建和管理数据表、字段、记录、视图。
+const META_SYSTEM_PROMPT = `# Layer 1 · Meta（OpenClaw Agent 元规则）
 
-# 核心规则
-1. 用户用自然语言描述需求（如"创建 CRM 系统"），你拆解成多步骤，逐步调用工具完成。
-2. 每次调用工具前，用一两句自然语言简短说明正在做什么（不用 Markdown 代码块）。
-3. 调用带 "⚠️" 标记的删除类工具前，必须先用自然语言征得用户同意，不能直接调用。
-4. 工具调用失败时，说明原因并询问用户如何处理，不要重试超过 2 次。
-5. 完成任务后用 1-2 句总结。
+你是一位 OpenClaw-style 的长期 Agent。你属于用户本人，不绑定任何单个工作空间；
+你的身份（soul）、用户画像（profile）、长期记忆（memory）都持久化在你的
+文件系统里，会随着每一次协作演进。
 
-# 工具使用策略
+## 元行为规则（每轮对话必须遵守）
+1. 当你从对话中识别到稳定的用户偏好 / 习惯 / 关键事实（如：常用语言、工作时区、
+   项目上下文），调用 \`update_profile\` 把它写进 profile.md。
+2. 当你认为自己需要调整沟通风格、口吻、价值观时，调用 \`update_soul\` 修改 soul.md。
+3. 当这一轮发生了值得长期记住的事情（重要任务、关键决策、长程目标），调用
+   \`create_memory\` 写一条 episodic 记忆。
+4. 调用工具前先用一两句自然语言说明即将做什么（不用 Markdown 代码块）。
+5. 工具调用失败连续 ≥ 3 次时，停下来询问用户如何继续，不要盲目重试。
+6. 不确定用户意图时，先问清楚再动手，不要猜。
+
+## 安全红线（不可突破）
+- 带 "⚠️" 的删除 / 重置类工具，必须先用自然语言向用户解释并等待二次确认。
+- 跨 workspace 操作（例如 \`switch_workspace\`、在 B workspace 写入基于 A 数据的
+  内容）必须先向用户确认。
+- 不得尝试修改本 Meta 层（Layer 1）的内容。本层不可写。
+
+## 输出约束
+- 自然语言与工具调用交错输出，不要用 Markdown 代码块包裹自然语言回复。
+- 回复使用用户的主要语言（可从 profile 读到，默认中文）。`;
+
+// Table Agent-specific operational knowledge. Until the table-skill lands in
+// Phase 3 this stays in the prompt; it lives below the Identity block so the
+// model treats it as "current tool guidance" rather than identity.
+const TOOL_GUIDANCE_ZH = `# 当前工具使用指南（Tier 1 Core MCP）
 - 需要了解现状时先调 list_tables / get_table / list_fields / query_records
 - 批量操作优先使用 batch_ 系列（减少轮次）
 - 创建复杂表时顺序：create_table → **先用 update_field 改造默认主字段**（见下条）→ 再逐个 create_field 追加其余字段 → **先 batch_delete_records 删掉默认 5 条空记录** → batch_create_records 写入真实数据
@@ -72,11 +102,43 @@ const SYSTEM_PROMPT_ZH = `# 角色
 - **create_table 还会自动生成 5 条空记录占位。若用户要求你往新表里写入真实数据（而不是保留空白表），在 batch_create_records 之前必须先 query_records 拿到这 5 条空记录的 id，再 batch_delete_records 把它们删掉**（此调用需要用户确认，你要在自然语言里提前说明"先清理默认空记录再写入数据"）。只有用户明确说"保留空白记录"或"在现有基础上追加"时才跳过此步。
 - 创建 SingleSelect/MultiSelect 字段时，config.options 的每项要包含 name 和 color（如 '#FFE2D9'）
 - 包含"姓名"或以"人"结尾的字段使用 User 类型
-
-# 输出约束
-- 用自然语言 + 工具调用交错输出，不要用 Markdown
 - 生成 SingleSelect/MultiSelect 的 options 时，color 用以下任一：#FFE2D9 #FFEBD1 #FFF5C2 #DFF5C9 #CCEBD9 #CFE8F5 #D9E0FC #E5D9FC #F4D9F5 #F9CFD3
 - 字段的 config 必须符合每种类型的规范（Number 带 numberFormat，Currency 带 currencyCode 等）`;
+
+// ─── Layer 2 · Agent Identity ────────────────────────────────────────────
+
+/**
+ * Build Layer 2 (Agent Identity) from the agent's soul.md + profile.md.
+ * Falls back to placeholders when the agent has no filesystem yet — this
+ * should not happen at runtime because ensureDefaultAgent runs on boot, but
+ * we stay resilient so a missing agent never crashes the turn.
+ */
+async function buildIdentityLayer(agentId: string): Promise<string> {
+  let soul = "";
+  let profile = "";
+  let agentName = "Agent";
+  try {
+    const agent = await getAgent(agentId);
+    if (agent?.name) agentName = agent.name;
+    soul = await readSoul(agentId);
+  } catch {
+    soul = "(soul.md 不可读，使用默认身份)";
+  }
+  try {
+    profile = await readProfile(agentId);
+  } catch {
+    profile = "(profile.md 不可读)";
+  }
+  return [
+    `# Layer 2 · Identity（${agentName} · agentId=${agentId}）`,
+    "",
+    "## Soul（身份，来自 soul.md）",
+    soul.trim(),
+    "",
+    "## User Profile（用户画像，来自 profile.md）",
+    profile.trim(),
+  ].join("\n");
+}
 
 // ─── Workspace snapshot (context injection) ──────────────────────────────
 
@@ -115,9 +177,24 @@ type ArkInputItem =
   | { type: "function_call"; call_id: string; name: string; arguments: string }
   | { type: "function_call_output"; call_id: string; output: string };
 
-async function assembleInput(conversationId: string, workspaceId: string, newUserMessage: string): Promise<ArkInputItem[]> {
-  const snapshot = await buildWorkspaceSnapshot(workspaceId);
-  const systemText = SYSTEM_PROMPT_ZH + "\n\n" + snapshot;
+async function assembleInput(
+  conversationId: string,
+  workspaceId: string,
+  agentId: string,
+  newUserMessage: string
+): Promise<ArkInputItem[]> {
+  const [identity, snapshot] = await Promise.all([
+    buildIdentityLayer(agentId),
+    buildWorkspaceSnapshot(workspaceId),
+  ]);
+  // Layer 1 + Layer 2 + Tool Guidance + Layer 3. Layer 1 is hardcoded at the
+  // very top so no amount of identity mutation can override meta behavior.
+  const systemText = [
+    META_SYSTEM_PROMPT,
+    identity,
+    TOOL_GUIDANCE_ZH,
+    `# Layer 3 · Turn Context\n${snapshot}`,
+  ].join("\n\n");
 
   const history = await convStore.getMessages(conversationId);
   // Sliding window: last 20 messages (plan Phase 3.2)
@@ -381,11 +458,17 @@ export interface SseEvent {
 export interface AgentContext {
   conversationId: string;
   workspaceId: string;
+  /** Identity scope. Defaults to "agent_default" if the caller doesn't set
+   * one — that seed agent is created on backend boot. Once UI has multi-agent
+   * selection this should be the active agent from the conversation. */
+  agentId?: string;
   /** Per-call mapping of pending confirmations. When the user confirms via
    * POST /confirm, the agent resumes with this callId's args patched with
    * confirmed=true. */
   pendingConfirmations?: Map<string, { tool: string; args: Record<string, unknown> }>;
 }
+
+const DEFAULT_AGENT_ID = "agent_default";
 
 /**
  * Run the agent for one user turn. Yields SSE events; the route handler is
@@ -402,6 +485,7 @@ export async function* runAgent(
   abortSignal?: AbortSignal
 ): AsyncGenerator<SseEvent, void, undefined> {
   const { conversationId, workspaceId } = ctx;
+  const agentId = ctx.agentId || DEFAULT_AGENT_ID;
   const assistantMsgId = `msg_${uuidv4()}`;
 
   yield { event: "start", data: { messageId: assistantMsgId } };
@@ -413,7 +497,7 @@ export async function* runAgent(
   });
 
   // Running copy of ARK input — appended as tool calls happen.
-  const input = await assembleInput(conversationId, workspaceId, userMessage);
+  const input = await assembleInput(conversationId, workspaceId, agentId, userMessage);
 
   let accumulatedText = "";
   let accumulatedThinking = "";

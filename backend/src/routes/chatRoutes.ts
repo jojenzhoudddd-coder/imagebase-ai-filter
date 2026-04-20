@@ -159,13 +159,18 @@ router.get("/conversations", async (req: Request, res: Response) => {
 });
 
 // POST /api/chat/conversations
+// Body: { workspaceId, agentId? } — agentId defaults to "agent_default"
 router.post("/conversations", async (req: Request, res: Response) => {
-  const { workspaceId } = req.body as { workspaceId?: string };
+  const { workspaceId, agentId } = req.body as { workspaceId?: string; agentId?: string };
   if (!workspaceId) {
     res.status(400).json({ error: "workspaceId is required" });
     return;
   }
-  const conv = await convStore.createConversation(workspaceId);
+  const conv = await convStore.createConversation(
+    workspaceId,
+    undefined,
+    agentId ?? "agent_default"
+  );
   res.json(conv);
 });
 
@@ -224,6 +229,7 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
   const ctx: AgentContext = {
     conversationId: req.params.id,
     workspaceId: conv.workspaceId,
+    agentId: conv.agentId ?? undefined,
     pendingConfirmations: state.pendingConfirmations,
   };
 
@@ -270,6 +276,7 @@ router.post("/conversations/:id/confirm", async (req: Request, res: Response) =>
   const ctx: AgentContext = {
     conversationId: req.params.id,
     workspaceId: conv.workspaceId,
+    agentId: conv.agentId ?? undefined,
     pendingConfirmations: state.pendingConfirmations,
   };
 
