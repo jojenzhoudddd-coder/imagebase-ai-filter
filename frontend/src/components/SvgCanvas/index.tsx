@@ -9,7 +9,6 @@ import {
   importFigmaSvg,
   batchUpdateTastes,
   deleteTaste,
-  fetchTasteSource,
   updateTaste,
 } from "../../api";
 import type { TasteBrief } from "../../api";
@@ -43,22 +42,9 @@ const LAYOUT_ICON = (
   </svg>
 );
 
-const CODE_ICON = (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-    <path d="M5.5 4L2 8l3.5 4M10.5 4L14 8l-3.5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
 const CLOSE_ICON = (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
     <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-  </svg>
-);
-
-const COPY_ICON = (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-    <rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-    <path d="M3 11V3.5A1.5 1.5 0 014.5 2H11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
   </svg>
 );
 
@@ -569,11 +555,6 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
   const [dragOver, setDragOver] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
-  // Source viewer state
-  const [sourceViewerOpen, setSourceViewerOpen] = useState(false);
-  const [sourceContent, setSourceContent] = useState("");
-  const [sourceLoading, setSourceLoading] = useState(false);
-
   // Figma import popover
   const [figmaPopoverOpen, setFigmaPopoverOpen] = useState(false);
   const [figmaUrl, setFigmaUrl] = useState("");
@@ -617,7 +598,6 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
     let cancelled = false;
     setLoading(true);
     setSelectedId(null);
-    setSourceViewerOpen(false);
     setSvgContents({});
     fetchTastes(designId)
       .then(async (data) => {
@@ -836,20 +816,6 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
     return () => window.removeEventListener("mousedown", close);
   }, [ctxMenu]);
 
-  const handleCtxViewSource = useCallback(() => {
-    if (!ctxMenu) return;
-    const id = ctxMenu.tasteId;
-    setCtxMenu(null);
-    setSelectedId(id);
-    // Trigger view source
-    setSourceViewerOpen(true);
-    setSourceLoading(true);
-    fetchTasteSource(designId, id)
-      .then((src) => setSourceContent(src))
-      .catch(() => setSourceContent("// Failed to load source"))
-      .finally(() => setSourceLoading(false));
-  }, [ctxMenu, designId]);
-
   const handleCtxRename = useCallback(() => {
     if (!ctxMenu) return;
     const taste = tastes.find((t) => t.id === ctxMenu.tasteId);
@@ -900,7 +866,7 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
     try {
       await deleteTaste(designId, id);
       setTastes((prev) => prev.filter((t) => t.id !== id));
-      if (selectedId === id) { setSelectedId(null); setSourceViewerOpen(false); }
+      if (selectedId === id) setSelectedId(null);
     } catch {
       toast.error("Failed to delete");
     }
@@ -940,17 +906,6 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
       fitToView({ x: 0, y: 0, ...bounds });
     });
   }, [tastes, designId, fitToView]);
-
-  // ─── Copy source ───
-
-  const handleCopySource = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(sourceContent);
-      toast.success(t("design.sourceCopied"));
-    } catch {
-      /* clipboard not available */
-    }
-  }, [sourceContent, toast, t]);
 
   // ─── Figma import ───
 
@@ -1234,10 +1189,6 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
               {RENAME_ICON}
               <span>{t("contextMenu.rename")}</span>
             </button>
-            <button className="taste-context-menu-item" onClick={handleCtxViewSource}>
-              {CODE_ICON}
-              <span>{t("design.viewSource")}</span>
-            </button>
             <div className="taste-context-menu-sep" />
             <button className="taste-context-menu-item" onClick={handleCtxDelete}>
               {DELETE_ICON}
@@ -1246,36 +1197,6 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
           </div>
         )}
 
-        {/* Source viewer panel — isolate events so canvas doesn't swallow scroll/click */}
-        {sourceViewerOpen && (
-          <div
-            className="svg-source-panel"
-            ref={(el) => {
-              if (!el) return;
-              // Native wheel listener to stop propagation before canvas handler
-              el.onwheel = (e) => e.stopPropagation();
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="svg-source-header">
-              <span className="svg-source-header-title">{t("design.viewSource")}</span>
-              <div className="svg-source-header-actions">
-                <button className="svg-source-close" onClick={handleCopySource} title="Copy">
-                  {COPY_ICON}
-                </button>
-                <button
-                  className="svg-source-close"
-                  onClick={() => setSourceViewerOpen(false)}
-                >
-                  {CLOSE_ICON}
-                </button>
-              </div>
-            </div>
-            <div className="svg-source-content">
-              <pre>{sourceLoading ? "Loading..." : sourceContent}</pre>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Delete confirmation dialog */}

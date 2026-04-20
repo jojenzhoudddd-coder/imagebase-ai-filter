@@ -6,8 +6,6 @@ import type { MenuItem } from "./DropdownMenu";
 import ConfirmDialog from "./ConfirmDialog/index";
 import CreateTablePopover from "./CreateTablePopover";
 import type { CreateTablePopoverHandle } from "./CreateTablePopover";
-import CreateDesignPopover from "./CreateDesignPopover";
-import type { CreateDesignPopoverHandle } from "./CreateDesignPopover";
 import TreeView from "./TreeView";
 import type { TreeNodeData } from "./TreeView";
 import type { GeneratedField } from "../api";
@@ -199,14 +197,10 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
 
   // ── AI Create sub-menu state ──
   const [showAIPopover, setShowAIPopover] = useState(false);
-  const [showDesignPopover, setShowDesignPopover] = useState(false);
   const [menuEl, setMenuEl] = useState<HTMLDivElement | null>(null);
   const [tableItemEl, setTableItemEl] = useState<HTMLButtonElement | null>(null);
-  const [designItemEl, setDesignItemEl] = useState<HTMLButtonElement | null>(null);
   const popoverContainerRef = useRef<HTMLDivElement | null>(null);
   const popoverHandleRef = useRef<CreateTablePopoverHandle | null>(null);
-  const designPopoverHandleRef = useRef<CreateDesignPopoverHandle | null>(null);
-  const designPopoverContainerRef = useRef<HTMLDivElement | null>(null);
 
   const tableItems = items.filter(i => i.type === "table");
   const staticItems = items.filter(i => i.type === "static");
@@ -232,7 +226,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
     { key: "ai_create", label: t("createMenu.aiCreate"), section: t("createMenu.quickCreate"), icon: CM_ICONS.aiCreate, noop: true },
     { key: "template", label: t("createMenu.template"), icon: CM_ICONS.template, suffix: ARROW_RIGHT, noop: true },
     { key: "table", label: t("createMenu.table"), section: t("createMenu.new"), icon: CM_ICONS.table, suffix: ARROW_RIGHT },
-    { key: "design", label: t("createMenu.design"), icon: CM_ICONS.design || CM_ICONS.doc, suffix: ARROW_RIGHT },
+    { key: "design", label: t("createMenu.design"), icon: CM_ICONS.design || CM_ICONS.doc },
     { key: "form", label: t("createMenu.form"), icon: CM_ICONS.form, suffix: ARROW_RIGHT, noop: true },
     { key: "cm_dashboard", label: t("createMenu.dashboard"), icon: CM_ICONS.dashboard, noop: true },
     { key: "cm_workflow", label: t("createMenu.workflow"), icon: CM_ICONS.workflow, noop: true },
@@ -245,7 +239,6 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   // Close everything handler
   const handleCloseAll = useCallback(() => {
     setShowAIPopover(false);
-    setShowDesignPopover(false);
     setNewMenuOpen(false);
   }, []);
 
@@ -255,7 +248,6 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   }, []);
   const handleItemRef = useCallback((key: string, el: HTMLButtonElement | null) => {
     if (key === "table" && el) setTableItemEl(el);
-    if (key === "design" && el) setDesignItemEl(el);
   }, []);
 
   // ── Drag handlers (table items only) ──
@@ -412,10 +404,8 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   };
 
   // Determine if popover is in a blocking state (generating/creating)
-  const isPopoverBlocking = (showAIPopover && popoverHandleRef.current &&
-    ["generating", "creating"].includes(popoverHandleRef.current.getState())) ||
-    (showDesignPopover && designPopoverHandleRef.current &&
-    designPopoverHandleRef.current.getState() === "creating");
+  const isPopoverBlocking = showAIPopover && popoverHandleRef.current &&
+    ["generating", "creating"].includes(popoverHandleRef.current.getState());
 
   return (
     <aside ref={asideRef} className="sidebar" style={{ width: sidebarWidth }}>
@@ -515,32 +505,31 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             onSelect={(key) => {
               if (key === "table") {
                 setShowAIPopover(true);
-                setShowDesignPopover(false);
               } else if (key === "design") {
-                setShowDesignPopover(true);
-                setShowAIPopover(false);
+                if (onCreateDesign) {
+                  onCreateDesign(t("createMenu.design"));
+                }
+                handleCloseAll();
               } else if (key === "folder") {
                 if (onCreateFolder) onCreateFolder();
                 handleCloseAll();
               } else {
                 setShowAIPopover(false);
-                setShowDesignPopover(false);
               }
             }}
             onClose={() => {
               if (!isPopoverBlocking) {
                 setNewMenuOpen(false);
                 setShowAIPopover(false);
-                setShowDesignPopover(false);
               }
             }}
             position="above"
             width={240}
-            activeSubMenuKey={showAIPopover ? "table" : showDesignPopover ? "design" : null}
+            activeSubMenuKey={showAIPopover ? "table" : null}
             className="sidebar-new-menu"
             onMenuRef={handleMenuRef}
             onItemRef={handleItemRef}
-            extraContainers={[popoverContainerRef, designPopoverContainerRef]}
+            extraContainers={[popoverContainerRef]}
           />
         )}
         {showAIPopover && menuEl && tableItemEl && (
@@ -552,15 +541,6 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             onCreateWithAI={onCreateWithAI}
             onResetToDefault={onResetToDefault}
             onCreateBlank={onCreateBlank}
-          />
-        )}
-        {showDesignPopover && menuEl && designItemEl && onCreateDesign && (
-          <CreateDesignPopover
-            ref={(handle) => { designPopoverHandleRef.current = handle; }}
-            anchorItemEl={designItemEl}
-            menuEl={menuEl}
-            onClose={() => setShowDesignPopover(false)}
-            onCreateDesign={onCreateDesign}
           />
         )}
       </div>

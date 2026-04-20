@@ -549,12 +549,6 @@ export async function deleteTaste(designId: string, tasteId: string): Promise<vo
   if (!res.ok) throw new Error("Failed to delete taste");
 }
 
-export async function fetchTasteSource(designId: string, tasteId: string): Promise<string> {
-  const res = await fetch(`${BASE}/designs/${designId}/tastes/${tasteId}/source`);
-  if (!res.ok) throw new Error("Failed to fetch taste source");
-  return res.text();
-}
-
 // ─── AI Field Suggestions ───
 
 export interface FieldSuggestion {
