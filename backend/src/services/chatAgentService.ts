@@ -31,6 +31,9 @@ const SEED_MODEL = process.env.SEED_MODEL || process.env.ARK_MODEL || "ep-202604
 // Pushed up from 10 per user request. Seed can chain dozens of tool calls in
 // a single CRM-build turn; cap is only a last-resort runaway guard.
 const MAX_TOOL_ROUNDS = 50;
+// Day 4: once working.jsonl holds this many turns, the next turn triggers a
+// compression pass that folds them into one episodic memory file.
+const WORKING_MEMORY_COMPRESS_THRESHOLD = 10;
 // Seed / Doubao reasoning models accept up to 32k output tokens. Higher cap
 // gives thinking + final answer enough room so long multi-step plans don't
 // get truncated.
@@ -699,6 +702,38 @@ export async function* runAgent(
     thinking: accumulatedThinking || undefined,
     toolCalls: accumulatedToolCalls,
   });
+
+  // Day 4: append this turn to working-memory, and fire-and-forget a
+  // compression pass if the buffer is big enough. Compression is
+  // deterministic (no LLM call) so it's cheap; we still detach it so slow
+  // filesystems can't delay the user's `done` event.
+  agentSvc
+    .appendWorkingMemory(agentId, {
+      timestamp: new Date().toISOString(),
+      conversationId,
+      userMessage,
+      assistantMessage: accumulatedText,
+      toolCalls: accumulatedToolCalls.map((c) => c.tool),
+    })
+    .then(async () => {
+      const result = await agentSvc.compressWorkingMemory(agentId, {
+        minTurns: WORKING_MEMORY_COMPRESS_THRESHOLD,
+      });
+      if (result.compressed) {
+        logAgent({
+          event: "working_memory_compressed",
+          agentId,
+          turns: result.turns,
+          filename: result.filename,
+        });
+      }
+    })
+    .catch((err) => {
+      logAgent({
+        event: "working_memory_error",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 
   yield { event: "done", data: { messageId: assistantMsgId } };
   logAgent({

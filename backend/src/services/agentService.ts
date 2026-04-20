@@ -200,6 +200,158 @@ export async function appendEpisodicMemory(
   return { path: full, filename };
 }
 
+// ─── Working memory (turn-by-turn log, gets compressed into episodic) ───
+
+/**
+ * One row in working.jsonl. Represents a completed user turn: the user's
+ * message, the assistant's final textual reply, and the names of tools the
+ * Agent called to fulfill it. Kept intentionally lean — the full tool
+ * arguments and SSE chunks are not worth persisting here.
+ */
+export interface WorkingMemoryEntry {
+  timestamp: string; // ISO
+  conversationId: string;
+  userMessage: string;
+  assistantMessage: string;
+  toolCalls: string[]; // tool names in invocation order, duplicates preserved
+}
+
+function workingMemoryPath(agentId: string): string {
+  return path.join(agentDir(agentId), "memory", "working.jsonl");
+}
+
+export async function appendWorkingMemory(
+  agentId: string,
+  entry: WorkingMemoryEntry
+): Promise<void> {
+  await ensureAgentFiles(agentId);
+  const line = JSON.stringify(entry) + "\n";
+  await fs.appendFile(workingMemoryPath(agentId), line, "utf8");
+}
+
+export async function readWorkingMemory(agentId: string): Promise<WorkingMemoryEntry[]> {
+  await ensureAgentFiles(agentId);
+  let raw: string;
+  try {
+    raw = await fs.readFile(workingMemoryPath(agentId), "utf8");
+  } catch (err: any) {
+    if (err?.code === "ENOENT") return [];
+    throw err;
+  }
+  const out: WorkingMemoryEntry[] = [];
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      out.push(JSON.parse(trimmed));
+    } catch {
+      // Skip malformed lines — don't lose well-formed neighbors.
+    }
+  }
+  return out;
+}
+
+export async function clearWorkingMemory(agentId: string): Promise<void> {
+  await ensureAgentFiles(agentId);
+  await fs.writeFile(workingMemoryPath(agentId), "", "utf8");
+}
+
+/**
+ * Fold the working-memory log into one episodic markdown file, then truncate
+ * the working log. Deterministic (no LLM call) for Phase 2 so tests are
+ * hermetic; a Phase 3 variant can swap in an LLM synthesizer.
+ *
+ * Returns `{compressed: true, filename, turns}` on success, or
+ * `{compressed: false, turns}` when the buffer had fewer than `minTurns`
+ * and compression was skipped.
+ */
+export async function compressWorkingMemory(
+  agentId: string,
+  opts?: { minTurns?: number }
+): Promise<
+  | { compressed: true; filename: string; turns: number }
+  | { compressed: false; turns: number }
+> {
+  const minTurns = Math.max(1, opts?.minTurns ?? 10);
+  const entries = await readWorkingMemory(agentId);
+  if (entries.length < minTurns) {
+    return { compressed: false, turns: entries.length };
+  }
+
+  // ── Deterministic synthesis ─────────────────────────────────────────
+  const firstTs = entries[0].timestamp;
+  const lastTs = entries[entries.length - 1].timestamp;
+  const dateRange =
+    firstTs.slice(0, 10) === lastTs.slice(0, 10)
+      ? firstTs.slice(0, 10)
+      : `${firstTs.slice(0, 10)} → ${lastTs.slice(0, 10)}`;
+
+  // Top keywords across user messages (token frequency, CJK + Latin).
+  const freq = new Map<string, number>();
+  for (const e of entries) {
+    const toks = e.userMessage.toLowerCase().match(/[a-z0-9_]+|[\u4e00-\u9fa5]+/g) || [];
+    for (const t of toks) {
+      if (t.length < 2) continue; // drop single-char noise
+      freq.set(t, (freq.get(t) ?? 0) + 1);
+    }
+  }
+  const topKeywords = [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([t]) => t);
+
+  // Tool-call tally.
+  const toolFreq = new Map<string, number>();
+  for (const e of entries) {
+    for (const name of e.toolCalls) {
+      toolFreq.set(name, (toolFreq.get(name) ?? 0) + 1);
+    }
+  }
+  const toolSummary = [...toolFreq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([n, c]) => (c > 1 ? `${n}×${c}` : n))
+    .join(", ");
+
+  const title =
+    `${dateRange} ` +
+    (topKeywords.length
+      ? `对话摘要（${topKeywords.slice(0, 3).join(" / ")}）`
+      : `对话摘要（${entries.length} 轮）`);
+
+  const bodyLines: string[] = [
+    `共 ${entries.length} 轮，对话期 ${dateRange}。`,
+    "",
+    `## 涉及主题`,
+    topKeywords.length ? `关键词：${topKeywords.join("、")}` : "（未识别稳定关键词）",
+    "",
+    `## 调用过的工具`,
+    toolSummary || "（本段无工具调用）",
+    "",
+    `## 每轮要点`,
+  ];
+  for (const e of entries) {
+    const user = e.userMessage.replace(/\s+/g, " ").slice(0, 120);
+    const asst = e.assistantMessage.replace(/\s+/g, " ").slice(0, 160);
+    const tools = e.toolCalls.length ? `  工具: ${e.toolCalls.join(", ")}\n` : "";
+    bodyLines.push(
+      `- **${e.timestamp.slice(11, 19)}** · conv ${e.conversationId.slice(-8)}`,
+      `  用户: ${user || "(空)"}`,
+      tools ? `  助理: ${asst || "(空)"}` : `  助理: ${asst || "(空)"}`
+    );
+    if (tools) bodyLines.push(tools.trimEnd());
+  }
+
+  const tags = ["working-memory-compaction", ...topKeywords.slice(0, 3)];
+  const { filename } = await appendEpisodicMemory(agentId, {
+    title,
+    body: bodyLines.join("\n"),
+    tags,
+  });
+
+  await clearWorkingMemory(agentId);
+  return { compressed: true, filename, turns: entries.length };
+}
+
 // ─── Episodic memory (read) ───
 
 export interface EpisodicMemorySummary {

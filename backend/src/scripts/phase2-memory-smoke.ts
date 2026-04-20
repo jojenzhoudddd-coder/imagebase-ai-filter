@@ -161,7 +161,55 @@ async function main() {
   console.log("\nauto-recall section (unrelated query):\n[" + autoEmpty + "]");
   if (autoEmpty !== "") throw new Error("unrelated query should produce empty recall (so prompt stays tight)");
 
-  console.log("\n✅ Phase 2 Day 1+2+3 smoke passed.");
+  // ── Day 4: working.jsonl → episodic compression ────────────────────────
+
+  const {
+    appendWorkingMemory,
+    readWorkingMemory,
+    compressWorkingMemory,
+    clearWorkingMemory,
+  } = await import("../services/agentService.js");
+
+  // Start from a clean slate so the assertion counts are exact.
+  await clearWorkingMemory(agentId);
+  for (let i = 0; i < 12; i++) {
+    await appendWorkingMemory(agentId, {
+      timestamp: new Date(Date.now() - (12 - i) * 1000).toISOString(),
+      conversationId: "conv_smoke",
+      userMessage: i % 2 === 0 ? `怎么给 CRM 系统加字段 ${i}` : `给任务表加记录 ${i}`,
+      assistantMessage: `已处理 ${i}`,
+      toolCalls: i % 2 === 0 ? ["create_field"] : ["batch_create_records"],
+    });
+  }
+  const beforeEntries = await readWorkingMemory(agentId);
+  console.log("\nworking.jsonl before compress:", beforeEntries.length, "entries");
+  if (beforeEntries.length !== 12) throw new Error("expected 12 entries");
+
+  // Below-threshold run should be a no-op.
+  const skip = await compressWorkingMemory(agentId, { minTurns: 100 });
+  console.log("compressWorkingMemory (minTurns=100, should skip):", skip);
+  if (skip.compressed) throw new Error("expected below-threshold to skip compression");
+
+  // At-threshold run should compress + clear.
+  const done = await compressWorkingMemory(agentId, { minTurns: 10 });
+  console.log("compressWorkingMemory (minTurns=10, should compress):", done);
+  if (!done.compressed) throw new Error("expected compression to fire");
+  if (done.turns !== 12) throw new Error(`expected 12 turns compressed, got ${done.turns}`);
+
+  const afterEntries = await readWorkingMemory(agentId);
+  console.log("working.jsonl after compress:", afterEntries.length, "entries");
+  if (afterEntries.length !== 0) throw new Error("working log should be empty after compress");
+
+  // The new episodic file should exist and be tagged as a compaction.
+  const listAfter = await memory["read_memory"].handler({ limit: 5 }, { agentId });
+  const parsedAfter = JSON.parse(listAfter);
+  const compactionEntry = parsedAfter.memories.find((m: any) =>
+    m.tags.includes("working-memory-compaction")
+  );
+  console.log("compaction episodic entry:", compactionEntry?.filename, compactionEntry?.title);
+  if (!compactionEntry) throw new Error("no compaction episodic memory was written");
+
+  console.log("\n✅ Phase 2 Day 1+2+3+4 smoke passed.");
 }
 
 main().catch((e) => {
