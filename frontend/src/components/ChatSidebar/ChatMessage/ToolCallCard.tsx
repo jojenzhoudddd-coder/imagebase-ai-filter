@@ -9,7 +9,7 @@ import { useTranslation } from "../../../i18n";
  *   │ 🔧  <tool label> · <target>          ⚪  ▾   │  <- header (clickable)
  *   ├────────────────────────────────────────────────┤
  *   │ ┃  开始执行 create_table                       │
- *   │ ┃  参数：name="CRM 线索", documentId=…        │  <- body (left accent)
+ *   │ ┃  参数：name="CRM 线索", workspaceId=…       │  <- body (left accent)
  *   │ ┃  ✓ 执行成功                                  │
  *   └────────────────────────────────────────────────┘
  *

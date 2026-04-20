@@ -61,9 +61,9 @@ interface CachedState {
   contextHint: ChatContextSnapshot | null;
 }
 
-function readCache(documentId: string): CachedState | null {
+function readCache(workspaceId: string): CachedState | null {
   try {
-    const raw = localStorage.getItem(CACHE_KEY_PREFIX + documentId);
+    const raw = localStorage.getItem(CACHE_KEY_PREFIX + workspaceId);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CachedState;
     if (!parsed.activeConvId || !Array.isArray(parsed.messages)) return null;
@@ -76,21 +76,21 @@ function readCache(documentId: string): CachedState | null {
   }
 }
 
-function writeCache(documentId: string, state: CachedState) {
+function writeCache(workspaceId: string, state: CachedState) {
   try {
     const trimmed: CachedState = {
       ...state,
       messages: state.messages.slice(-CACHE_MAX_MESSAGES),
     };
-    localStorage.setItem(CACHE_KEY_PREFIX + documentId, JSON.stringify(trimmed));
+    localStorage.setItem(CACHE_KEY_PREFIX + workspaceId, JSON.stringify(trimmed));
   } catch {
     // Quota / disabled storage — silently skip
   }
 }
 
-function clearCache(documentId: string) {
+function clearCache(workspaceId: string) {
   try {
-    localStorage.removeItem(CACHE_KEY_PREFIX + documentId);
+    localStorage.removeItem(CACHE_KEY_PREFIX + workspaceId);
   } catch {
     // ignore
   }
@@ -98,7 +98,7 @@ function clearCache(documentId: string) {
 
 interface Props {
   open: boolean;
-  documentId: string;
+  workspaceId: string;
   onClose: () => void;
   /**
    * Virtual pointer — when the Agent invokes a tool that targets a specific
@@ -133,11 +133,11 @@ function extractTableIdFromCall(
   return undefined;
 }
 
-export default function ChatSidebar({ open, documentId, onClose, onActiveTableChange }: Props) {
+export default function ChatSidebar({ open, workspaceId, onClose, onActiveTableChange }: Props) {
   const { t } = useTranslation();
   // Hydrate from localStorage synchronously so a refresh shows cached
   // messages immediately — no welcome-page flash while /conversations loads.
-  const initialCache = useRef<CachedState | null>(readCache(documentId)).current;
+  const initialCache = useRef<CachedState | null>(readCache(workspaceId)).current;
   const [activeConv, setActiveConv] = useState<ChatConversation | null>(
     initialCache ? ({ id: initialCache.activeConvId } as ChatConversation) : null
   );
@@ -179,7 +179,7 @@ export default function ChatSidebar({ open, documentId, onClose, onActiveTableCh
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    fetchChatSuggestions(documentId)
+    fetchChatSuggestions(workspaceId)
       .then((r) => {
         if (!cancelled) setSuggestions(r.suggestions);
       })
@@ -189,7 +189,7 @@ export default function ChatSidebar({ open, documentId, onClose, onActiveTableCh
     return () => {
       cancelled = true;
     };
-  }, [open, documentId]);
+  }, [open, workspaceId]);
 
   // ─── Ensure a conversation exists when the sidebar opens ───────────────
   // With the cache primer we may already have an activeConv stub — but the
@@ -212,17 +212,17 @@ export default function ChatSidebar({ open, documentId, onClose, onActiveTableCh
           } catch {
             // Conversation no longer exists (server restart, etc.) — drop cache
             // and fall through to fresh bootstrap below.
-            clearCache(documentId);
+            clearCache(workspaceId);
           }
         }
-        const list = await listConversations(documentId);
+        const list = await listConversations(workspaceId);
         if (list.length > 0) {
           const conv = list[0];
           const { messages: msgs } = await getConversationMessages(conv.id);
           setActiveConv(conv);
           setMessages(msgs.map(serverToUi));
         } else {
-          const conv = await createConversation(documentId);
+          const conv = await createConversation(workspaceId);
           setActiveConv(conv);
           setMessages([]);
         }
@@ -230,23 +230,23 @@ export default function ChatSidebar({ open, documentId, onClose, onActiveTableCh
         setError((err as Error).message);
       }
     })();
-    // Only on open / documentId switch. Intentionally not depending on
+    // Only on open / workspaceId switch. Intentionally not depending on
     // activeConv — we read it once from the primer ref above, and subsequent
     // conversation changes come from handleNewConversation directly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, documentId]);
+  }, [open, workspaceId]);
 
   // ─── Persist active conversation + messages to cache ─────────────────
   // Write on every settled state change. Streaming intermediate states are
   // included (cheap JSON.stringify; capped at 100 messages by writeCache).
   useEffect(() => {
     if (!activeConv?.id) return;
-    writeCache(documentId, {
+    writeCache(workspaceId, {
       activeConvId: activeConv.id,
       messages,
       contextHint,
     });
-  }, [documentId, activeConv?.id, messages, contextHint]);
+  }, [workspaceId, activeConv?.id, messages, contextHint]);
 
   // Auto-scroll to bottom on new content — but only if the user hasn't
   // manually scrolled up. During streaming (thinking/message/tool_call
@@ -538,15 +538,15 @@ export default function ChatSidebar({ open, documentId, onClose, onActiveTableCh
     setContextHint(null);
     try {
       const [conv, snapshot] = await Promise.all([
-        createConversation(documentId),
-        fetchChatContextSnapshot(documentId).catch(() => null),
+        createConversation(workspaceId),
+        fetchChatContextSnapshot(workspaceId).catch(() => null),
       ]);
       setActiveConv(conv);
       if (snapshot) setContextHint(snapshot);
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [documentId, streaming, handleStop]);
+  }, [workspaceId, streaming, handleStop]);
 
   // ─── Render ─────────────────────────────────────────────────────────
   // Header row re-added per Figma node 6:5309 "AI header": no title, just a
@@ -802,7 +802,7 @@ function EmptyState({
       </div>
 
       {contextHint && (
-        <div className="chat-empty-context-hint" title={`documentId: ${contextHint.documentId}`}>
+        <div className="chat-empty-context-hint" title={`workspaceId: ${contextHint.workspaceId}`}>
           <span className="dot" aria-hidden="true" />
           {t("chat.empty.contextHint", {
             tables: contextHint.tableCount,
