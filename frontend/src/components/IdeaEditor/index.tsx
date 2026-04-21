@@ -379,6 +379,13 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   }, [ideaId]);
 
   // ── Autosave: debounce-per-keystroke, last-writer-wins ──
+  // `dirtyRef` tracks whether there are unsaved edits since the last ACKed
+  // save. Used by the unmount path to decide whether a flush is needed —
+  // without it we'd either skip legitimate flushes (if keying off saveStatus
+  // alone, which is stale across closure boundaries) or fire spurious
+  // empty-content saves (the bug that was wiping ideas on switch).
+  const dirtyRef = useRef(false);
+
   const flushSave = useCallback(async (text: string) => {
     setSaveStatus("saving");
     try {
@@ -389,10 +396,16 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         // carry the new version.
         versionRef.current = res.latest.version;
         setContent(res.latest.content);
+        // Server state is now in hand — no local dirt remaining.
+        dirtyRef.current = false;
         setSaveStatus("saved");
         toast.info(t("toast.ideaConflict"));
       } else if ("ok" in res) {
         versionRef.current = res.version;
+        // Only clear the dirty flag if no keystroke snuck in between when
+        // we started this save and now — otherwise the next save cycle must
+        // still fire. We detect that by comparing against contentRef.
+        if (contentRef.current === text) dirtyRef.current = false;
         setSaveStatus("saved");
       }
     } catch (err) {
@@ -402,22 +415,41 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   }, [ideaId, toast, t]);
 
   const scheduleSave = useCallback((text: string) => {
+    dirtyRef.current = true;
     setSaveStatus("dirty");
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
+      // Clear the timer handle the moment we fire — so the unmount cleanup
+      // below keys off the actual pending-timer state, not a stale handle
+      // left over from an already-completed debounce.
+      saveTimerRef.current = null;
       void flushSave(text);
     }, AUTOSAVE_DEBOUNCE_MS);
   }, [flushSave]);
 
-  // Flush any pending save on unmount / idea switch so in-flight edits
-  // aren't lost.
+  // Flush any pending edits on unmount / idea switch. With `key={ideaId}` in
+  // the parent, this effect runs exactly once per mount and its cleanup
+  // captures a *closure over the initial render* — meaning the old
+  // `saveIdeaContent(ideaId, content, …)` wrote the INITIAL content (empty
+  // for fresh mounts) to the server on every switch, wiping user edits. Fix
+  // is twofold:
+  //   1) Read the live content from `contentRef.current` (updated on every
+  //      content change) instead of the stale closure value.
+  //   2) Guard on `dirtyRef.current` so we only flush when there are actual
+  //      unsaved edits — a dangling `saveTimerRef` isn't reliable because
+  //      the debounced timeout could have already fired and completed the
+  //      save, yet an un-nulled handle would still trick the cleanup into
+  //      re-saving.
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) {
         window.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
+      }
+      if (dirtyRef.current) {
         // Fire-and-forget; no state updates possible after unmount.
-        void saveIdeaContent(ideaId, content, versionRef.current).catch(() => {});
+        void saveIdeaContent(ideaId, contentRef.current, versionRef.current).catch(() => {});
+        dirtyRef.current = false;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -426,10 +458,13 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // ── SSE: apply remote content changes when we're not actively editing ──
   useIdeaSync(ideaId, clientId, {
     onContentChange: useCallback((remoteContent: string, remoteVersion: number) => {
-      // If there's an outstanding save debounce, we're "typing" — skip
-      // overwriting to avoid clobbering the user mid-stroke. Their next
-      // save will produce a conflict, which we'll handle via toast.
-      if (saveTimerRef.current !== null) return;
+      // If we have unsaved local edits, skip overwriting — the user is
+      // mid-stroke (or mid-save). Their next save will surface a conflict,
+      // handled via the 409 path in flushSave. Keying off `dirtyRef` (not
+      // `saveTimerRef`) is correct because the debounce handle is cleared
+      // when the timeout fires, but the in-flight save still counts as
+      // "typing" from the remote-sync perspective.
+      if (dirtyRef.current) return;
       setContent(remoteContent);
       versionRef.current = remoteVersion;
     }, []),
