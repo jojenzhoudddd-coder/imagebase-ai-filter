@@ -133,31 +133,40 @@
 
 /* ─── Individual SVG Item ─── */
 
+/* The item lives inside a `transform: scale()`-ed surface, so any raw-pixel
+ * outline drawn on the item is scaled along with the canvas — at 2x zoom a
+ * 1.5px border reads as 3px, at 0.25x it reads as ~0.4px (then rounded by the
+ * browser to 0 or 1). We want the selection frame to stay at a constant
+ * 1.5px *on screen*, matching the rest of the UI chrome's stroke weight.
+ *
+ * We use `box-shadow` instead of `border` for the visible outline because
+ * box-shadow's spread radius honors sub-pixel values precisely (browsers
+ * round border-width to integer pixels, which breaks counter-scaling at
+ * zoom = 1 and above). The spread is multiplied by `--inv-scale` (set on the
+ * surface as `1 / zoom`) so the final on-screen thickness is constant. Since
+ * box-shadow has no layout impact, items stay at their declared bounds and
+ * no `box-sizing` games are needed. */
 .svg-canvas-item {
   position: absolute;
   cursor: pointer;
-  border: 2px solid transparent;
   border-radius: var(--radius-s, 4px);
-  transition: border-color 0.12s, box-shadow 0.12s;
-  box-sizing: content-box;
+  transition: box-shadow 0.12s;
   background: #fff;
 }
 
-/* Hover state: light border */
+/* Hover state: light grey outline at a constant 1.5px screen-space. */
 .svg-canvas-item:hover {
-  border-color: #c0c4cc;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 0 0 calc(1.5px * var(--inv-scale, 1)) #c0c4cc,
+    0 calc(1px * var(--inv-scale, 1)) calc(4px * var(--inv-scale, 1)) rgba(0, 0, 0, 0.06);
 }
 
-/* Selected state: blue border */
-.svg-canvas-item.selected {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(20, 86, 240, 0.15);
-}
-
-/* Selected + hover keeps blue */
+/* Selected state: blue 1.5px outline + soft 2px glow, both counter-scaled. */
+.svg-canvas-item.selected,
 .svg-canvas-item.selected:hover {
-  border-color: var(--color-primary);
+  box-shadow:
+    0 0 0 calc(1.5px * var(--inv-scale, 1)) var(--color-primary),
+    0 0 0 calc(3.5px * var(--inv-scale, 1)) rgba(20, 86, 240, 0.15);
 }
 
 /* Panning mode: items not clickable */
