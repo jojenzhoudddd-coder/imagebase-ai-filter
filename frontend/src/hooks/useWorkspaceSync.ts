@@ -5,6 +5,10 @@ export interface WorkspaceSyncHandlers {
   onTableDelete: (tableId: string) => void;
   onTableReorder: (updates: Array<{ id: string; order: number }>) => void;
   onTableRename: (tableId: string, name: string) => void;
+  onIdeaCreate?: (idea: { id: string; name: string; parentId: string | null; order: number }) => void;
+  onIdeaDelete?: (ideaId: string) => void;
+  onIdeaRename?: (ideaId: string, name: string) => void;
+  onIdeaReorder?: (updates: Array<{ id: string; order: number }>) => void;
 }
 
 export function useWorkspaceSync(
@@ -63,6 +67,18 @@ export function useWorkspaceSync(
             break;
           case "table:rename":
             h.onTableRename(p.tableId, p.name);
+            break;
+          case "idea:create":
+            h.onIdeaCreate?.(p.idea);
+            break;
+          case "idea:delete":
+            h.onIdeaDelete?.(p.ideaId);
+            break;
+          case "idea:rename":
+            h.onIdeaRename?.(p.ideaId, p.name);
+            break;
+          case "idea:reorder":
+            h.onIdeaReorder?.(p.updates);
             break;
         }
       } catch (err) {

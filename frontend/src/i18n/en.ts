@@ -313,6 +313,24 @@ export const en = {
   // Toast (table creation)
   "toast.createTableFailed": "Failed to create table",
   "toast.reorderFailed": "Failed to reorder tables",
+  "toast.createIdeaFailed": "Failed to create idea",
+  "toast.ideaConflict": "Content was updated elsewhere — loaded the latest version",
+
+  // Idea editor
+  "idea.loading": "Loading…",
+  "idea.source": "Switch to Source",
+  "idea.preview": "Switch to Preview",
+  "idea.toggleHint": "Cmd/Ctrl + / to toggle",
+  "idea.saving": "Saving…",
+  "idea.saved": "Saved",
+  "idea.unsaved": "Unsaved",
+  "idea.offline": "Offline",
+  "idea.empty": "Start writing your idea. Supports Markdown, @ mentions, and inline SVG / HTML.",
+  "idea.mentionEmpty": "No matches",
+  "idea.mentionView": "Table",
+  "idea.mentionTaste": "Design",
+  "idea.mentionIdea": "Idea",
+  "idea.mentionSection": "Idea",
 
   // Default view/field names
   "view.defaultGrid": "Grid",

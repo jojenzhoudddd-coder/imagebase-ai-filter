@@ -1,0 +1,327 @@
+/* ─── Idea Editor Panel ─── */
+
+.idea-editor-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: #ffffff;
+  position: relative;
+}
+
+/* ─── Top Bar (mirrors SvgCanvas: name left, actions right) ─── */
+.idea-editor-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
+.idea-editor-topbar-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.idea-editor-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.idea-editor-status {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  padding: 0 4px;
+  user-select: none;
+}
+
+/* ─── Mode toggle — single view-bar button (matches SvgCanvas topbar) ───
+ * Shows only the destination mode: if you're in Source, you see "Preview";
+ * if you're in Preview, you see "Source". Clicking swaps. */
+.idea-editor-topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-s, 4px);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.idea-editor-topbar-btn svg { flex-shrink: 0; }
+
+.idea-editor-topbar-btn:hover {
+  background: var(--color-bg-hover, #f0f0f0);
+  color: var(--color-text-primary);
+}
+
+/* ─── Body — the single scroll container for both modes ─── */
+.idea-editor-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #ffffff;
+}
+
+.idea-editor-source,
+.idea-preview-body {
+  padding: 60px 60px 80px 60px;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 100%;
+}
+
+.idea-editor-loading {
+  padding: 60px;
+  color: var(--color-text-tertiary);
+  font-size: 14px;
+}
+
+.idea-editor-textarea {
+  width: 100%;
+  min-height: 200px;
+  height: auto;   /* grows via JS ref; body handles overflow */
+  overflow: hidden;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  padding: 0;
+  display: block;
+}
+
+.idea-editor-textarea::placeholder {
+  color: var(--color-text-placeholder);
+  font-family: inherit;
+  opacity: 1;  /* Firefox drops placeholder opacity by default */
+}
+
+/* ─── Markdown preview typography ─── */
+.idea-preview-body {
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.7;
+  outline: none;  /* contentEditable focus ring off */
+}
+
+.idea-preview-body:focus,
+.idea-preview-body:focus-visible {
+  outline: none;
+}
+
+/* Empty-line placeholder — when the editor is empty we render a React-
+ * managed `<p data-idea-empty-line>` containing only a `<br>`, which the
+ * browser paints as a caret-height line box. A ::before pseudo on that p
+ * shows the placeholder text; `pointer-events:none` + `user-select:none`
+ * keep the caret falling through onto the `<br>`. When the user types,
+ * the `<br>` is replaced by a text node and the `:has(br:only-child)`
+ * guard stops matching, so the placeholder hides. Color matches the
+ * textarea's ::placeholder token. */
+.idea-preview-body p[data-idea-empty-line][data-placeholder]:has(> br:only-child)::before {
+  content: attr(data-placeholder);
+  color: var(--color-text-placeholder);
+  font-size: 14px;
+  line-height: 1.7;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Ensure the editable surface has enough height to host a visible caret
+ * even when empty — otherwise the caret can flash onto a zero-height line
+ * and stay invisible on some browsers. */
+.idea-preview-body {
+  min-height: 1.7em;
+}
+
+/* Brief highlight flash when a heading is jumped to via an idea-section
+ * mention chip. Attached by IdeaEditor.scrollToHeading(); self-removes via
+ * the CSS animation end (we don't need to untoggle from JS). */
+@keyframes idea-heading-flash {
+  0%   { background: rgba(20, 86, 240, 0.14); }
+  100% { background: transparent; }
+}
+.idea-preview-body .idea-heading-flash {
+  animation: idea-heading-flash 1.2s ease-out 1;
+  border-radius: 3px;
+}
+
+.idea-preview-body h1 { font-size: 28px; font-weight: 600; margin: 24px 0 12px; }
+.idea-preview-body h2 { font-size: 22px; font-weight: 600; margin: 20px 0 10px; }
+.idea-preview-body h3 { font-size: 18px; font-weight: 600; margin: 16px 0 8px; }
+.idea-preview-body p  { margin: 8px 0; }
+.idea-preview-body ul,
+.idea-preview-body ol { padding-left: 24px; margin: 8px 0; }
+.idea-preview-body li { margin: 4px 0; }
+.idea-preview-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  background: var(--color-bg-hover, #f4f5f7);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.idea-preview-body pre {
+  background: var(--color-bg-hover, #f4f5f7);
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 13px;
+}
+.idea-preview-body pre code {
+  background: transparent;
+  padding: 0;
+}
+.idea-preview-body blockquote {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+.idea-preview-body table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.idea-preview-body th,
+.idea-preview-body td {
+  border: 1px solid var(--color-border);
+  padding: 4px 8px;
+}
+.idea-preview-body img,
+.idea-preview-body svg {
+  max-width: 100%;
+}
+
+/* ─── Mention chip (rendered by MarkdownPreview) ───
+ * Light-blue tag background with the entity name rendered in the primary
+ * blue. Clicking navigates to the target entity (view / taste / idea). */
+.idea-mention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 8px;
+  margin: 0 1px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(20, 86, 240, 0.1);
+  color: var(--color-primary, #1456F0);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+  vertical-align: baseline;
+  transition: background 0.15s, color 0.15s;
+  /* Chips are atomic: contentEditable={false} on the button already blocks
+   * caret entry; this extra selector prevents the browser from lifting a
+   * partial text selection out of a chip and into the surrounding block. */
+  user-select: none;
+}
+
+.idea-mention-chip:hover {
+  background: rgba(20, 86, 240, 0.18);
+}
+
+.idea-mention-chip:active {
+  background: rgba(20, 86, 240, 0.24);
+}
+
+/* ─── Mention picker ─── */
+.idea-mention-picker {
+  position: fixed;
+  z-index: 1000;
+  min-width: 240px;
+  max-width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--color-bg-elevated, #fff);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(31, 35, 41, 0.12);
+  padding: 4px;
+  font-size: 13px;
+  /* Hide scrollbar while keeping the list scrollable — users rarely browse
+   * beyond the first 10 hits, and a visible bar inside a compact 240-320px
+   * floating popover adds visual noise. */
+  scrollbar-width: none;           /* Firefox */
+  -ms-overflow-style: none;        /* IE / legacy Edge */
+}
+
+.idea-mention-picker::-webkit-scrollbar {
+  /* Chrome / Safari — zero out the track entirely. */
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.idea-mention-empty {
+  padding: 12px;
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.idea-mention-group + .idea-mention-group {
+  border-top: 1px solid var(--color-border);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.idea-mention-group-label {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.idea-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--color-text-primary);
+}
+
+.idea-mention-item.active,
+.idea-mention-item:hover {
+  background: var(--color-bg-hover, #f0f0f0);
+}
+
+.idea-mention-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.idea-mention-parent {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+}

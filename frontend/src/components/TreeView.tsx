@@ -36,6 +36,18 @@ const DESIGN_ICON = (
   </svg>
 );
 
+/* Idea (Markdown doc) icon — matches the create-menu "doc" entry so the row,
+ * the create-menu entry, and the editor topbar all share one visual symbol.
+ * Uses currentColor so hover/active re-tinting still works. */
+const IDEA_ICON = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path d="M2.667 2h8.396c.62 0 1.204.237 1.626.64.42.403.644.935.644 1.478V14H4.937a2.26 2.26 0 01-1.626-.64A2.098 2.098 0 012.667 11.882V2zM2 .667A.667.667 0 001.333 1.333v10.549c0 .915.38 1.793 1.056 2.44A3.594 3.594 0 004.937 15.333H14a.667.667 0 00.667-.666V4.118c0-.915-.38-1.793-1.056-2.44A3.594 3.594 0 0011.063.667H2z" fill="currentColor"/>
+    <path d="M4.5 5.333a.667.667 0 01.667-.666h5.666a.667.667 0 010 1.333H5.167a.667.667 0 01-.667-.667z" fill="currentColor"/>
+    <path d="M4.5 8a.667.667 0 01.667-.667h5.666a.667.667 0 010 1.334H5.167A.667.667 0 014.5 8z" fill="currentColor"/>
+    <path d="M4.5 10.667a.667.667 0 01.667-.667h3a.667.667 0 010 1.333h-3a.667.667 0 01-.667-.666z" fill="currentColor"/>
+  </svg>
+);
+
 const ALBUM_ICON = (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
     <path d="M2.667 1.333A1.333 1.333 0 001.333 2.667v8A1.333 1.333 0 002.667 12h8a1.333 1.333 0 001.333-1.333v-8A1.333 1.333 0 0010.667 1.333h-8zm0 1.334h8v8h-8v-8z" fill="currentColor"/>
@@ -94,7 +106,7 @@ interface TreeViewProps {
   onSelectItem: (id: string, type: TreeItemType) => void;
   onRenameItem: (id: string, type: TreeItemType, newName: string) => void;
   onDeleteItem: (id: string, type: TreeItemType) => void;
-  onMoveItem: (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => void;
+  onMoveItem: (itemId: string, itemType: "table" | "folder" | "design" | "idea", newParentId: string | null) => void;
   onReorderItems: (updates: Array<{ id: string; type: TreeItemType; order: number }>) => void;
   folders: Array<{ id: string; name: string }>;
   /** Scroll the node with this id into view whenever the id changes. Used for
@@ -187,6 +199,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
     if (type === "folder") return expandedIds.has(id) ? CHEVRON_DOWN_16 : CHEVRON_RIGHT_16;
     if (type === "design") return DESIGN_ICON;
     if (type === "album") return ALBUM_ICON;
+    if (type === "idea") return IDEA_ICON;
     return TABLE_ICON;
   };
 
@@ -273,7 +286,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
 
     const onMouseUp = () => {
       if (dragRef.current?.isDragging) {
-        const dragType = dragRef.current.type as "table" | "folder" | "design";
+        const dragType = dragRef.current.type as "table" | "folder" | "design" | "idea";
         const draggedNode = nodeById.get(node.id);
 
         if (dragOverFolderRef.current) {
@@ -421,7 +434,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
               onSelect={(key) => {
                 if (key === "rename") { setMenuId(null); setEditingId(node.id); }
                 else if (key === "delete") { setMenuId(null); onDeleteItem(node.id, node.type); }
-                else if (key === "moveToRoot") { setMenuId(null); onMoveItem(node.id, node.type as "table" | "folder" | "design", null); }
+                else if (key === "moveToRoot") { setMenuId(null); onMoveItem(node.id, node.type as "table" | "folder" | "design" | "idea", null); }
                 else if (key === "moveTo") {
                   /* Keep main menu open; open the cascading sub-menu. The
                    * sub-menu will use moveToItemRef.current as its anchor
@@ -445,7 +458,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
               onSelect={(folderId) => {
                 setMoveMenuId(null);
                 setMenuId(null);
-                onMoveItem(node.id, node.type as "table" | "folder" | "design", folderId);
+                onMoveItem(node.id, node.type as "table" | "folder" | "design" | "idea", folderId);
               }}
               onClose={() => setMoveMenuId(null)}
               width={180}

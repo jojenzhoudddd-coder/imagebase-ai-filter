@@ -36,8 +36,9 @@ interface Props {
   folders?: Array<{ id: string; name: string }>;
   onCreateFolder?: () => void;
   onCreateDesign?: (name: string, figmaUrl?: string) => Promise<string>;
+  onCreateIdea?: () => Promise<string>;
   onDeleteItem?: (id: string, type: TreeItemType) => void;
-  onMoveItem?: (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => void;
+  onMoveItem?: (itemId: string, itemType: "table" | "folder" | "design" | "idea", newParentId: string | null) => void;
   /** When set, the TreeView scrolls the node with this id into view on the
    * next render. Used after creating a folder (which cannot become the active
    * item) so the user can see where the new node landed. */
@@ -110,7 +111,7 @@ const SIDEBAR_MIN_W = 120;
 const SIDEBAR_MAX_W = 400;
 const SIDEBAR_DEFAULT_W = 190;
 
-export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onDeleteItem, onMoveItem, scrollToItemId }: Props) {
+export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onCreateIdea, onDeleteItem, onMoveItem, scrollToItemId }: Props) {
   const { t } = useTranslation();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
@@ -230,7 +231,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
     { key: "form", label: t("createMenu.form"), icon: CM_ICONS.form, suffix: ARROW_RIGHT, noop: true },
     { key: "cm_dashboard", label: t("createMenu.dashboard"), icon: CM_ICONS.dashboard, noop: true },
     { key: "cm_workflow", label: t("createMenu.workflow"), icon: CM_ICONS.workflow, noop: true },
-    { key: "doc", label: t("createMenu.doc"), icon: CM_ICONS.doc, noop: true },
+    { key: "idea", label: t("createMenu.doc"), icon: CM_ICONS.doc },
     { key: "folder", label: t("createMenu.folder"), section: t("createMenu.manage"), icon: CM_ICONS.folder },
     { key: "import", label: t("createMenu.import"), icon: CM_ICONS.transfer, suffix: ARROW_RIGHT, noop: true },
     { key: "app", label: t("createMenu.app"), section: t("createMenu.appSection"), icon: CM_ICONS.app, suffix: ARROW_RIGHT, noop: true },
@@ -420,8 +421,8 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
       </div>
       <div className="sidebar-nav">
         {(() => {
-          // Build tree nodes from items that have a parentId property (table, design, folder)
-          const treeItemTypes = new Set(["table", "folder", "design", "album"]);
+          // Build tree nodes from items that have a parentId property (table, design, folder, idea)
+          const treeItemTypes = new Set(["table", "folder", "design", "album", "idea"]);
           const treeItems = items.filter(i => treeItemTypes.has(i.type));
           const flatNodes: TreeNodeData[] = treeItems.map(i => ({
             id: i.id,
@@ -462,7 +463,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
                   }
                 }}
                 onMoveItem={(itemId, itemType, newParentId) => {
-                  if (onMoveItem) onMoveItem(itemId, itemType as "table" | "folder" | "design", newParentId);
+                  if (onMoveItem) onMoveItem(itemId, itemType as "table" | "folder" | "design" | "idea", newParentId);
                 }}
                 onReorderItems={onReorderItems}
                 folders={folders}
@@ -508,6 +509,11 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
               } else if (key === "design") {
                 if (onCreateDesign) {
                   onCreateDesign(t("createMenu.design"));
+                }
+                handleCloseAll();
+              } else if (key === "idea") {
+                if (onCreateIdea) {
+                  onCreateIdea();
                 }
                 handleCloseAll();
               } else if (key === "folder") {

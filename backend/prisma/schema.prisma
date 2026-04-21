@@ -87,6 +87,7 @@ model Workspace {
   tables    Table[]
   folders   Folder[]
   designs   Design[]
+  ideas     Idea[]
 
   @@index([orgId])
   @@map("workspaces")
@@ -233,4 +234,30 @@ model Taste {
 
   @@index([designId])
   @@map("tastes")
+}
+
+// ─── Idea（Markdown 文档，与 Table / Design 并列的第三类 Artifact） ───
+
+model Idea {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  parentId    String?
+  order       Int      @default(0)
+  content     String   @default("")
+  version     Int      @default(0)
+  // Snapshot of the heading structure extracted from `content` on every
+  // save. Persisted as JSON so the @mention picker can surface idea
+  // sections without re-parsing every document on each keystroke, and so
+  // heading slugs stay stable across search calls.
+  // Shape: `Array<{ slug: string; text: string; level: number; order: number }>`
+  sections    Json     @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([parentId])
+  @@map("ideas")
 }

@@ -11,6 +11,8 @@ import folderRoutes from "./routes/folderRoutes.js";
 import agentRoutes from "./routes/agentRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
 import tasteRoutes from "./routes/tasteRoutes.js";
+import ideaRoutes from "./routes/ideaRoutes.js";
+import mentionRoutes from "./routes/mentionRoutes.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
@@ -80,6 +82,8 @@ app.use("/api/agents", agentRoutes);
 // 路径不冲突，Express 会按 handler 顺序匹配。
 app.use("/api/designs", designRoutes);
 app.use("/api/designs", tasteRoutes);
+app.use("/api/ideas", ideaRoutes);
+app.use("/api/workspaces", mentionRoutes);
 
 // Serve uploaded SVG files
 app.use("/uploads", express.static(path.resolve(__dirname, "../../uploads")));
@@ -119,16 +123,22 @@ app.get("/api/workspaces/:workspaceId/tables", async (req, res) => {
   res.json(tables);
 });
 
-// GET /api/workspaces/:workspaceId/tree — full tree (folders + tables + designs)
+// GET /api/workspaces/:workspaceId/tree — full tree (folders + tables + designs + ideas)
 app.get("/api/workspaces/:workspaceId/tree", async (req, res) => {
   try {
     const wsId = req.params.workspaceId;
-    const [folders, tables, designs] = await Promise.all([
+    const [folders, tables, designs, ideas] = await Promise.all([
       treePrisma.folder.findMany({ where: { workspaceId: wsId }, orderBy: { order: "asc" } }),
       treePrisma.table.findMany({ where: { workspaceId: wsId }, orderBy: { order: "asc" } }),
       treePrisma.design.findMany({ where: { workspaceId: wsId }, orderBy: { order: "asc" } }),
+      treePrisma.idea.findMany({
+        where: { workspaceId: wsId },
+        orderBy: { order: "asc" },
+        // exclude content — brief only (tree is for sidebar)
+        select: { id: true, workspaceId: true, name: true, parentId: true, order: true, createdAt: true, updatedAt: true },
+      }),
     ]);
-    res.json({ folders, tables, designs });
+    res.json({ folders, tables, designs, ideas });
   } catch (err: any) {
     console.error("[tree] error:", err);
     res.status(500).json({ error: err.message });

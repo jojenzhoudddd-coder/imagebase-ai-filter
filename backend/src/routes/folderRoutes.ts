@@ -50,12 +50,13 @@ router.post("/", async (req: Request, res: Response) => {
   // designs) rather than only folder siblings. This matches user expectation
   // that "new folder appears at the bottom just like new tables/designs".
   const parentFilter = { workspaceId: docId, parentId: parentId || null };
-  const [folderSibs, tableSibs, designSibs] = await Promise.all([
+  const [folderSibs, tableSibs, designSibs, ideaSibs] = await Promise.all([
     prisma.folder.findMany({ where: parentFilter, select: { order: true } }),
     prisma.table.findMany({ where: parentFilter, select: { order: true } }),
     prisma.design.findMany({ where: parentFilter, select: { order: true } }),
+    prisma.idea.findMany({ where: parentFilter, select: { order: true } }),
   ]);
-  const maxOrder = [...folderSibs, ...tableSibs, ...designSibs]
+  const maxOrder = [...folderSibs, ...tableSibs, ...designSibs, ...ideaSibs]
     .reduce((max, x) => Math.max(max, x.order), -1);
 
   const trimmed = name.trim().slice(0, 100);
@@ -124,8 +125,13 @@ router.put("/move", async (req: Request, res: Response) => {
       where: { id: itemId },
       data: { parentId },
     });
+  } else if (itemType === "idea") {
+    await prisma.idea.update({
+      where: { id: itemId },
+      data: { parentId },
+    });
   } else {
-    res.status(400).json({ error: "itemType must be 'table', 'folder', or 'design'" });
+    res.status(400).json({ error: "itemType must be 'table', 'folder', 'design', or 'idea'" });
     return;
   }
 
@@ -211,6 +217,18 @@ router.delete("/:folderId", async (req: Request, res: Response) => {
 
   // Promote child tables to parent
   await prisma.table.updateMany({
+    where: { parentId: folder.id },
+    data: { parentId: folder.parentId },
+  });
+
+  // Promote child designs to parent
+  await prisma.design.updateMany({
+    where: { parentId: folder.id },
+    data: { parentId: folder.parentId },
+  });
+
+  // Promote child ideas to parent
+  await prisma.idea.updateMany({
     where: { parentId: folder.id },
     data: { parentId: folder.parentId },
   });
