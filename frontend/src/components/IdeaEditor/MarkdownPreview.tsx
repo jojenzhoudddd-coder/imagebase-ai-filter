@@ -403,6 +403,99 @@ const InnerMarkdown = memo(function InnerMarkdown({
     && prev.onMentionClick === next.onMentionClick;
 });
 
+/** Map a flat-text caret offset inside `block` to the corresponding source
+ * offset (relative to `srcSlice`'s start, i.e. add the block's `data-md-start`
+ * on top to get an absolute source offset).
+ *
+ * We can't just do `srcSlice.indexOf(flatText) + caretInBlock` when the block
+ * contains atomic inline elements (mention chips, strong / em / code / del):
+ * their flat form (`@foo`, `bold`) isn't a substring of the source form
+ * (`[@foo](mention://…)`, `**bold**`), so indexOf returns -1 and every
+ * caret-driven operation (Enter splicing \n\n, mode-toggle caret restore)
+ * silently bails.
+ *
+ * Walks the block's children and accumulates two parallel counters: `flat`
+ * tracks text-node + atomic-innerText lengths, `srcPos` tracks text-node +
+ * atomic-inline-src lengths. When `flat` catches up to the target offset we
+ * emit the matching `srcPos`. When the caret lands inside an atomic (which
+ * it can't visually since `contentEditable=false` blocks caret entry, but
+ * the range's startContainer can still report a descendant text node), we
+ * snap to the position just after the atomic — consistent with what the
+ * browser will actually place the caret at on the next keystroke. */
+function mapFlatOffsetToSource(
+  block: HTMLElement,
+  flatOffset: number,
+  srcSlice: string,
+): number {
+  const tag = block.tagName.toLowerCase();
+  let opPrefixLen = 0;
+  if (/^h[1-6]$/.test(tag)) {
+    opPrefixLen = (/^#{1,6} /.exec(srcSlice)?.[0] || "").length;
+  } else if (tag === "li") {
+    opPrefixLen = (/^(?:[-*+]|\d+\.) +/.exec(srcSlice)?.[0] || "").length;
+  } else if (tag === "blockquote") {
+    opPrefixLen = (/^(?:> ?)+/.exec(srcSlice)?.[0] || "").length;
+  }
+
+  let flat = 0;
+  let srcPos = opPrefixLen;
+  let found = false;
+  let result = opPrefixLen;
+
+  const walk = (n: Node): boolean => {
+    if (found) return true;
+    if (n.nodeType === Node.TEXT_NODE) {
+      const text = (n.textContent || "").replace(/\u00A0/g, " ");
+      const len = text.length;
+      if (flat + len >= flatOffset) {
+        result = srcPos + (flatOffset - flat);
+        found = true;
+        return true;
+      }
+      flat += len;
+      srcPos += len;
+      return false;
+    }
+    if (n instanceof HTMLElement) {
+      const inSrc = n.getAttribute("data-md-inline-src");
+      if (inSrc != null) {
+        const flatLen = (n.innerText || "").replace(/\u00A0/g, " ").length;
+        const srcLen = inSrc.length;
+        if (flat + flatLen >= flatOffset) {
+          // Caret at / inside an atomic — snap to the source position just
+          // past it. The atomic is contentEditable=false so the browser
+          // won't actually place the caret inside it anyway.
+          result = srcPos + srcLen;
+          found = true;
+          return true;
+        }
+        flat += flatLen;
+        srcPos += srcLen;
+        return false;
+      }
+      if (n.tagName === "BR") return false;
+      for (const child of Array.from(n.childNodes)) {
+        if (walk(child)) return true;
+      }
+    }
+    return false;
+  };
+
+  for (const child of Array.from(block.childNodes)) {
+    if (walk(child)) break;
+  }
+
+  if (!found) {
+    // Caret past the last walked child — place just before any trailing
+    // newlines so the splice lands at the logical "end of content" rather
+    // than after the block separator.
+    const trailingNLLen = (/\n+$/.exec(srcSlice)?.[0] || "").length;
+    result = Math.max(opPrefixLen, srcSlice.length - trailingNLLen);
+  }
+
+  return result;
+}
+
 /** Flatten ReactNode children to plain text for the orig-text snapshot.
  * Must mirror what the browser will put in innerText — mention chips render
  * as `@label`, so we respect that. */
@@ -956,9 +1049,18 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       if (!Number.isFinite(blockStart) || !Number.isFinite(blockEnd)) return;
     }
     const srcSlice = sourceSnapshotRef.current.slice(blockStart, blockEnd);
-    const origIdx = srcSlice.indexOf(currentText);
-    if (origIdx < 0) return;
-    const sourceOffset = blockStart + origIdx + caretInBlock;
+    // Use the chip-aware mapper — plain `indexOf(currentText)` fails the
+    // instant the block contains a mention chip or any other inline atomic
+    // (the flattened `@Foo` form doesn't appear in the source-form
+    // `[@Foo](mention://…)`), and the Enter key would silently no-op for
+    // every block with a chip in it. That was the "Enter doesn't work after
+    // inserting a mention" bug.
+    const offsetInSlice = isRootFallback
+      ? (srcSlice.indexOf(currentText) >= 0
+          ? srcSlice.indexOf(currentText) + caretInBlock
+          : caretInBlock)
+      : mapFlatOffsetToSource(container, caretInBlock, srcSlice);
+    const sourceOffset = blockStart + offsetInSlice;
 
     // Build the separator. We want 2 newlines between content on each side
     // (markdown paragraph break). If the adjacent source already has some
@@ -1293,13 +1395,16 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
         if (!Number.isFinite(blockStart) || !Number.isFinite(blockEnd)) return null;
       }
       const srcSlice = sourceSnapshotRef.current.slice(blockStart, blockEnd);
-      const origIdx = srcSlice.indexOf(currentText);
-      if (origIdx < 0) {
-        // Chip-containing block — flat form isn't a source substring.
-        // Approximate: put caret at blockEnd (usually acceptable for mode
-        // switch since chip blocks are most often "short and sweet").
-        return blockEnd;
+      // Use the chip-aware mapper so chip-containing blocks return an
+      // accurate source offset (not just the block end) when the user
+      // toggles preview → source.
+      if (block) {
+        return blockStart + mapFlatOffsetToSource(block, caretInBlock, srcSlice);
       }
+      // Root fallback — no mention chips possible here (chips render inside
+      // wrapped blocks). Plain indexOf is fine.
+      const origIdx = srcSlice.indexOf(currentText);
+      if (origIdx < 0) return blockEnd;
       return blockStart + origIdx + caretInBlock;
     },
     /** Place the caret at the DOM position that corresponds to the given
