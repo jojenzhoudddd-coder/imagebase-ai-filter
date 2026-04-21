@@ -36,6 +36,14 @@ export interface MentionQueryState {
  * trigger the action in a callback without wiring up yet another effect. */
 export interface MarkdownPreviewHandle {
   insertMention: (link: string, atIndex: number, queryLen: number) => void;
+  /** Return the source-offset that corresponds to the current caret
+   * position in the preview DOM, or null if no caret / unmappable.
+   * Used by mode-toggle to preserve caret across preview → source. */
+  getCaretSourceOffset: () => number | null;
+  /** Place the caret at the DOM position that corresponds to the given
+   * source-offset. Returns true on success. Used when toggling source →
+   * preview. */
+  setCaretFromSourceOffset: (offset: number) => boolean;
 }
 
 interface Props {
@@ -147,7 +155,12 @@ const schema: typeof defaultSchema = {
       ...((defaultSchema.attributes?.["*"]) || []),
       ...SVG_ATTRS,
       // Allow our AST-offset + orig-text data attributes through the sanitizer.
+      // data-md-inline-src is stamped on atomic inline elements (mention chips,
+      // strong, em, del, code) and contains the verbatim source slice for that
+      // element. commitEdits's rebuild path uses it to preserve markdown syntax
+      // around contentEditable=false regions the user can't edit directly.
       "data-md-start", "data-md-end", "data-md-orig-text",
+      "data-md-inline-src", "data-md-inline-start", "data-md-inline-end",
     ],
     a: [
       ...((defaultSchema.attributes?.a) || []),
@@ -241,6 +254,24 @@ const InnerMarkdown = memo(function InnerMarkdown({
     };
   }, [editable]);
 
+  // Pick the verbatim source slice for an inline atomic (chip / strong / em
+  // / del / code). Stamped on the rendered element as `data-md-inline-src`
+  // so `commitEdits`'s rebuild path can preserve the exact markdown syntax
+  // (`**bold**`, `[@foo](mention://…)`, etc.) when the block is rewritten.
+  //
+  // Without this, the delta algorithm tries `srcSlice.indexOf(origText)`
+  // where origText is the flattened form (`bold` / `@foo`) — the source
+  // form (`**bold**` / `[@foo](mention://…)`) doesn't match, `indexOf`
+  // returns -1, and every edit in a block that contains inline formatting
+  // is silently dropped. That's exactly the "can't continue typing after a
+  // mention chip" bug we're fixing.
+  const inlineSrcFrom = useCallback((node: any): string | undefined => {
+    const s = node?.position?.start?.offset;
+    const e = node?.position?.end?.offset;
+    if (typeof s !== "number" || typeof e !== "number") return undefined;
+    return source.slice(s, e);
+  }, [source]);
+
   const components = useMemo(() => {
     const c: any = {
       h1: wrapBlock("h1"),
@@ -254,10 +285,20 @@ const InnerMarkdown = memo(function InnerMarkdown({
       blockquote: wrapBlock("blockquote"),
       // Inline formatting must stay atomic so the delta algorithm can cleanly
       // match text. Users switch to Source mode to edit inline markdown.
-      strong: ({ children, ...rest }: any) => <strong contentEditable={false} {...rest}>{children}</strong>,
-      em: ({ children, ...rest }: any) => <em contentEditable={false} {...rest}>{children}</em>,
-      del: ({ children, ...rest }: any) => <del contentEditable={false} {...rest}>{children}</del>,
-      code: ({ children, ...rest }: any) => <code contentEditable={false} {...rest}>{children}</code>,
+      // Each one stamps `data-md-inline-src` with its source-side markdown so
+      // commitEdits can preserve the syntax when rebuilding the block.
+      strong: ({ node, children, ...rest }: any) => (
+        <strong contentEditable={false} data-md-inline-src={inlineSrcFrom(node)} {...rest}>{children}</strong>
+      ),
+      em: ({ node, children, ...rest }: any) => (
+        <em contentEditable={false} data-md-inline-src={inlineSrcFrom(node)} {...rest}>{children}</em>
+      ),
+      del: ({ node, children, ...rest }: any) => (
+        <del contentEditable={false} data-md-inline-src={inlineSrcFrom(node)} {...rest}>{children}</del>
+      ),
+      code: ({ node, children, ...rest }: any) => (
+        <code contentEditable={false} data-md-inline-src={inlineSrcFrom(node)} {...rest}>{children}</code>
+      ),
       // Links / mention chips
       a({ href, children, node, ...rest }: any) {
         if (typeof href === "string") {
@@ -269,6 +310,9 @@ const InnerMarkdown = memo(function InnerMarkdown({
                 type="button"
                 className={`idea-mention-chip idea-mention-chip-${mention.type}`}
                 contentEditable={false}
+                data-md-inline-src={inlineSrcFrom(node)}
+                data-md-inline-start={node?.position?.start?.offset}
+                data-md-inline-end={node?.position?.end?.offset}
                 onClick={(e) => {
                   e.preventDefault();
                   onMentionClick(mention);
@@ -288,7 +332,7 @@ const InnerMarkdown = memo(function InnerMarkdown({
       },
     };
     return c;
-  }, [wrapBlock, onMentionClick]);
+  }, [wrapBlock, onMentionClick, inlineSrcFrom]);
 
   // Empty / trailing-whitespace editable source: render a single empty
   // paragraph with a `<br>` so the browser has a concrete caret target and
@@ -491,12 +535,69 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       if (currentText === origText) return;
 
       const srcSlice = sourceSnapshotRef.current.slice(start, end);
-      const idx = srcSlice.indexOf(origText);
-      if (idx < 0) return;
 
-      const prefix = srcSlice.slice(0, idx);
-      const suffix = srcSlice.slice(idx + origText.length);
-      const newSlice = prefix + currentText + suffix;
+      // When the block has no atomic inline elements (chips, strong, em,
+      // code, del), origText (flattened text) should be a substring of
+      // srcSlice (source). Splice the delta directly.
+      //
+      // When atomics ARE present, srcSlice contains markdown syntax the
+      // flattened view can't see — `[@foo](mention://…)` flattens to `@foo`,
+      // `**bold**` flattens to `bold`. `indexOf` returns -1, we can't splice.
+      // Fall back to rebuilding the block by walking DOM children: text
+      // nodes contribute their current textContent, atomic elements
+      // contribute their stamped `data-md-inline-src`. That reconstructs
+      // source-side syntax exactly, at the cost of assuming the block's
+      // operator prefix is stable (valid because contentEditable is
+      // scoped to inline content, not block operators).
+      const hasInlineAtomic = block.querySelector("[data-md-inline-src]") !== null;
+
+      let newSlice: string;
+      if (!hasInlineAtomic) {
+        const idx = srcSlice.indexOf(origText);
+        if (idx < 0) return;
+        const prefix = srcSlice.slice(0, idx);
+        const suffix = srcSlice.slice(idx + origText.length);
+        newSlice = prefix + currentText + suffix;
+      } else {
+        // Detect operator prefix from the block tag. `<p>` has none; headings
+        // get `#…+space`; list items carry `- ` / `* ` / `\d+. `; blockquote
+        // carries `> `. Keep whatever matches from the front of srcSlice so
+        // the reconstruction reproduces the exact bytes.
+        const tag = block.tagName.toLowerCase();
+        let opPrefix = "";
+        if (/^h[1-6]$/.test(tag)) {
+          opPrefix = /^#{1,6} /.exec(srcSlice)?.[0] || "";
+        } else if (tag === "li") {
+          opPrefix = /^(?:[-*+]|\d+\.) +/.exec(srcSlice)?.[0] || "";
+        } else if (tag === "blockquote") {
+          opPrefix = /^(?:> ?)+/.exec(srcSlice)?.[0] || "";
+        }
+        const trailingNL = /\n+$/.exec(srcSlice)?.[0] || "";
+
+        let content = "";
+        const walk = (n: Node) => {
+          if (n.nodeType === Node.TEXT_NODE) {
+            content += (n.textContent || "").replace(/\u00A0/g, " ");
+            return;
+          }
+          if (n instanceof HTMLElement) {
+            const inSrc = n.getAttribute("data-md-inline-src");
+            if (inSrc != null) {
+              content += inSrc;
+              return;
+            }
+            if (n.tagName === "BR") return;
+            for (const child of Array.from(n.childNodes)) walk(child);
+          }
+        };
+        for (const child of Array.from(block.childNodes)) walk(child);
+
+        newSlice = opPrefix + content + trailingNL;
+      }
+
+      // If reconstruction produced no actual change (e.g. BR normalization
+      // noise), skip the edit.
+      if (newSlice === srcSlice) return;
 
       edits.push({ start, end, newSlice });
       block.setAttribute("data-md-orig-text", currentText);
@@ -926,6 +1027,79 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       insertParagraphBreak();
       return;
     }
+
+    // Backspace chip deletion — when the caret sits immediately after a
+    // mention chip (contentEditable=false), the browser's default Backspace
+    // is a no-op because there's nothing editable to remove at that offset.
+    // Detect that case, drop the chip node ourselves, then flush through
+    // commitEdits which (thanks to the chip-aware rebuild path) syncs the
+    // source without the chip's markdown link.
+    if (
+      e.key === "Backspace" &&
+      !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey &&
+      editable && !composingRef.current
+    ) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (range.collapsed) {
+          // Two possible caret-after-chip shapes:
+          //  (a) caret is at offset 0 of a text node whose previousSibling is a chip
+          //  (b) caret is at index N of an element node, and childNodes[N-1] is a chip
+          let chip: HTMLElement | null = null;
+          const sc = range.startContainer;
+          const so = range.startOffset;
+          if (sc.nodeType === Node.TEXT_NODE && so === 0) {
+            const prev = (sc as Text).previousSibling;
+            if (prev instanceof HTMLElement && prev.classList.contains("idea-mention-chip")) {
+              chip = prev;
+            }
+          } else if (sc.nodeType === Node.ELEMENT_NODE && so > 0) {
+            const prev = sc.childNodes[so - 1];
+            if (prev instanceof HTMLElement && prev.classList.contains("idea-mention-chip")) {
+              chip = prev;
+            }
+          }
+          if (chip) {
+            e.preventDefault();
+            const parent = chip.parentNode;
+            if (parent) {
+              // Capture a reference to whatever sits immediately after the
+              // chip so we can place the caret there after removal. If the
+              // chip was followed by its rebuild-inserted trailing space,
+              // we'll drop that too — leaving `foo | bar` → `foo| bar` reads
+              // strange, so we trim exactly one leading space when present.
+              const nextNode = chip.nextSibling;
+              parent.removeChild(chip);
+              if (nextNode && nextNode.nodeType === Node.TEXT_NODE) {
+                const tn = nextNode as Text;
+                if (tn.data.startsWith(" ")) {
+                  tn.deleteData(0, 1);
+                }
+                try {
+                  const r = document.createRange();
+                  r.setStart(tn, 0);
+                  r.collapse(true);
+                  sel.removeAllRanges();
+                  sel.addRange(r);
+                } catch { /* ignore */ }
+              } else if (parent instanceof HTMLElement) {
+                try {
+                  const r = document.createRange();
+                  r.selectNodeContents(parent);
+                  r.collapse(false);
+                  sel.removeAllRanges();
+                  sel.addRange(r);
+                } catch { /* ignore */ }
+              }
+              commitEdits();
+            }
+            return;
+          }
+        }
+      }
+    }
+
     const primary = IS_MAC ? e.metaKey : e.ctrlKey;
     const wrongModifier = IS_MAC ? e.ctrlKey : e.metaKey;
     if (!primary || wrongModifier || !e.altKey || e.shiftKey) return;
@@ -936,7 +1110,7 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
     if (!digit) return;
     e.preventDefault();
     applyHeadingLevel(parseInt(digit, 10) as 0 | 1 | 2 | 3 | 4 | 5 | 6);
-  }, [applyHeadingLevel, insertParagraphBreak]);
+  }, [applyHeadingLevel, insertParagraphBreak, editable, commitEdits]);
 
   /** After selection change (arrow keys, clicks) re-evaluate whether we're
    * still on an `@<query>` — this closes the picker when the user navigates
@@ -1011,25 +1185,216 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       // Bump render token so the link renders as a chip immediately — the
       // memo comparator otherwise keeps the stale DOM.
       setRenderToken(t => t + 1);
-      // After remount, move caret to just after the inserted chip's trailing
-      // space. We find the chip by scanning for the source offset in the new
-      // render, then collapse selection past it.
-      requestAnimationFrame(() => {
+
+      // After remount, place caret IMMEDIATELY after the inserted chip's
+      // trailing space so the user can keep typing. Two rAFs so React has
+      // committed the remount before we query for the chip.
+      const chipStart = atIndex;        // source offset of the new `[`
+      requestAnimationFrame(() => requestAnimationFrame(() => {
         const r = rootRef.current;
         if (!r) return;
-        // Place caret at the end of the paragraph that now contains the chip.
-        // Good-enough for v1; a precise after-chip caret would require more
-        // walking.
         try {
+          r.focus({ preventScroll: true });
           const sel = window.getSelection();
           if (!sel) return;
+          // Find the chip by its source-offset attr (stamped in `a()` render).
+          const chip = r.querySelector<HTMLElement>(
+            `[data-md-inline-start="${chipStart}"]`
+          );
           const range = document.createRange();
-          range.selectNodeContents(r);
-          range.collapse(false);
+          if (chip && chip.nextSibling && chip.nextSibling.nodeType === Node.TEXT_NODE) {
+            // The rebuild inserts a trailing space after the link; the chip's
+            // nextSibling is exactly that text node. Caret after the space.
+            const ns = chip.nextSibling as Text;
+            const offset = Math.min(1, ns.length);
+            range.setStart(ns, offset);
+            range.collapse(true);
+          } else if (chip && chip.parentNode) {
+            // Fallback: caret just after the chip element itself.
+            range.setStartAfter(chip);
+            range.collapse(true);
+          } else {
+            // Last-resort: end of editable surface.
+            range.selectNodeContents(r);
+            range.collapse(false);
+          }
           sel.removeAllRanges();
           sel.addRange(range);
-        } catch {}
-      });
+        } catch { /* ignore */ }
+      }));
+    },
+    /** Return the source-offset that corresponds to the current caret
+     * position in the preview DOM. Returns null when there's no selection
+     * or we can't map cleanly. Used by the IdeaEditor mode toggle to
+     * carry caret position across preview → source.  */
+    getCaretSourceOffset: () => {
+      const root = rootRef.current;
+      if (!root) return null;
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return null;
+      const range = sel.getRangeAt(0);
+      // Only mappable when the selection is inside the editable surface.
+      if (!root.contains(range.startContainer)) return null;
+
+      // Walk up to the nearest wrapped block.
+      let node: Node | null = range.startContainer;
+      let block: HTMLElement | null = null;
+      while (node && node !== root) {
+        if (node instanceof HTMLElement && node.hasAttribute("data-md-start")) {
+          block = node;
+          break;
+        }
+        node = node.parentNode;
+      }
+      const container: HTMLElement = block ?? root;
+
+      // Caret offset inside the container's innerText.
+      const pre = document.createRange();
+      pre.selectNodeContents(container);
+      try {
+        pre.setEnd(range.endContainer, range.endOffset);
+      } catch {
+        return null;
+      }
+      const caretInBlock = pre.toString().replace(/\u00A0/g, " ").length;
+      const currentText = container.innerText.replace(/\u00A0/g, " ");
+
+      let blockStart: number;
+      let blockEnd: number;
+      if (!block) {
+        blockStart = 0;
+        blockEnd = sourceSnapshotRef.current.length;
+      } else {
+        blockStart = Number(block.getAttribute("data-md-start"));
+        blockEnd = Number(block.getAttribute("data-md-end"));
+        if (!Number.isFinite(blockStart) || !Number.isFinite(blockEnd)) return null;
+      }
+      const srcSlice = sourceSnapshotRef.current.slice(blockStart, blockEnd);
+      const origIdx = srcSlice.indexOf(currentText);
+      if (origIdx < 0) {
+        // Chip-containing block — flat form isn't a source substring.
+        // Approximate: put caret at blockEnd (usually acceptable for mode
+        // switch since chip blocks are most often "short and sweet").
+        return blockEnd;
+      }
+      return blockStart + origIdx + caretInBlock;
+    },
+    /** Place the caret at the DOM position that corresponds to the given
+     * source-offset. Returns true on success. Used when toggling source →
+     * preview so the user lands in roughly the same spot. */
+    setCaretFromSourceOffset: (offset: number) => {
+      const root = rootRef.current;
+      if (!root) return false;
+      const blocks = Array.from(root.querySelectorAll<HTMLElement>("[data-md-start]"));
+      // Find the block whose source range contains `offset`, or the first
+      // block that starts after it (place caret at its start).
+      let host: HTMLElement | null = null;
+      let caretInBlock: number | null = null;
+      for (const b of blocks) {
+        const bStart = Number(b.getAttribute("data-md-start"));
+        const bEnd = Number(b.getAttribute("data-md-end"));
+        if (!Number.isFinite(bStart) || !Number.isFinite(bEnd)) continue;
+        if (offset >= bStart && offset <= bEnd) {
+          host = b;
+          // Approximate flat-text caret by clipping relative offset into
+          // block innerText — works when srcSlice ≈ flat text (non-chip).
+          const rel = offset - bStart;
+          const flat = b.innerText.replace(/\u00A0/g, " ");
+          caretInBlock = Math.min(rel, flat.length);
+          break;
+        }
+        if (offset < bStart) {
+          host = b;
+          caretInBlock = 0;
+          break;
+        }
+      }
+      if (!host) {
+        // Past the last block — put caret at end of root.
+        try {
+          root.focus({ preventScroll: true });
+          const range = document.createRange();
+          range.selectNodeContents(root);
+          range.collapse(false);
+          const sel = window.getSelection();
+          if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+          return true;
+        } catch { return false; }
+      }
+
+      // Walk the host's text nodes, accumulating length until we hit
+      // `caretInBlock`. Place the caret inside the text node that crosses
+      // that threshold.
+      let remaining = caretInBlock ?? 0;
+      let placed = false;
+      const placeAt = (n: Text, off: number) => {
+        try {
+          root.focus({ preventScroll: true });
+          const r = document.createRange();
+          r.setStart(n, off);
+          r.collapse(true);
+          const s = window.getSelection();
+          if (s) { s.removeAllRanges(); s.addRange(r); }
+          placed = true;
+        } catch { /* ignore */ }
+      };
+
+      const walk = (node: Node): boolean => {
+        if (placed) return true;
+        if (node.nodeType === Node.TEXT_NODE) {
+          const t = node as Text;
+          const len = t.length;
+          if (remaining <= len) {
+            placeAt(t, Math.max(0, remaining));
+            return true;
+          }
+          remaining -= len;
+          return false;
+        }
+        if (node instanceof HTMLElement) {
+          if (node.hasAttribute("data-md-inline-src")) {
+            // Atomic inline — flattened text is its innerText length.
+            const len = node.innerText.length;
+            if (remaining <= len) {
+              // Can't place caret inside a non-editable atomic; aim just after.
+              try {
+                root.focus({ preventScroll: true });
+                const r = document.createRange();
+                r.setStartAfter(node);
+                r.collapse(true);
+                const s = window.getSelection();
+                if (s) { s.removeAllRanges(); s.addRange(r); }
+                placed = true;
+              } catch { /* ignore */ }
+              return true;
+            }
+            remaining -= len;
+            return false;
+          }
+          if (node.tagName === "BR") return false;
+          for (const child of Array.from(node.childNodes)) {
+            if (walk(child)) return true;
+          }
+        }
+        return false;
+      };
+
+      for (const child of Array.from(host.childNodes)) {
+        if (walk(child)) break;
+      }
+      if (!placed) {
+        // Ran out of content — place at end of host.
+        try {
+          root.focus({ preventScroll: true });
+          const r = document.createRange();
+          r.selectNodeContents(host);
+          r.collapse(false);
+          const s = window.getSelection();
+          if (s) { s.removeAllRanges(); s.addRange(r); }
+          placed = true;
+        } catch { /* ignore */ }
+      }
+      return placed;
     },
   }), [onEditableInput]);
 

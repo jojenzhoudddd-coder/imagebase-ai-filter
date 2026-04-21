@@ -476,17 +476,58 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     }, []),
   });
 
+  // ── Mode toggle with caret preservation ──
+  // When the user flips between Source (textarea) and Preview
+  // (contentEditable), we carry the caret over to roughly the same byte in
+  // the markdown source so they land where they left off. The two surfaces
+  // use different caret models:
+  //   • Source: textarea.selectionStart — already a source-buffer offset.
+  //   • Preview: MarkdownPreview.getCaretSourceOffset() walks the DOM to
+  //     recover the offset from the rendered tree.
+  //
+  // After `setMode` commits, we restore in the new surface via the inverse
+  // method. Two rAFs cover React's commit + the textarea/MarkdownPreview's
+  // own mount-time caret placement (otherwise our restore would be overwritten
+  // by MarkdownPreview's own "caret at end" initial placement).
+  const toggleMode = useCallback(() => {
+    const fromMode = modeRef.current;
+    let capturedOffset: number | null = null;
+    if (fromMode === "source") {
+      capturedOffset = textareaRef.current?.selectionStart ?? null;
+    } else {
+      capturedOffset = previewRef.current?.getCaretSourceOffset() ?? null;
+    }
+    const nextMode = fromMode === "source" ? "preview" : "source";
+    setMode(nextMode);
+    if (capturedOffset === null) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (nextMode === "source") {
+          const ta = textareaRef.current;
+          if (!ta) return;
+          const pos = Math.max(0, Math.min(capturedOffset!, ta.value.length));
+          try {
+            ta.focus({ preventScroll: true });
+            ta.setSelectionRange(pos, pos);
+          } catch { /* ignore */ }
+        } else {
+          previewRef.current?.setCaretFromSourceOffset(capturedOffset!);
+        }
+      });
+    });
+  }, []);
+
   // ── Keyboard: Cmd/Ctrl+/ toggles mode ──
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "/") {
         e.preventDefault();
-        setMode(m => (m === "source" ? "preview" : "source"));
+        toggleMode();
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, []);
+  }, [toggleMode]);
 
   // ── @mention detection ──
   // On every change, if the caret sits right after an `@<query>` with no
@@ -706,7 +747,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
            * In Source view, the button reads "Preview"; click to switch. */}
           <button
             className="idea-editor-topbar-btn"
-            onClick={() => setMode(m => (m === "source" ? "preview" : "source"))}
+            onClick={toggleMode}
             title={t("idea.toggleHint")}
           >
             {mode === "source" ? PREVIEW_ICON : SOURCE_ICON}
