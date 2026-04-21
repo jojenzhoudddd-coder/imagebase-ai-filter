@@ -476,7 +476,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     }, []),
   });
 
-  // ── Mode toggle with caret preservation ──
+  // ── Mode toggle with caret + scroll preservation ──
   // When the user flips between Source (textarea) and Preview
   // (contentEditable), we carry the caret over to roughly the same byte in
   // the markdown source so they land where they left off. The two surfaces
@@ -485,10 +485,19 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   //   • Preview: MarkdownPreview.getCaretSourceOffset() walks the DOM to
   //     recover the offset from the rendered tree.
   //
-  // After `setMode` commits, we restore in the new surface via the inverse
-  // method. Two rAFs cover React's commit + the textarea/MarkdownPreview's
-  // own mount-time caret placement (otherwise our restore would be overwritten
-  // by MarkdownPreview's own "caret at end" initial placement).
+  // Scroll preservation is just as important. The body is a single scroll
+  // container shared by both modes, but its content HEIGHT changes on
+  // toggle: preview mode renders rich markdown (can be tall), source mode
+  // starts at the textarea's min-height=200px and only reaches full height
+  // AFTER the auto-grow useEffect fires. Between React's mode commit and
+  // the auto-grow, the scrollable area temporarily shrinks and the browser
+  // clamps scrollTop toward 0. We snapshot bodyRef.scrollTop pre-toggle and
+  // restore it after the double-rAF (which lets React commit + the
+  // auto-grow effect run), so the user stays anchored.
+  //
+  // `preventScroll: true` on focus is belt-and-suspenders: without it
+  // focusing a just-mounted textarea (or a now-taller contentEditable)
+  // would scroll the textarea into view, undoing the scrollTop restore.
   const toggleMode = useCallback(() => {
     const fromMode = modeRef.current;
     let capturedOffset: number | null = null;
@@ -497,21 +506,29 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     } else {
       capturedOffset = previewRef.current?.getCaretSourceOffset() ?? null;
     }
+    const savedScrollTop = bodyRef.current?.scrollTop ?? 0;
     const nextMode = fromMode === "source" ? "preview" : "source";
     setMode(nextMode);
-    if (capturedOffset === null) return;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        // Restore scroll first — if content height shrunk it may have
+        // clamped, so setting again after layout has settled pins it.
+        if (bodyRef.current) bodyRef.current.scrollTop = savedScrollTop;
+        if (capturedOffset === null) return;
         if (nextMode === "source") {
           const ta = textareaRef.current;
           if (!ta) return;
-          const pos = Math.max(0, Math.min(capturedOffset!, ta.value.length));
+          const pos = Math.max(0, Math.min(capturedOffset, ta.value.length));
           try {
             ta.focus({ preventScroll: true });
             ta.setSelectionRange(pos, pos);
           } catch { /* ignore */ }
+          // Re-pin scroll — setSelectionRange on some browsers nudges the
+          // textarea into view. A second assignment after is cheap insurance.
+          if (bodyRef.current) bodyRef.current.scrollTop = savedScrollTop;
         } else {
-          previewRef.current?.setCaretFromSourceOffset(capturedOffset!);
+          previewRef.current?.setCaretFromSourceOffset(capturedOffset);
+          if (bodyRef.current) bodyRef.current.scrollTop = savedScrollTop;
         }
       });
     });
@@ -636,12 +653,24 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     const after = content.slice(mentionState.atIndex + 1 + mentionState.query.length);
     const next = `${before}${link} ${after}`;
     const caret = before.length + link.length + 1; // +1 for the trailing space
+    // Snapshot body scrollTop — inserting the mention link grows the content
+    // by dozens of chars (e.g. `[@Foo](mention://view/abc?table=xyz)`), the
+    // auto-grow effect re-computes textarea.scrollHeight on the next paint,
+    // and `ta.focus()` without preventScroll would then scroll the textarea
+    // into view — typically snapping the body near the bottom because the
+    // newly-grown textarea becomes the tallest thing in the scroll container.
+    // Capturing + restoring pins the user at the visual position they picked
+    // the mention from.
+    const savedScrollTop = bodyRef.current?.scrollTop ?? 0;
     setContent(next);
     setMentionState(null);
     scheduleSave(next);
     requestAnimationFrame(() => {
-      ta.focus();
-      ta.setSelectionRange(caret, caret);
+      try {
+        ta.focus({ preventScroll: true });
+        ta.setSelectionRange(caret, caret);
+      } catch { /* ignore */ }
+      if (bodyRef.current) bodyRef.current.scrollTop = savedScrollTop;
     });
   }, [content, mentionState, scheduleSave]);
 

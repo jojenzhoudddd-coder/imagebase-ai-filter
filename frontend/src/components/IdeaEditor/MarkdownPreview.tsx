@@ -551,18 +551,25 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       // scoped to inline content, not block operators).
       const hasInlineAtomic = block.querySelector("[data-md-inline-src]") !== null;
 
-      let newSlice: string;
-      if (!hasInlineAtomic) {
-        const idx = srcSlice.indexOf(origText);
-        if (idx < 0) return;
-        const prefix = srcSlice.slice(0, idx);
-        const suffix = srcSlice.slice(idx + origText.length);
-        newSlice = prefix + currentText + suffix;
-      } else {
-        // Detect operator prefix from the block tag. `<p>` has none; headings
-        // get `#…+space`; list items carry `- ` / `* ` / `\d+. `; blockquote
-        // carries `> `. Keep whatever matches from the front of srcSlice so
-        // the reconstruction reproduces the exact bytes.
+      // Rebuild helper — walks the block's children, using each atomic's
+      // stamped `data-md-inline-src` for chip / bold / em / code / del
+      // regions and each text node's live textContent for the rest. Wraps
+      // with the detected block operator prefix + any trailing newlines so
+      // the spliced slice drops cleanly back into source.
+      //
+      // This path is correct regardless of whether chips are currently
+      // present; it's slightly slower than the plain indexOf splice so we
+      // only reach for it when indexOf can't find origText inside srcSlice.
+      // That happens:
+      //   (a) whenever the block currently contains an atomic (origText is
+      //       flattened form, srcSlice is source form — they don't match);
+      //   (b) immediately after the user Backspaces a chip — the block no
+      //       longer has any atomic, but origText still carries the chip's
+      //       flattened `@label` while srcSlice still carries
+      //       `[@label](mention://…)`. Without this fallback the edit would
+      //       be silently dropped and the chip markdown would come back on
+      //       next render.
+      const rebuildFromDom = (): string => {
         const tag = block.tagName.toLowerCase();
         let opPrefix = "";
         if (/^h[1-6]$/.test(tag)) {
@@ -592,7 +599,23 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
         };
         for (const child of Array.from(block.childNodes)) walk(child);
 
-        newSlice = opPrefix + content + trailingNL;
+        return opPrefix + content + trailingNL;
+      };
+
+      let newSlice: string;
+      if (!hasInlineAtomic) {
+        const idx = srcSlice.indexOf(origText);
+        if (idx >= 0) {
+          const prefix = srcSlice.slice(0, idx);
+          const suffix = srcSlice.slice(idx + origText.length);
+          newSlice = prefix + currentText + suffix;
+        } else {
+          // origText out of sync with srcSlice — e.g. chip just deleted.
+          // Fall back to DOM-walk rebuild so the removal lands in source.
+          newSlice = rebuildFromDom();
+        }
+      } else {
+        newSlice = rebuildFromDom();
       }
 
       // If reconstruction produced no actual change (e.g. BR normalization
