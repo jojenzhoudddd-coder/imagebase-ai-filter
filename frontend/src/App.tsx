@@ -9,11 +9,12 @@ import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import { AddFieldPopover, useFieldSuggestions } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, createRecord, renameTable, fetchWorkspace, renameWorkspace, fetchWorkspaceTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchWorkspaceTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, createRecord, renameTable, fetchWorkspace, renameWorkspace, fetchWorkspaceTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, reorderIdeas, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchWorkspaceTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign, createIdea as apiCreateIdea, renameIdea as apiRenameIdea, deleteIdea as apiDeleteIdea } from "./api";
 import type { GeneratedField, FolderBrief, DesignBrief } from "./api";
 import type { SidebarItem } from "./components/Sidebar";
-import type { TreeItemType } from "./types";
+import type { TreeItemType, IdeaBrief, FocusEntity } from "./types";
 import SvgCanvas from "./components/SvgCanvas/index";
+import IdeaEditor from "./components/IdeaEditor/index";
 import { useToast } from "./components/Toast/index";
 import { useTranslation } from "./i18n/index";
 import ConfirmDialog from "./components/ConfirmDialog/index";
@@ -51,6 +52,12 @@ export default function App() {
   const [documentTables, setDocumentTables] = useState<Array<{ id: string; name: string; order: number; parentId: string | null }>>([]);
   const [documentFolders, setDocumentFolders] = useState<FolderBrief[]>([]);
   const [documentDesigns, setDocumentDesigns] = useState<DesignBrief[]>([]);
+  const [documentIdeas, setDocumentIdeas] = useState<IdeaBrief[]>([]);
+  /* When the user clicks a @mention chip inside an idea, we park the entity
+   * here so the destination view (TableView / SvgCanvas) can highlight the
+   * field / record / taste on its next render. Cleared by the view after it
+   * applies focus so re-entering the same idea doesn't re-trigger highlight. */
+  const [focusEntity, setFocusEntity] = useState<FocusEntity>(null);
   /* Transient id used to scroll the sidebar to a specific tree node — set
    * after creating a folder (since folders can't become the activeItemId, the
    * normal auto-scroll doesn't apply). Cleared on next user-driven change. */
@@ -254,6 +261,7 @@ export default function App() {
       setDocumentTables(tables);
       setDocumentFolders(treeData.folders);
       setDocumentDesigns((treeData.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
+      setDocumentIdeas((treeData.ideas || []).map(i => ({ ...i, parentId: i.parentId ?? null })));
       if (doc) setDocumentName(doc.name);
 
       // Determine which table to activate
@@ -1054,12 +1062,20 @@ export default function App() {
       order: d.order,
       parentId: d.parentId,
     }));
+    const ideaItems: SidebarItem[] = documentIdeas.map(i => ({
+      id: i.id,
+      type: "idea" as const,
+      displayName: i.name,
+      active: i.id === activeTableId && activeItemType === "idea",
+      order: i.order,
+      parentId: i.parentId,
+    }));
     const staticItems: SidebarItem[] = [
       { id: "dashboard", type: "static" as const, displayName: sidebarNames.dashboard ?? t("sidebar.dashboard"), active: false, order: Infinity },
       { id: "workflow", type: "static" as const, displayName: sidebarNames.workflow ?? t("sidebar.workflow"), active: false, order: Infinity },
     ];
-    return [...folderItems, ...tableItems, ...designItems, ...staticItems];
-  }, [documentTables, documentFolders, documentDesigns, activeTableId, activeItemType, tableName, sidebarNames, t]);
+    return [...folderItems, ...tableItems, ...designItems, ...ideaItems, ...staticItems];
+  }, [documentTables, documentFolders, documentDesigns, documentIdeas, activeTableId, activeItemType, tableName, sidebarNames, t]);
 
   // ── Table switching ──
   const switchTable = useCallback(async (tableId: string) => {
@@ -1149,6 +1165,7 @@ export default function App() {
     const tableUpdates = updates.filter(u => u.type === "table");
     const folderUpdates = updates.filter(u => u.type === "folder");
     const designUpdates = updates.filter(u => u.type === "design");
+    const ideaUpdates = updates.filter(u => u.type === "idea");
 
     if (tableUpdates.length > 0) {
       const orderMap = new Map(tableUpdates.map(u => [u.id, u.order]));
@@ -1171,6 +1188,13 @@ export default function App() {
             .sort((a, b) => a.order - b.order)
       );
     }
+    if (ideaUpdates.length > 0) {
+      const orderMap = new Map(ideaUpdates.map(u => [u.id, u.order]));
+      setDocumentIdeas(prev =>
+        prev.map(i => orderMap.has(i.id) ? { ...i, order: orderMap.get(i.id)! } : i)
+            .sort((a, b) => a.order - b.order)
+      );
+    }
 
     try {
       const calls: Promise<void>[] = [];
@@ -1183,6 +1207,9 @@ export default function App() {
       if (designUpdates.length > 0) {
         calls.push(reorderDesigns(designUpdates.map(u => ({ id: u.id, order: u.order })), WORKSPACE_ID));
       }
+      if (ideaUpdates.length > 0) {
+        calls.push(reorderIdeas(ideaUpdates.map(u => ({ id: u.id, order: u.order })), WORKSPACE_ID));
+      }
       await Promise.all(calls);
     } catch {
       toast.error(t("toast.reorderFailed"));
@@ -1190,6 +1217,7 @@ export default function App() {
         setDocumentTables(tree.tables.map(t => ({ ...t, parentId: t.parentId ?? null })));
         setDocumentFolders(tree.folders);
         setDocumentDesigns((tree.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
+        setDocumentIdeas((tree.ideas || []).map(i => ({ ...i, parentId: i.parentId ?? null })));
       });
     }
   }, [toast, t]);
@@ -1253,7 +1281,25 @@ export default function App() {
     }
   }, [toast, t]);
 
-  // ── Delete item (folder or design) ──
+  // ── Create idea (Markdown document artifact) ──
+  const handleCreateIdea = useCallback(async (): Promise<string> => {
+    try {
+      // Backend generates the default name + dedup suffix, so we just pass
+      // the localised base name ("灵感" / "Idea").
+      const baseName = t("createMenu.doc");
+      const idea = await apiCreateIdea(baseName, WORKSPACE_ID);
+      setDocumentIdeas(prev => [...prev, { ...idea, parentId: idea.parentId ?? null }]);
+      setActiveTableId(idea.id);
+      setActiveItemType("idea");
+      setFocusEntity(null);
+      return idea.id;
+    } catch (err) {
+      toast.error((err as Error).message || t("toast.createTableFailed"));
+      throw err;
+    }
+  }, [toast, t]);
+
+  // ── Delete item (folder, design, or idea) ──
   const handleDeleteItem = useCallback(async (id: string, type: TreeItemType) => {
     try {
       if (type === "folder") {
@@ -1262,11 +1308,22 @@ export default function App() {
         // Move children to root
         setDocumentTables(prev => prev.map(t => t));
         setDocumentDesigns(prev => prev.map(d => d.parentId === id ? { ...d, parentId: null } : d));
+        setDocumentIdeas(prev => prev.map(i => i.parentId === id ? { ...i, parentId: null } : i));
       } else if (type === "design") {
         await apiDeleteDesign(id);
         setDocumentDesigns(prev => prev.filter(d => d.id !== id));
         if (id === activeTableId) {
-          // Switch to first table
+          const firstTable = documentTables[0];
+          if (firstTable) {
+            setActiveTableId(firstTable.id);
+            setActiveItemType("table");
+            switchTable(firstTable.id);
+          }
+        }
+      } else if (type === "idea") {
+        await apiDeleteIdea(id);
+        setDocumentIdeas(prev => prev.filter(i => i.id !== id));
+        if (id === activeTableId) {
           const firstTable = documentTables[0];
           if (firstTable) {
             setActiveTableId(firstTable.id);
@@ -1281,7 +1338,7 @@ export default function App() {
   }, [activeTableId, documentTables, switchTable, toast, t]);
 
   // ── Move item ──
-  const handleMoveItem = useCallback(async (itemId: string, itemType: "table" | "folder" | "design", newParentId: string | null) => {
+  const handleMoveItem = useCallback(async (itemId: string, itemType: "table" | "folder" | "design" | "idea", newParentId: string | null) => {
     // Optimistic update FIRST
     if (itemType === "table") {
       setDocumentTables(prev => prev.map(t => t.id === itemId ? { ...t, parentId: newParentId } : t));
@@ -1289,6 +1346,8 @@ export default function App() {
       setDocumentFolders(prev => prev.map(f => f.id === itemId ? { ...f, parentId: newParentId } : f));
     } else if (itemType === "design") {
       setDocumentDesigns(prev => prev.map(d => d.id === itemId ? { ...d, parentId: newParentId } : d));
+    } else if (itemType === "idea") {
+      setDocumentIdeas(prev => prev.map(i => i.id === itemId ? { ...i, parentId: newParentId } : i));
     }
     try {
       await apiMoveItem(itemId, itemType, newParentId);
@@ -1298,15 +1357,21 @@ export default function App() {
       setDocumentTables(treeData.tables.map(t => ({ ...t, parentId: t.parentId ?? null })));
       setDocumentFolders(treeData.folders);
       setDocumentDesigns((treeData.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
+      setDocumentIdeas((treeData.ideas || []).map(i => ({ ...i, parentId: i.parentId ?? null })));
       toast.error(t("toast.reorderFailed"));
     }
   }, [toast, t]);
 
-  // ── Select item (table or design) ──
+  // ── Select item (table, design, or idea) ──
   const handleSelectItem = useCallback((id: string, type?: TreeItemType) => {
     if (type === "design") {
       setActiveTableId(id);
       setActiveItemType("design");
+      setFocusEntity(null);
+    } else if (type === "idea") {
+      setActiveTableId(id);
+      setActiveItemType("idea");
+      setFocusEntity(null);
     } else if (type === "folder") {
       // Folders are not selectable as content
       return;
@@ -1314,10 +1379,54 @@ export default function App() {
       const isTable = documentTables.some(t => t.id === id);
       if (isTable) {
         setActiveItemType("table");
+        setFocusEntity(null);
         switchTable(id);
       }
     }
   }, [documentTables, switchTable]);
+
+  // ── Navigate to a mentioned entity (from an @mention chip click) ──
+  // v2 mention scope: view / taste / idea. View = open the parent table and
+  // switch its active view. Taste = open the parent design and flag the SVG
+  // for highlight (consumed by SvgCanvas on next render). Idea = open the
+  // target idea document.
+  const handleNavigateToEntity = useCallback((target:
+    | { type: "view";  tableId: string; viewId: string }
+    | { type: "taste"; designId: string; tasteId: string }
+    | { type: "idea";  id: string }
+    | { type: "idea-section"; ideaId: string; headingSlug: string }
+  ) => {
+    if (target.type === "view") {
+      setActiveItemType("table");
+      setFocusEntity({ type: "view", id: target.viewId });
+      setActiveViewId(target.viewId);
+      void switchTable(target.tableId);
+    } else if (target.type === "taste") {
+      setActiveTableId(target.designId);
+      setActiveItemType("design");
+      setFocusEntity({ type: "taste", id: target.tasteId });
+    } else if (target.type === "idea") {
+      setActiveTableId(target.id);
+      setActiveItemType("idea");
+      setFocusEntity(null);
+    } else if (target.type === "idea-section") {
+      // Open the parent idea and stash the heading slug on `window` so the
+      // IdeaEditor that mounts (or is already mounted) can pick it up and
+      // scroll. Using a window-scoped handoff avoids routing the anchor
+      // through every intermediate state atom.
+      (window as unknown as { __pendingIdeaAnchor?: { ideaId: string; slug: string } })
+        .__pendingIdeaAnchor = { ideaId: target.ideaId, slug: target.headingSlug };
+      setActiveTableId(target.ideaId);
+      setActiveItemType("idea");
+      setFocusEntity(null);
+      // Fire a DOM event so an already-mounted IdeaEditor for the same idea
+      // (common case: jumping between sections in the same doc) can re-scroll
+      // without waiting for an unmount cycle.
+      window.dispatchEvent(new CustomEvent("idea-anchor", {
+        detail: { ideaId: target.ideaId, slug: target.headingSlug },
+      }));
+    }
+  }, [switchTable]);
 
   // ── Rename for design/folder ──
   const handleRenameSidebarItemExtended = useCallback(async (itemId: string, newName: string) => {
@@ -1343,9 +1452,20 @@ export default function App() {
       }
       return;
     }
+    // Check if it's an idea
+    const isIdea = documentIdeas.some(i => i.id === itemId);
+    if (isIdea) {
+      setDocumentIdeas(prev => prev.map(i => i.id === itemId ? { ...i, name: newName } : i));
+      try {
+        await apiRenameIdea(itemId, newName);
+      } catch {
+        toast.error(t("toast.renameFailed"));
+      }
+      return;
+    }
     // Fall through to original handler (tables + statics)
     handleRenameSidebarItem(itemId, newName);
-  }, [documentFolders, documentDesigns, handleRenameSidebarItem, toast, t]);
+  }, [documentFolders, documentDesigns, documentIdeas, handleRenameSidebarItem, toast, t]);
 
   // ── Persist active table to localStorage ──
   useEffect(() => {
@@ -1375,6 +1495,26 @@ export default function App() {
       if (tableId === activeTableIdRef.current) {
         setTableName(name);
       }
+    }, []),
+    onIdeaCreate: useCallback((idea: { id: string; name: string; parentId: string | null; order: number }) => {
+      setDocumentIdeas(prev =>
+        prev.some(i => i.id === idea.id)
+          ? prev
+          : [...prev, { ...idea, workspaceId: WORKSPACE_ID }].sort((a, b) => a.order - b.order)
+      );
+    }, []),
+    onIdeaDelete: useCallback((ideaId: string) => {
+      setDocumentIdeas(prev => prev.filter(i => i.id !== ideaId));
+    }, []),
+    onIdeaRename: useCallback((ideaId: string, name: string) => {
+      setDocumentIdeas(prev => prev.map(i => i.id === ideaId ? { ...i, name } : i));
+    }, []),
+    onIdeaReorder: useCallback((updates: Array<{ id: string; order: number }>) => {
+      setDocumentIdeas(prev => {
+        const orderMap = new Map(updates.map(u => [u.id, u.order]));
+        return prev.map(i => orderMap.has(i.id) ? { ...i, order: orderMap.get(i.id)! } : i)
+                    .sort((a, b) => a.order - b.order);
+      });
     }, []),
   });
 
@@ -1432,6 +1572,7 @@ export default function App() {
           folders={documentFolders.map(f => ({ id: f.id, name: f.name }))}
           onCreateFolder={handleCreateFolder}
           onCreateDesign={handleCreateDesign}
+          onCreateIdea={handleCreateIdea}
           onDeleteItem={handleDeleteItem}
           onMoveItem={handleMoveItem}
           scrollToItemId={scrollToItemId}
@@ -1450,7 +1591,23 @@ export default function App() {
               />
             );
           })()}
-          {activeItemType !== "design" && (
+          {/* Idea Editor — shown when an idea artifact is active */}
+          {activeItemType === "idea" && (() => {
+            const idea = documentIdeas.find(x => x.id === activeTableId);
+            if (!idea) return null;
+            return (
+              <IdeaEditor
+                key={activeTableId}
+                ideaId={activeTableId}
+                ideaName={idea.name}
+                workspaceId={WORKSPACE_ID}
+                clientId={CLIENT_ID}
+                onRename={(name) => handleRenameSidebarItemExtended(activeTableId, name)}
+                onNavigate={handleNavigateToEntity}
+              />
+            );
+          })()}
+          {activeItemType !== "design" && activeItemType !== "idea" && (
           <>
           <ViewTabs
             views={views}

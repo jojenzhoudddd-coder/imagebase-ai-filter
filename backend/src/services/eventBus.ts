@@ -28,8 +28,17 @@ export interface WorkspaceChangeEvent {
   type: "table:create" | "table:delete" | "table:reorder" | "table:rename"
     | "folder:create" | "folder:rename" | "folder:delete" | "folder:reorder"
     | "item:move"
-    | "design:create" | "design:rename" | "design:delete" | "design:reorder";
+    | "design:create" | "design:rename" | "design:delete" | "design:reorder"
+    | "idea:create" | "idea:rename" | "idea:delete" | "idea:reorder";
   workspaceId: string;
+  clientId: string;
+  timestamp: number;
+  payload: Record<string, any>;
+}
+
+export interface IdeaChangeEvent {
+  type: "idea:content-change" | "idea:rename";
+  ideaId: string;
   clientId: string;
   timestamp: number;
   payload: Record<string, any>;
@@ -62,6 +71,20 @@ class TableEventBus extends EventEmitter {
   ): () => void {
     this.on(`workspace:${workspaceId}`, listener);
     return () => this.off(`workspace:${workspaceId}`, listener);
+  }
+
+  emitIdeaChange(event: IdeaChangeEvent): void {
+    const listeners = this.listenerCount(`idea:${event.ideaId}`);
+    console.log(`[EventBus] ${event.type} idea=${event.ideaId} client=${event.clientId} → ${listeners} subscriber(s)`);
+    this.emit(`idea:${event.ideaId}`, event);
+  }
+
+  subscribeIdea(
+    ideaId: string,
+    listener: (event: IdeaChangeEvent) => void,
+  ): () => void {
+    this.on(`idea:${ideaId}`, listener);
+    return () => this.off(`idea:${ideaId}`, listener);
   }
 }
 

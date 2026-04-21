@@ -177,7 +177,58 @@ export interface View {
 
 export type AIGenerateStatus = "idle" | "generating" | "done" | "error";
 
-export type TreeItemType = "table" | "folder" | "design" | "album";
+export type TreeItemType = "table" | "folder" | "design" | "album" | "idea";
+
+// ─── Idea（Markdown 文档 artifact） ───
+export interface IdeaBrief {
+  id: string;
+  workspaceId: string;
+  name: string;
+  parentId: string | null;
+  order: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface IdeaDetail extends IdeaBrief {
+  content: string;
+  version: number;
+}
+
+// ─── Mention system ───
+// v3: four workspace-level targets. The label already carries the
+// fully-qualified "Parent.Child" form for view / taste / idea-section, so the
+// picker and chip render it directly — no need for a separate parentLabel.
+//
+//   view          — a saved view inside a table  (label: "Table.View")
+//   taste         — an SVG inside a design       (label: "Design.Taste")
+//   idea          — a Markdown doc artifact      (label: "IdeaName")
+//   idea-section  — a heading inside an idea     (label: "IdeaName.Heading")
+export type MentionType = "view" | "taste" | "idea" | "idea-section";
+
+export interface MentionHit {
+  type: MentionType;
+  /** Primary identifier. For `idea-section` this is the heading slug (unique
+   * within the parent idea); the parent idea's id lives in `ideaId`. */
+  id: string;
+  /** Composite display label, e.g. "CRM.Kanban" (table.view),
+   * "Logo.Hero" (design.taste), "Launch plan" (idea), or
+   * "Launch plan.Timeline" (idea-section). */
+  label: string;
+  /** Navigation parent — set for view (tableId), taste (designId),
+   * idea-section (ideaId). */
+  tableId?: string;
+  designId?: string;
+  ideaId?: string;
+  /** Raw heading text for idea-section hits — preserved so the chip can show
+   * it verbatim if the label is truncated. */
+  headingText?: string;
+}
+
+export type FocusEntity =
+  | { type: "view";  id: string }
+  | { type: "taste"; id: string }
+  | null;
 
 export interface FolderNode {
   id: string;

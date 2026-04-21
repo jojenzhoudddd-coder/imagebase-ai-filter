@@ -315,6 +315,24 @@ export const zh: TranslationKeys = {
   // Toast (table creation)
   "toast.createTableFailed": "创建数据表失败",
   "toast.reorderFailed": "排序失败",
+  "toast.createIdeaFailed": "创建灵感失败",
+  "toast.ideaConflict": "内容已被其他设备更新，已为你加载最新版本",
+
+  // Idea editor
+  "idea.loading": "加载中…",
+  "idea.source": "切换到源码",
+  "idea.preview": "切换到渲染",
+  "idea.toggleHint": "Cmd/Ctrl + / 切换",
+  "idea.saving": "保存中…",
+  "idea.saved": "已保存",
+  "idea.unsaved": "尚未保存",
+  "idea.offline": "离线",
+  "idea.empty": "在这里记录你的灵感。支持 Markdown、@ 提及和内嵌 SVG / HTML。",
+  "idea.mentionEmpty": "未找到匹配项",
+  "idea.mentionView": "数据表",
+  "idea.mentionTaste": "创意",
+  "idea.mentionIdea": "灵感",
+  "idea.mentionSection": "灵感",
 
   // Default view/field names
   "view.defaultGrid": "表格",

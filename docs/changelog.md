@@ -5,6 +5,59 @@
 
 ---
 
+## 2026-04-21
+
+### feat(artifact): Idea（灵感）Markdown doc 作为第三类工作区实体
+
+**分支**: `Artifact_idea`（从 `BeyondBase` 切出）· **commits**: 待提交
+
+把 Workspace 从"只有表和 Taste 画布"扩展到三类实体 —— 加入可自由书写的 Markdown 文档，并通过 `@mention` 让文档与表 / 字段 / 记录 / Taste 互相链接。
+
+- **后端**
+  - `backend/prisma/schema.prisma` 新增 `Idea` model（`workspaceId / name / parentId / order / content / version`），`Workspace.ideas` 反向关系，迁移文件 `20260421030344_add_ideas`
+  - `backend/src/routes/ideaRoutes.ts`：`POST/GET/PATCH/DELETE /api/ideas` + `PUT /api/ideas/:ideaId` 保存内容。走 version 乐观并发 —— 请求带 `baseVersion`，若已过期返回 `409 {conflict:true, latest:{content, version}}`，前端接受远端版本并给 toast 提示。所有 async handler 用 `asyncHandler` 包装，避免 Prisma FK / 未知错误直接冒泡成 unhandled rejection 把 node 进程打挂（烟测 FK 违规真的挂过一次，补了守卫）
+  - `backend/src/routes/mentionRoutes.ts`：`GET /api/mentions/search?workspaceId=&q=&limit=` 工作区内模糊搜索表 / 字段 / 记录 / Taste，按类型分组排序
+  - `backend/src/services/eventBus.ts` 扩展 `WorkspaceChangeEvent` 联合类型加 `idea:create/rename/delete/reorder`；新增 `emitIdeaChange(ideaId, event)` 为每个 Idea 维护独立频道（`content` / `rename`）
+  - `backend/src/routes/sseRoutes.ts` 新增 `/api/sync/ideas/:ideaId/events` 频道，编辑器挂载后实时拿到他人编辑
+  - `backend/src/routes/folderRoutes.ts` 删除文件夹时级联处理 idea（与 table / design 同策略）
+  - 名称去重：创建时若同 `workspaceId` 下已有同名 idea，自动加 ` N` 后缀（与 table 一致）
+
+- **前端**
+  - 依赖新增：`react-markdown ^10.1`、`remark-gfm ^4.0`、`rehype-raw ^7.0`、`rehype-sanitize ^6.0`
+  - `frontend/src/components/IdeaEditor/` 新建五文件：
+    - `index.tsx` 主编辑器：`Cmd/Ctrl + /` 切源码 / 渲染；debounce 600ms 自动保存；`versionRef` 乐观并发；服务端返回 `conflict:true` 时接受远端版本并 toast 提示；卸载时 flush 挂起的保存；挂载 `useIdeaSync` 跟随他人编辑
+    - `MarkdownPreview.tsx` 渲染管线：`remark-gfm` + `rehype-raw` + `rehype-sanitize`，schema 放行内联 SVG 全套标签与属性，`protocols.href` 加入 `mention`；`components.a` 识别 `mention://` href 将 `<a>` 换成 `<button class="idea-mention-chip idea-mention-chip-{type}">`
+    - `MentionPicker.tsx` @ 弹层：150ms 防抖查询、按类型分组、`position:fixed` 贴 caret、document 级 keydown 捕获 ↑↓ / Enter / Tab / Esc 保持 textarea 焦点
+    - `mentionSyntax.ts` 纯 Markdown 链接语法 `[@label](mention://type/id?table=...&design=...)` 的构造 / 解析
+    - `IdeaEditor.css` 样式：顶栏 44px + 28px 按钮（对齐 SvgCanvas）、正文 `padding:24px 60px 80px 60px`、chip 蓝色 `rgba(20,86,240,0.08)` + 4px 圆角
+  - `frontend/src/hooks/useIdeaSync.ts`：复用 EventSource 模板，`onContentChange` / `onRename` 回调；mid-typing（saveTimerRef active）时跳过外部覆盖
+  - `frontend/src/App.tsx` 扩展：`documentIdeas` state、`ideaItems` 拼进 `sidebarItems`、新增 `handleCreateIdea / handleDeleteItem(idea) / handleMoveItem(idea) / handleRenameSidebarItem(idea)`；新增 `focusEntity` state 和 `handleNavigateToEntity(target)` 处理 mention chip 点击（table / field / record / taste 路由）；`useWorkspaceSync` 订阅四个 idea 事件；渲染分流 `activeItemType === "idea"` → `<IdeaEditor>`
+  - `frontend/src/components/Sidebar.tsx` New 菜单移除 `doc` 的 `noop:true`，新增 `onCreateIdea` prop + 拖拽类型集合扩展
+  - `frontend/src/components/TreeView.tsx` 添加 `IDEA_ICON`（doc 16×16）+ 所有 `type` union 加 `"idea"`
+  - `frontend/src/i18n/{zh,en}.ts` 新增 `idea.loading/source/preview/toggleHint/saving/saved/unsaved/offline/empty/mentionEmpty/mentionTable/mentionField/mentionRecord/mentionTaste` + `toast.createIdeaFailed/ideaConflict`
+
+- **文档**
+  - `docs/idea-artifact-plan.md` 完整方案：数据模型 / API / SSE / Mention 语法 / UI 规范 / 7 个 P0 用例
+
+- **Edge cases**
+  - 名称碰撞 → 自动后缀（同 table）
+  - 多端协同 → workspace 级 SSE 维护侧栏列表，实体级 SSE 推送正文
+  - 竞态保存 → 乐观锁 + last-writer-wins + 推送 latest 给客户端
+  - Markdown 内嵌 SVG / HTML → rehype-sanitize 白名单放行（`<script>` 和 `on*` 仍被剥离）
+  - Mention 导出降级 → 纯 Markdown 语法，无渲染器时仍是人类可读链接
+  - 实体删除后 chip → 按设计渲染灰态 + "已删除"（渲染层已具备，文案以 tooltip 形式处理）
+
+- **已知 defer**
+  - focusEntity 路由已通到 state 层，但 TableView / SvgCanvas 的滚动定位 + 高亮动画消费尚未实现（P1）
+  - MCP 工具对 Idea 的暴露延后（方案 §v1 延后）
+  - `@mention` picker 位置用 `linesBefore * 22` 近似估算，后续接 `textarea-caret-position` 精调
+
+- **验证**
+  - frontend `tsc --noEmit` 通过；`vite build` 通过（bundle 978.85 kB）
+  - backend `curl` 烟测：创建 3 篇灵感名称去重正确（`灵感 / 灵感 1 / 灵感 2`）；`v=0 → v=1 → v=2` 正常；stale `baseVersion=0` 正确拒绝并返回 latest；mention 搜索 5 条命中；DELETE 清理成功
+
+---
+
 ## 2026-04-20
 
 ### feat(phase4 day2+day3): Cron 调度 + 定时触达 Inbox + Agent 自登记定时任务 + 前端未读徽章

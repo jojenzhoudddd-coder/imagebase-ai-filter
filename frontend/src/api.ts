@@ -1,4 +1,5 @@
 import { Field, FieldConfig, FieldType, TableRecord, View, ViewFilter } from "./types";
+import type { IdeaBrief, IdeaDetail, MentionHit } from "./types";
 
 const BASE = "/api";
 
@@ -332,6 +333,7 @@ export interface TreeData {
   tables: Array<{ id: string; name: string; order: number; parentId: string | null }>;
   folders: FolderBrief[];
   designs: DesignBrief[];
+  ideas: Array<{ id: string; name: string; order: number; parentId: string | null; workspaceId: string }>;
 }
 
 export async function fetchWorkspaceTree(workspaceId: string): Promise<TreeData> {
@@ -339,9 +341,12 @@ export async function fetchWorkspaceTree(workspaceId: string): Promise<TreeData>
   if (!res.ok) {
     // Fallback: return tables-only if endpoint doesn't exist yet
     const tables = await fetchWorkspaceTables(workspaceId);
-    return { tables: tables.map(t => ({ ...t, parentId: null })), folders: [], designs: [] };
+    return { tables: tables.map(t => ({ ...t, parentId: null })), folders: [], designs: [], ideas: [] };
   }
-  return res.json();
+  const data = await res.json();
+  // Defensive default: backend may not yet include ideas in the response.
+  if (!Array.isArray(data.ideas)) data.ideas = [];
+  return data;
 }
 
 export async function createFolder(
@@ -378,7 +383,7 @@ export async function deleteFolder(folderId: string): Promise<void> {
 
 export async function moveItem(
   itemId: string,
-  itemType: "table" | "folder" | "design",
+  itemType: "table" | "folder" | "design" | "idea",
   newParentId: string | null
 ): Promise<void> {
   const res = await mutationFetch(`${BASE}/folders/move`, {
@@ -1095,4 +1100,99 @@ export async function putAgentConfig(
     throw new Error(body.error || `HTTP ${res.status}`);
   }
   return res.json();
+}
+
+// ═══════════════ Ideas (Markdown 文档 artifact) ═══════════════
+
+export async function createIdea(
+  name: string,
+  workspaceId: string,
+  parentId?: string | null
+): Promise<IdeaBrief> {
+  const res = await mutationFetch(`${BASE}/ideas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, workspaceId, parentId: parentId || null }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to create idea");
+  }
+  const data = await res.json();
+  return { ...data, workspaceId };
+}
+
+export async function fetchIdea(ideaId: string): Promise<IdeaDetail> {
+  const res = await fetch(`${BASE}/ideas/${ideaId}`);
+  if (!res.ok) throw new Error("Failed to fetch idea");
+  return res.json();
+}
+
+/**
+ * Save idea content with optimistic version check.
+ * Returns `{ ok: true, version }` or `{ conflict: true, latest }`.
+ */
+export async function saveIdeaContent(
+  ideaId: string,
+  content: string,
+  baseVersion: number
+): Promise<
+  | { ok: true; version: number; updatedAt: string }
+  | { conflict: true; latest: { content: string; version: number } }
+> {
+  const res = await mutationFetch(`${BASE}/ideas/${ideaId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content, baseVersion }),
+  });
+  if (res.status === 409) {
+    const body = await res.json();
+    return { conflict: true, latest: body.latest };
+  }
+  if (!res.ok) throw new Error("Failed to save idea");
+  const body = await res.json();
+  return { ok: true, version: body.version, updatedAt: body.updatedAt };
+}
+
+export async function renameIdea(ideaId: string, name: string): Promise<{ id: string; name: string }> {
+  const res = await mutationFetch(`${BASE}/ideas/${ideaId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Failed to rename idea");
+  return res.json();
+}
+
+export async function deleteIdea(ideaId: string): Promise<void> {
+  const res = await mutationFetch(`${BASE}/ideas/${ideaId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete idea");
+}
+
+export async function reorderIdeas(
+  updates: Array<{ id: string; order: number }>,
+  workspaceId: string
+): Promise<void> {
+  const res = await mutationFetch(`${BASE}/ideas/reorder`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates, workspaceId }),
+  });
+  if (!res.ok) throw new Error("Failed to reorder ideas");
+}
+
+// ─── @ Mention search ───
+export async function searchMentions(
+  workspaceId: string,
+  q: string,
+  opts?: { types?: Array<MentionHit["type"]>; limit?: number }
+): Promise<MentionHit[]> {
+  const params = new URLSearchParams();
+  params.set("q", q);
+  if (opts?.types?.length) params.set("types", opts.types.join(","));
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const res = await fetch(`${BASE}/workspaces/${workspaceId}/mentions/search?${params}`);
+  if (!res.ok) throw new Error("Failed to search mentions");
+  const body = await res.json();
+  return body.hits || [];
 }
