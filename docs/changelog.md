@@ -5,6 +5,82 @@
 
 ---
 
+## 2026-04-22
+
+### feat(chat): Agent 名称 + 模型下拉精简 + idea 光标跟随 + topbar 对齐
+
+**分支**: `BeyondBase`（合入 `beyond`）· **commits**: 待提交
+
+一次集中修整 chat sidebar 和 idea 编辑器的视觉/体验细节：
+
+- **Chat Sidebar Agent 名称**（新）
+  - Header 左上角新增 Agent 名称标题（14px / 500，复用 `.idea-editor-topbar-name` / `.svg-canvas-topbar-name` 样式语言，不是按钮胶囊）
+  - 双击进入 `InlineEdit` 原地改名；blur / Enter 提交到 `PUT /api/agents/:id`，失败回退到服务端状态
+  - 新增 Tier 0 meta-tool `update_agent_name`（`backend/mcp-server/src/tools/metaTools.ts`）：用户在对话里说 "把你改名叫 X / 以后你就叫 X" 时，模型通过此工具写同一条 DB 记录。对话结束时 `ChatSidebar` bump `agentRefreshToken`，标题自动 re-fetch，不用刷新
+  - 默认名：`${USER_NAME}'s Agent`（默认 "Quan"）。`ensureDefaultAgent()` 对历史 "Claw" 做一次性迁移
+- **Chat Sidebar topbar 对齐 artifact**：高度改为 44px（与 `.idea-editor-topbar` / `.svg-canvas-topbar` 一致），所有元素垂直居中，去掉 18px 上下 padding
+- **模型下拉精简**：去掉厂商分组标题（原来 Anthropic / OpenAI / Volcano 三级 section）——每个模型名称本身已经带厂商（"Claude 4.7 Opus" / "GPT-5.4" / "Doubao 2.0 pro"），section header 是冗余的；保留原有 Anthropic → OpenAI → Volcano 的排序优先级
+- **移除 `claude-sonnet-4.6`**：上游 whitelist 状态不稳定，直接从 `modelRegistry.MODELS` 删除；老存档里选了 Sonnet 4.6 的 Agent 会走同组 fallback 自动解析到 Opus 4.7 / 4.6，不覆盖用户偏好
+- **Idea 编辑器光标跟随滚动**：textarea 自增长、外层 `.idea-editor-body` 是滚动容器，浏览器原生「keep caret in view」失效。新增 `measureTextareaCaretRect`（ZWSP marker + mirror div，兼容 end-of-text 位置）+ `ensureCaretVisible()`，在 auto-grow effect、`onKeyUp`、`onMouseUp` 三处触发，48px margin 外自动滚 body。只在 textarea focus 时生效，SSE 远端更新不抢读者滚动位置
+
+### feat(agent): Chat Agent 多模型切换（6 模型白名单 + 可用性探测 + 智能回退）
+
+**分支**: `model-switcher`（从 `Artifact_idea` 切出）· **commits**: 待提交
+
+把 Chat Sidebar 的单一 `seed2.0-pro` 升级为 6 模型白名单的实时切换。默认切到 `claude-opus-4.7`，用户可从对话头的胶囊按钮在 Anthropic Claude / OpenAI GPT / Volcano Doubao 三组之间挑选，失败/限流时自动回退到同家族兄弟或终极兜底 `doubao-2.0`，但不覆盖用户偏好 —— 下一轮模型恢复后自动切回。
+
+- **后端**
+  - 白名单（`backend/src/services/modelRegistry.ts`）：`doubao-2.0`（ARK，Volcano）+ `claude-opus-4.7` / `claude-opus-4.6` / `claude-sonnet-4.6` + `gpt-5.4` / `gpt-5.4-mini`（后五个经 OneAPI 代理）。每个模型声明 `provider / group / displayName / capabilities{thinking, toolUse}`
+  - `resolveModelForCall(agentId)` → `{requested, resolved, usedFallback}`：读 agent config，404/不可用时按同组 → `FALLBACK_MODEL_ID` 级联回退。配置不动，下次可用自动恢复
+  - 异步探测（`startModelProbe()`）：10 分钟周期调用 OneAPI `/v1/models` 刷新可用集、校验 `ARK_API_KEY`。`index.ts` 在 `RUNTIME_DISABLED!=="1"` 时启动，`SIGINT/SIGTERM` 优雅停止
+  - Provider 适配器（`backend/src/services/providers/`）：
+    - `types.ts`：`ProviderAdapter` 接口 + 归一化 `ProviderStreamEvent`（`text_delta | thinking_delta | tool_call_done | done | error`）
+    - `arkAdapter.ts`：ARK `/api/v3/responses` 流式抽离自 `chatAgentService`，保留 Doubao 深度思考配置
+    - `oneapiAdapter.ts`（新）：根据 `model.group` 双线路 —— anthropic 走 OneAPI 的 `/v1/messages`（Anthropic 原生协议，启用 `thinking.budget_tokens`，temperature 强制 1.0），openai 走 `/v1/chat/completions`（GPT-5 的 `reasoning_content` 流式映射为 thinking_delta）。处理 Anthropic 的 system split、user/assistant 交替约束、tool_use / tool_result 块对应；OpenAI 的 `tool_calls[]` by index 累积到 `finish_reason`
+    - `index.ts`：side-effect `registerProviderAdapter` 注册两个适配器
+  - `chatAgentService.ts`：循环去除 ARK 硬依赖，改为每轮 `resolveModelForCall` + `resolveAdapter(model).stream(...)`；SSE 事件不变
+  - `agentService.ts`：`DEFAULT_CONFIG.model` 翻到 `claude-opus-4.7`；新增 `getSelectedModel / setSelectedModel`；`LEGACY_MODEL_ALIASES` 把老存档里的 `seed2.0-pro` 静默迁移到 `doubao-2.0`
+  - `agentRoutes.ts`：`GET /api/agents/models` 返回 `{models, defaultModelId}`（`available` 三态 coerce 成 boolean —— 未探测时默认 `false`）；`GET|PUT /api/agents/:agentId/model` 读写选择，校验白名单并返回 `{selected, resolved, usedFallback}`。`/models` 路由声明在 `/:agentId` 之前防止 Express 把 "models" 当成 agentId
+  - `.env.example` / `.env`：新增 `ONEAPI_BASE_URL` / `ONEAPI_API_KEY`
+
+- **前端**
+  - `api.ts`：新增 `ModelCapabilities / ModelSummary / AgentModelSelection` 类型 + `listModels() / getAgentModel(agentId) / setAgentModel(agentId, modelId)`
+  - `components/ChatSidebar/ChatModelPicker.tsx`（新）：胶囊按钮显示当前模型 displayName + 胶囊 V 字。点击打开 DropdownMenu，按 provider 家族 section 分组（Anthropic → OpenAI → Volcano），当前项 `✓`、不可用项 `offline` 灰态、待同步项 `…`。open 时每 60s 静默重拉列表 + 选择；`streaming` 时整体 disabled 防止半途换模型导致工具循环乱掉。若当前落在回退模型，按钮文案显示 `selected → resolved`
+  - `components/ChatSidebar/index.tsx`：header 挂 `<ChatModelPicker agentId open disabled={streaming}/>`
+  - `components/ChatSidebar/ChatSidebar.css`：header `justify-content` 改 `space-between`；新增 `.chat-model-picker-btn / -label / -chevron / -suffix / -unavailable`（12px / 24px 高 / max-width 180px 省略号）
+
+- **Edge cases**
+  - OneAPI 对 Claude `thinking_delta` 做了文本剥离（只转发 `signature_delta`）—— 适配器在 thinking 块 `content_block_start` 时主动 emit 一个空 `thinking_delta`，保证 UI 的"深度思考中…"指示器照常亮起，即使 thinking 正文还留在服务端
+  - 用户 config 里存了个已下架模型 → resolveModelForCall 自动降级但 config 不动，next turn 模型恢复后自动切回
+  - ARK / OneAPI 任一 API key 缺失 → 影响对应家族但 `doubao-2.0` 作为兜底仍可用
+  - 流式过程中 availability 翻转 → picker 下次轮询刷新，当前请求不打断
+  - 老对话 config 中残留 `seed2.0-pro` → `LEGACY_MODEL_ALIASES` 静默迁移到 `doubao-2.0`
+
+- **验证**
+  - backend `tsc --noEmit` 通过；frontend `tsc --noEmit` + `vite build` 通过（CSS 94KB / JS 1MB）
+  - 双链路端到端烟测：Claude Opus 4.7 回答一道数学题正常流式 + 思考指示器起来；GPT-5.4 带工具调用 `list_tables` 流式推进并触发 `reasoning_content`
+  - 探测正确性：5 分钟内 6 模型 `available` 收敛，`claude-sonnet-4.6`（管理员禁用）保持 `false`；`setAgentModel` 写入假模型名 → 400 拒绝
+  - 回退路径：手动把 config 写成已离线模型 → `resolveModelForCall` 正确返回 `usedFallback:true, resolved.id: "doubao-2.0"`，下一轮写回 `available:true` 后自动恢复
+
+### fix(agent): OpenClaw 在 Claude 模型上不认自己的 soul / 思考指示器乱亮 / 用户消息重发
+
+Day 5 逐模型做一致性验证时发现三个问题，一并修掉：
+
+1. **OneAPI Claude Code 系统覆盖（最严重）** —— `oneapi.iline.work` 代理把 Claude 路由到 Claude Code SDK，SDK 会在请求前注入自己的 ~2000 token 的 "You are Claude Code, Anthropic's official CLI…" system，**完全覆盖我们送进 `system` 字段的 Layer 1/2/3 内容**。现象：切到 Claude 4.7/4.6 问"你是谁" / "你的 soul 是什么"，一律回答"我是 Claude Code"，完全不认 soul.md，还会误触发 `update_soul` 把 soul 改成 "placeholder" 之类自救文案。直接 curl 复现：`system="你叫 Claw"` → Claude 仍然自称 Claude Code，`input_tokens=2060`（明显被前缀塞了东西）。修复：`oneapiAdapter.streamAnthropic` 不再设 `body.system`，改把整段 system 内容包成 `user: "<持久系统指令>…</持久系统指令>"` + `assistant: "明白，我会严格遵循以上系统指令。"` 的 bootstrap 对，再接真实 messages。OneAPI 不改 message 内容，身份安全落地。GPT-5 分支无需此改动（OpenAI channel 正常认 system）
+2. **用户消息重发** —— `assembleInput` 调用前先 persist 了 user message，导致 sliding window 再读一次 + 函数末尾又 push 一次，Claude 收到两段一模一样的 user text，既浪费 token 也可能被误解为重复提问。修复：把 persist 挪到 `assembleInput` 之后
+3. **"Analyzing your request" 指示器语义错位** —— 之前的 `thinkingActive = streaming && !hasAnswer` 会在整个思考期都保持"正在分析你的请求"文案，导致非 thinking 模型也一直显示这个字样，用户误以为模型在做无意义的等待。修复：重新定义为 `waitingForFirstResponse = streaming && !hasThinking && !hasAnswer && !hasAnyToolCall`，作为纯粹的"送出 → 第一个 token 到达"的等候桥；`thinkingCollapsed` pill 只在真有 thinking 文本时出现
+
+- **根因诊断脚本**（留作 dev helper，不打进生产构建）
+  - `backend/src/scripts/day5-model-smoke.ts`：逐模型创建新对话跑一句"请用一句话…"，统计 thinking / message / tool 事件数 + 首字延迟
+  - `backend/src/scripts/day5-openclaw-smoke.ts`：逐模型追问 soul，grep 真实 soul.md 的关键词是否出现在回复里
+  - `backend/src/scripts/day5-adapter-trace.ts`：绕过 HTTP 直接跑 `adapter.stream()`，看原始事件序列
+- **验证**
+  - 修复后再跑 OpenClaw smoke：6 个可用模型全部回复里都能找到 soul 关键词（doubao / 4.7 / 4.6 / GPT-5 / GPT-5-mini）
+  - 用户 intro 测试：Claude 4.7 先前答"我是 Claude Code"，修复后答"我是 Claw，你的长期 Agent…"
+  - frontend 思考指示器手动验证：doubao（无 thinking）首字到达立刻消失；Claude thinking 中无 "Analyzing" 字样、只有 collapsed 思考条
+
+---
+
 ## 2026-04-21
 
 ### feat(artifact): Idea（灵感）Markdown doc 作为第三类工作区实体

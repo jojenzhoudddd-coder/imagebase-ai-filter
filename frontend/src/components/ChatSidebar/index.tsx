@@ -16,6 +16,8 @@ import ThinkingIndicator from "./ChatMessage/ThinkingIndicator";
 import ToolCallCard from "./ChatMessage/ToolCallCard";
 import ToolCallGroup from "./ChatMessage/ToolCallGroup";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
+import ChatModelPicker from "./ChatModelPicker";
+import AgentNamePill from "./AgentNamePill";
 import { MoreIcon, RefreshIcon } from "./icons";
 import DropdownMenu from "../DropdownMenu";
 import ConfirmDialog from "../ConfirmDialog";
@@ -176,6 +178,10 @@ export default function ChatSidebar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Bumped after each streamed turn finishes, so AgentNamePill can re-fetch
+  // and pick up any rename performed by the `update_agent_name` tool call.
+  const [agentRefreshToken, setAgentRefreshToken] = useState(0);
 
   // NOTE: Agent identity (soul.md / profile.md) is intentionally NOT exposed
   // as an interactive UI surface in Phase 1. Users can only inspect or modify
@@ -447,6 +453,9 @@ export default function ChatSidebar({
         setMessages((prev) =>
           prev.map((m) => (m.role === "assistant" && m.streaming ? { ...m, streaming: false } : m))
         );
+        // Turn just ended — the model may have called update_agent_name. Poke
+        // the pill to re-fetch so the header label catches up.
+        setAgentRefreshToken((n) => n + 1);
       },
     });
   }, [activeConv, inputValue, streaming, onActiveTableChange]);
@@ -581,6 +590,19 @@ export default function ChatSidebar({
   return (
     <aside className={`chat-sidebar${open ? " open" : ""}`} aria-hidden={!open}>
       <header className="chat-header">
+        {/* Left cluster: Agent name pill (double-click to rename, also kept in
+            sync with chat-initiated renames via `update_agent_name` tool) then
+            the model picker. Both are hidden behind `open` so we don't hit
+            /api/agents/* on every mount. */}
+        <div className="chat-header-left">
+          <AgentNamePill
+            agentId={agentId}
+            open={open}
+            refreshToken={agentRefreshToken}
+            disabled={streaming}
+          />
+          <ChatModelPicker agentId={agentId} open={open} disabled={streaming} />
+        </div>
         <div className="chat-header-actions">
           {/* Phase 1 decision: the Agent's soul.md / profile.md are NOT
               exposed as an interactive UI surface. Users read/write them
@@ -703,10 +725,20 @@ function MessageBlock({ msg }: { msg: UiMessage }) {
 
   const hasThinking = Boolean(msg.thinking && msg.thinking.length > 0);
   const hasAnswer = msg.content.length > 0;
-  // Thinking is considered "done" once the model starts producing answer
-  // tokens or the message has finished streaming entirely.
-  const thinkingCollapsed = hasThinking && (hasAnswer || !msg.streaming);
-  const thinkingActive = msg.streaming && !hasAnswer;
+  const hasAnyToolCall = msg.toolCalls.length > 0;
+  // The "Analyzing your request" surface is a pure wait bridge — it covers
+  // the latency between user send and the first model output, nothing more.
+  // As soon as any signal arrives (thinking delta, answer text, or a tool
+  // call) it disappears. Previously this stayed on for the entire thinking
+  // phase, which wrongly implied "thinking" on models that never think.
+  const waitingForFirstResponse =
+    msg.streaming && !hasThinking && !hasAnswer && !hasAnyToolCall;
+  // The collapsed thinking pill is a distinct surface: it's shown once real
+  // thinking text has arrived, and persists so the user can still click to
+  // expand the transcript after the answer lands. Non-thinking models
+  // (empty marker only, or no thinking at all) never set hasThinking, so
+  // this pill never appears for them.
+  const thinkingCollapsed = hasThinking;
 
   // Group consecutive tool calls sharing the same MCP tool name — 2+ in a
   // run collapse into a single header with an expand chevron so the
@@ -724,7 +756,7 @@ function MessageBlock({ msg }: { msg: UiMessage }) {
           thinking={msg.thinking}
         />
       )}
-      {thinkingActive && <ThinkingIndicator mode="active" text={t("chat.thinking.caption")} />}
+      {waitingForFirstResponse && <ThinkingIndicator mode="active" text={t("chat.thinking.caption")} />}
       <AssistantText content={msg.content} streaming={msg.streaming} />
       {groups.map((g, i) =>
         g.items.length === 1 ? (

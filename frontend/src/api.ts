@@ -1102,6 +1102,88 @@ export async function putAgentConfig(
   return res.json();
 }
 
+// ─── Model registry (multi-model picker) ─────────────────────────────
+
+export interface ModelCapabilities {
+  thinking: boolean;
+  toolUse: boolean;
+  contextWindow: number;
+  thinkingBudget?: number;
+}
+export interface ModelSummary {
+  id: string;
+  displayName: string;
+  provider: "ark" | "oneapi";
+  group: "volcano" | "anthropic" | "openai";
+  available: boolean;
+  capabilities: ModelCapabilities;
+}
+export interface AgentModelSelection {
+  selected: string;
+  resolved: {
+    id: string;
+    displayName: string;
+    provider: "ark" | "oneapi";
+    group: "volcano" | "anthropic" | "openai";
+    available: boolean;
+  };
+  requested: { id: string; displayName: string; available: boolean } | null;
+  usedFallback: boolean;
+}
+
+export async function listModels(): Promise<{
+  models: ModelSummary[];
+  defaultModelId: string;
+}> {
+  const res = await fetch(`${BASE}/agents/models`);
+  if (!res.ok) throw new Error("Failed to list models");
+  return res.json();
+}
+
+// Rename helper for the header pill — thin wrapper on `updateAgent` so the
+// AgentNamePill only has to import one name. Also used by the `update_agent_name`
+// Tier 0 meta-tool path (via the same DB row).
+export async function renameAgent(agentId: string, name: string): Promise<AgentMeta> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function getAgentModel(agentId: string): Promise<AgentModelSelection> {
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/model`);
+  if (!res.ok) throw new Error("Failed to load agent model");
+  return res.json();
+}
+
+export async function setAgentModel(
+  agentId: string,
+  modelId: string
+): Promise<AgentModelSelection> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/model`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modelId }),
+    }
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 // ═══════════════ Ideas (Markdown 文档 artifact) ═══════════════
 
 export async function createIdea(

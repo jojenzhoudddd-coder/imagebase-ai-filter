@@ -24,6 +24,11 @@
  *   POST   /api/agents/:agentId/cron              — add cron { schedule, prompt, workspaceId?, skills? }
  *   DELETE /api/agents/:agentId/cron/:jobId       — remove cron job
  *   GET    /api/agents/:agentId/heartbeat         — recent heartbeat entries (?tail=N)
+ *
+ * Model selection (multi-model feature):
+ *   GET    /api/agents/models                     — visible models + availability
+ *   GET    /api/agents/:agentId/model             — { selected, resolved, usedFallback }
+ *   PUT    /api/agents/:agentId/model             — body { modelId }, validates whitelist
  */
 
 import express, { type Request, type Response } from "express";
@@ -43,6 +48,8 @@ import {
   ackInboxMessage,
   inboxUnreadCount,
   readHeartbeatLog,
+  getSelectedModel,
+  setSelectedModel,
   type AgentConfig,
 } from "../services/agentService.js";
 import {
@@ -50,6 +57,12 @@ import {
   removeCronJob,
   listCronJobs,
 } from "../services/cronScheduler.js";
+import {
+  listVisibleModels,
+  getModel,
+  resolveModelForCall,
+  DEFAULT_MODEL_ID,
+} from "../services/modelRegistry.js";
 
 const router = express.Router();
 
@@ -79,6 +92,33 @@ router.post("/", async (req: Request, res: Response) => {
     res.status(201).json(agent);
   } catch (err: any) {
     console.error("[agents] create error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+// ─── Model registry (multi-model feature) ───
+//
+// Registered BEFORE the `/:agentId` routes so Express doesn't match
+// "models" as an agentId.
+
+router.get("/models", async (_req: Request, res: Response) => {
+  try {
+    const models = listVisibleModels().map((m) => ({
+      id: m.id,
+      displayName: m.displayName,
+      provider: m.provider,
+      group: m.group,
+      // Before the first probe completes, `available` is undefined — coerce
+      // to false so the UI can unambiguously render a disabled state.
+      available: m.available === true,
+      capabilities: m.capabilities,
+    }));
+    res.json({
+      models,
+      defaultModelId: DEFAULT_MODEL_ID,
+    });
+  } catch (err: any) {
+    console.error("[agents] list models error:", err);
     res.status(500).json({ error: err.message ?? "internal error" });
   }
 });
@@ -197,6 +237,89 @@ router.put("/:agentId/identity/config", async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error("[agents] config write error:", err);
     res.status(400).json({ error: err.message ?? "write failed" });
+  }
+});
+
+// ─── Per-agent model selection ───
+//
+// Split out from the generic identity/config PUT so the UI doesn't have to
+// understand AgentConfig's shape — it just POSTs a modelId and gets back the
+// resolved model (which may differ if the requested one is currently
+// unavailable). The saved preference is never overwritten on fallback — the
+// next turn auto-recovers when availability flips back.
+
+router.get("/:agentId/model", async (req: Request, res: Response) => {
+  try {
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    const selected = await getSelectedModel(agent.id);
+    const { resolved, requested, usedFallback } = resolveModelForCall(selected);
+    res.json({
+      selected,
+      resolved: {
+        id: resolved.id,
+        displayName: resolved.displayName,
+        provider: resolved.provider,
+        group: resolved.group,
+        available: resolved.available,
+      },
+      requested: requested
+        ? {
+            id: requested.id,
+            displayName: requested.displayName,
+            available: requested.available,
+          }
+        : null,
+      usedFallback,
+    });
+  } catch (err: any) {
+    console.error("[agents] get model error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+router.put("/:agentId/model", async (req: Request, res: Response) => {
+  try {
+    const { modelId } = req.body ?? {};
+    if (typeof modelId !== "string" || !modelId) {
+      res.status(400).json({ error: "modelId is required" });
+      return;
+    }
+    const entry = getModel(modelId);
+    if (!entry) {
+      res.status(400).json({ error: `unknown modelId: ${modelId}` });
+      return;
+    }
+    if (!entry.visible) {
+      res.status(400).json({ error: `modelId not selectable: ${modelId}` });
+      return;
+    }
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    await setSelectedModel(agent.id, modelId);
+    // Return the resolved model so UI can surface "using X instead of Y" if
+    // the preference is currently unavailable.
+    const { resolved, usedFallback } = resolveModelForCall(modelId);
+    res.json({
+      selected: modelId,
+      resolved: {
+        id: resolved.id,
+        displayName: resolved.displayName,
+        provider: resolved.provider,
+        group: resolved.group,
+        available: resolved.available,
+      },
+      usedFallback,
+    });
+  } catch (err: any) {
+    console.error("[agents] set model error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
   }
 });
 

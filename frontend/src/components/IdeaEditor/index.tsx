@@ -172,6 +172,75 @@ function measureTextareaCharRect(
   }
 }
 
+/** Return the viewport-pixel rect of the caret itself inside the textarea at
+ * the given source offset. Unlike `measureTextareaCharRect`, this works when
+ * the caret sits at end-of-text (offset === length) because we insert a
+ * zero-width marker rather than wrapping an existing character.
+ *
+ * Used by the caret-follow autoscroll: when the textarea auto-grows, the
+ * outer `.idea-editor-body` is the scroll container, so the browser's native
+ * "keep caret in view" behavior doesn't kick in on its own — we need to
+ * nudge the body's scrollTop ourselves. */
+function measureTextareaCaretRect(
+  ta: HTMLTextAreaElement,
+  caret: number,
+): { left: number; top: number; bottom: number; height: number } | null {
+  const style = window.getComputedStyle(ta);
+  const mirror = document.createElement("div");
+  const props: Array<keyof CSSStyleDeclaration> = [
+    "boxSizing", "width", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+    "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
+    "borderTopStyle", "borderRightStyle", "borderBottomStyle", "borderLeftStyle",
+    "fontStyle", "fontVariant", "fontWeight", "fontStretch", "fontSize",
+    "fontSizeAdjust", "lineHeight", "fontFamily",
+    "textAlign", "textTransform", "textIndent", "textDecoration",
+    "letterSpacing", "wordSpacing", "tabSize",
+  ];
+  for (const p of props) {
+    (mirror.style as unknown as Record<string, string>)[p as string] =
+      (style as unknown as Record<string, string>)[p as string];
+  }
+  mirror.style.position = "absolute";
+  mirror.style.visibility = "hidden";
+  mirror.style.top = "0";
+  mirror.style.left = "-9999px";
+  mirror.style.whiteSpace = "pre-wrap";
+  mirror.style.wordWrap = "break-word";
+  mirror.style.overflow = "hidden";
+
+  const safeCaret = Math.max(0, Math.min(caret, ta.value.length));
+  const pre = document.createTextNode(ta.value.substring(0, safeCaret));
+  const marker = document.createElement("span");
+  // ZWSP gives the span a rect with the current line's height without
+  // affecting visible text shaping.
+  marker.textContent = "\u200b";
+  const post = document.createTextNode(ta.value.substring(safeCaret));
+  mirror.appendChild(pre);
+  mirror.appendChild(marker);
+  mirror.appendChild(post);
+
+  document.body.appendChild(mirror);
+  try {
+    const taRect = ta.getBoundingClientRect();
+    const mirrorRect = mirror.getBoundingClientRect();
+    const markerRect = marker.getBoundingClientRect();
+    const relLeft = markerRect.left - mirrorRect.left - ta.scrollLeft;
+    const relTop = markerRect.top - mirrorRect.top - ta.scrollTop;
+    const top = taRect.top + relTop;
+    // Fall back to computed line-height if the ZWSP's own height collapses
+    // on some browsers.
+    const height = markerRect.height || parseFloat(style.lineHeight) || 20;
+    return {
+      left: taRect.left + relLeft,
+      top,
+      bottom: top + height,
+      height,
+    };
+  } finally {
+    mirror.remove();
+  }
+}
+
 function writeViewState(ideaId: string, v: IdeaViewState): void {
   try {
     const raw = localStorage.getItem(IDEA_VIEW_STATE_KEY);
@@ -624,15 +693,57 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     scheduleSave(text);
   }, [scheduleSave]);
 
+  // ── Caret-follow autoscroll ──
+  // The textarea auto-grows to fit its content, so it has no internal scroll
+  // — the outer `.idea-editor-body` is what scrolls. That means the browser's
+  // native "keep the caret in view while typing" behavior doesn't fire: the
+  // caret is always inside the textarea's own box, there's nothing to scroll
+  // from the browser's POV. As a result, typing past the bottom of the
+  // viewport visually left the caret behind (it kept moving down the ever-
+  // taller textarea while the page stayed pinned at the top).
+  //
+  // Fix: after every content change + after arrow-key / click navigation,
+  // measure the caret's viewport rect (via the mirror-div trick in
+  // `measureTextareaCaretRect`) and nudge `bodyRef.scrollTop` just enough to
+  // keep the caret inside a comfortable band — away from the very top/bottom
+  // of the scroll container.
+  //
+  // Only runs when the textarea is actually focused, so SSE-driven remote
+  // content updates (which call `setContent` without user focus) don't yank
+  // the reader's scroll position.
+  const ensureCaretVisible = useCallback(() => {
+    const body = bodyRef.current;
+    const ta = textareaRef.current;
+    if (!body || !ta) return;
+    if (document.activeElement !== ta) return;
+    const caret = ta.selectionStart ?? ta.value.length;
+    const rect = measureTextareaCaretRect(ta, caret);
+    if (!rect) return;
+    const bodyRect = body.getBoundingClientRect();
+    // Leave ~1 line of breathing room above and below so the caret never
+    // hugs the edge. 48px is roughly two line-heights at our 14px body font.
+    const MARGIN = 48;
+    if (rect.bottom > bodyRect.bottom - MARGIN) {
+      body.scrollTop += rect.bottom - (bodyRect.bottom - MARGIN);
+    } else if (rect.top < bodyRect.top + MARGIN) {
+      body.scrollTop -= (bodyRect.top + MARGIN) - rect.top;
+    }
+  }, []);
+
   // Auto-grow textarea so the outer body scrolls instead of an inner
   // scrollbar — matches the user's request "高度应该是全局滚动".
+  // The caret-follow has to run *after* the height assignment so the
+  // mirror-div measurement sees the final textarea width (unchanged here,
+  // but we also want layout to have settled before reading getBoundingClientRect).
   useEffect(() => {
     if (mode !== "source") return;
     const ta = textareaRef.current;
     if (!ta) return;
     ta.style.height = "auto";
     ta.style.height = `${ta.scrollHeight}px`;
-  }, [content, mode, loaded]);
+    // rAF so the assignment above is reflected in layout before we measure.
+    requestAnimationFrame(() => ensureCaretVisible());
+  }, [content, mode, loaded, ensureCaretVisible]);
 
   const handleMentionSelect = useCallback((hit: MentionHit) => {
     if (!mentionState) return;
@@ -799,13 +910,16 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
               onKeyUp={(e) => {
                 // Arrow keys / clicks move the caret without firing change —
                 // recompute mention detection so the picker closes when the
-                // caret leaves an `@…` span.
+                // caret leaves an `@…` span, AND re-run caret-follow so
+                // arrow-down past the viewport edge scrolls the body.
                 const caret = (e.target as HTMLTextAreaElement).selectionStart ?? 0;
                 detectMention(content, caret);
+                ensureCaretVisible();
               }}
               onMouseUp={(e) => {
                 const caret = (e.target as HTMLTextAreaElement).selectionStart ?? 0;
                 detectMention(content, caret);
+                ensureCaretVisible();
               }}
               onCopy={() => {
                 // Defensive: after a native Cmd/Ctrl+C, ensure the textarea

@@ -63,10 +63,18 @@ _尚未收集到稳定的用户信息。等我们多聊几轮后，我会把你�
 常用工作空间写到这里。_
 `;
 
+// `model` is the stable app-side id from modelRegistry.MODELS[i].id.
+// Day 2: both ark + oneapi adapters are registered, so we can default fresh
+// agents to the user's preferred Claude Opus 4.7. If OneAPI is unreachable
+// at call time, `resolveModelForCall` falls back to a same-group sibling
+// (4.6) and ultimately to doubao-2.0, so there's no risk of a fresh agent
+// getting wedged on an unavailable model. Existing agents keep whatever
+// was in their config.json (legacy "seed2.0-pro" normalizes via
+// getSelectedModel below).
 const DEFAULT_CONFIG = {
-  model: "seed2.0-pro",
-  temperature: 0.1,
-  maxOutputTokens: 4096,
+  model: "claude-opus-4.7",
+  temperature: 1.0,
+  maxOutputTokens: 20000,
   enabledSkills: [] as string[],
 };
 
@@ -160,6 +168,41 @@ export async function readConfig(agentId: string): Promise<AgentConfig> {
   } catch {
     return { ...DEFAULT_CONFIG };
   }
+}
+
+// ─── Selected model (multi-model feature) ─────────────────────────────
+//
+// The `model` field in AgentConfig is the ModelEntry.id from
+// backend/src/services/modelRegistry.ts. These two helpers centralize
+// reads/writes so the rest of the codebase doesn't import `readConfig`
+// just to get the model string. Legacy agents store the old sentinel
+// "seed2.0-pro" (pre-registry); `getSelectedModel` transparently rewrites
+// that to "doubao-2.0" on read without needing a migration step.
+
+const LEGACY_MODEL_ALIASES: Record<string, string> = {
+  "seed2.0-pro": "doubao-2.0",
+  "seed-2.0-pro": "doubao-2.0",
+  "seed2.0": "doubao-2.0",
+  "doubao": "doubao-2.0",
+};
+
+/**
+ * Return the agent's preferred model id. Normalizes legacy aliases. Does
+ * NOT apply availability fallback — callers that need a runnable model
+ * should pipe this id through `resolveModelForCall()` from modelRegistry.
+ */
+export async function getSelectedModel(agentId: string): Promise<string> {
+  const cfg = await readConfig(agentId);
+  const raw = (cfg.model || "").trim();
+  return LEGACY_MODEL_ALIASES[raw] || raw || "doubao-2.0";
+}
+
+/**
+ * Persist the agent's model preference. Caller is expected to have
+ * validated the id against MODELS (REST handlers do this before calling).
+ */
+export async function setSelectedModel(agentId: string, modelId: string): Promise<void> {
+  await writeConfig(agentId, { model: modelId });
 }
 
 /** Shallow-merge patch into config.json. Unknown keys preserved. */
@@ -699,9 +742,37 @@ export async function deleteAgentRow(agentId: string): Promise<boolean> {
 const DEFAULT_USER_ID = "user_default";
 const DEFAULT_AGENT_ID = "agent_default";
 
+/**
+ * Owner name used to compose the default agent name.
+ *
+ * There is no auth in the project yet, so there's no "logged-in user" to pull
+ * from — the single-tenant owner is configured via the `USER_NAME` env var
+ * (defaults to "Quan"). Changing it does not rename an already-customized
+ * agent: we only apply the template on fresh install or on the explicit
+ * "Claw → template" one-shot migration below.
+ */
+const USER_NAME = process.env.USER_NAME?.trim() || "Quan";
+const DEFAULT_AGENT_NAME = `${USER_NAME}'s Agent`;
+
+export function getDefaultAgentName(): string {
+  return DEFAULT_AGENT_NAME;
+}
+
 export async function ensureDefaultAgent(): Promise<AgentMeta> {
   const existing = await prisma.agent.findUnique({ where: { id: DEFAULT_AGENT_ID } });
   if (existing) {
+    // One-shot migration: rows seeded before the rename feature landed used
+    // the legacy "Claw" literal. If nobody has customized it since, bump it
+    // to the new `${USER_NAME}'s Agent` template so fresh UX matches spec.
+    // Any custom name (anything != "Claw") is left untouched.
+    if (existing.name === "Claw" && DEFAULT_AGENT_NAME !== "Claw") {
+      const migrated = await prisma.agent.update({
+        where: { id: existing.id },
+        data: { name: DEFAULT_AGENT_NAME },
+      });
+      await ensureAgentFiles(migrated.id);
+      return migrated;
+    }
     // Make sure the filesystem is in sync even if DB row existed without it.
     await ensureAgentFiles(existing.id);
     return existing;
@@ -709,7 +780,7 @@ export async function ensureDefaultAgent(): Promise<AgentMeta> {
   return createAgent({
     id: DEFAULT_AGENT_ID,
     userId: DEFAULT_USER_ID,
-    name: "Claw",
+    name: DEFAULT_AGENT_NAME,
   });
 }
 

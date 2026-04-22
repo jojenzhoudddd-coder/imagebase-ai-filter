@@ -25,6 +25,7 @@ import {
   writeProfile,
   appendEpisodicMemory,
   ensureAgentFiles,
+  updateAgent,
 } from "../../../src/services/agentService.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
@@ -94,6 +95,41 @@ export const metaTools: ToolDefinition[] = [
       await ensureAgentFiles(agentId);
       await writeSoul(agentId, content);
       return JSON.stringify({ ok: true, agentId, bytes: Buffer.byteLength(content, "utf8") });
+    },
+  },
+
+  {
+    name: "update_agent_name",
+    description:
+      "修改 Agent 自身的名字（Chat Sidebar 左上角和系统 prompt Layer 2 标题里显示的那个名字）。调用时机：用户明确说 '把你改名叫 X' / '以后你就叫 X' / '你叫 X 吧' 这类意图时。**不要** 自己主动改名；等用户开口。名字不为空、≤ 40 字。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "新的 Agent 名称，1–40 字。会覆盖 DB 里的 name 字段，下一轮起前端 header 和系统 prompt 都会看到新名字。",
+        },
+        agentId: {
+          type: "string",
+          description: "可选；默认改当前 Agent。",
+        },
+      },
+      required: ["name"],
+    },
+    handler: async (args, ctx) => {
+      const agentId = resolveAgentId(args, ctx);
+      const raw = typeof args.name === "string" ? args.name.trim() : "";
+      if (!raw) {
+        return JSON.stringify({ ok: false, error: "name 不能为空" });
+      }
+      if (raw.length > 40) {
+        return JSON.stringify({ ok: false, error: "name 不能超过 40 字" });
+      }
+      const agent = await updateAgent(agentId, { name: raw });
+      if (!agent) {
+        return JSON.stringify({ ok: false, error: `agent ${agentId} 不存在` });
+      }
+      return JSON.stringify({ ok: true, agentId: agent.id, name: agent.name });
     },
   },
 

@@ -22,6 +22,10 @@ import { eventBus } from "./services/eventBus.js";
 import { startSuggestionScheduler } from "./services/suggestionService.js";
 import { ensureDefaultAgent } from "./services/agentService.js";
 import { startHeartbeat, stopHeartbeat } from "./services/runtimeService.js";
+import { startModelProbe, stopModelProbe } from "./services/modelRegistry.js";
+// Side-effect import: registers every provider adapter with the registry at
+// boot. Must happen before the first runAgent() call.
+import "./services/providers/index.js";
 import { evaluateCron } from "./services/cronScheduler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -193,6 +197,13 @@ async function start() {
   // compose into the same handler in later days. Disabled via
   // RUNTIME_DISABLED=1 so smoke tests and one-off scripts don't spawn a
   // background timer.
+  // Kick off the model-availability probe. Fires immediately (non-blocking)
+  // then every 10 min. Honors RUNTIME_DISABLED so one-off scripts don't spin
+  // up a background fetch loop.
+  if (process.env.RUNTIME_DISABLED !== "1") {
+    startModelProbe();
+  }
+
   if (process.env.RUNTIME_DISABLED !== "1") {
     startHeartbeat({
       onTick: async (ctx) => {
@@ -225,9 +236,10 @@ async function start() {
   // Graceful shutdown: let any in-flight tick finish before exiting so we
   // don't leave a half-written heartbeat.log line on SIGTERM.
   const shutdown = async (signal: string) => {
-    console.log(`[runtime] received ${signal}, stopping heartbeat…`);
+    console.log(`[runtime] received ${signal}, stopping heartbeat + model probe…`);
     try {
       await stopHeartbeat();
+      stopModelProbe();
     } catch (err) {
       console.error("[runtime] error during shutdown:", err);
     }

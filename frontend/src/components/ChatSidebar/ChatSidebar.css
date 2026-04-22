@@ -17,22 +17,101 @@
 }
 
 /* ─── Header ────────────────────────────────────────────────────────
- * Pixel-aligned to Figma node 6:5309 "AI header".
- * Height 60px (py-18 + 24 icon row), bg #FFFFFF, no title — just a
- * right-aligned cluster of icon buttons (History + More). The sidebar
- * is inside a bordered/ rounded .chat-part container already, so we
- * don't repeat the bottom border here.
+ * Aligned with the artifact topbars (`.idea-editor-topbar`,
+ * `.svg-canvas-topbar`): 44px tall, items vertically centered, left cluster
+ * = agent name + model picker, right cluster = icon actions. Horizontal
+ * padding is supplied by the outer `.chat-part` container so we only need
+ * vertical centering here.
  */
 .chat-header {
   flex: 0 0 auto;
+  height: 44px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  /* Horizontal padding is supplied by .chat-part (20px). Keep vertical
-   * rhythm so the 60px AI header height is preserved. */
-  padding: 18px 0;
+  justify-content: space-between;
+  padding: 0;
   background: #FFFFFF;
   gap: 16px;
+}
+
+/* Left cluster inside the header: Agent name pill + model picker side-by-side.
+ * Uses min-width:0 so children can truncate within the 350px sidebar. */
+.chat-header-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* Agent name title — leftmost item in the header. Matches the
+ * `.idea-editor-topbar-name` + `.svg-canvas-topbar-name` pattern: plain 14px
+ * medium title, no button chrome. Double-click semantics are provided by the
+ * shared `InlineEdit` component. Caps width so a long name doesn't push the
+ * model picker off-screen in the narrow sidebar. */
+.chat-agent-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1F2329;
+  min-width: 0;
+  flex-shrink: 1;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Model picker pill — sits to the right of the agent name pill inside
+ * .chat-header-left. Narrow column of 350px sidebar means the label must
+ * truncate if the display name is long. */
+.chat-model-picker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #1F2329;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
+}
+.chat-model-picker-btn:hover {
+  background: #F5F6F7;
+  border-color: #DEE0E3;
+}
+.chat-model-picker-btn:disabled {
+  color: #C0C5CC;
+  cursor: default;
+  background: transparent;
+  border-color: transparent;
+}
+.chat-model-picker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.chat-model-picker-chevron {
+  font-size: 10px;
+  color: #646A73;
+  flex: 0 0 auto;
+}
+.chat-model-picker-suffix {
+  margin-left: 8px;
+  font-size: 11px;
+  color: #1456F0;
+}
+.chat-model-picker-suffix.chat-model-picker-unavailable {
+  color: #C0C5CC;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 .chat-header-actions {
   display: inline-flex;
