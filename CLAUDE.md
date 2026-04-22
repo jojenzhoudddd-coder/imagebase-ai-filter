@@ -59,6 +59,8 @@ backend/
       conversationStore.ts  - Prisma-backed Conversation+Message store (agentId FK)
       mentionIndex.ts       - Parses `[label](mention://type/id?…)` links out of Markdown content, skipping fenced code. Builds dedup-keyed `MentionRow[]` (uses composite `<ideaId>#<slug>` key for idea-sections). Writers call `buildMentionRows()` → overwrite Mention rows for that source inside a Prisma `$transaction`.
       ideaWriteService.ts   - `applyIdeaWrite(currentContent, anchor, payload) → {content, description, range}`. Anchor is `oneOf: {position: "end"|"start"} | {section: slug, mode: "append"|"prepend"|"replace"}`. HTML-aware — skips past open fenced code or unclosed block-level HTML (div, section, article, etc.) before splicing. Throws a structured error listing available section slugs when the anchor is unknown so the Agent can retry.
+      tasteMetaService.ts   - AI 设计风格 meta 生成（主色/字体/间距/tags/description 等结构化字段）。每次 Taste 创建时 `enqueueMetaGeneration(tasteId)` fire-and-forget 入队，最多 3 并发 + 指数退避。用 `resolveModelForCall(agentId)` 拿 Agent 当前选中的模型 → `resolveAdapter(model).stream()` 消费成 JSON → `tasteMetaSchema.parse` 校验 → 落库 + 发 `taste:meta-updated` SSE。Prompt 按 `.claude/skills/ai-prompt-patterns.md` 的 6 段式。日志 `backend/logs/taste-meta-YYYY-MM-DD.log`。
+      autoLayoutService.ts  - 画布自动排版工具：`computeGridLayout(tastes)` 按 Y 聚类成行 → 行内左右等距对齐 + 行间统一间距；`findEmptyPosition(existing, size)` 为新 taste 找不重叠落点。前后端共用同一套算法，backend 是 canonical 版（由 MCP `auto_layout_design` + REST `POST /api/designs/:id/auto-layout` 调用），frontend 为交互 latency 暂保留副本。
       dataStore.ts          - In-memory data store, AI tool functions
       eventBus.ts           - Event bus for real-time sync (table-level + document-level)
       filterEngine.ts       - Client-side filter evaluation
@@ -76,11 +78,14 @@ backend/
       viewTools.ts        - View CRUD tools (bundled into table-skill)
       ideaTools.ts        - Idea tools split into `ideaNavTools` (Tier 1: list_ideas/get_idea) + `ideaWriteTools` (Tier 2: create_idea/rename_idea/delete_idea⚠️/append_to_idea/insert_into_idea/replace_idea_content⚠️) + `ideaStreamTools` (Tier 2: begin_idea_stream_write/end_idea_stream_write — V2 streaming write bracket). Write tools accept an `anchor` object (oneOf position / section+mode) so the Agent can splice into a specific `## Heading` section without rewriting the whole doc.
       mentionTools.ts     - Tier 1 cross-skill mention tools: `find_mentionable` (workspace+q → typed hits with pre-built `mentionUri` + `markdown`) + `list_incoming_mentions` (reverse-ref lookup for "what points at this?"). Always available — Agent uses these to build `@` links inside idea content without activating a skill.
-      index.ts            - Tier partitioning: tier0Tools / tier1Tools / resolveActiveTools(activeSkillNames). Tier 1 now includes `list_tables`, `get_table`, `list_ideas`, `get_idea`, `find_mentionable`, `list_incoming_mentions`.
+      designTools.ts      - `designNavTools` (Tier 1: list_designs) + `designWriteTools` (Tier 2 in taste-skill: create_design / rename_design / delete_design⚠️ / auto_layout_design).
+      tasteTools.ts       - `tasteNavTools` (Tier 1: list_tastes / get_taste with optional includeMeta + includeSvg) + `tasteWriteTools` (Tier 2 in taste-skill: create_taste_from_svg / rename_taste / update_taste / batch_update_tastes / delete_taste⚠️).
+      index.ts            - Tier partitioning: tier0Tools / tier1Tools / resolveActiveTools(activeSkillNames). Tier 1 now includes `list_tables`, `get_table`, `list_ideas`, `get_idea`, `list_designs`, `list_tastes`, `get_taste`, `find_mentionable`, `list_incoming_mentions`.
     src/skills/
       types.ts         - SkillDefinition (name / when / triggers / tools)
       tableSkill.ts    - Bundles field + record + view + table-write tools; triggers on 创建/删除/修改字段等
-      ideaSkill.ts     - Bundles `ideaWriteTools` only (nav tools are Tier 1); triggers on 写/新增/追加/插入/替换 × 灵感/文档/idea/章节 in ZH + EN equivalents. Design/taste write skill placeholder reserved for v3+.
+      ideaSkill.ts     - Bundles `ideaWriteTools` only (nav tools are Tier 1); triggers on 写/新增/追加/插入/替换 × 灵感/文档/idea/章节 in ZH + EN equivalents.
+      tasteSkill.ts    - Bundles `designWriteTools` + `tasteWriteTools` (画布容器 + SVG 图片写入，9 个 tools). Tier 1 nav split out to index.ts. Triggers on 新建/删除/改名/移动/对齐/排版 × 画布/SVG/design/taste/canvas. 术语对齐：代码中的 "Design" = 产品语境 "Taste"（容器），代码中的 "Taste" = 产品语境 "Node"（SVG 图片），未来会统一重命名（见 docs/taste-chatbot-plan.md 术语对齐章节）。
       index.ts         - allSkills / skillsByName registries
 frontend/
   src/
@@ -90,6 +95,7 @@ frontend/
       useTableSync.ts   - Table-level SSE subscription hook for real-time data sync
       useDocumentSync.ts - Document-level SSE hook for sidebar table list sync
       useIdeaSync.ts    - Per-idea SSE hook (content + rename events) for Markdown editor live sync
+      useDesignSync.ts  - Per-design SSE hook (subscribes to workspace channel, filters by designId). Feeds taste:create/update/delete/meta-updated + design:rename/delete/auto-layout into SvgCanvas so Agent-driven changes reflow live.
     i18n/
       en.ts           - English translations (130+ keys)
       zh.ts           - Chinese translations (130+ keys)

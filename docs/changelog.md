@@ -7,6 +7,46 @@
 
 ## 2026-04-22
 
+### fix(taste/meta): 修复 meta 生成全链路两个 bug（路径编码 + missing-SVG 死循环）
+
+**分支**: `BeyondBase` · **commits**: 待提交
+
+本地验证 Taste meta 生成时发现两个阻塞问题，已连带修复：
+
+1. **`readTasteSvg` URL 编码 bug（首次发布必 fix）**
+   - 项目路径 `AI Filter Claude` 带空格，`new URL(import.meta.url).pathname` 会把空格保持为 `%20` 编码，直接拼进 `fs.readFile` → 永远拿 ENOENT
+   - 结果：**所有 taste 的 meta 生成都静默失败**，`get_taste(syncMeta:true)` 全部返回 `status:"missing"`，`taste-meta-*.log` 完全没产生
+   - Fix：改用 Node 官方 `fileURLToPath(import.meta.url)` + 复用 `__dirname` 常量（`tasteMetaService.ts`）
+
+2. **SVG 文件丢失时死循环**
+   - `readTasteSvg` 返回 null（文件被手动删除/磁盘缺失）时，旧代码直接返回 `{status:"missing", generatedAt:null}` 但**不写入 DB**，于是每次 `sync=1` 都把它当"从未尝试过"重新发起生成（又立即 null），浪费调用且日志 0 条
+   - Fix：SVG 不可读时写一条 `persistMeta(tasteId, null, "")` sentinel（hash 空串，metaGeneratedAt=now），status 变 `"failed"`；Agent 拿到 failed 就不会再问。日志同时追加 `svg not readable (file missing on disk)` 可诊断。后续如果文件重新上传，hash 会天然 mismatch 触发重算
+
+- **本次 root cause 调查（3 张历史图 SVG 消失）**：不是应用 bug，是一次 git stash 事故。Apr 20 19:33 开发者用 `git stash --include-untracked` 保存了 `uploads/`（当时 `.gitignore` 还没排除该目录），期间 App 上传了 3 张新 SVG；19:45 恢复 stash 时 3 张未追踪文件被清掉。同日 21:35 commit `d981026` 已将 `uploads/` 加入 `.gitignore`，该场景不会再复发。详情见本次会话调查报告
+- **后续硬化建议（未包含在本次发布）**：把 `uploadsRoot` 从项目根迁到 `~/.imagebase/uploads/`（参照 `AGENT_HOME` 模式），从结构上杜绝 git 操作误伤。单独 issue 跟踪
+
+---
+
+### feat(taste/chatbot): Chatbot × Taste/Design MCP 工具接入，支持 Agent 操作画布
+
+**分支**: `BeyondBase` · **commits**: 待提交
+
+实现 `docs/taste-chatbot-plan.md` 全部 6 个 Phase，让 Chat Agent 能读写画布（Design）和 SVG 图片（Taste），并为每张 SVG 异步生成设计风格结构化 meta（主色/字体/间距/tags/description 等）。
+
+- **Phase 1（数据层）**：Prisma migration `20260422114520_add_taste_meta` 给 Taste 加三列 `meta JSONB / metaGeneratedAt / svgHash`；新增 `backend/src/schemas/tasteSchema.ts` + `designSchema.ts`（Zod 单一数据源，REST + MCP 共用）；将 `computeGridLayout` 从 `frontend/src/components/SvgCanvas` 下沉到 `backend/src/services/autoLayoutService.ts`，前后端逐步向 BE 对齐
+- **Phase 2（Meta 服务）**：`backend/src/services/tasteMetaService.ts` — 使用 Agent 当前选择的模型（`resolveModelForCall` → `resolveAdapter(model).stream()`）单次生成风格 meta，fire-and-forget 队列最多 3 并发 + 指数退避，日志落 `backend/logs/taste-meta-YYYY-MM-DD.log`。Prompt 按 `.claude/skills/ai-prompt-patterns.md` 的 6 段式（角色 → 输出约束最高优先级 → Schema → 类型规则 → 识别策略 → 降级规则 → 示例）撰写
+- **Phase 3（REST）**：`POST /api/designs/:designId/auto-layout`（网格化摆放并广播 `design:auto-layout`）、`GET /api/designs/:designId/tastes/:tasteId/meta[?sync=1]`、`POST .../meta/regenerate`；3 个 Taste 创建路由（upload/from-svg/from-figma）统一 `enqueueMetaGeneration(taste.id)` 并发出 `taste:create`；update/delete 现在也会发 `taste:update` / `taste:delete` SSE 事件（之前只靠前端本地刷新，Agent 写入不会同步到其他客户端）
+- **Phase 4（MCP 工具，11 个）**：
+  - `backend/mcp-server/src/tools/designTools.ts` — `list_designs`（Tier 1 导航）+ `create_design` / `rename_design` / `delete_design`⚠️ / `auto_layout_design`（Tier 2 写入）
+  - `backend/mcp-server/src/tools/tasteTools.ts` — `list_tastes` / `get_taste`（Tier 1 导航，`get_taste` 支持 `includeMeta` + `includeSvg`）+ `create_taste_from_svg` / `rename_taste` / `update_taste` / `batch_update_tastes` / `delete_taste`⚠️（Tier 2 写入）
+  - `backend/mcp-server/src/tools/index.ts` Tier 1 扩充 `list_designs` / `list_tastes` / `get_taste`，保持小而窄
+- **Phase 5（Skill）**：`backend/mcp-server/src/skills/tasteSkill.ts` 注册到 `skillsByName`，覆盖 ZH+EN 触发词（新建/删除/改名/移动/排版 × 画布/SVG/taste/design）。Agent 明确要改画布时自动激活
+- **Phase 6（前端 SSE）**：新增 `frontend/src/hooks/useDesignSync.ts`，订阅 workspace channel 并按 `designId` 过滤；`SvgCanvas` 接入后，Agent 创建/移动/删除 Taste、meta 生成、自动排版都会实时反映到画布上，无需刷新
+- **术语对齐**：当前代码保留 `Design`（容器）+ `Taste`（SVG）命名，`docs/taste-chatbot-plan.md` 术语对齐章节记录产品语境未来将重命名为 `Taste`（容器）+ `Node`（SVG）；迁移在单独 issue 中跟踪
+- **验证**：`backend` + `backend/mcp-server` + `frontend` tsc --noEmit 通过（pre-existing aiService/dbStore 错误不相关）
+
+---
+
 ### fix(idea/stream): 修复用户滚动识别在两类边界情况下失效
 
 **分支**: `BeyondBase` · **commits**: 待提交

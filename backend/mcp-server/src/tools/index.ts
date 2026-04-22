@@ -30,6 +30,8 @@ import { skillRouterTools } from "./skillRouterTools.js";
 import { cronTools } from "./cronTools.js";
 import { ideaNavTools, ideaTools } from "./ideaTools.js";
 import { mentionTools } from "./mentionTools.js";
+import { designNavTools } from "./designTools.js";
+import { tasteNavTools } from "./tasteTools.js";
 import { allSkills, skillsByName } from "../skills/index.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
@@ -40,6 +42,8 @@ import type { ToolDefinition, ToolContext } from "./tableTools.js";
 // name trades prompt budget for capability. Current members:
 //   - Table nav:   list_tables, get_table              (exists since Phase 3)
 //   - Idea nav:    list_ideas,  get_idea               (v1 of chatbot-idea)
+//   - Design nav:  list_designs                        (taste-chatbot v1)
+//   - Taste nav:   list_tastes,  get_taste             (taste-chatbot v1)
 //   - Mention:     find_mentionable,
 //                  list_incoming_mentions              (cross-skill bridge)
 //
@@ -53,6 +57,9 @@ const TIER1_NAMES = new Set([
   "get_table",
   "list_ideas",
   "get_idea",
+  "list_designs",
+  "list_tastes",
+  "get_taste",
   "find_mentionable",
   "list_incoming_mentions",
 ]);
@@ -69,6 +76,8 @@ export const tier0Tools: ToolDefinition[] = [
 export const tier1Tools: ToolDefinition[] = [
   ...tableTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...ideaNavTools.filter((t) => TIER1_NAMES.has(t.name)),
+  ...designNavTools.filter((t) => TIER1_NAMES.has(t.name)),
+  ...tasteNavTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...mentionTools.filter((t) => TIER1_NAMES.has(t.name)),
 ];
 

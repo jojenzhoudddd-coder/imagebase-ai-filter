@@ -11,8 +11,10 @@ import {
   batchUpdateTastes,
   deleteTaste,
   updateTaste,
+  CLIENT_ID,
 } from "../../api";
 import type { TasteBrief } from "../../api";
+import { useDesignSync } from "../../hooks/useDesignSync";
 import "./SvgCanvas.css";
 
 // ─── Icons ───
@@ -551,9 +553,11 @@ interface Props {
   designName: string;
   onRename: (name: string) => void;
   hidden?: boolean;
+  /** Workspace this canvas lives under; required for SSE subscription. */
+  workspaceId?: string;
 }
 
-export default function SvgCanvas({ designId, designName, onRename, hidden = false }: Props) {
+export default function SvgCanvas({ designId, designName, onRename, hidden = false, workspaceId = "doc_default" }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -651,6 +655,85 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
       cancelled = true;
     };
   }, [designId]);
+
+  // ─── SSE: remote changes (Chat Agent, other clients) ───
+  // Fetch SVG content for a taste that arrived through SSE (agent-created) so
+  // it renders immediately instead of waiting for a full reload.
+  const fetchSvgContentFor = useCallback(async (taste: TasteBrief) => {
+    if (!taste.filePath) return;
+    try {
+      const res = await fetch(`/${taste.filePath}`);
+      const text = await res.text();
+      const sanitized = sanitizeSvg(text);
+      setSvgContents((prev) => ({ ...prev, [taste.id]: sanitized }));
+    } catch {
+      /* best-effort */
+    }
+  }, []);
+
+  useDesignSync(workspaceId, CLIENT_ID, designId, {
+    onTasteCreate: (taste) => {
+      // Cast: SSE payload source may include "paste" (backend type) — wider
+      // than TasteBrief's "upload"|"figma" today. Treat as opaque string for
+      // display; the canvas only reads it for icon selection.
+      setTastes((prev) => (prev.some((t) => t.id === taste.id) ? prev : [...prev, taste as unknown as TasteBrief]));
+      fetchSvgContentFor(taste as unknown as TasteBrief);
+    },
+    onTasteUpdate: ({ taste, updates, batch }) => {
+      if (batch && Array.isArray(updates)) {
+        setTastes((prev) => {
+          const map = new Map(prev.map((t) => [t.id, t]));
+          for (const u of updates) {
+            const cur = map.get(u.id);
+            if (!cur) continue;
+            map.set(u.id, {
+              ...cur,
+              x: typeof u.x === "number" ? u.x : cur.x,
+              y: typeof u.y === "number" ? u.y : cur.y,
+              width: typeof u.width === "number" ? u.width : cur.width,
+              height: typeof u.height === "number" ? u.height : cur.height,
+              name: typeof u.name === "string" ? u.name : cur.name,
+            });
+          }
+          return Array.from(map.values());
+        });
+      } else if (taste) {
+        setTastes((prev) => prev.map((t) => (t.id === taste.id ? { ...t, ...taste } : t)));
+      }
+    },
+    onTasteDelete: (tasteId) => {
+      setTastes((prev) => prev.filter((t) => t.id !== tasteId));
+      setSvgContents((prev) => {
+        if (!(tasteId in prev)) return prev;
+        const next = { ...prev };
+        delete next[tasteId];
+        return next;
+      });
+      setSelectedId((cur) => (cur === tasteId ? null : cur));
+    },
+    onTasteMetaUpdated: () => {
+      // Meta is Agent-readable only in Phase 1 (no FE rendering). Leave as a
+      // no-op subscription point — when the FE surfaces meta it will slot in
+      // here (e.g. set a "meta ready" badge on the card).
+    },
+    onAutoLayout: ({ updates }) => {
+      setTastes((prev) => {
+        const map = new Map(prev.map((t) => [t.id, t]));
+        for (const u of updates) {
+          const cur = map.get(u.id);
+          if (cur) map.set(u.id, { ...cur, x: u.x, y: u.y });
+        }
+        return Array.from(map.values());
+      });
+    },
+    onDesignRename: (name) => {
+      // Bubble up to parent so the sidebar + canvas header stay in sync.
+      onRename(name);
+    },
+    // design:delete is handled at the workspace level (sidebar removes it);
+    // this canvas instance will unmount when the active item changes, so we
+    // don't need to do anything here.
+  });
 
   // ─── Upload handlers ───
 

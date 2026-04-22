@@ -1651,6 +1651,7 @@ export default function App() {
                 key={activeTableId}
                 designId={activeTableId}
                 designName={d.name}
+                workspaceId={WORKSPACE_ID}
                 onRename={(name) => handleRenameSidebarItemExtended(activeTableId, name)}
               />
             );

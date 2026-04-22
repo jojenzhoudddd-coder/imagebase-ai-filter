@@ -7,6 +7,9 @@ import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 import { parseFigmaUrl } from "../utils/figmaParser.js";
+import { enqueueMetaGeneration, getMeta, regenerateMeta } from "../services/tasteMetaService.js";
+import { eventBus } from "../services/eventBus.js";
+import { computeGridLayout } from "../services/autoLayoutService.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -204,6 +207,26 @@ router.post(
       created.push(taste);
       obstacles.push({ x: pos.x, y: pos.y, width: dims.width, height: dims.height });
       nextOrder++;
+
+      // Background meta generation — fire-and-forget
+      enqueueMetaGeneration(taste.id);
+    }
+
+    // Broadcast taste:create events so other clients refresh the canvas
+    const design = await prisma.design.findUnique({
+      where: { id: designId },
+      select: { workspaceId: true },
+    });
+    if (design?.workspaceId) {
+      for (const t of created) {
+        eventBus.emitWorkspaceChange({
+          type: "taste:create",
+          workspaceId: design.workspaceId,
+          clientId: (req.headers["x-client-id"] as string) || "unknown",
+          timestamp: Date.now(),
+          payload: { designId, taste: t },
+        });
+      }
     }
 
     res.status(201).json(created);
@@ -273,6 +296,22 @@ router.post("/:designId/tastes/from-svg", async (req: Request, res: Response) =>
         source: "paste",
       },
     });
+
+    enqueueMetaGeneration(taste.id);
+
+    const design = await prisma.design.findUnique({
+      where: { id: designId },
+      select: { workspaceId: true },
+    });
+    if (design?.workspaceId) {
+      eventBus.emitWorkspaceChange({
+        type: "taste:create",
+        workspaceId: design.workspaceId,
+        clientId: (req.headers["x-client-id"] as string) || "unknown",
+        timestamp: Date.now(),
+        payload: { designId, taste },
+      });
+    }
 
     res.status(201).json(taste);
   } catch (err: any) {
@@ -369,6 +408,22 @@ router.post("/:designId/tastes/from-figma", async (req: Request, res: Response) 
       },
     });
 
+    enqueueMetaGeneration(taste.id);
+
+    const design = await prisma.design.findUnique({
+      where: { id: designId },
+      select: { workspaceId: true },
+    });
+    if (design?.workspaceId) {
+      eventBus.emitWorkspaceChange({
+        type: "taste:create",
+        workspaceId: design.workspaceId,
+        clientId: (req.headers["x-client-id"] as string) || "unknown",
+        timestamp: Date.now(),
+        payload: { designId, taste },
+      });
+    }
+
     res.status(201).json(taste);
   } catch (err: any) {
     console.error("[figma-import]", err);
@@ -379,6 +434,7 @@ router.post("/:designId/tastes/from-figma", async (req: Request, res: Response) 
 // PUT /api/designs/:designId/tastes/batch-update — batch update positions (for auto-layout)
 // NOTE: must be registered BEFORE /:tasteId to avoid Express matching "batch-update" as a tasteId
 router.put("/:designId/tastes/batch-update", async (req: Request, res: Response) => {
+  const { designId } = req.params;
   const { updates } = req.body;
   if (!Array.isArray(updates)) {
     res.status(400).json({ error: "updates must be an array" });
@@ -389,11 +445,27 @@ router.put("/:designId/tastes/batch-update", async (req: Request, res: Response)
       prisma.taste.update({ where: { id: u.id }, data: { x: u.x, y: u.y } }),
     ),
   );
+
+  const design = await prisma.design.findUnique({
+    where: { id: designId },
+    select: { workspaceId: true },
+  });
+  if (design?.workspaceId) {
+    eventBus.emitWorkspaceChange({
+      type: "taste:update",
+      workspaceId: design.workspaceId,
+      clientId: (req.headers["x-client-id"] as string) || "unknown",
+      timestamp: Date.now(),
+      payload: { designId, updates, batch: true },
+    });
+  }
+
   res.json({ ok: true });
 });
 
 // PUT /api/designs/:designId/tastes/:tasteId — update position/size/name
 router.put("/:designId/tastes/:tasteId", async (req: Request, res: Response) => {
+  const { designId, tasteId } = req.params;
   const { x, y, width, height, name } = req.body;
   const data: Record<string, unknown> = {};
   if (typeof x === "number") data.x = x;
@@ -404,13 +476,102 @@ router.put("/:designId/tastes/:tasteId", async (req: Request, res: Response) => 
 
   try {
     const taste = await prisma.taste.update({
-      where: { id: req.params.tasteId },
+      where: { id: tasteId },
       data,
     });
+
+    const design = await prisma.design.findUnique({
+      where: { id: designId },
+      select: { workspaceId: true },
+    });
+    if (design?.workspaceId) {
+      eventBus.emitWorkspaceChange({
+        type: "taste:update",
+        workspaceId: design.workspaceId,
+        clientId: (req.headers["x-client-id"] as string) || "unknown",
+        timestamp: Date.now(),
+        payload: { designId, taste },
+      });
+    }
+
     res.json(taste);
   } catch {
     res.status(404).json({ error: "Taste not found" });
   }
+});
+
+// ─── Meta endpoints (Taste × Chatbot Phase 1) ───
+
+// GET /api/designs/:designId/tastes/:tasteId/meta[?sync=1]
+// Returns the design-style meta. If meta is missing and `sync=1`, blocks on a
+// one-shot generation. Used by MCP `get_taste(includeMeta:true)` and the
+// optional regenerate UI.
+router.get("/:designId/tastes/:tasteId/meta", async (req: Request, res: Response) => {
+  const { tasteId } = req.params;
+  const sync = req.query.sync === "1" || req.query.sync === "true";
+  try {
+    const result = await getMeta(tasteId, { syncIfMissing: sync });
+    res.json({
+      meta: result.meta,
+      generatedAt: result.generatedAt?.toISOString() ?? null,
+      status: result.status,
+    });
+  } catch (err: any) {
+    console.error("[taste-meta:get]", err);
+    res.status(500).json({ error: "Failed to read meta", detail: err.message });
+  }
+});
+
+// POST /api/designs/:designId/tastes/:tasteId/meta/regenerate
+// Force regeneration regardless of svgHash. Broadcasts taste:meta-updated on success.
+router.post("/:designId/tastes/:tasteId/meta/regenerate", async (req: Request, res: Response) => {
+  const { tasteId } = req.params;
+  try {
+    const result = await regenerateMeta(tasteId);
+    res.json({ meta: result.meta, status: result.status });
+  } catch (err: any) {
+    console.error("[taste-meta:regenerate]", err);
+    res.status(500).json({ error: "Failed to regenerate meta", detail: err.message });
+  }
+});
+
+// POST /api/designs/:designId/auto-layout — grid-tidy all tastes in this design
+// Writes back taste positions via batch update, broadcasts design:auto-layout.
+router.post("/:designId/auto-layout", async (req: Request, res: Response) => {
+  const { designId } = req.params;
+  const design = await prisma.design.findUnique({
+    where: { id: designId },
+    select: { workspaceId: true },
+    // @ts-ignore
+  });
+  if (!design) {
+    res.status(404).json({ error: "Design not found" });
+    return;
+  }
+
+  const tastes = await prisma.taste.findMany({
+    where: { designId },
+    orderBy: { order: "asc" },
+  });
+  const { updates, bounds } = computeGridLayout(
+    tastes.map((t) => ({ id: t.id, x: t.x, y: t.y, width: t.width, height: t.height })),
+  );
+
+  await Promise.all(
+    updates.map((u) =>
+      prisma.taste.update({ where: { id: u.id }, data: { x: u.x, y: u.y } }),
+    ),
+  );
+
+  eventBus.emitWorkspaceChange({
+    type: "design:auto-layout",
+    workspaceId: design.workspaceId,
+    clientId: (req.headers["x-client-id"] as string) || "unknown",
+    timestamp: Date.now(),
+    payload: { designId, updates, bounds },
+  });
+
+  res.json({ designId, updatedCount: updates.length, bounds });
 });
 
 // DELETE /api/designs/:designId/tastes/:tasteId — delete taste + file
@@ -426,6 +587,20 @@ router.delete("/:designId/tastes/:tasteId", async (req: Request, res: Response) 
   if (taste.filePath) {
     const absPath = path.resolve(__dirname, "../../..", taste.filePath);
     fs.unlink(absPath).catch(() => {});
+  }
+
+  const design = await prisma.design.findUnique({
+    where: { id: taste.designId },
+    select: { workspaceId: true },
+  });
+  if (design?.workspaceId) {
+    eventBus.emitWorkspaceChange({
+      type: "taste:delete",
+      workspaceId: design.workspaceId,
+      clientId: (req.headers["x-client-id"] as string) || "unknown",
+      timestamp: Date.now(),
+      payload: { designId: taste.designId, tasteId: taste.id },
+    });
   }
 
   res.json({ ok: true });

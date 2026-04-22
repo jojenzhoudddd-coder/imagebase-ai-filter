@@ -28,7 +28,8 @@ export interface WorkspaceChangeEvent {
   type: "table:create" | "table:delete" | "table:reorder" | "table:rename"
     | "folder:create" | "folder:rename" | "folder:delete" | "folder:reorder"
     | "item:move"
-    | "design:create" | "design:rename" | "design:delete" | "design:reorder"
+    | "design:create" | "design:rename" | "design:delete" | "design:reorder" | "design:auto-layout"
+    | "taste:create" | "taste:update" | "taste:delete" | "taste:meta-updated"
     | "idea:create" | "idea:rename" | "idea:delete" | "idea:reorder";
   workspaceId: string;
   clientId: string;
