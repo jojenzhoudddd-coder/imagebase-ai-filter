@@ -298,6 +298,16 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const streamStartOffsetRef = useRef<number>(0);     // where in streamBase to splice
   const streamBufferRef = useRef<string>("");         // accumulated deltas so far
   const streamSessionIdRef = useRef<string | null>(null);
+  // Stream-follow state: when true, every delta nudges bodyRef.scrollTop so the
+  // tail of the written text stays in view. Reset to true on each new session
+  // (stream-begin); flipped to false if the user manually scrolls UP during
+  // the stream (interpreting that as "I want to read earlier content, stop
+  // yanking me down"). Flipped back to true if they scroll near the tail again.
+  const streamFollowRef = useRef<boolean>(true);
+  // Suppresses the "user scrolled up → detach" detection for scrolls we
+  // triggered ourselves. Set right before the auto-scroll assignment, cleared
+  // on the next tick.
+  const streamAutoScrollingRef = useRef<boolean>(false);
 
   // Textarea ref + caret state for @mention anchor computation. The state
   // shape is shared between source-mode (textarea-driven) and preview-mode
@@ -580,6 +590,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       // after a local edit that the server hasn't yet acknowledged.
       streamStartOffsetRef.current = Math.min(p.startOffset, contentRef.current.length);
       streamBufferRef.current = "";
+      // Fresh session → re-arm auto-follow regardless of how the previous
+      // session ended. If the user scrolled up last time, this new session
+      // deserves a clean slate.
+      streamFollowRef.current = true;
       setStreaming(true);
       setSaveStatus("saved"); // hide "dirty" indicator during stream
     }, []),
@@ -816,6 +830,97 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     // rAF so the assignment above is reflected in layout before we measure.
     requestAnimationFrame(() => ensureCaretVisible());
   }, [content, mode, loaded, ensureCaretVisible]);
+
+  // ── Stream-follow autoscroll ──
+  // While the Agent is writing into this idea, the textarea is readOnly (so
+  // `ensureCaretVisible` no-ops because it requires focus) and the body is
+  // the scroll container. Without an explicit follow, new deltas just push
+  // the tail off the bottom of the viewport and the user can't see what's
+  // being written. After every `content` change during a stream we locate
+  // the tail of the written region (`startOffset + buffer.length`), measure
+  // its pixel rect, and nudge `bodyRef.scrollTop` down if the tail has
+  // slipped past the bottom margin. Works in both modes:
+  //   • Source: mirror-div-based caret rect via `measureTextareaCaretRect`.
+  //   • Preview: walk `[data-md-start]` blocks to find the one containing
+  //     the tail, then use its DOM rect.
+  //
+  // We only ever scroll DOWN — auto-scrolling UP during a stream would feel
+  // like we're yanking the user away from earlier content they want to
+  // read. If the user manually scrolls up enough to leave the "near-tail"
+  // band, we set `streamFollowRef = false` and stop nudging until they
+  // scroll back near the tail.
+  useEffect(() => {
+    if (!streaming) return;
+    if (!streamFollowRef.current) return;
+    const body = bodyRef.current;
+    if (!body) return;
+    const tail = streamStartOffsetRef.current + streamBufferRef.current.length;
+    const MARGIN = 80;
+
+    // Double rAF so we measure AFTER the auto-grow effect above has written
+    // the new height (source mode) or after MarkdownPreview has re-rendered
+    // (preview mode).
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const bodyRect = body.getBoundingClientRect();
+        let tailBottom: number | null = null;
+
+        if (mode === "source") {
+          const ta = textareaRef.current;
+          if (!ta) return;
+          const rect = measureTextareaCaretRect(ta, tail);
+          if (!rect) return;
+          tailBottom = rect.bottom;
+        } else {
+          // Find the block that contains the tail offset; fall back to the
+          // last block before the tail if none contains it exactly.
+          const blocks = body.querySelectorAll<HTMLElement>("[data-md-start]");
+          let target: HTMLElement | null = null;
+          for (let i = 0; i < blocks.length; i++) {
+            const b = blocks[i];
+            const s = Number(b.getAttribute("data-md-start"));
+            const e = Number(b.getAttribute("data-md-end"));
+            if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
+            if (tail >= s && tail <= e) { target = b; break; }
+            if (tail >= s) target = b;
+          }
+          if (!target && blocks.length > 0) target = blocks[blocks.length - 1];
+          if (!target) return;
+          tailBottom = target.getBoundingClientRect().bottom;
+        }
+
+        if (tailBottom == null) return;
+        const delta = tailBottom - (bodyRect.bottom - MARGIN);
+        if (delta <= 0) return; // tail already in view — no nudge needed
+        streamAutoScrollingRef.current = true;
+        body.scrollTop += delta;
+        // Clear the flag on the next tick so a real user scroll right after
+        // isn't mis-attributed to our own auto-scroll.
+        requestAnimationFrame(() => { streamAutoScrollingRef.current = false; });
+      });
+    });
+  }, [content, streaming, mode]);
+
+  // Detach detection: during a stream, if the user manually scrolls away
+  // from the tail (upward by more than ~200 px from the tail line), stop
+  // auto-following. Resume once they scroll back near the tail. Own-
+  // auto-scrolls are suppressed via `streamAutoScrollingRef` so we don't
+  // detach on our own nudge.
+  useEffect(() => {
+    if (!streaming) return;
+    const body = bodyRef.current;
+    if (!body) return;
+    const onScroll = () => {
+      if (streamAutoScrollingRef.current) return;
+      // Distance from the bottom of the scroll container — a simple proxy
+      // for "how far from the tail am I?". The tail of the write is always
+      // at or near the bottom of whatever content is currently rendered.
+      const distFromBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
+      streamFollowRef.current = distFromBottom < 200;
+    };
+    body.addEventListener("scroll", onScroll, { passive: true });
+    return () => body.removeEventListener("scroll", onScroll);
+  }, [streaming]);
 
   const handleMentionSelect = useCallback((hit: MentionHit) => {
     if (!mentionState) return;

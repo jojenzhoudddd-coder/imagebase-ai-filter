@@ -7,6 +7,24 @@
 
 ## 2026-04-22
 
+### fix(idea/stream): Agent 流式写入时光标/输出位置自动滚动跟随
+
+**分支**: `BeyondBase` · **commits**: 待提交
+
+用户反馈："流式输出有一个小问题，如果当前页面是打开的，则光标需要跟随输出的位置自动滚动定位"。Idea V2 流式写入期间 textarea 是 `readOnly`，现有的 `ensureCaretVisible()` 因为 focus 检查 (`document.activeElement !== ta`) 一直 no-op；新写入的文本直接落在 body 可视区之下，用户看不到 Agent 正在写什么。
+
+- **`frontend/src/components/IdeaEditor/index.tsx`** 新增一对 effect：
+  - 第一个 effect 在 `content + streaming + mode` 变化时触发：定位流式尾位 (`streamStartOffset + buffer.length`)，双 rAF 等 auto-grow + MarkdownPreview 重绘完成后测量 pixel rect。Source 模式走 mirror-div (`measureTextareaCaretRect`)；Preview 模式遍历 `[data-md-start]` 块找 tail 所在块。如果 tail 已滑出底部 margin（80px），nudge `bodyRef.scrollTop` 往下补
+  - 第二个 effect 订阅 body 的 `scroll` 事件做 **detach detection**：用户手动往上滚离尾巴 > 200px 就把 `streamFollowRef` 翻成 false 停止自动跟随；滚回尾巴附近又翻回 true。自己触发的 auto-scroll 通过 `streamAutoScrollingRef` 标记屏蔽掉，避免"自己滚自己触发 detach"的误判
+- 只往下滚不往上滚 —— 尊重用户滚上去读早期内容的意图
+- `onStreamBegin` 每次重新 arm `streamFollowRef = true`，新的写入 session 都给一次 clean slate
+
+- **验证**
+  - frontend `tsc --noEmit`：通过
+  - 预期行为：Agent 写长文档时，Source / Preview 两种视图下 body 都会跟着写入位置往下滚；用户手动滚上去读之前的内容，Agent 继续写但不再 yank 用户；用户手动滚回底部，自动跟随恢复
+
+---
+
 ### fix(chat): confirm 暂停后工具卡片一直 "running" + 历史丢失
 
 **分支**: `BeyondBase` · **commits**: 待提交
