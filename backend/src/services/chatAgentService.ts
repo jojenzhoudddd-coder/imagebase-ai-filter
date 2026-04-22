@@ -318,6 +318,40 @@ export async function buildRecalledMemoriesSection(
   }
 }
 
+// ─── Runtime layer: tell the Agent which model it's actually running on ─
+//
+// Without this the model has no idea what it is — OneAPI's Claude Code
+// wrapper (and some upstream providers) inject their own "You are Claude
+// Code" identity that we explicitly work around in oneapiAdapter.ts, but the
+// Agent still needs a positive statement of its own model to answer the
+// very common user question "你目前是什么模型". Belt-and-suspenders: we
+// also include the app-side id so if the user shares a transcript the
+// runtime is unambiguous.
+function buildRuntimeLayer(
+  model: ModelEntry,
+  requestedId: string | null | undefined,
+  usedFallback: boolean
+): string {
+  const lines: string[] = ["# 运行时信息（Runtime）"];
+  const groupLabel =
+    model.group === "anthropic" ? "Anthropic"
+    : model.group === "openai" ? "OpenAI"
+    : model.group === "volcano" ? "Volcano（火山方舟）"
+    : model.group;
+  lines.push(
+    `当前实际运行的模型：**${model.displayName}**（id: \`${model.id}\`，厂商：${groupLabel}，provider: ${model.provider}）。`
+  );
+  if (usedFallback && requestedId && requestedId !== model.id) {
+    lines.push(
+      `注意：用户为此 Agent 保存的偏好模型是 \`${requestedId}\`，但当前不可用，已临时回退到同组可用模型 \`${model.id}\`。偏好保持不变，一旦 \`${requestedId}\` 恢复可用会自动切回。`
+    );
+  }
+  lines.push(
+    "当用户询问你当前使用的是什么模型 / 你是谁的模型 / 底层是哪个 LLM 时，**以上面这段为准**回答。不要自称 Claude Code、不要泛泛自称「一个 AI 助手」、也不要编造厂商或版本。"
+  );
+  return lines.join("\n");
+}
+
 // ─── Workspace snapshot (context injection) ──────────────────────────────
 
 async function buildWorkspaceSnapshot(workspaceId: string): Promise<string> {
@@ -355,7 +389,12 @@ async function assembleInput(
   workspaceId: string,
   agentId: string,
   newUserMessage: string,
-  activeSkillNames: string[] = []
+  activeSkillNames: string[] = [],
+  runtime?: {
+    model: ModelEntry;
+    requestedId: string | null | undefined;
+    usedFallback: boolean;
+  }
 ): Promise<ArkInputItem[]> {
   const [identity, snapshot, recalled] = await Promise.all([
     buildIdentityLayer(agentId),
@@ -366,10 +405,16 @@ async function assembleInput(
   // hardcoded at the very top so no amount of identity mutation can override
   // meta behavior. The skill catalog sits between identity and tool guidance
   // so the model reads "who am I → what bundles can I pull in → how do I use
-  // the ones already loaded" in order. Layer 3 Turn Context stacks workspace
-  // snapshot + auto-recalled memories (Phase 2 Day 3); we skip empty pieces
-  // to keep the prompt tight.
-  const layer3Parts = [snapshot];
+  // the ones already loaded" in order. Layer 3 Turn Context stacks runtime
+  // info + workspace snapshot + auto-recalled memories (Phase 2 Day 3); we
+  // skip empty pieces to keep the prompt tight. Runtime goes first in Layer
+  // 3 because "what model am I" is the most frequently asked meta-question
+  // and also the cheapest to surface.
+  const layer3Parts: string[] = [];
+  if (runtime) {
+    layer3Parts.push(buildRuntimeLayer(runtime.model, runtime.requestedId, runtime.usedFallback));
+  }
+  layer3Parts.push(snapshot);
   if (recalled) layer3Parts.push(recalled);
   const skillCatalog = buildSkillCatalog(activeSkillNames);
   const systemParts = [META_SYSTEM_PROMPT, identity];
@@ -535,12 +580,17 @@ export async function* runAgent(
   // Running copy of ARK input — appended as tool calls happen. Pass the
   // currently-active skills so the system prompt's skill catalog can mark
   // them as ✅ already-loaded (prevents the model from re-activating).
+  // Also pass runtime info (resolved model + fallback state) so Layer 3
+  // tells the Agent exactly which LLM it's running on — without this the
+  // model has no idea and either guesses or parrots OneAPI's injected
+  // "Claude Code" identity.
   const input = await assembleInput(
     conversationId,
     workspaceId,
     agentId,
     userMessage,
-    [...skillState.active]
+    [...skillState.active],
+    { model, requestedId: storedModelId, usedFallback }
   );
 
   // Persist the user message now that assembleInput has already snapshotted
