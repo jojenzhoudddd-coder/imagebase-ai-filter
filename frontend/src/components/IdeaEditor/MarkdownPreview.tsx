@@ -929,61 +929,79 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
     if (composingRef.current) return;
     const root = rootRef.current;
     if (!root) return;
-
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    let node: Node | null = sel.getRangeAt(0).startContainer;
-    let block: HTMLElement | null = null;
-    while (node && node !== root) {
-      if (node instanceof HTMLElement && node.hasAttribute("data-md-start")) {
-        block = node;
-        break;
+    try {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      let node: Node | null = sel.getRangeAt(0).startContainer;
+      let block: HTMLElement | null = null;
+      while (node && node !== root) {
+        if (node instanceof HTMLElement && node.hasAttribute("data-md-start")) {
+          block = node;
+          break;
+        }
+        node = node.parentNode;
       }
-      node = node.parentNode;
+      if (!block) return;
+      const tag = block.tagName.toLowerCase();
+      // Heading toggle applies cleanly to paragraphs and existing headings.
+      // For list items and blockquotes we'd need to restructure the outer
+      // container (pull the line out of the list, etc.), which is out of
+      // scope here — silently bail so the user knows nothing happened.
+      if (tag !== "p" && !/^h[1-6]$/.test(tag)) return;
+
+      const start = Number(block.getAttribute("data-md-start"));
+      const end = Number(block.getAttribute("data-md-end"));
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+
+      commitEdits();
+
+      // commitEdits may have shifted this block's offsets. Re-read after flush.
+      const freshStart = Number(block.getAttribute("data-md-start"));
+      const freshEnd = Number(block.getAttribute("data-md-end"));
+      const s = Number.isFinite(freshStart) ? freshStart : start;
+      const e = Number.isFinite(freshEnd) ? freshEnd : end;
+
+      let slice = sourceSnapshotRef.current.slice(s, e);
+      let trailingNewline = "";
+      if (slice.endsWith("\n")) {
+        trailingNewline = "\n";
+        slice = slice.slice(0, -1);
+      }
+      const stripped = slice.replace(/^#{1,6}\s+/, "");
+      const newPrefix = level === 0 ? "" : "#".repeat(level) + " ";
+      const newSlice = newPrefix + stripped + trailingNewline;
+
+      if (newSlice === sourceSnapshotRef.current.slice(s, e)) return;
+
+      const newSource =
+        sourceSnapshotRef.current.slice(0, s) +
+        newSlice +
+        sourceSnapshotRef.current.slice(e);
+      sourceSnapshotRef.current = newSource;
+      onEditableInput(newSource);
+      setRenderToken(t => t + 1);
+
+      requestAnimationFrame(() => {
+        const r = rootRef.current;
+        if (!r) return;
+        const newBlock = r.querySelector<HTMLElement>(`[data-md-start="${s}"]`);
+        if (!newBlock) return;
+        try {
+          const range = document.createRange();
+          range.selectNodeContents(newBlock);
+          range.collapse(false);
+          const cur = window.getSelection();
+          if (cur) {
+            cur.removeAllRanges();
+            cur.addRange(range);
+          }
+        } catch { /* caret restore best-effort */ }
+      });
+    } catch (err) {
+      // Defensive: never let a caret / selection API quirk crash React.
+      // eslint-disable-next-line no-console
+      console.warn("[IdeaEditor] applyHeadingLevel failed:", err);
     }
-    if (!block) return;
-    const tag = block.tagName.toLowerCase();
-    if (tag !== "p" && !/^h[1-6]$/.test(tag)) return;
-
-    const start = Number(block.getAttribute("data-md-start"));
-    const end = Number(block.getAttribute("data-md-end"));
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-
-    commitEdits();
-
-    let slice = sourceSnapshotRef.current.slice(start, end);
-    let trailingNewline = "";
-    if (slice.endsWith("\n")) {
-      trailingNewline = "\n";
-      slice = slice.slice(0, -1);
-    }
-    const stripped = slice.replace(/^#{1,6}\s+/, "");
-    const newPrefix = level === 0 ? "" : "#".repeat(level) + " ";
-    const newSlice = newPrefix + stripped + trailingNewline;
-
-    if (newSlice === sourceSnapshotRef.current.slice(start, end)) return;
-
-    const newSource =
-      sourceSnapshotRef.current.slice(0, start) +
-      newSlice +
-      sourceSnapshotRef.current.slice(end);
-    sourceSnapshotRef.current = newSource;
-    onEditableInput(newSource);
-    setRenderToken(t => t + 1);
-
-    requestAnimationFrame(() => {
-      const r = rootRef.current;
-      if (!r) return;
-      const newBlock = r.querySelector<HTMLElement>(`[data-md-start="${start}"]`);
-      if (!newBlock) return;
-      try {
-        const range = document.createRange();
-        range.selectNodeContents(newBlock);
-        range.collapse(false);
-        sel.removeAllRanges();
-        sel.addRange(range);
-      } catch {}
-    });
   }, [editable, onEditableInput, commitEdits]);
 
   /** Splice a paragraph break into the source buffer at the caret's source
@@ -1011,8 +1029,14 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
     const range = sel.getRangeAt(0);
     // Flush any pending input edits so sourceSnapshotRef is current before
     // we map the caret through it.
-    commitEdits();
+    try {
+      commitEdits();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[IdeaEditor] commitEdits before Enter failed:", err);
+    }
 
+    try {
     // Walk to the nearest wrapped block (or root) to map caret → source.
     let node: Node | null = range.startContainer;
     let block: HTMLElement | null = null;
@@ -1127,6 +1151,14 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
         r.focus({ preventScroll: true });
       } catch { /* ignore */ }
     });
+    } catch (err) {
+      // Defensive: a Selection / Range API throw (cross-browser quirks, odd
+      // caret positions around non-editable atomics, etc.) must not crash
+      // the whole editor. Log and bail — the user's keypress is lost but
+      // the editor stays alive.
+      // eslint-disable-next-line no-console
+      console.warn("[IdeaEditor] insertParagraphBreak failed:", err);
+    }
   }, [editable, onEditableInput, commitEdits]);
 
   /** Keyboard handler — Cmd+Alt+[0..6] on Mac, Ctrl+Alt+[0..6] on Windows/Linux

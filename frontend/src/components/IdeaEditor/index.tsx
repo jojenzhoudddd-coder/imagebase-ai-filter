@@ -1126,6 +1126,102 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
               value={content}
               readOnly={streaming}
               onChange={handleChange}
+              onKeyDown={(e) => {
+                // Tab / Shift+Tab → indent / outdent. Uses 2-space units, matches
+                // Prettier defaults and renders consistently in markdown list
+                // contexts where tabs vs spaces change how list nesting parses.
+                //
+                //   Tab (no selection)        → insert "  " at caret
+                //   Tab (selection)           → prepend "  " to each line in selection
+                //   Shift+Tab (no selection)  → remove up to 2 leading spaces on current line
+                //   Shift+Tab (selection)     → remove up to 2 leading spaces from each line
+                //
+                // IME composition gate: Tab on a preedit popup (e.g. pinyin
+                // candidate selection) should stay native so the user can
+                // accept a candidate without us stealing the key.
+                if (e.key !== "Tab") return;
+                if (e.nativeEvent.isComposing) return;
+                if (streaming) return;
+                e.preventDefault();
+
+                const ta = e.currentTarget;
+                const value = ta.value;
+                const selStart = ta.selectionStart ?? 0;
+                const selEnd = ta.selectionEnd ?? 0;
+                const INDENT = "  "; // 2 spaces per level
+                const INDENT_LEN = INDENT.length;
+
+                // Expand the selection to whole-line boundaries so we can
+                // prefix/strip each line uniformly regardless of where the
+                // caret actually sits inside the first/last lines.
+                const lineStart = value.lastIndexOf("\n", selStart - 1) + 1;
+                const nextNewline = value.indexOf("\n", selEnd);
+                const lineEnd = nextNewline === -1 ? value.length : nextNewline;
+                const selectedBlock = value.slice(lineStart, lineEnd);
+                const hasMultiLineSelection =
+                  selStart !== selEnd && selectedBlock.includes("\n");
+
+                if (e.shiftKey) {
+                  // ── Outdent ──
+                  const lines = selectedBlock.split("\n");
+                  let firstLineRemoved = 0;
+                  let totalRemoved = 0;
+                  const newLines = lines.map((line, i) => {
+                    const leading = /^ {1,2}/.exec(line)?.[0] ?? "";
+                    const removeLen = leading.length;
+                    if (i === 0) firstLineRemoved = removeLen;
+                    totalRemoved += removeLen;
+                    return line.slice(removeLen);
+                  });
+                  if (totalRemoved === 0) return;
+                  const newBlock = newLines.join("\n");
+                  const newValue =
+                    value.slice(0, lineStart) + newBlock + value.slice(lineEnd);
+                  const newSelStart = Math.max(lineStart, selStart - firstLineRemoved);
+                  const newSelEnd = Math.max(newSelStart, selEnd - totalRemoved);
+                  setContent(newValue);
+                  scheduleSave(newValue);
+                  // Restore selection after React commits the new value.
+                  requestAnimationFrame(() => {
+                    const cur = textareaRef.current;
+                    if (!cur) return;
+                    cur.setSelectionRange(newSelStart, newSelEnd);
+                  });
+                  return;
+                }
+
+                // ── Indent ──
+                if (hasMultiLineSelection) {
+                  // Multi-line selection: prepend INDENT to each line.
+                  const lines = selectedBlock.split("\n");
+                  const newBlock = lines.map(line => INDENT + line).join("\n");
+                  const added = INDENT_LEN * lines.length;
+                  const newValue =
+                    value.slice(0, lineStart) + newBlock + value.slice(lineEnd);
+                  setContent(newValue);
+                  scheduleSave(newValue);
+                  const newSelStart = selStart + INDENT_LEN;
+                  const newSelEnd = selEnd + added;
+                  requestAnimationFrame(() => {
+                    const cur = textareaRef.current;
+                    if (!cur) return;
+                    cur.setSelectionRange(newSelStart, newSelEnd);
+                  });
+                } else {
+                  // No selection (or single-line selection): insert INDENT
+                  // at caret, replacing any selected range.
+                  const newValue =
+                    value.slice(0, selStart) + INDENT + value.slice(selEnd);
+                  setContent(newValue);
+                  scheduleSave(newValue);
+                  const newCaret = selStart + INDENT_LEN;
+                  requestAnimationFrame(() => {
+                    const cur = textareaRef.current;
+                    if (!cur) return;
+                    cur.setSelectionRange(newCaret, newCaret);
+                  });
+                }
+              }}
               onKeyUp={(e) => {
                 // Arrow keys / clicks move the caret without firing change —
                 // recompute mention detection so the picker closes when the

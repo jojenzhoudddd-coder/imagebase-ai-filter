@@ -175,6 +175,7 @@ Domain: https://www.imagebase.cc
 - [ ] **更新前端设计 Skill** — `.claude/skills/ux-frontend-design.md` 如有新的设计模式或规范
 - [ ] **更新更新日志** — `docs/changelog.md` 添加本次发布记录（日期、commit、改动点、详细说明）
 - [ ] **MCP 工具同步** — 如改动了 `backend/src/routes/*.ts`，必须同步更新 `backend/mcp-server/src/tools/*.ts`（见下方"MCP Server 与 REST API 的同步规则"）
+- [ ] **Prisma schema 变更** — 如改动了 `backend/prisma/schema.prisma`，部署时必须同时跑 `npx prisma migrate deploy`（应用 SQL）**和** `npx prisma generate`（重新生成 TS 客户端）。两者缺一不可：只跑 migrate 会导致 DB 有新字段但 TS 代码引用不到（PrismaClientValidationError "Unknown field"）；只跑 generate 会导致代码引用数据库里还没有的字段。
 
 ### 部署流程
 ```bash
@@ -186,7 +187,10 @@ npm run build
 git add . && git commit
 # 5. 推送并部署
 git push origin <branch>
+# Prisma schema 未变时：
 ssh -i /path/to/key root@163.7.1.94 "cd /root/ai-filter-lark && git pull origin <branch> && npm run build && pm2 restart ai-filter"
+# Prisma schema 有变时（新增/删字段、改类型等）— 注意必须同时 generate：
+ssh -i /path/to/key root@163.7.1.94 "cd /root/ai-filter-lark && git pull origin <branch> && cd backend && npx prisma migrate deploy && npx prisma generate && cd .. && npm run build && pm2 restart ai-filter"
 ```
 
 ## MCP Server 与 REST API 的同步规则 (强制)

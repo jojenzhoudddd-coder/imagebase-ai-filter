@@ -107,6 +107,24 @@ proxy_send_timeout 86400s;
 # res.setHeader("X-Accel-Buffering", "no");  — per-request override
 ```
 
+### Required SSE Location Blocks
+Each SSE endpoint group MUST have its own `location` block with `proxy_buffering off`
+and a long `proxy_read_timeout`. `X-Accel-Buffering: no` from the app only influences
+**buffering**, not `proxy_read_timeout` — the timeout is location-level and cannot be
+overridden by a response header. Claude Opus can idle 60–120s between tool rounds on
+heavy contexts, so the catch-all's default 120s will 504 mid-turn.
+
+Current blocks (2026-04-22):
+- `location /api/sync/` — table/document/idea/design real-time sync SSE (300s timeout)
+- `location /api/chat/`  — Chat Agent streaming (600s timeout; added after 2026-04-22
+  incident where long Claude Opus thinking windows triggered NETWORK_ERROR banner and
+  buffered `tool_result` events kept UI tool cards stuck on "running" spinner)
+- `location /`           — catch-all REST; 120s is fine (non-streaming)
+
+**Rule**: If you add a new SSE route prefix under `/api/<x>/`, add a matching nginx
+`location /api/<x>/` block with `proxy_buffering off` + `proxy_read_timeout ≥ 300s`,
+NOT just the `X-Accel-Buffering: no` header in code.
+
 ### View/Edit Nginx Config
 ```bash
 ssh -i ~/Desktop/baseimage.pem root@163.7.1.94 \

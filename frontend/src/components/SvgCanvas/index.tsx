@@ -1081,15 +1081,32 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
   }, [figmaUrl, designId, t]);
 
   // ─── Click on canvas background → deselect ───
+  //
+  // Deselect policy: any click that doesn't land on an item, the context
+  // menu, the Figma popover, or the rename input clears the selection.
+  // We attach at the body level (not the surface) so clicks in empty regions
+  // outside the transformed surface's bounds also deselect — the surface is
+  // `position:absolute` and shrinks/expands with zoom, so a large part of
+  // the user-visible empty canvas is technically outside it.
+  const isEmptyCanvasTarget = useCallback((target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) return false;
+    // Preserve behavior for interactive surfaces that would otherwise
+    // unexpectedly deselect on their clicks.
+    if (target.closest(".svg-canvas-item")) return false;
+    if (target.closest(".taste-context-menu")) return false;
+    if (target.closest(".figma-import-popover")) return false;
+    if (target.closest(".svg-canvas-item-name-input")) return false;
+    return true;
+  }, []);
 
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent) => {
-      if (e.target === e.currentTarget && !spaceHeld) {
-        setSelectedId(null);
-        setCtxMenu(null);
-      }
+      if (spaceHeld) return;
+      if (!isEmptyCanvasTarget(e.target)) return;
+      setSelectedId(null);
+      setCtxMenu(null);
     },
-    [spaceHeld],
+    [spaceHeld, isEmptyCanvasTarget],
   );
 
   const hideStyle = hidden ? ({ display: "none" } as const) : undefined;
@@ -1189,6 +1206,7 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
       <div
         ref={canvasRef}
         className={`svg-canvas-body${spaceHeld ? " panning" : ""}`}
+        onClick={handleCanvasClick}
       >
         {loading ? (
           <div className="svg-canvas-empty">

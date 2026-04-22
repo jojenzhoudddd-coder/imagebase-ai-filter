@@ -7,6 +7,67 @@
 
 ## 2026-04-22
 
+### fix(idea/canvas): Preview Enter 白屏 + Cmd+Alt+数字标题切换 + Source Tab 缩进 + Taste 空白区反选
+
+**分支**: `BeyondBase` · **commits**: 待提交
+
+一次性修复 4 个前端手感问题：
+
+1. **Preview 模式输入回车偶发白屏**（`MarkdownPreview.tsx`）
+   - Root cause 不确定——用户反馈某些情况下按 Enter 会白屏，但本地无法稳定复现。定位到最可能的崩溃点是 `insertParagraphBreak` 里的 Selection/Range API（跨浏览器在 mention chip 附近放置 caret 时偶发 DOMException）或 `applyHeadingLevel` 的 rAF caret 恢复
+   - Fix：两个 handler 外面各包一层 `try/catch`，异常仅 `console.warn` 不再 unwind React 树。`applyHeadingLevel` 在 `commitEdits()` 之后**重新读取** `data-md-start/end`（commitEdits 会 shift block 偏移），用 fresh `window.getSelection()` 而非闭包里那个可能已失效的 sel
+   - Trade-off：防御式修复不定位根因，未来若复现可从 warn log 里拉到 stack trace
+
+2. **Preview 模式 Cmd+Alt+数字切换标题/正文不可靠**（同上）
+   - 机制本来就有（MarkdownPreview 里 `Cmd/Ctrl+Alt+[0..6]` 通过 `e.code = Digit[0-6]` 匹配，避开 macOS 上 Alt-modified 字符的干扰）。不可靠源于 commitEdits 之后的 offset 漂移——block 的 `data-md-start` 还停留在之前的值，heading splice 就 splice 到了错误的源码位置，结果要么没变化要么插到邻居块里
+   - Fix：同上的"commitEdits 后 re-read offsets"。`list-item` / `blockquote` 仍故意 bail——把 list item 改成 heading 需要把它从列表容器里拎出来，超出本次 scope
+
+3. **Source 模式 Tab/Shift+Tab 缩进**（`IdeaEditor/index.tsx`）
+   - 新需求。给 `<textarea>` 加 `onKeyDown`：Tab 无选区→caret 插 2 空格；Tab 跨行选区→每行前加 2 空格；Shift+Tab 去除每行最多 2 个前导空格；IME 预编辑（`isComposing`）和 streaming 状态不拦截；提交后 rAF 里恢复 selection，避免 React 受控重渲染吞掉 range
+   - 2 空格而不是 Tab 字符：对齐 Prettier 默认 + markdown 列表嵌套的解析一致性
+
+4. **Taste 选中后点击空白区域反选**（`SvgCanvas/index.tsx`）
+   - Root cause：旧 deselect handler 挂在 `.svg-canvas-surface` 上用 `e.target === e.currentTarget` 判断。但 surface 是 `position:absolute` 无固定尺寸——空画布下它实际收缩到接近 0 大小，用户眼里的"空白画布"绝大多数区域根本打不到 surface 元素上，click 事件进不了这个 handler
+   - Fix：handler 上移到 `.svg-canvas-body`（视觉上就是用户看到的整个画布区域），判断方式从"target 是自己"改成 ancestor 检查（`closest(".svg-canvas-item" / ".taste-context-menu" / ".figma-import-popover" / rename 输入框)`）——任何不落在交互元素上的点击都反选
+
+---
+
+### fix(nginx): Chat SSE 落在 120s 超时 + buffering 开的 catch-all location，导致 NETWORK_ERROR + tool card 永远转圈（hotfix）
+
+**分支**: 无代码变更 · **部署方式**: 服务器侧编辑 `/etc/nginx/conf.d/ai-filter.conf` + `nginx -s reload`
+
+用户反馈"get_idea 工具卡片一直转、偶发 `NETWORK_ERROR: 网络请求失败`"。表象一度指向前端状态 bug，但把后端日志、Chat Agent 日志、DB 里的持久化 toolCalls 三份全部串起来后，真相完全指向 nginx：
+
+- **症状**：对话已积累 121+ 消息 + 大 SVG payload，Claude Opus 每次工具调用之间的"思考"窗口要 60–100 秒；超过 120s 时偶尔连接被切
+- **配置问题**：`ai-filter.conf` 里只给 `/api/sync/` 开了 SSE 友好设置（`proxy_buffering off`, `proxy_read_timeout 300s`），而 Chat Agent 的 SSE 流在 `/api/chat/` 前缀下，**完全落在 catch-all `location /`**，继承了默认 `proxy_read_timeout 120s` 和 **开着的 buffering**
+- **两路坏影响**：
+  1. **Buffering 开**：后端 `res.setHeader("X-Accel-Buffering","no")` 只能影响 buffering，nginx 依然会把 `tool_result` 事件攒在 buffer 里迟迟不 flush → 前端 tool card 收不到 status 翻转事件，视觉上"一直转"
+  2. **120s 空闲超时**：Claude 思考一超过 120s，nginx 直接 504 断连 → 浏览器 fetch reader 抛 `NETWORK_ERROR`
+
+**修复**：新增 `location /api/chat/` 块，复用 `/api/sync/` 的 SSE tuning，`proxy_read_timeout` 拉到 `600s`（远比 Claude 最长思考窗口富余），buffering/cache 关掉。`nginx -t && nginx -s reload`，无需重启后端
+
+**系统性修复**：`deployment.md` 补了一条明确规则——"新增 `/api/<x>/` SSE 前缀 **必须** 同步加 nginx location 块，单靠 `X-Accel-Buffering: no` header 不够（因为 `proxy_read_timeout` 是 location 级的，header 覆盖不了）"。下次再加 SSE endpoint 不会再踩这个坑
+
+---
+
+### fix(deploy): 线上 Prisma client 未 regen 导致 get_taste 500、Agent tool 卡转（hotfix）
+
+**分支**: `BeyondBase` · **部署方式**: SSH 直接修复（无代码变更，仅服务器侧 `npx prisma generate`）
+
+上一次 Taste × Chatbot 发布后线上暴露两个问题：
+
+1. **`get_taste` 失败（PrismaClientValidationError: "Unknown field `meta` for select statement on model `Taste`"）**
+   - Root cause：部署脚本跑了 `npx prisma migrate deploy`（应用了 SQL 迁移，DB 里已有新字段 `meta/metaGeneratedAt/svgHash`）但**没跑** `npx prisma generate`（TS 客户端还是老的，不认识这些新字段）。`tasteMetaService.ts:355` 的 `prisma.taste.findUnique({select:{meta:true,...}})` 直接被 Prisma 客户端在本地 validation 阶段拦下抛错
+   - Fix：服务器侧 `cd backend && npx prisma generate && pm2 restart ai-filter`。验证：直接 curl `GET /api/designs/:did/tastes/:tid/meta` 返回 `{"meta":null,"generatedAt":null,"status":"missing"}`（正常 JSON，不再抛 Prisma 错）；`ai-filter-error.log` 自重启后 0 条 Prisma 错误
+
+2. **`get_idea` 工具卡片一直转**
+   - Root cause：上面那个 Prisma 错抛出后 MCP 工具返回 500，Agent 的 `try/catch` 虽然捕获了错误但 Agent 会继续重试（MAX_TOOL_ROUNDS=50），retry 过程中先前的 `get_idea` tool_start 事件早已发出、但对应的 `tool_result` 要等整轮结束，表现上就是前一张卡片"一直在转"。Prisma 错修掉后重试循环不再发生，该问题自动消失
+   - 防御代码早已存在：`ChatSidebar/index.tsx:78-84` 的 `readCache` 会在 reload 时把所有 `running` → `error`，避免刷新后的永久转圈
+
+**系统性修复**：在 `CLAUDE.md` 的 Deployment Checklist 中新增显式条目——"Prisma schema 变更时必须同时 `migrate deploy` + `generate`"，并在部署流程里追加一条"schema 变更时用此命令"的完整命令模板。这一类"改完 schema 只跑了一半部署步骤"的静默 bug 现在会被 checklist 拦下
+
+---
+
 ### fix(taste/meta): 修复 meta 生成全链路两个 bug（路径编码 + missing-SVG 死循环）
 
 **分支**: `BeyondBase` · **commits**: 待提交
