@@ -7,6 +7,21 @@
 
 ## 2026-04-22
 
+### refine(idea/stream): 用户滚动优先级高于流式跟随
+
+**分支**: `BeyondBase` · **commits**: 待提交
+
+基于上一版 detach detection 的反馈，明确两条优先级规则：
+1. 用户主动滚动优先级最高 —— 任何没有落在"最底部"的手动滚动都立即停掉自动跟随（不再是之前的"离底 < 200px 内都算跟随"）
+2. 用户从未滚动 / 滚到最底部 → 继续跟随
+
+- **`IdeaEditor/index.tsx`** `onScroll` handler：`distFromBottom <= 4` 才 re-arm follow，否则 detach。4px 的 epsilon 是为了容忍 Retina / 缩放下的 sub-pixel fractional scrollHeight，远低于一行高度不会误当成用户"故意停在半路"
+- 自触发滚动的 `streamAutoScrollingRef` gate 改双 rAF 清除 —— 某些浏览器 `scrollTop` 赋值后的 `scroll` 事件是异步分派的，单 rAF 可能来不及 cover
+
+- **验证**：frontend `tsc --noEmit` 通过
+
+---
+
 ### fix(idea/stream): Agent 流式写入时光标/输出位置自动滚动跟随
 
 **分支**: `BeyondBase` · **commits**: 待提交

@@ -894,29 +894,41 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         if (delta <= 0) return; // tail already in view — no nudge needed
         streamAutoScrollingRef.current = true;
         body.scrollTop += delta;
-        // Clear the flag on the next tick so a real user scroll right after
-        // isn't mis-attributed to our own auto-scroll.
-        requestAnimationFrame(() => { streamAutoScrollingRef.current = false; });
+        // Double-rAF clear: the `scroll` event from the programmatic
+        // scrollTop assignment can be dispatched asynchronously on some
+        // browsers (after the current frame's microtasks). One rAF isn't
+        // always enough to guarantee the handler has seen the flag; two
+        // rAFs lets the scroll event settle into the browser's queue and
+        // be dispatched before we release the gate.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => { streamAutoScrollingRef.current = false; });
+        });
       });
     });
   }, [content, streaming, mode]);
 
-  // Detach detection: during a stream, if the user manually scrolls away
-  // from the tail (upward by more than ~200 px from the tail line), stop
-  // auto-following. Resume once they scroll back near the tail. Own-
-  // auto-scrolls are suppressed via `streamAutoScrollingRef` so we don't
-  // detach on our own nudge.
+  // Detach detection — user-scroll priority. Rules:
+  //   1. User's manual scroll always wins. Any manual scroll that doesn't
+  //      land at the very bottom detaches follow immediately, regardless of
+  //      direction (up or down-but-not-to-bottom both count).
+  //   2. If the user hasn't scrolled at all this session, follow remains on
+  //      (default from onStreamBegin).
+  //   3. If the user scrolls all the way to the bottom, follow re-engages —
+  //      reaching the bottom is the explicit "I want to keep up" gesture.
+  //
+  // Our own auto-scrolls are gated via `streamAutoScrollingRef` so they
+  // don't trip the detach path.
   useEffect(() => {
     if (!streaming) return;
     const body = bodyRef.current;
     if (!body) return;
     const onScroll = () => {
       if (streamAutoScrollingRef.current) return;
-      // Distance from the bottom of the scroll container — a simple proxy
-      // for "how far from the tail am I?". The tail of the write is always
-      // at or near the bottom of whatever content is currently rendered.
+      // A small epsilon handles sub-pixel fractional scrollHeight on Retina /
+      // zoomed viewports; 4 px is below a line-height so it can't be
+      // mistaken for a deliberate mid-scroll pause.
       const distFromBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
-      streamFollowRef.current = distFromBottom < 200;
+      streamFollowRef.current = distFromBottom <= 4;
     };
     body.addEventListener("scroll", onScroll, { passive: true });
     return () => body.removeEventListener("scroll", onScroll);
