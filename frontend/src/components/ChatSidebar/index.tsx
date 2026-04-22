@@ -70,8 +70,19 @@ function readCache(workspaceId: string): CachedState | null {
     const parsed = JSON.parse(raw) as CachedState;
     if (!parsed.activeConvId || !Array.isArray(parsed.messages)) return null;
     // Drop any streaming flag left over from an interrupted session so the
-    // UI doesn't show a hanging spinner after a reload.
-    parsed.messages = parsed.messages.map((m) => ({ ...m, streaming: false }));
+    // UI doesn't show a hanging spinner after a reload. Also flip any
+    // toolCall that was still `running` at snapshot time to `error` — the
+    // actual invocation ended (stream closed) but we never received its
+    // tool_result, so marking it as a failure is the honest reconstruction.
+    // Without this, a refresh/tab-switch during a confirm pause (or any
+    // interrupted turn) leaves a perpetual spinner on the card.
+    parsed.messages = parsed.messages.map((m) => ({
+      ...m,
+      streaming: false,
+      toolCalls: (m.toolCalls || []).map((tc) =>
+        tc.status === "running" ? { ...tc, status: "error" as const } : tc
+      ),
+    }));
     return parsed;
   } catch {
     return null;
@@ -552,8 +563,23 @@ export default function ChatSidebar({
     if (activeConv) stopChatTurn(activeConv.id).catch(() => undefined);
     if (cancelRef.current) cancelRef.current();
     setStreaming(false);
+    // Also flip any in-flight tool call on the streaming message to `error`
+    // so the spinner doesn't spin forever. The server-side handler may keep
+    // running briefly (inside `await tool.handler`), but from the user's POV
+    // they asked to stop — showing a completed/failed marker is honest, and
+    // the next turn's state machine stays clean.
     setMessages((prev) =>
-      prev.map((m) => (m.role === "assistant" && m.streaming ? { ...m, streaming: false } : m))
+      prev.map((m) =>
+        m.role === "assistant" && m.streaming
+          ? {
+              ...m,
+              streaming: false,
+              toolCalls: m.toolCalls.map((tc) =>
+                tc.status === "running" ? { ...tc, status: "error" as const } : tc
+              ),
+            }
+          : m
+      )
     );
   }, [activeConv]);
 

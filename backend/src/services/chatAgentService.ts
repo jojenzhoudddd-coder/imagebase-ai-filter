@@ -968,6 +968,27 @@ export async function* runAgent(
         ideaStream.abort(activeStreamSessionId, "confirmation-pause");
         activeStreamSessionId = null;
       }
+      // Persist the partial assistant turn before bailing out so that
+      // (a) the successful tool calls already executed this round are
+      // preserved across reloads, and (b) the `awaiting_confirmation`
+      // placeholder survives — the resume path will fold its final status
+      // onto the tail end via appendMessage below. Without this, the turn
+      // that hit a confirm pause disappears from DB history entirely.
+      try {
+        await convStore.appendMessage(conversationId, {
+          role: "assistant",
+          content: accumulatedText,
+          thinking: accumulatedThinking || undefined,
+          toolCalls: accumulatedToolCalls,
+        });
+      } catch (err) {
+        logAgent({
+          event: "append_message_failed",
+          stage: "hit_confirmation",
+          conversationId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       return;
     }
   }
@@ -1077,6 +1098,31 @@ export async function* resumeAfterConfirm(
     };
     yield { event: "message", data: { text: "好的，已取消该操作。", delta: false } };
     yield { event: "done", data: {} };
+    // Append a synthetic assistant turn recording the cancellation so the
+    // Agent's next turn (and a page reload) sees an honest history entry
+    // instead of the bare user message with no reply attached.
+    try {
+      await convStore.appendMessage(ctx.conversationId, {
+        role: "assistant",
+        content: "好的，已取消该操作。",
+        toolCalls: [
+          {
+            callId,
+            tool: pending.tool,
+            args: pending.args,
+            status: "error",
+            result: JSON.stringify({ cancelled: true }),
+          },
+        ],
+      });
+    } catch (err) {
+      logAgent({
+        event: "append_message_failed",
+        stage: "resume_cancel",
+        conversationId: ctx.conversationId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     return;
   }
 
@@ -1122,6 +1168,33 @@ export async function* resumeAfterConfirm(
   }
   yield { event: "tool_result", data: { callId, tool: pending.tool, success, result: output } };
   yield { event: "done", data: {} };
+  // Persist the confirmed tool's final state as its own short assistant
+  // turn, so the DB history reflects the resume. Without this, nothing the
+  // user confirmed would show up on reload — only the partial paused turn
+  // that runAgent persisted before bailing.
+  try {
+    await convStore.appendMessage(ctx.conversationId, {
+      role: "assistant",
+      content: "",
+      toolCalls: [
+        {
+          callId,
+          tool: pending.tool,
+          args: { ...pending.args, confirmed: true },
+          status: success ? "success" : "error",
+          result: output,
+          error: success ? undefined : output,
+        },
+      ],
+    });
+  } catch (err) {
+    logAgent({
+      event: "append_message_failed",
+      stage: "resume_commit",
+      conversationId: ctx.conversationId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 // Re-export tool metadata for debugging/introspection endpoints.

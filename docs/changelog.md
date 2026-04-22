@@ -7,6 +7,27 @@
 
 ## 2026-04-22
 
+### fix(chat): confirm 暂停后工具卡片一直 "running" + 历史丢失
+
+**分支**: `BeyondBase` · **commits**: 待提交
+
+用户反馈：Chatbot 进入二次确认（删除类工具）的暂停状态时，当前工具卡片一直显示 running 的 spinner 不消失，下一轮同名工具看起来像在排队等待。审了代码+本地日志+线上日志，确认后端 SSE 流在 yield `confirm` 后就 `return` + `res.end()` 干净关闭（没有悬挂的连接），也没有跨 turn 的工具调用锁/队列 —— 单轮内的工具是顺序执行（OpenAI tool-use 协议本来就要求成对喂 `function_call` + `function_call_output`），但跨轮完全独立。"排队"是视觉错觉，真正的 bug 在两处：
+
+- **前端：localStorage 缓存只清 `streaming` flag，不清 toolCall 里的 `status: "running"`**
+  - `frontend/src/components/ChatSidebar/index.tsx` `readCache()`：增加一轮 `toolCalls.map` 把所有遗留的 `running` 翻成 `error`。刷新 / 切 tab / SSE 中断留下的半截 toolCall 会诚实地显示为失败，不再永久旋转
+  - `handleStop()` 同步修：用户点 Stop 时除了清 `streaming` flag，还会把正在 running 的 toolCall 一并翻成 `error`
+
+- **后端：`runAgent` hitConfirmation 分支直接 `return`，跳过 `appendMessage`**
+  - `backend/src/services/chatAgentService.ts` 线路 971 之前的 return 会绕开 991-997 的 `convStore.appendMessage`，导致 confirm 暂停前已成功执行的工具调用 + `awaiting_confirmation` 占位条目 **都没入库**。加一次显式持久化，try/catch 包起来单独记 `append_message_failed` 事件以便排查
+  - `resumeAfterConfirm` 之前从头到尾不写 DB，用户 Cancel / Confirm 后的工具结果在下次刷新后都会消失。两条路径都补上 `appendMessage`：Cancel 写一条带 "好的，已取消" 文案 + status=error 的 toolCall，Confirm 写一条带 success/error 的 toolCall
+
+- **验证**
+  - backend + frontend `tsc --noEmit`：touched files 全通过
+  - 语义：Confirm 暂停状态下刷新页面 → 历史保留 `awaiting_confirmation` 卡片；用户 Cancel → 追加 "已取消" 文案 + error 卡片；用户 Confirm → 追加 success 卡片
+  - 极端：SSE 中途断开 → 刷新后 running 卡片变为 error（而不是永远转圈）
+
+---
+
 ### feat(design): Taste 支持粘贴 SVG 源码直接生成预览
 
 **分支**: `BeyondBase` · **commits**: 待提交
