@@ -300,14 +300,18 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const streamSessionIdRef = useRef<string | null>(null);
   // Stream-follow state: when true, every delta nudges bodyRef.scrollTop so the
   // tail of the written text stays in view. Reset to true on each new session
-  // (stream-begin); flipped to false if the user manually scrolls UP during
-  // the stream (interpreting that as "I want to read earlier content, stop
-  // yanking me down"). Flipped back to true if they scroll near the tail again.
+  // (stream-begin); flipped to false when the user manually scrolls anywhere
+  // other than the exact bottom. Flipped back to true when they scroll all the
+  // way to the bottom (≤ 4 px epsilon for sub-pixel tolerance).
   const streamFollowRef = useRef<boolean>(true);
-  // Suppresses the "user scrolled up → detach" detection for scrolls we
-  // triggered ourselves. Set right before the auto-scroll assignment, cleared
-  // on the next tick.
-  const streamAutoScrollingRef = useRef<boolean>(false);
+  // Tracks the scrollTop value we last set programmatically (post-clamp). The
+  // detach-detection scroll handler compares body.scrollTop against this to
+  // decide whether a fired scroll event was our own programmatic scroll or a
+  // real user gesture. Robust to event coalescing — if the user scrolls in
+  // the same frame as our auto-scroll, scrollTop !== lastAutoScrollTop and we
+  // correctly classify as user intent. A time-based flag (as in the previous
+  // version) would drop the user's scroll entirely in that same-frame case.
+  const lastAutoScrollTopRef = useRef<number | null>(null);
 
   // Textarea ref + caret state for @mention anchor computation. The state
   // shape is shared between source-mode (textarea-driven) and preview-mode
@@ -594,6 +598,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       // session ended. If the user scrolled up last time, this new session
       // deserves a clean slate.
       streamFollowRef.current = true;
+      lastAutoScrollTopRef.current = null;
       setStreaming(true);
       setSaveStatus("saved"); // hide "dirty" indicator during stream
     }, []),
@@ -862,6 +867,12 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     // (preview mode).
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        // RE-CHECK follow INSIDE the double-rAF. The user may have scrolled
+        // during the wait between the effect firing and this callback — the
+        // sync check at the top of the effect is stale by the time we reach
+        // here. Without this, a user scroll-up mid-stream would be fought
+        // back down by our own auto-scroll on the same frame.
+        if (!streamFollowRef.current) return;
         const bodyRect = body.getBoundingClientRect();
         let tailBottom: number | null = null;
 
@@ -892,17 +903,14 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         if (tailBottom == null) return;
         const delta = tailBottom - (bodyRect.bottom - MARGIN);
         if (delta <= 0) return; // tail already in view — no nudge needed
-        streamAutoScrollingRef.current = true;
+        // Final re-check just before the mutation — paranoia-cheap, closes
+        // the narrow window where a user scroll event could have fired
+        // between our measurement and the scrollTop assignment.
+        if (!streamFollowRef.current) return;
         body.scrollTop += delta;
-        // Double-rAF clear: the `scroll` event from the programmatic
-        // scrollTop assignment can be dispatched asynchronously on some
-        // browsers (after the current frame's microtasks). One rAF isn't
-        // always enough to guarantee the handler has seen the flag; two
-        // rAFs lets the scroll event settle into the browser's queue and
-        // be dispatched before we release the gate.
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => { streamAutoScrollingRef.current = false; });
-        });
+        // Record the actual post-clamp scrollTop so the detach handler can
+        // tell "this scroll event was me" from "this was the user".
+        lastAutoScrollTopRef.current = body.scrollTop;
       });
     });
   }, [content, streaming, mode]);
@@ -916,14 +924,32 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   //   3. If the user scrolls all the way to the bottom, follow re-engages —
   //      reaching the bottom is the explicit "I want to keep up" gesture.
   //
-  // Our own auto-scrolls are gated via `streamAutoScrollingRef` so they
-  // don't trip the detach path.
+  // To separate our own scrolls from user scrolls we compare body.scrollTop
+  // against the value we last programmatically assigned. This is robust to
+  // browser scroll-event coalescing — if the user wheels in the same frame
+  // as our auto-scroll, the single coalesced event arrives with a scrollTop
+  // that doesn't match our recorded target, so we correctly classify it as
+  // user intent. The previous time-gated flag approach would have dropped
+  // the user's scroll in that case.
   useEffect(() => {
     if (!streaming) return;
     const body = bodyRef.current;
     if (!body) return;
     const onScroll = () => {
-      if (streamAutoScrollingRef.current) return;
+      // "Ours" when the current scrollTop matches what we set (within 1 px to
+      // tolerate sub-pixel rendering). Consume the marker so the NEXT scroll
+      // event — necessarily user-driven — is classified correctly.
+      if (
+        lastAutoScrollTopRef.current !== null &&
+        Math.abs(body.scrollTop - lastAutoScrollTopRef.current) < 1
+      ) {
+        lastAutoScrollTopRef.current = null;
+        return;
+      }
+      // User-driven scroll (or a coalesced event where the user also acted).
+      // Invalidate the programmatic-scroll marker so a later coincidence
+      // can't silently treat a user scroll as ours.
+      lastAutoScrollTopRef.current = null;
       // A small epsilon handles sub-pixel fractional scrollHeight on Retina /
       // zoomed viewports; 4 px is below a line-height so it can't be
       // mistaken for a deliberate mid-scroll pause.

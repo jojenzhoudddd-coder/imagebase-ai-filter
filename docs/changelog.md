@@ -7,6 +7,31 @@
 
 ## 2026-04-22
 
+### fix(idea/stream): 修复用户滚动识别在两类边界情况下失效
+
+**分支**: `BeyondBase` · **commits**: 待提交
+
+自测上一版的 4 条测试用例，发现两个真实 bug：
+
+1. **用户在 effect 调度与 double-rAF 执行之间滚动 → 自动滚动仍然触发**
+   - 上一版的 effect 在顶部同步检查 `streamFollowRef`，然后 schedule double rAF。如果用户在这之间滚动，handler 会把 follow 翻成 false，但 double rAF 的回调并不重新检查，仍然执行 auto-scroll，把用户刚滚的方向直接扳回来
+   - Fix：在 double rAF 的回调里**再检查一次** `streamFollowRef`，和 `scrollTop += delta` 赋值前再检查一次（双保险）
+
+2. **用户在同一帧内滚动 → 被我们的 programmatic scroll 事件"吞掉"**
+   - 浏览器会把同一帧的多个 scroll 变化合并成一个 scroll 事件。如果用户在我们 `scrollTop += delta` 的同一帧手动滚动，coalesced 事件只有一个，`streamAutoScrollingRef` gate 会把它当成我们自己的 scroll 忽略掉，用户意图丢失
+   - Fix：彻底放弃时间窗 flag (`streamAutoScrollingRef`)，改用 **scrollTop 值对比**：每次 auto-scroll 后记录 `lastAutoScrollTopRef = body.scrollTop`（post-clamp），handler 里比对 `Math.abs(body.scrollTop - lastAutoScrollTopRef) < 1` 区分"我们自己"vs"用户"。合并事件的 coalesced scrollTop 不匹配我们的目标，会被正确判为用户行为
+   - 副作用：逻辑更简洁，不再需要双 rAF 清 flag
+
+- **四条测试用例全部 trace 通过**：
+  - 流式开始，从未滚动 → follow 保持 true，auto-scroll 事件自动被 scrollTop 比对吞掉
+  - 用户往上滚 → scrollTop 对不上 → 识别为用户 → distFromBottom > 4 → detach
+  - 用户往下滚但没到底 → 同上 → detach
+  - 用户滚到最底部 → 识别为用户 → distFromBottom ≤ 4 → re-attach；下一个 delta 再次 auto-scroll
+
+- **验证**：frontend `tsc --noEmit` 通过
+
+---
+
 ### refine(idea/stream): 用户滚动优先级高于流式跟随
 
 **分支**: `BeyondBase` · **commits**: 待提交
