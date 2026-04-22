@@ -261,3 +261,32 @@ model Idea {
   @@index([parentId])
   @@map("ideas")
 }
+
+// ─── Mention（@ 提及的关系记录，源 → 目标 的单向边） ───
+// 每次 source 内容保存时 diff 重建该 source 对应的所有 Mention 行。
+// targetType=idea-section 时，targetId 使用 "<ideaId>#<slug>" 组合键，便于反向查询。
+// 源实体删除：CASCADE（通过路由层在事务内删自身行）。
+// 目标实体删除：先用 targetType+targetId 查 incoming refs，UI 弹二次确认，确认后路由层
+// 软处理——把孤儿 Mention 行留在表里（sourceId 仍有效，指向新"坏链"），下一次 source 保存
+// 时 diff 会把坏链自动清掉；或者管理端批清。不做 DB 级 CASCADE 以避免 Idea→Mention→Idea 环。
+model Mention {
+  id             String   @id @default(cuid())
+  workspaceId    String
+
+  sourceType     String   // 目前只有 "idea"；预留 "table-record" 等扩展
+  sourceId       String
+
+  targetType     String   // "view" | "taste" | "idea" | "idea-section"
+  targetId       String   // idea-section 用 "<ideaId>#<slug>" 组合键
+
+  rawLabel       String   // Agent / 用户写进 Markdown 的可视文本（[@label] 里的 label）
+  contextExcerpt String?  // 前后各 80 字符，给反向面板提供预览
+
+  createdAt      DateTime @default(now())
+
+  // 反向查询："某个 target 被谁引用了"——mention 二次确认卡片直接用这个
+  @@index([workspaceId, targetType, targetId])
+  // 正向清理："某个 source 的所有外链"——diff 重建时 deleteMany where sourceType/sourceId
+  @@index([sourceType, sourceId])
+  @@map("mentions")
+}

@@ -75,3 +75,56 @@
 .confirm-btn-danger:hover {
   background: #E03E39;
 }
+
+/* ─── References block (incoming mentions) ─────────────────────────
+ * Rendered under the message when the caller passes a non-empty
+ * `references` prop — typically for idea-delete so the user sees
+ * which other docs will have dead links after deletion.
+ */
+.confirm-refs {
+  margin: -12px 0 20px;        /* pull up to tighten gap vs .confirm-message's mb-24 */
+  padding: 10px 12px;
+  background: #F8F9FA;
+  border: 1px solid #DEE0E3;
+  border-radius: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.confirm-refs-title {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--color-text-secondary, #646A73);
+  margin-bottom: 6px;
+}
+.confirm-refs-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.confirm-refs-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.confirm-refs-source {
+  font-weight: 500;
+  color: var(--color-text-primary, #1F2329);
+}
+.confirm-refs-excerpt {
+  color: var(--color-text-secondary, #646A73);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.confirm-refs-more {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary, #646A73);
+}

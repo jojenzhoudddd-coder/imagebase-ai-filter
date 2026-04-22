@@ -7,6 +7,7 @@ import {
   fetchTastes,
   uploadTastes,
   importFigmaSvg,
+  createTasteFromSvg,
   batchUpdateTastes,
   deleteTaste,
   updateTaste,
@@ -30,6 +31,14 @@ const FIGMA_ICON = (
     <path d="M3 1.5A2.5 2.5 0 015.5 4H8V-1H5.5A2.5 2.5 0 013 1.5z" fill="currentColor" opacity="0.3" />
     <path d="M8-1h2.5A2.5 2.5 0 0113 1.5 2.5 2.5 0 0110.5 4H8V-1z" fill="currentColor" opacity="0.4" />
     <circle cx="10.5" cy="6.5" r="2.5" fill="currentColor" opacity="0.6" />
+  </svg>
+);
+
+const PASTE_ICON = (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+    <rect x="3.5" y="3" width="9" height="11" rx="1.2" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M6 3V2.5A1 1 0 017 1.5h2a1 1 0 011 1V3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    <path d="M5.75 7.5h4.5M5.75 10h4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
   </svg>
 );
 
@@ -672,6 +681,30 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
     [designId, toast, t],
   );
 
+  // Create a taste from pasted SVG source. Shared by the clipboard paste event
+  // handler and the toolbar "Paste SVG" button (which reads via navigator.clipboard).
+  const handleSvgPaste = useCallback(
+    async (rawSvg: string): Promise<boolean> => {
+      const svg = rawSvg.trim();
+      // Cheap early-reject so we don't round-trip random clipboard text
+      if (!/<svg[\s>]/i.test(svg)) return false;
+      try {
+        const created = await createTasteFromSvg(designId, svg);
+        setTastes((prev) => [...prev, created]);
+        setSvgContents((prev) => ({ ...prev, [created.id]: sanitizeSvg(svg) }));
+        toast.success(t("design.pasteSvgSuccess"));
+        return true;
+      } catch (err) {
+        // Surface server-supplied error (e.g. "SVG content too large") — much
+        // more useful than a generic "Failed to paste SVG".
+        const msg = err instanceof Error && err.message ? err.message : t("design.pasteSvgFailed");
+        toast.error(msg);
+        return false;
+      }
+    },
+    [designId, toast, t],
+  );
+
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
@@ -701,6 +734,35 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
     },
     [handleFiles],
   );
+
+  // ─── Clipboard paste → create taste from pasted SVG source ───
+  //
+  // Listens at document-level so the user can paste anywhere on the canvas
+  // (the canvas itself isn't a focusable element). We skip the handler whenever
+  // focus is inside an editable surface — Figma URL input, rename input,
+  // chat sidebar, idea editor, etc. — so those keep their native paste behavior.
+  useEffect(() => {
+    if (hidden) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const tgt = e.target as HTMLElement | null;
+      if (tgt) {
+        const tag = tgt.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tgt.isContentEditable
+        ) {
+          return;
+        }
+      }
+      const text = e.clipboardData?.getData("text/plain") || "";
+      if (!text || !/<svg[\s>]/i.test(text)) return;
+      e.preventDefault();
+      void handleSvgPaste(text);
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [hidden, handleSvgPaste]);
 
   // ─── Alt key for distance measurement ───
   useEffect(() => {
@@ -997,6 +1059,28 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
           >
             {FIGMA_ICON}
             {t("design.importFigma")}
+          </button>
+          <button
+            className="svg-canvas-topbar-btn"
+            title={t("design.pasteSvgHint")}
+            onClick={async () => {
+              try {
+                const text = await navigator.clipboard.readText();
+                if (!text) {
+                  toast.error(t("design.pasteSvgEmpty"));
+                  return;
+                }
+                const ok = await handleSvgPaste(text);
+                if (!ok) toast.error(t("design.pasteSvgInvalid"));
+              } catch {
+                // Clipboard API blocked (Safari / insecure context / no permission) —
+                // fall back to hinting the user to use ⌘V / Ctrl+V directly.
+                toast.error(t("design.pasteSvgClipboardBlocked"));
+              }
+            }}
+          >
+            {PASTE_ICON}
+            {t("design.pasteSvg")}
           </button>
 
           <span className="svg-canvas-topbar-sep" />

@@ -210,6 +210,77 @@ router.post(
   },
 );
 
+// POST /api/designs/:designId/tastes/from-svg — create taste from pasted SVG source
+router.post("/:designId/tastes/from-svg", async (req: Request, res: Response) => {
+  const { designId } = req.params;
+  const { svg, name: requestedName } = req.body as { svg?: unknown; name?: unknown };
+
+  if (typeof svg !== "string" || !svg.trim()) {
+    res.status(400).json({ error: "svg is required" });
+    return;
+  }
+
+  const svgContent = svg.trim();
+  // Must look like SVG — cheap early-reject so we don't write garbage to disk
+  if (!/<svg[\s>]/i.test(svgContent)) {
+    res.status(400).json({ error: "Not valid SVG content" });
+    return;
+  }
+
+  // Soft size cap (match multer's 5MB file limit)
+  if (Buffer.byteLength(svgContent, "utf-8") > 5 * 1024 * 1024) {
+    res.status(413).json({ error: "SVG content too large (max 5MB)" });
+    return;
+  }
+
+  try {
+    const dir = path.join(uploadsRoot, designId);
+    await fs.mkdir(dir, { recursive: true });
+    const fileName = `paste-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.svg`;
+    const filePath = path.join(dir, fileName);
+    await fs.writeFile(filePath, svgContent, "utf-8");
+
+    const dims = parseSvgDimensions(svgContent);
+    const existing = await prisma.taste.findMany({
+      where: { designId },
+      orderBy: { order: "asc" },
+    });
+    const obstacles = existing.map((t) => ({
+      x: t.x,
+      y: t.y,
+      width: t.width,
+      height: t.height,
+    }));
+    const pos = findEmptyPosition(obstacles, dims.width, dims.height);
+
+    const baseName =
+      typeof requestedName === "string" && requestedName.trim()
+        ? requestedName.trim().replace(/\.svg$/i, "")
+        : "Pasted SVG";
+    const name = await uniqueTasteName(designId, baseName);
+
+    const taste = await prisma.taste.create({
+      data: {
+        designId,
+        name,
+        fileName,
+        filePath: `uploads/svgs/${designId}/${fileName}`,
+        x: pos.x,
+        y: pos.y,
+        width: dims.width,
+        height: dims.height,
+        order: existing.length,
+        source: "paste",
+      },
+    });
+
+    res.status(201).json(taste);
+  } catch (err: any) {
+    console.error("[paste-svg]", err);
+    res.status(500).json({ error: "Failed to create taste from SVG", detail: err.message });
+  }
+});
+
 // POST /api/designs/:designId/tastes/from-figma — import SVG from Figma URL
 router.post("/:designId/tastes/from-figma", async (req: Request, res: Response) => {
   const { designId } = req.params;

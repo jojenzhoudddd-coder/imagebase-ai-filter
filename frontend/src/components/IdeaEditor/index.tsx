@@ -282,6 +282,23 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const versionRef = useRef<number>(0);
   const saveTimerRef = useRef<number | null>(null);
 
+  // ── V2 streaming write state ────────────────────────────────────────────
+  // When the Agent opens a stream-write session against this idea, we enter
+  // soft-lock mode: autosave is suspended (the server rejects concurrent user
+  // saves with 423 anyway, but we suppress them locally to avoid spurious
+  // save-status flicker), the editor renders read-only, and every delta is
+  // spliced into `content` so the user sees the write unfold live. On
+  // finalize we swap to the authoritative server content.
+  //
+  // We keep three refs instead of state because splicing happens faster than
+  // React's commit cycle — accumulating through a ref + a single `setContent`
+  // per delta avoids batched-render stalls on fast chunk streams.
+  const [streaming, setStreaming] = useState<boolean>(false);
+  const streamBaseRef = useRef<string>("");           // snapshot of content at begin
+  const streamStartOffsetRef = useRef<number>(0);     // where in streamBase to splice
+  const streamBufferRef = useRef<string>("");         // accumulated deltas so far
+  const streamSessionIdRef = useRef<string | null>(null);
+
   // Textarea ref + caret state for @mention anchor computation. The state
   // shape is shared between source-mode (textarea-driven) and preview-mode
   // (MarkdownPreview-driven via onMentionQuery) — the picker doesn't care
@@ -484,6 +501,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   }, [ideaId, toast, t]);
 
   const scheduleSave = useCallback((text: string) => {
+    // Suspend autosave while the Agent is mid-stream. The deltas are written
+    // server-side atomically on finalize, and PUT /:id/content would 423 anyway
+    // while locked; suppressing the attempt locally keeps the status bar clean.
+    if (streamSessionIdRef.current) return;
     dirtyRef.current = true;
     setSaveStatus("dirty");
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
@@ -543,6 +564,57 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       // desired. For now, keep it a no-op.
       void name;
     }, []),
+
+    // ── V2 streaming write handlers ─────────────────────────────────────
+    onStreamBegin: useCallback((p: { sessionId: string; startOffset: number }) => {
+      // Cancel any pending autosave — we don't want a stale timer firing
+      // while the server is locked for the Agent's stream.
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      dirtyRef.current = false;
+      streamSessionIdRef.current = p.sessionId;
+      streamBaseRef.current = contentRef.current;
+      // Clamp offset defensively — a stale offset could over-run the buffer
+      // after a local edit that the server hasn't yet acknowledged.
+      streamStartOffsetRef.current = Math.min(p.startOffset, contentRef.current.length);
+      streamBufferRef.current = "";
+      setStreaming(true);
+      setSaveStatus("saved"); // hide "dirty" indicator during stream
+    }, []),
+
+    onStreamDelta: useCallback((p: { sessionId: string; delta: string }) => {
+      // Defensive: ignore deltas that don't match the currently-tracked
+      // session. Can happen if a stale in-flight SSE message arrives after
+      // a new session was opened + closed.
+      if (streamSessionIdRef.current !== p.sessionId) return;
+      streamBufferRef.current += p.delta;
+      const base = streamBaseRef.current;
+      const off = streamStartOffsetRef.current;
+      const next = base.slice(0, off) + streamBufferRef.current + base.slice(off);
+      setContent(next);
+    }, []),
+
+    onStreamFinalize: useCallback(
+      (p: { sessionId: string; discarded: boolean; finalContent: string; newVersion: number }) => {
+        if (streamSessionIdRef.current !== p.sessionId) return;
+        // On commit we take the authoritative server content (which may have
+        // surrounding newlines added by applyIdeaWrite that the naive splice
+        // didn't); on discard we roll back to the pre-stream snapshot.
+        setContent(p.finalContent);
+        versionRef.current = p.newVersion;
+        streamSessionIdRef.current = null;
+        streamBaseRef.current = "";
+        streamBufferRef.current = "";
+        streamStartOffsetRef.current = 0;
+        setStreaming(false);
+        // Force the saved badge — the content is in sync with the server.
+        dirtyRef.current = false;
+        setSaveStatus("saved");
+      },
+      []
+    ),
   });
 
   // ── Mode toggle with caret + scroll preservation ──
@@ -858,6 +930,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // ── Status label ──
   const statusLabel = (() => {
     if (!loaded) return t("idea.loading");
+    // Streaming label takes precedence — the save-status is stable ("saved")
+    // but the live presentation should tell the user AI is writing.
+    if (streaming) return t("idea.streaming");
     if (saveStatus === "saving") return t("idea.saving");
     if (saveStatus === "saved") return t("idea.saved");
     if (saveStatus === "dirty") return t("idea.unsaved");
@@ -904,8 +979,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           <div className="idea-editor-source">
             <textarea
               ref={textareaRef}
-              className="idea-editor-textarea"
+              className={`idea-editor-textarea${streaming ? " idea-editor-textarea-streaming" : ""}`}
               value={content}
+              readOnly={streaming}
               onChange={handleChange}
               onKeyUp={(e) => {
                 // Arrow keys / clicks move the caret without firing change —

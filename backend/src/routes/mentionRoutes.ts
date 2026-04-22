@@ -38,6 +38,33 @@ interface MentionHit {
   designId?: string;  // for taste
   ideaId?: string;    // for idea-section
   headingText?: string; // raw heading body for idea-section
+  /**
+   * Canonical URI the frontend chip + MCP tools both emit into Markdown.
+   * Mirrors exactly what `MentionPicker` inserts — that way the agent can
+   * echo a hit straight back into an insert call without re-deriving the
+   * URI shape. For idea-section we tuck the parent ideaId into the query
+   * string (`?idea=<ideaId>`) so the composite key can be rebuilt later.
+   */
+  mentionUri: string;
+  /** Ready-to-paste Markdown: `[@<label>](<mentionUri>)`. */
+  markdown: string;
+}
+
+function buildMentionUri(h: Omit<MentionHit, "mentionUri" | "markdown">): string {
+  if (h.type === "idea-section" && h.ideaId) {
+    return `mention://idea-section/${h.id}?idea=${encodeURIComponent(h.ideaId)}`;
+  }
+  if (h.type === "view" && h.tableId) {
+    return `mention://view/${h.id}?table=${encodeURIComponent(h.tableId)}`;
+  }
+  if (h.type === "taste" && h.designId) {
+    return `mention://taste/${h.id}?design=${encodeURIComponent(h.designId)}`;
+  }
+  return `mention://${h.type}/${h.id}`;
+}
+function decorate(h: Omit<MentionHit, "mentionUri" | "markdown">): MentionHit {
+  const mentionUri = buildMentionUri(h);
+  return { ...h, mentionUri, markdown: `[@${h.label}](${mentionUri})` };
 }
 
 // Section snapshots are persisted on every `PUT /api/ideas/:id` via the
@@ -98,7 +125,7 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
         if (!v?.id || !v?.name) continue;
         const label = `${t.name}.${v.name}`;
         if (matchesAny([label, t.name, v.name])) {
-          viewHits.push({ type: "view", id: v.id, label, tableId: t.id });
+          viewHits.push(decorate({ type: "view", id: v.id, label, tableId: t.id }));
         }
       }
     }
@@ -122,7 +149,7 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
         if (!tst.filePath) continue;
         const label = `${d.name}.${tst.name}`;
         if (matchesAny([label, d.name, tst.name])) {
-          tasteHits.push({ type: "taste", id: tst.id, label, designId: d.id });
+          tasteHits.push(decorate({ type: "taste", id: tst.id, label, designId: d.id }));
         }
       }
     }
@@ -148,7 +175,7 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
     for (const i of ideas) {
       if (!i.content || !i.content.trim()) continue;
       if (types.has("idea") && matchesAny([i.name])) {
-        ideaHits.push({ type: "idea", id: i.id, label: i.name });
+        ideaHits.push(decorate({ type: "idea", id: i.id, label: i.name }));
       }
       if (types.has("idea-section")) {
         const sections = ((i as { sections?: unknown }).sections
@@ -158,13 +185,13 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
           if (!s?.slug || !s?.text) continue;
           const label = `${i.name}.${s.text}`;
           if (matchesAny([label, i.name, s.text])) {
-            sectionHits.push({
+            sectionHits.push(decorate({
               type: "idea-section",
               id: s.slug,
               label,
               ideaId: i.id,
               headingText: s.text,
-            });
+            }));
           }
         }
       }

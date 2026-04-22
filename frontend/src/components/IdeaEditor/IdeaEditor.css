@@ -110,6 +110,14 @@
   display: block;
 }
 
+/* V2 streaming write — visible soft-lock so the user knows AI is writing
+ * and can't compete with the stream. Same layout as the normal textarea
+ * (no shift), just a subtle tint + cursor hint. */
+.idea-editor-textarea-streaming {
+  background: linear-gradient(90deg, rgba(20, 86, 240, 0.03), transparent 60%);
+  cursor: progress;
+}
+
 .idea-editor-textarea::placeholder {
   color: var(--color-text-placeholder);
   font-family: inherit;

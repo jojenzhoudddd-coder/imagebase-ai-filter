@@ -37,7 +37,16 @@ export interface WorkspaceChangeEvent {
 }
 
 export interface IdeaChangeEvent {
-  type: "idea:content-change" | "idea:rename";
+  type:
+    | "idea:content-change"
+    | "idea:rename"
+    // V2 streaming write protocol (Agent-driven token-level writes).
+    // - begin: editor should enter soft-lock, record anchor offset, suspend autosave.
+    // - delta: splice an incremental chunk of text at (anchor offset + buffered length).
+    // - finalize: replace local buffer with authoritative content + new version, resume autosave.
+    | "idea:stream-begin"
+    | "idea:stream-delta"
+    | "idea:stream-finalize";
   ideaId: string;
   clientId: string;
   timestamp: number;

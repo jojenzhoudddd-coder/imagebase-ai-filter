@@ -7,6 +7,128 @@
 
 ## 2026-04-22
 
+### feat(design): Taste 支持粘贴 SVG 源码直接生成预览
+
+**分支**: `BeyondBase` · **commits**: 待提交
+
+补齐 Design 画布添加 SVG 的第三条通道（此前只有"上传文件"和"从 Figma 导入"）：用户可以在任何地方复制一段 SVG 源代码，直接 ⌘V/Ctrl+V 粘到画布上，自动生成一个 Taste 预览。
+
+- **后端：新 endpoint + body 限制放宽**
+  - `backend/src/routes/tasteRoutes.ts` 新增 `POST /api/designs/:designId/tastes/from-svg`，接受 `{svg, name?}` JSON 体。复用现有的 `parseSvgDimensions`（viewBox / width+height → 尺寸）、`findEmptyPosition`（画布上找不重叠的落点）、`uniqueTasteName`（重名自动加后缀）
+  - `<svg` 预检不通过返 400，>5 MB 返 413；通过则写到 `uploads/svgs/{designId}/paste-{ts}-{rnd}.svg`，`source` 字段新增枚举值 `"paste"`（Prisma schema 的 `source` 本就是 `String`，无需迁移）
+  - `backend/src/index.ts` 把 `express.json()` 的 body 限制从默认 100 KB 提到 10 MB。Figma 导出的 SVG 经常超过 100 KB（嵌入位图 blob + 大段 path），此前会被 body-parser 直接 413 吞掉、永远到不了我们的 handler
+
+- **前端：API client + 画布集成**
+  - `frontend/src/api.ts` 新增 `createTasteFromSvg(designId, svg, name?)`，与 `importFigmaSvg` 错误处理风格一致（解析服务端 `error` 字段，fallback 到通用文案）
+  - `frontend/src/components/SvgCanvas/index.tsx`：
+    - `handleSvgPaste(rawSvg)` 统一处理 — 低成本 `<svg[\s>]` 识别 → POST → 乐观 `setTastes` + `setSvgContents`（用已有的 `sanitizeSvg` 清掉 script / on* / javascript: href 后 inline 渲染）。失败时 toast 展示服务端返回的真实 error message
+    - 文档级 `paste` 事件监听，当焦点在 INPUT / TEXTAREA / contenteditable 时跳过（让 Figma URL 输入框、重命名输入框、Chat Sidebar、IdeaEditor 保留原生粘贴），画布 `hidden` 时也跳过
+    - Topbar 新增 "Paste SVG" 按钮（剪贴板图标），走 `navigator.clipboard.readText()`；若浏览器阻止（Safari / 不安全上下文 / 权限拒绝），toast 提示用 ⌘V/Ctrl+V 直接粘贴
+  - i18n 新增 7 个 `design.pasteSvg*` 键（中英对齐）
+
+- **验证**
+  - backend `tsc --noEmit`：touched files 全通过（dbStore.ts 原有 Prisma JSON 类型错误无关）
+  - frontend `tsc --noEmit` + `vite build`：通过（CSS 95.94 KB / JS 1,015.64 KB）
+  - P0 手动：从 Figma 复制 frame 对应 SVG → 切到 Design → ⌘V → Taste 立即出现在画布左上空位，尺寸自动从 viewBox 提取；复制非 SVG 文本 → 无反应（不触发请求）；在 Figma URL 输入框里 ⌘V → 正常填入 URL 不触发 SVG 粘贴
+
+---
+
+### feat(agent): Idea 流式写入协议 (begin/end bracket + live editor splice)
+
+**分支**: `BeyondBase` · **commits**: 待提交
+
+长文档写入从"生成整段 → 一次 append"优化为"开流 → 边写边渲染 → 显式关流"。解决两个问题：(1) 大段内容一次性 tool call 往返太慢；(2) 用户看不到写作过程，像黑盒。
+
+- **后端：内存会话 + Anchor 偏移计算**
+  - `backend/src/services/ideaStreamSessionService.ts`（新）：`IdeaStreamSession` 维护 `sessionId / ideaId / baseVersion / baseContent / anchor / startOffset / buffer / conversationId / clientId / timer`。三个 Map：`sessions` 按 sessionId 查，`ideaToSession` 确保"一个 idea 一次只能有一个活会话"（二次 begin 会 evict 前者），`conversationToSessions` 用于整轮 sweep
+  - `computeStartOffset(content, anchor)` 把 anchor 翻译成 baseContent 里的绝对字符偏移：`position:end → content.length`，`position:start → 0`，`section:X, mode:append → bodyEnd`，`mode:after/replace → bodyStart`。fenced code 感知（`` ``` `` / `~~~`），标题正则和 `extractIdeaSections` 共用
+  - 2 分钟空闲超时 `unref()`-ed auto-abort，防止 Agent crash 后编辑器锁死
+  - `begin` / `pushDelta` / `finalize({commit})` / `abort(reason)` / `abortByConversation(convId, reason)` / `isIdeaLocked(ideaId)` / `attachConversation(sessionId, convId)`（MCP 走 HTTP 所以会话开到之后再绑定 conversation）
+
+- **后端：REST + eventBus + concurrency lock**
+  - `ideaRoutes.ts` 新增 `POST /:ideaId/stream/begin` + `POST /stream/:sessionId/end`（MCP 子进程通过 HTTP 打进来）；`PUT /:ideaId/content` 在开工前先 `ideaStream.isIdeaLocked(ideaId)`，有活会话就回 `423 Locked {sessionId}`，防止人类 autosave 覆盖 Agent 的流式写入
+  - `eventBus.IdeaChangeEvent.type` 联合类型扩到 5 个：`idea:content-change | idea:rename | idea:stream-begin | idea:stream-delta | idea:stream-finalize`。per-idea SSE route 无需改动，新事件自动走相同通道
+  - `finalize({commit:true})` 在一个 `prisma.$transaction` 里跑 update content + deleteMany mentions + createMany mentions + `version: {increment: 1}`，再广播 `idea:stream-finalize` 带权威 finalContent + newVersion；同时补发一次 `idea:content-change` 让其它 tab 也刷
+  - `finalize({commit:false})` / `abort()` 不动 DB，广播 `discarded:true` + `baseContent` 让 FE 回滚
+
+- **MCP 工具**
+  - `backend/mcp-server/src/tools/ideaTools.ts` 新增 `ideaStreamTools`：`begin_idea_stream_write(ideaId, baseVersion, anchor)` → 返回 `{sessionId, startOffset, _stream:{mode:"begin", sessionId, ideaId}}`；`end_idea_stream_write(sessionId, finalize)` → 返回 `{ok, newVersion?, discarded, _stream:{mode:"end", sessionId}}`。`_stream` marker 让 chatAgentService 不用硬编码工具名就能识别开关流
+  - 打包进 `ideaSkill.tools`（和原有 ideaWriteTools 并列）
+
+- **chatAgentService：text_delta 拦截 + 失败兜底**
+  - 每个 turn 初始化 `activeStreamSessionId: string | null`
+  - 看到 tool_result 里带 `_stream: {mode: "begin"}`：`activeStreamSessionId = sessionId` + 调 `ideaStream.attachConversation(sessionId, conversationId)` 把会话挂到本对话
+  - `text_delta` 事件：如果 `activeStreamSessionId` 非空，`ideaStream.pushDelta(id, ev.text)`，**不**追加到 `accumulatedText`、**不** yield `message` 事件 —— 内容只出现在编辑器里，聊天气泡只看得到 tool-call 卡片
+  - 看到 tool_result 带 `_stream: {mode: "end"}`：清 `activeStreamSessionId`
+  - 三个兜底清理位点：① 进入确认暂停（`hitConfirmation` return 前）→ `abort(id, "confirmation-pause")`；② tool 执行循环里 abortSignal fire → `abort(id, ...)`；③ 正常 turn-end（ round loop 跑完后）→ 若 `activeStreamSessionId` 还在说明 Agent 忘了调 end，`abort(id, "turn-ended-without-end-call")`
+
+- **前端：`useIdeaSync` + `IdeaEditor` 流式渲染**
+  - `useIdeaSync` 的 `IdeaSyncHandlers` 加三个回调：`onStreamBegin / onStreamDelta / onStreamFinalize`，SSE dispatcher 新 case 转发
+  - `IdeaEditor/index.tsx` 加流式状态：`streaming: boolean` + 三个 refs（`streamBaseRef` 快照开流时的内容 / `streamStartOffsetRef` 锚点偏移 / `streamBufferRef` 累积 delta）+ `streamSessionIdRef`
+    - `onStreamBegin`：取消挂起的 autosave timer、清 `dirtyRef`、存快照 + offset、清 buffer、`setStreaming(true)`
+    - `onStreamDelta`：追加到 buffer，`setContent(base.slice(0, off) + buffer + base.slice(off))`。只会 `setContent` 一次 per delta，靠 ref 累积避免 React 批量渲染拖慢高频 chunk
+    - `onStreamFinalize`：用服务器权威 `finalContent` 覆盖本地（applyIdeaWrite 可能加了换行，会和朴素 splice 差几字符）、`versionRef = newVersion`、清所有流式状态、`setStreaming(false)`
+  - `scheduleSave` 头一行 early-return 如果 `streamSessionIdRef.current` 非空 —— 流式期间 autosave 彻底停
+  - `textarea` 加 `readOnly={streaming}` + `.idea-editor-textarea-streaming` class（淡蓝渐变背景 + `cursor: progress`）让用户一眼看出在"被写入"
+  - 状态栏新增 `idea.streaming` 文案（"Agent 正在写入…" / "Agent writing…"），在 streaming 时抢占 save-status
+
+- **架构决策**
+  - 会话放内存而非 Prisma：会话生命周期 < 2 分钟，后端重启 FE 会 SSE 断线 → 重连 → 从 DB 重拿内容，流式结果直接丢失是正确的降级
+  - 本地 splice 不保证与 applyIdeaWrite 结果字节一致（后者会补前后换行），finalize 时用服务器内容整体覆盖，对齐差异
+  - 一 idea 同时只能一个会话（二次 begin kicks first），不支持交错写入，简化心智模型
+  - 危险工具确认暂停时强制 abort 流式会话：用户等待确认期间不该锁编辑器
+
+---
+
+### feat(agent): Idea MCP 工具 + @mention 反向索引 + 删除二次确认
+
+**分支**: `BeyondBase` · **commits**: 待提交
+
+把 Chat Agent 的能力从"只能改表"扩展到"也能改灵感文档 + 跨 artifact @引用"，并给 delete 类操作加上"将变成死链"的 2-step 确认。
+
+- **后端：Mention 反向索引表**
+  - 新增 Prisma `Mention` model（`backend/prisma/schema.prisma`）：composite PK `sourceType+sourceId+targetType+targetId+targetKey`，外加 `(workspaceId, targetType, targetId)` 和 `(sourceType, sourceId)` 两个索引用于反查 + 写侧删除。不用 FK CASCADE（Idea→Mention→Idea 形成循环），改为路由层在事务里显式清理
+  - 新 migration `20260422074409_add_mention_table` 已 apply；`npx prisma generate` 重新生成 client
+
+- **后端：Mention 解析 & 事务性 diff**
+  - `backend/src/services/mentionIndex.ts`（新）：正则扫 Markdown `[label](href)`，跳过 fenced code；href 必须是 `mention://` 才入表。`normalizeHref` 把 `mention://idea-section/slug?idea=X` 展平成复合 key `X#slug`；`buildContextExcerpt` 取 mention 左右各 80 字符上下文，把链接语法归一到 `@label`
+  - `buildMentionRows(content, sourceType, sourceId, workspaceId)` 去重 + 附第一次出现的 excerpt，直接给 Prisma `createMany` 用
+  - `ideaRoutes.ts` `PUT /:ideaId/content` 和新加的 `POST /:ideaId/write` 都走同一个 `prisma.$transaction`：update 内容 → deleteMany old rows → createMany new rows → 重抽 sections；`DELETE /:ideaId` 事务里清掉 source=此 idea ∪ target=此 idea ∪ `target startsWith "${id}#"`（idea-section 复合键），防幻影引用
+
+- **后端：Anchor-based idea 写入**
+  - `backend/src/services/ideaWriteService.ts`（新）：`applyIdeaWrite(currentContent, anchor, payload) → {content, description, range}`
+  - `anchor` 是 `oneOf: {position: "end"|"start"} | {section: slug, mode: "append"|"prepend"|"replace"}`
+  - HTML 感知：先 `computeHeadingRanges` 对齐 `extractIdeaSections`，然后 `skipPastOpenBlocks` 跳过未闭合的 fenced code 和 block-level HTML 容器（div / section / article / aside / header / footer / figure / blockquote / pre / table 系列 / ul / ol / details / summary），再 `ensureSurroundingNewlines` 防 Markdown 粘连
+  - anchor 找不到 section 时扔结构化错误 `Available sections: …`，模型能根据回显重试
+
+- **后端：新增 Reverse lookup API**
+  - `backend/src/routes/mentionReverseRoutes.ts`（新）：`GET /api/mentions/reverse?workspaceId&targetType&targetId&limit` → `{refs: IncomingMentionRef[], total}`，`sourceLabel` 用 `prisma.idea.findMany({id: {in: ideaIds}})` 一次解析
+  - `mentionRoutes.ts` 的 `/api/mentions/search` 给每个 hit 附 `mentionUri` + `markdown` 字段（view / taste / idea / idea-section），模型可直接拼 chip 链接
+
+- **MCP：Idea 工具 + 跨 skill mention 工具**
+  - `backend/mcp-server/src/tools/ideaTools.ts`（新）：拆成 `ideaNavTools`（Tier 1：`list_ideas` / `get_idea`）和 `ideaWriteTools`（Tier 2：`create_idea` / `rename_idea` / `delete_idea ⚠️` / `append_to_idea` / `insert_into_idea` / `replace_idea_content ⚠️`）。`ANCHOR_SCHEMA` 用 JSON-Schema `oneOf` 约束 position 或 section+mode
+  - `backend/mcp-server/src/tools/mentionTools.ts`（新）：`find_mentionable`（workspace+q+types+limit）+ `list_incoming_mentions`（workspace+targetType+targetId+limit）。两个都是 Tier 1，写 idea 时不用激活 skill 就能拿到可引用的实体列表
+  - `backend/mcp-server/src/skills/ideaSkill.ts`（新）：只打包 `ideaWriteTools`，trigger 覆盖"写/新增/新建/创建/追加/插入/补充 × 灵感/文档/idea/章节" + 英文等价。design/taste write skill 占位留到 v3+
+  - `backend/mcp-server/src/tools/index.ts` 的 `TIER1_NAMES` 扩到 6 个：`list_tables / get_table / list_ideas / get_idea / find_mentionable / list_incoming_mentions`
+  - `backend/mcp-server/src/dataStoreClient.ts`：`HttpOptions.method` 加上 `"PATCH"`（Idea rename 要用）
+
+- **后端：chatAgentService 集成**
+  - `buildWorkspaceSnapshot` 新增 "## 灵感文档 (Ideas)" 分区，每条列 id / name / updatedAt，用共享 pg pool 只拉元信息不拉 content
+  - Tool guidance 新增两段："灵感文档（Ideas）写入与 @ 引用" 和 "@ 引用的反向关系与删除安全"
+  - `fetchIncomingRefsForConfirm(toolName, args, workspaceId)`：当 danger tool 有目标映射（今天只有 `delete_idea → idea:{ideaId}`）时，发 confirm 事件前 localhost 调 `/api/mentions/reverse` 预取 refs，直接 inline 到 SSE `confirm` event 的 `incomingRefs` 字段，前端零额外 round trip
+
+- **前端：两处 "Dead links" 提示 UI**
+  - `frontend/src/api.ts` 新增 `IncomingMentionRef` 类型 + `fetchIncomingMentions()` + `PendingConfirm.incomingRefs?`
+  - `frontend/src/components/ChatSidebar/ChatMessage/ConfirmCard.tsx`：confirm card body 下挂一个可滚的 refs 列表（最多 6 行 + "…还有 N 条" 脚注），用的是 backend 预取的 `incomingRefs`
+  - `frontend/src/components/ConfirmDialog/index.tsx`：组件签名加 `references?: ConfirmReference[]` + `referencesTotal?: number`，与 ConfirmCard 同一套截断规则
+  - `frontend/src/App.tsx`：`handleDeleteItem` 的 `type === "idea"` 分支改成开一个带 refs 的 ConfirmDialog，打开时先 `fetchIncomingMentions(WORKSPACE_ID, "idea", id)` 拉 refs，再展示。用户点确认才真正 `apiDeleteIdea`
+  - i18n 新增 `confirm.refsTitle / confirm.refsMore / confirm.deleteIdeaTitle / confirm.deleteIdeaMsg / chat.confirm.refsTitle / chat.confirm.refsMore`（中英）
+
+- **验证**
+  - backend `tsc --noEmit`：只剩 dbStore.ts / aiService.ts 原有的 Prisma JSON 类型错误（与本次无关），touched files 全通过
+  - frontend `tsc --noEmit` + `vite build`：通过（CSS 95.83 KB / JS 1.01 MB）
+  - P0 手动：`创建一个"灵感"文档叫"路线图"` / `在路线图里追加一段关于 Q2 的内容` / `帮我查一下有哪些文档引用了"路线图"` / `删除路线图`（弹 ConfirmDialog 显示引用列表，点确认才删）
+
 ### feat(chat): Agent 名称 + 模型下拉精简 + idea 光标跟随 + topbar 对齐
 
 **分支**: `BeyondBase`（合入 `beyond`）· **commits**: 待提交

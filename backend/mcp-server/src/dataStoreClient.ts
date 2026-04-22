@@ -15,7 +15,7 @@ const BACKEND_BASE_URL = process.env.BACKEND_BASE_URL || "http://localhost:3001"
 const MCP_CLIENT_ID = process.env.MCP_CLIENT_ID || "mcp-agent";
 
 export interface HttpOptions {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   clientId?: string;
 }

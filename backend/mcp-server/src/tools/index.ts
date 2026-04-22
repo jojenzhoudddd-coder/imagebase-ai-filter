@@ -28,12 +28,34 @@ import { metaTools } from "./metaTools.js";
 import { memoryTools } from "./memoryTools.js";
 import { skillRouterTools } from "./skillRouterTools.js";
 import { cronTools } from "./cronTools.js";
+import { ideaNavTools, ideaTools } from "./ideaTools.js";
+import { mentionTools } from "./mentionTools.js";
 import { allSkills, skillsByName } from "../skills/index.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
 // ── Tier partitioning ────────────────────────────────────────────────────
 
-const TIER1_NAMES = new Set(["list_tables", "get_table"]);
+// Tier 1 = always-on workspace navigation. Stays small on purpose — every
+// tool here ships in the system prompt for every agent turn, so each added
+// name trades prompt budget for capability. Current members:
+//   - Table nav:   list_tables, get_table              (exists since Phase 3)
+//   - Idea nav:    list_ideas,  get_idea               (v1 of chatbot-idea)
+//   - Mention:     find_mentionable,
+//                  list_incoming_mentions              (cross-skill bridge)
+//
+// `find_mentionable` is cross-skill on purpose: writing an idea may require
+// referencing a view or a taste the agent hasn't "activated" any skill for.
+// Keeping the lookup in Tier 1 avoids a redundant activate_skill round trip
+// just to enumerate candidates. `list_incoming_mentions` stays in Tier 1
+// so delete-confirm flows work identically from any skill context.
+const TIER1_NAMES = new Set([
+  "list_tables",
+  "get_table",
+  "list_ideas",
+  "get_idea",
+  "find_mentionable",
+  "list_incoming_mentions",
+]);
 
 /** Tier 0 — identity + memory + skill routing + cron. Always loaded. */
 export const tier0Tools: ToolDefinition[] = [
@@ -44,9 +66,11 @@ export const tier0Tools: ToolDefinition[] = [
 ];
 
 /** Tier 1 — core workspace navigation. Always loaded. */
-export const tier1Tools: ToolDefinition[] = tableTools.filter((t) =>
-  TIER1_NAMES.has(t.name)
-);
+export const tier1Tools: ToolDefinition[] = [
+  ...tableTools.filter((t) => TIER1_NAMES.has(t.name)),
+  ...ideaNavTools.filter((t) => TIER1_NAMES.has(t.name)),
+  ...mentionTools.filter((t) => TIER1_NAMES.has(t.name)),
+];
 
 /**
  * Resolve the tool list for an in-process agent turn given the active skills.

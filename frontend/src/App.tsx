@@ -9,15 +9,15 @@ import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import { AddFieldPopover, useFieldSuggestions } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, createRecord, renameTable, fetchWorkspace, renameWorkspace, fetchWorkspaceTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, reorderIdeas, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchWorkspaceTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign, createIdea as apiCreateIdea, renameIdea as apiRenameIdea, deleteIdea as apiDeleteIdea } from "./api";
-import type { GeneratedField, FolderBrief, DesignBrief } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, createRecord, renameTable, fetchWorkspace, renameWorkspace, fetchWorkspaceTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, reorderIdeas, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchWorkspaceTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign, createIdea as apiCreateIdea, renameIdea as apiRenameIdea, deleteIdea as apiDeleteIdea, fetchIncomingMentions } from "./api";
+import type { GeneratedField, FolderBrief, DesignBrief, IncomingMentionRef } from "./api";
 import type { SidebarItem } from "./components/Sidebar";
 import type { TreeItemType, IdeaBrief, FocusEntity } from "./types";
 import SvgCanvas from "./components/SvgCanvas/index";
 import IdeaEditor from "./components/IdeaEditor/index";
 import { useToast } from "./components/Toast/index";
 import { useTranslation } from "./i18n/index";
-import ConfirmDialog from "./components/ConfirmDialog/index";
+import ConfirmDialog, { ConfirmReference } from "./components/ConfirmDialog/index";
 import { filterRecords } from "./services/filterEngine";
 import { useTableSync } from "./hooks/useTableSync";
 import { useWorkspaceSync } from "./hooks/useWorkspaceSync";
@@ -216,6 +216,21 @@ export default function App() {
     fieldIds: string[];
     cellsToClear: Array<{ recordId: string; fieldId: string }>;
   }>({ open: false, type: "records", recordIds: [], fieldIds: [], cellsToClear: [] });
+  /**
+   * Idea-delete confirmation — separate from the table-scoped confirmDialog
+   * above because deletes of idea docs need a 2-step flow that first fetches
+   * incoming mentions (so the user sees which other docs point at it and
+   * will turn into dead links). `loading` covers the GET /api/mentions/reverse
+   * round-trip so the button spinner renders correctly even when the reverse
+   * lookup is slow. `refs` is an empty list when nothing links here.
+   */
+  const [ideaDeleteConfirm, setIdeaDeleteConfirm] = useState<{
+    open: boolean;
+    ideaId: string | null;
+    refs: IncomingMentionRef[];
+    total: number;
+    loading: boolean;
+  }>({ open: false, ideaId: null, refs: [], total: 0, loading: false });
   const undoStackRef = useRef<UndoItem[]>([]);
   const pushUndo = useCallback((item: UndoItem) => {
     undoStackRef.current.push(item);
@@ -1321,21 +1336,51 @@ export default function App() {
           }
         }
       } else if (type === "idea") {
-        await apiDeleteIdea(id);
-        setDocumentIdeas(prev => prev.filter(i => i.id !== id));
-        if (id === activeTableId) {
-          const firstTable = documentTables[0];
-          if (firstTable) {
-            setActiveTableId(firstTable.id);
-            setActiveItemType("table");
-            switchTable(firstTable.id);
-          }
+        // Ideas can be targets of @mentions from other ideas. Delete is
+        // destructive (those mentions become dead links), so we open the
+        // confirmation dialog first and pre-fetch incoming refs so the user
+        // sees the blast radius before committing. Actual delete fires from
+        // `handleConfirmDeleteIdea` below.
+        setIdeaDeleteConfirm({ open: true, ideaId: id, refs: [], total: 0, loading: true });
+        try {
+          const { refs, total } = await fetchIncomingMentions(WORKSPACE_ID, "idea", id);
+          setIdeaDeleteConfirm(prev =>
+            prev.ideaId === id ? { ...prev, refs, total, loading: false } : prev
+          );
+        } catch {
+          // Reverse lookup failed — let the user proceed anyway (the list
+          // just shows empty). We deliberately don't toast here because the
+          // dialog itself is the feedback surface.
+          setIdeaDeleteConfirm(prev =>
+            prev.ideaId === id ? { ...prev, loading: false } : prev
+          );
         }
       }
     } catch {
       toast.error(t("toast.deleteFailed"));
     }
   }, [activeTableId, documentTables, switchTable, toast, t]);
+
+  // ── Confirm idea deletion (fires from the references-aware ConfirmDialog) ──
+  const handleConfirmDeleteIdea = useCallback(async () => {
+    const id = ideaDeleteConfirm.ideaId;
+    if (!id) return;
+    setIdeaDeleteConfirm({ open: false, ideaId: null, refs: [], total: 0, loading: false });
+    try {
+      await apiDeleteIdea(id);
+      setDocumentIdeas(prev => prev.filter(i => i.id !== id));
+      if (id === activeTableId) {
+        const firstTable = documentTables[0];
+        if (firstTable) {
+          setActiveTableId(firstTable.id);
+          setActiveItemType("table");
+          switchTable(firstTable.id);
+        }
+      }
+    } catch {
+      toast.error(t("toast.deleteFailed"));
+    }
+  }, [ideaDeleteConfirm.ideaId, activeTableId, documentTables, switchTable, toast, t]);
 
   // ── Move item ──
   const handleMoveItem = useCallback(async (itemId: string, itemType: "table" | "folder" | "design" | "idea", newParentId: string | null) => {
@@ -1800,6 +1845,21 @@ export default function App() {
         variant="danger"
         onConfirm={handleConfirmDelete}
         onCancel={() => setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [], cellsToClear: [] })}
+      />
+      <ConfirmDialog
+        open={ideaDeleteConfirm.open}
+        title={t("confirm.deleteIdeaTitle")}
+        message={t("confirm.deleteIdeaMsg")}
+        confirmLabel={t("confirm.delete")}
+        cancelLabel={t("confirm.cancel")}
+        variant="danger"
+        references={ideaDeleteConfirm.refs.map<ConfirmReference>(r => ({
+          sourceLabel: r.sourceLabel,
+          contextExcerpt: r.contextExcerpt,
+        }))}
+        referencesTotal={ideaDeleteConfirm.total}
+        onConfirm={handleConfirmDeleteIdea}
+        onCancel={() => setIdeaDeleteConfirm({ open: false, ideaId: null, refs: [], total: 0, loading: false })}
       />
     </div>
   );

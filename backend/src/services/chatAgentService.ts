@@ -33,6 +33,7 @@ import * as store from "./dbStore.js";
 import { readSoul, readProfile, getAgent } from "./agentService.js";
 import * as agentSvc from "./agentService.js";
 import { resolveModelForCall, resolveAdapter, type ModelEntry } from "./modelRegistry.js";
+import * as ideaStream from "./ideaStreamSessionService.js";
 // Importing providers/index.ts registers every adapter with modelRegistry.
 // Must happen before the first runAgent() call. Don't remove the import
 // even though `arkAdapter` is not referenced by name here.
@@ -242,7 +243,20 @@ const TOOL_GUIDANCE_ZH = `# 当前工具使用指南（Tier 1 Core MCP）
 - 创建 SingleSelect/MultiSelect 字段时，config.options 的每项要包含 name 和 color（如 '#FFE2D9'）
 - 包含"姓名"或以"人"结尾的字段使用 User 类型
 - 生成 SingleSelect/MultiSelect 的 options 时，color 用以下任一：#FFE2D9 #FFEBD1 #FFF5C2 #DFF5C9 #CCEBD9 #CFE8F5 #D9E0FC #E5D9FC #F4D9F5 #F9CFD3
-- 字段的 config 必须符合每种类型的规范（Number 带 numberFormat，Currency 带 currencyCode 等）`;
+- 字段的 config 必须符合每种类型的规范（Number 带 numberFormat，Currency 带 currencyCode 等）
+
+## 灵感文档（Ideas）写入与 @ 引用
+- 对灵感文档进行任何写入操作前，先调 \`list_ideas\` 看现状；需要在特定章节插入时，先调 \`get_idea\` 拿到 sections[]（每项含 slug），再用 \`insert_into_idea({ideaId, anchor:{section:"<slug>", mode:"append"|"after"|"replace"}, payload:"..."})\`。
+- 没有明确章节目标时用 \`append_to_idea\`（默认追加到文末）；整篇重写才用 \`replace_idea_content\`（危险操作，必须先征得同意）。
+- 写入内容允许 **Markdown 嵌入 HTML**：前端使用 rehype-raw + rehype-sanitize 渲染，允许 \`<div>\`、\`<figure>\`、\`<table>\`、\`<pre>\`、内联 SVG 等大部分常见块级标签。若要用 HTML 做排版，写闭合良好的成对标签，不要混入 \`<script>/<style>/onclick="..."\`（会被净化移除）。
+- 写入 @ 提及其他实体（视图 / 设计切片 / 其他灵感 / 灵感章节）时：**先调 \`find_mentionable\` 得到命中的 \`markdown\` 字段**，直接把该 markdown 片段拼进 payload 即可形成可点击的 chip。格式规范是 \`[@标签](mention://type/id[?query])\`——不要手写这个格式，以免 ID / query 参数不一致导致死链。
+
+## @ 引用的反向关系与删除安全
+- 每个 mention 链接会被后端索引为一条 Mention 行。删除被引用的实体前，先调 \`list_incoming_mentions({targetType, targetId})\` 看有哪些文档在引用它。\`idea-section\` 的 targetId 用 "<ideaId>#<slug>" 组合键。
+- 当你即将调用带 ⚠️ 的删除工具（如 \`delete_idea\`、\`delete_table\`）时：
+  1. 先用自然语言说明"即将删除 X，现有 N 处引用来自 …"，把影响面列清。
+  2. 等用户在 UI 的确认卡片上点"确认"后，才会带 \`confirmed:true\` 重新触发同一个工具调用并真正执行。
+  3. 如果 \`list_incoming_mentions\` 返回非空但用户仍坚持删除，执行删除后记得在自然语言总结里提醒"对应的 @ 链接将变成死链"，方便用户后续修复。`;
 
 // ─── Layer 2 · Agent Identity ────────────────────────────────────────────
 
@@ -357,24 +371,80 @@ function buildRuntimeLayer(
 async function buildWorkspaceSnapshot(workspaceId: string): Promise<string> {
   try {
     const tables = await store.listTablesForWorkspace(workspaceId);
-    if (!tables || tables.length === 0) {
-      return `# 当前工作空间状态\n工作空间 ${workspaceId} 目前没有数据表。`;
+    // Idea listing goes through prisma directly to avoid pulling the full
+    // content column on every turn — we only need the sidebar view here, and
+    // idea content can be megabytes. The HTTP endpoint does the same cheap
+    // select when `includeContent` is omitted; duplicating the query locally
+    // saves one HTTP round trip per turn.
+    let ideas: Array<{ id: string; name: string; updatedAt: Date }> = [];
+    try {
+      ideas = await ideaListForSnapshot(workspaceId);
+    } catch {
+      // Non-fatal — just means ideas section is empty for this turn.
     }
+
+    const hasTables = tables && tables.length > 0;
+    const hasIdeas = ideas.length > 0;
+    if (!hasTables && !hasIdeas) {
+      return `# 当前工作空间状态\n工作空间 ${workspaceId} 目前没有任何数据表或灵感文档。`;
+    }
+
     const lines: string[] = [`# 当前工作空间状态（${workspaceId}）`];
-    for (const t of tables) {
-      const detail = await store.getTable(t.id);
-      if (!detail) continue;
-      const fieldList = detail.fields
-        .map((f) => `${f.name}:${f.type}`)
-        .join(", ");
-      lines.push(
-        `- ${detail.name} (${detail.id}): 字段 [${fieldList}]，记录 ${detail.records.length} 条，视图 ${detail.views.length} 个`
-      );
+    if (hasTables) {
+      lines.push("## 数据表（Tables）");
+      for (const t of tables) {
+        const detail = await store.getTable(t.id);
+        if (!detail) continue;
+        const fieldList = detail.fields
+          .map((f) => `${f.name}:${f.type}`)
+          .join(", ");
+        lines.push(
+          `- ${detail.name} (${detail.id}): 字段 [${fieldList}]，记录 ${detail.records.length} 条，视图 ${detail.views.length} 个`
+        );
+      }
+    }
+    if (hasIdeas) {
+      if (hasTables) lines.push("");
+      lines.push("## 灵感文档（Ideas）");
+      for (const i of ideas) {
+        // Keep each line short — we're advertising existence, not content.
+        // The agent can list_ideas / get_idea when it needs detail or section
+        // slugs for anchor writes.
+        const ts = i.updatedAt.toISOString().slice(0, 10);
+        lines.push(`- ${i.name} (${i.id}), 最近更新 ${ts}`);
+      }
     }
     return lines.join("\n");
   } catch (err) {
     return `# 当前工作空间状态\n(获取失败: ${err instanceof Error ? err.message : String(err)})`;
   }
+}
+
+// Lightweight idea list for the snapshot. Separate helper keeps Prisma import
+// scoped and easy to stub in tests.
+async function ideaListForSnapshot(
+  workspaceId: string
+): Promise<Array<{ id: string; name: string; updatedAt: Date }>> {
+  const { PrismaClient } = await import("../generated/prisma/client.js");
+  const pg = await import("pg");
+  const { PrismaPg } = await import("@prisma/adapter-pg");
+  // Reuse a cached client so we don't open a new pool per turn. Module-scope
+  // cache keyed by DATABASE_URL — backend overall has one in most places,
+  // but chatAgentService is called from multiple modules so we guard.
+  const pool = getPool(pg.default);
+  const adapter = new PrismaPg(pool);
+  const prisma = new PrismaClient({ adapter });
+  return prisma.idea.findMany({
+    where: { workspaceId },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, name: true, updatedAt: true },
+  });
+}
+let _sharedPool: any = null;
+function getPool(pg: any) {
+  if (_sharedPool) return _sharedPool;
+  _sharedPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  return _sharedPool;
 }
 
 // ─── Context assembly (sliding window + snapshot) ────────────────────────
@@ -455,6 +525,54 @@ async function assembleInput(
 
   input.push({ role: "user", content: [{ type: "input_text", text: newUserMessage }] });
   return input;
+}
+
+// ─── Incoming-refs pre-fetch for danger confirmation ────────────────────
+//
+// For danger tools that delete a target referenced by mentions, we do a
+// best-effort reverse-lookup so the confirm event already carries the list
+// of dependent docs — the frontend confirm card can then render
+// "3 references in Roadmap, Ideas/Backlog, …" without its own round trip.
+//
+// Currently idea targets are the only ones we emit (the only source type that
+// writes Mention rows in v1). Adding new mappings is a one-line switch below.
+async function fetchIncomingRefsForConfirm(
+  toolName: string,
+  args: Record<string, unknown>,
+  workspaceId: string
+): Promise<unknown | undefined> {
+  const mapping = dangerTargetForTool(toolName, args);
+  if (!mapping) return undefined;
+  const port = process.env.PORT || "3001";
+  const url = new URL(`http://localhost:${port}/api/mentions/reverse`);
+  url.searchParams.set("workspaceId", workspaceId);
+  url.searchParams.set("targetType", mapping.targetType);
+  url.searchParams.set("targetId", mapping.targetId);
+  url.searchParams.set("limit", "50");
+  const res = await fetch(url.toString(), { method: "GET" });
+  if (!res.ok) return undefined;
+  const data = (await res.json()) as { refs: unknown[]; total: number };
+  return data;
+}
+
+function dangerTargetForTool(
+  toolName: string,
+  args: Record<string, unknown>
+): { targetType: "view" | "taste" | "idea" | "idea-section"; targetId: string } | null {
+  // Today only `delete_idea` benefits from pre-fetched incoming refs — no
+  // other source type emits Mention rows in v1. The switch is here (rather
+  // than a single if-branch) so adding delete_view / delete_taste later is
+  // drop-in. `delete_table` is NOT mapped: a table isn't a mention target in
+  // v1 — only its `view` children are, and those have their own delete tool.
+  switch (toolName) {
+    case "delete_idea": {
+      const id = typeof args.ideaId === "string" ? args.ideaId : "";
+      if (!id) return null;
+      return { targetType: "idea", targetId: id };
+    }
+    default:
+      return null;
+  }
 }
 
 // ─── Provider dispatch ───────────────────────────────────────────────────
@@ -605,6 +723,16 @@ export async function* runAgent(
   let accumulatedThinking = "";
   const accumulatedToolCalls: ToolCall[] = [];
 
+  // V2 streaming write: when the Agent calls `begin_idea_stream_write`, we
+  // pin the returned sessionId here and route subsequent `text_delta` events
+  // into the idea doc's per-idea SSE channel (via ideaStream.pushDelta)
+  // instead of forwarding them to the chat bubble. Cleared when
+  // `end_idea_stream_write` returns, when the round finishes with no matching
+  // end call, or when the turn aborts. Only one active stream per turn —
+  // nested begin calls will kick the prior one via `ideaStream.begin()`'s
+  // internal "last begin wins" rule.
+  let activeStreamSessionId: string | null = null;
+
   logAgent({
     event: "turn_start",
     conversationId,
@@ -636,9 +764,23 @@ export async function* runAgent(
     try {
       for await (const ev of callModelStream(model, input, abortSignal, activeTools)) {
         if (ev.kind === "text_delta") {
-          roundText += ev.text;
-          accumulatedText += ev.text;
-          yield { event: "message", data: { text: ev.text, delta: true } };
+          // V2 streaming-write interception. Route to the idea doc's SSE
+          // channel instead of the chat bubble so the user sees the content
+          // appear inline in the editor. Don't also append to the chat
+          // message — double-rendering would clutter both surfaces. We still
+          // track it in roundText so the tool-call loop knows this round
+          // produced text (the model won't go to "final answer" mode just
+          // because the bubble was empty).
+          if (activeStreamSessionId) {
+            ideaStream.pushDelta(activeStreamSessionId, ev.text);
+            roundText += ev.text;
+            // Intentionally NOT appending to accumulatedText — the chat
+            // transcript should show the tool-call card, not the raw stream.
+          } else {
+            roundText += ev.text;
+            accumulatedText += ev.text;
+            yield { event: "message", data: { text: ev.text, delta: true } };
+          }
         } else if (ev.kind === "thinking_delta") {
           accumulatedThinking += ev.text;
           yield { event: "thinking", data: { text: ev.text } };
@@ -705,6 +847,21 @@ export async function* runAgent(
         const preview = typeof parsedArgs["preview"] === "string"
           ? String(parsedArgs["preview"])
           : `即将执行 ${fc.name}`;
+        // For target-deletion tools we can proactively surface the incoming
+        // mention list so the confirmation UI shows "N references will become
+        // dead links" without the frontend having to fetch it after the fact.
+        // Keeps the two-step confirm UX feeling instant. Fetch is best-effort:
+        // if it fails, the UI can still fall back to an inline client fetch.
+        let incomingRefs: unknown = undefined;
+        try {
+          incomingRefs = await fetchIncomingRefsForConfirm(fc.name, parsedArgs, workspaceId);
+        } catch (err) {
+          logAgent({
+            event: "confirm_incoming_refs_failed",
+            tool: fc.name,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
         yield {
           event: "confirm",
           data: {
@@ -712,6 +869,7 @@ export async function* runAgent(
             tool: fc.name,
             args: parsedArgs,
             prompt: preview,
+            ...(incomingRefs !== undefined ? { incomingRefs } : {}),
           },
         };
         accumulatedToolCalls.push({
@@ -743,6 +901,46 @@ export async function* runAgent(
         toolOutput = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
       }
 
+      // V2 streaming-write hook: detect begin/end so the text_delta router
+      // knows when to redirect into the idea session. We look at the tool
+      // result's `_stream` marker rather than hard-coding the tool name so
+      // this stays schema-driven.
+      if (success) {
+        try {
+          const parsed = JSON.parse(toolOutput);
+          const marker = parsed?._stream;
+          if (marker && typeof marker === "object") {
+            if (marker.mode === "begin" && typeof marker.sessionId === "string") {
+              activeStreamSessionId = marker.sessionId;
+              // Wire the session back to this conversation so the abort sweep
+              // below finds it even though the MCP HTTP call opened it.
+              ideaStream.attachConversation(marker.sessionId, conversationId);
+              logAgent({
+                event: "idea_stream_begin",
+                conversationId,
+                sessionId: marker.sessionId,
+                ideaId: marker.ideaId,
+              });
+            } else if (marker.mode === "end") {
+              if (activeStreamSessionId === marker.sessionId) {
+                activeStreamSessionId = null;
+              }
+              logAgent({
+                event: "idea_stream_end",
+                conversationId,
+                sessionId: marker.sessionId,
+                discarded: parsed.discarded ?? false,
+              });
+            }
+          }
+        } catch {
+          // tool output wasn't JSON (e.g. `toolResult` wraps in a structured
+          // shape; JSON.parse may fail on that). Silently ignore — if the
+          // tool really was a stream-write, the MCP layer's marker would
+          // have been JSON-serializable.
+        }
+      }
+
       yield {
         event: "tool_result",
         data: { callId: fc.callId, tool: fc.name, success, result: toolOutput },
@@ -762,9 +960,32 @@ export async function* runAgent(
     }
 
     if (hitConfirmation) {
-      // Stop streaming and wait for /confirm POST
+      // Stop streaming and wait for /confirm POST.
+      // If the Agent was mid-stream-write when confirmation kicked in, we
+      // don't want the editor locked until the user decides. Abort the
+      // session now; the Agent can re-open on resume if it decides to.
+      if (activeStreamSessionId) {
+        ideaStream.abort(activeStreamSessionId, "confirmation-pause");
+        activeStreamSessionId = null;
+      }
       return;
     }
+  }
+
+  // Post-loop cleanup: if the model finished without calling
+  // `end_idea_stream_write`, discard the orphan session rather than leaving
+  // the editor locked until the 2-minute idle timer fires. This is the
+  // expected path when the Agent's generation ends naturally and it simply
+  // forgot the explicit end call.
+  if (activeStreamSessionId) {
+    logAgent({
+      event: "idea_stream_orphan_abort",
+      conversationId,
+      sessionId: activeStreamSessionId,
+      reason: "turn-ended-without-end-call",
+    });
+    ideaStream.abort(activeStreamSessionId, "turn-ended-without-end-call");
+    activeStreamSessionId = null;
   }
 
   // Persist the assistant message (aggregated text + thinking + tool calls).

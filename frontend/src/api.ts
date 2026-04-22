@@ -510,6 +510,23 @@ export async function uploadTastes(designId: string, files: File[]): Promise<Tas
   return res.json();
 }
 
+export async function createTasteFromSvg(
+  designId: string,
+  svg: string,
+  name?: string,
+): Promise<TasteBrief> {
+  const res = await mutationFetch(`${BASE}/designs/${designId}/tastes/from-svg`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ svg, name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to create taste from SVG");
+  }
+  return res.json();
+}
+
 export async function importFigmaSvg(designId: string, figmaUrl: string): Promise<TasteBrief> {
   const res = await mutationFetch(`${BASE}/designs/${designId}/tastes/from-figma`, {
     method: "POST",
@@ -829,11 +846,47 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   if (!res.ok) throw new Error("Failed to delete conversation");
 }
 
+export interface IncomingMentionRef {
+  sourceType: string;
+  sourceId: string;
+  sourceLabel: string;
+  rawLabel: string;
+  contextExcerpt: string | null;
+  createdAt: string;
+}
+
 export interface PendingConfirm {
   callId: string;
   tool: string;
   args: Record<string, unknown>;
   prompt: string;
+  /**
+   * Populated by the backend when the danger tool has a target we know how
+   * to reverse-index (today: delete_idea). The confirm card renders a
+   * collapsible "referenced by" list so the user can see the blast radius
+   * without an extra round trip. May be undefined if the agent pre-fetch
+   * failed or the tool has no target mapping — callers should gracefully
+   * handle the absence and can still fire `fetchIncomingMentions` on demand.
+   */
+  incomingRefs?: { refs: IncomingMentionRef[]; total: number };
+}
+
+/**
+ * Fetch incoming references for a (targetType, targetId) pair. Used as a
+ * fallback when the confirm event arrives without `incomingRefs` pre-loaded
+ * (e.g. the user opens the delete menu themselves rather than asking the
+ * agent), and by the frontend delete handlers in App.tsx.
+ */
+export async function fetchIncomingMentions(
+  workspaceId: string,
+  targetType: "view" | "taste" | "idea" | "idea-section",
+  targetId: string,
+  limit = 50
+): Promise<{ refs: IncomingMentionRef[]; total: number }> {
+  const params = new URLSearchParams({ workspaceId, targetType, targetId, limit: String(limit) });
+  const res = await fetch(`${BASE}/mentions/reverse?${params.toString()}`);
+  if (!res.ok) throw new Error(`reverse lookup failed: HTTP ${res.status}`);
+  return res.json();
 }
 
 export interface StreamChatOptions {
@@ -907,6 +960,9 @@ async function readChatSseStream(
               tool: data.tool,
               args: data.args || {},
               prompt: data.prompt || "",
+              // Optional reverse-ref pre-load. Shape matches IncomingMentionRef[]
+              // + total count; absence is fine — the confirm card tolerates it.
+              incomingRefs: data.incomingRefs,
             });
             break;
           case "error":

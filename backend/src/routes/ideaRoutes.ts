@@ -4,6 +4,9 @@ import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { eventBus } from "../services/eventBus.js";
 import { extractIdeaSections } from "../services/ideaSections.js";
+import { buildMentionRows } from "../services/mentionIndex.js";
+import { applyIdeaWrite } from "../services/ideaWriteService.js";
+import * as ideaStream from "../services/ideaStreamSessionService.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -46,6 +49,43 @@ async function generateUniqueIdeaName(
 }
 
 const router = Router();
+
+// GET /api/ideas?workspaceId=<id>[&includeSections=1][&includeContent=1]
+// List ideas for a workspace. Content is omitted by default (can be huge);
+// callers that need it pass includeContent=1. Sections are cheap (JSONB
+// snapshot) and default off so the sidebar/MCP nav can stay small.
+router.get("/", asyncHandler(async (req: Request, res: Response) => {
+  const workspaceId = String(req.query.workspaceId || "");
+  if (!workspaceId) {
+    res.status(400).json({ error: "workspaceId is required" });
+    return;
+  }
+  const includeSections = req.query.includeSections === "1";
+  const includeContent = req.query.includeContent === "1";
+  const ideas = await prisma.idea.findMany({
+    where: { workspaceId },
+    orderBy: { order: "asc" },
+    select: {
+      id: true,
+      workspaceId: true,
+      name: true,
+      parentId: true,
+      order: true,
+      version: true,
+      createdAt: true,
+      updatedAt: true,
+      content: includeContent,
+      sections: includeSections,
+    },
+  });
+  res.json({
+    ideas: ideas.map((i) => ({
+      ...i,
+      createdAt: i.createdAt.toISOString(),
+      updatedAt: i.updatedAt.toISOString(),
+    })),
+  });
+}));
 
 // POST /api/ideas — create idea
 // body: { name?: string, workspaceId: string, parentId?: string }
@@ -158,6 +198,20 @@ router.put("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
     return;
   }
 
+  // Soft lock: if the Agent is actively streaming into this idea, reject user
+  // saves so we don't clobber the stream. The FE already puts the editor into
+  // read-only mode on `idea:stream-begin`, so hitting this path means a
+  // cross-tab save or a stale autosave — both safe to drop with 423.
+  const activeStream = ideaStream.isIdeaLocked(req.params.ideaId);
+  if (activeStream) {
+    res.status(423).json({
+      locked: true,
+      reason: "stream-in-progress",
+      sessionId: activeStream,
+    });
+    return;
+  }
+
   if (existing.version !== baseVersion) {
     res.status(409).json({
       conflict: true,
@@ -175,9 +229,22 @@ router.put("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
   // or send it, and avoids any drift with the rendered preview (the slug
   // algorithm is shared via `extractIdeaSections`).
   const sections = extractIdeaSections(content);
-  const updated = await prisma.idea.update({
-    where: { id: existing.id },
-    data: { content, version: nextVersion, sections: sections as unknown as any },
+  // Re-derive the outgoing mention edges for this idea. We just replace the
+  // whole set on every save (diff = delete all + insert parsed), which is
+  // cheaper than a set-diff in SQL once you account for round-trips, and the
+  // content payload is already bounded. Wrapped in a transaction with the
+  // content update so readers never see a half-updated state.
+  const mentionRows = buildMentionRows(content, "idea", existing.id, existing.workspaceId);
+  const updated = await prisma.$transaction(async (tx) => {
+    const u = await tx.idea.update({
+      where: { id: existing.id },
+      data: { content, version: nextVersion, sections: sections as unknown as any },
+    });
+    await tx.mention.deleteMany({ where: { sourceType: "idea", sourceId: existing.id } });
+    if (mentionRows.length > 0) {
+      await tx.mention.createMany({ data: mentionRows });
+    }
+    return u;
   });
 
   eventBus.emitIdeaChange({
@@ -189,6 +256,75 @@ router.put("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
   });
 
   res.json({ id: updated.id, version: updated.version, updatedAt: updated.updatedAt.toISOString() });
+}));
+
+// POST /api/ideas/:ideaId/write — anchor-based insert/append/replace
+// body: { anchor: IdeaAnchor, payload: string }
+//
+// This is the single write path for the Chat Agent's idea-skill tools.
+// Keeping it server-side means:
+//   (a) the agent doesn't have to ship the full content back + bumpversion
+//       (avoids any race with a human editor on the same doc)
+//   (b) mention diff + sections re-extraction happen atomically with the
+//       content update, same as the interactive PUT
+//   (c) anchor resolution (slug → character offset, HTML-aware boundary) is
+//       centralized in `applyIdeaWrite` and not reimplemented in MCP tools.
+router.post("/:ideaId/write", asyncHandler(async (req: Request, res: Response) => {
+  const { anchor, payload } = req.body as { anchor?: unknown; payload?: unknown };
+  if (!anchor || typeof anchor !== "object") {
+    res.status(400).json({ error: "anchor is required" });
+    return;
+  }
+  if (typeof payload !== "string") {
+    res.status(400).json({ error: "payload must be a string" });
+    return;
+  }
+
+  const existing = await prisma.idea.findUnique({ where: { id: req.params.ideaId } });
+  if (!existing) {
+    res.status(404).json({ error: "Idea not found" });
+    return;
+  }
+
+  let write;
+  try {
+    write = applyIdeaWrite(existing.content, anchor as any, payload);
+  } catch (err: any) {
+    // Bad anchor (missing section) is a 400, not a 500 — the agent can retry
+    // with a valid slug from get_idea.
+    res.status(400).json({ error: err?.message || "applyIdeaWrite failed" });
+    return;
+  }
+
+  const nextVersion = existing.version + 1;
+  const sections = extractIdeaSections(write.content);
+  const mentionRows = buildMentionRows(write.content, "idea", existing.id, existing.workspaceId);
+  const updated = await prisma.$transaction(async (tx) => {
+    const u = await tx.idea.update({
+      where: { id: existing.id },
+      data: { content: write.content, version: nextVersion, sections: sections as unknown as any },
+    });
+    await tx.mention.deleteMany({ where: { sourceType: "idea", sourceId: existing.id } });
+    if (mentionRows.length > 0) {
+      await tx.mention.createMany({ data: mentionRows });
+    }
+    return u;
+  });
+
+  eventBus.emitIdeaChange({
+    type: "idea:content-change",
+    ideaId: updated.id,
+    clientId: getClientId(req),
+    timestamp: Date.now(),
+    payload: { content: updated.content, version: updated.version },
+  });
+
+  res.json({
+    id: updated.id,
+    version: updated.version,
+    description: write.description,
+    range: write.range,
+  });
 }));
 
 // PATCH /api/ideas/:ideaId — rename (only)
@@ -232,13 +368,31 @@ router.patch("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
 }));
 
 // DELETE /api/ideas/:ideaId
+// Also tears down any Mention rows that reference this idea — both as source
+// (outgoing edges from this doc) and as target (incoming edges from other
+// docs, including `idea-section` targets whose composite key starts with
+// `<ideaId>#`). Orphan rows are cheap to keep, but leaving them behind means
+// the @ picker and reverse-ref panel would show phantom refs until the next
+// content save of the pointing doc re-diffs — user-surprising, so we clean
+// eagerly.
 router.delete("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
   const idea = await prisma.idea.findUnique({ where: { id: req.params.ideaId } });
   if (!idea) {
     res.status(404).json({ error: "Idea not found" });
     return;
   }
-  await prisma.idea.delete({ where: { id: idea.id } });
+  await prisma.$transaction(async (tx) => {
+    await tx.mention.deleteMany({ where: { sourceType: "idea", sourceId: idea.id } });
+    await tx.mention.deleteMany({
+      where: {
+        OR: [
+          { targetType: "idea", targetId: idea.id },
+          { targetType: "idea-section", targetId: { startsWith: `${idea.id}#` } },
+        ],
+      },
+    });
+    await tx.idea.delete({ where: { id: idea.id } });
+  });
   eventBus.emitWorkspaceChange({
     type: "idea:delete",
     workspaceId: idea.workspaceId,
@@ -247,6 +401,72 @@ router.delete("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
     payload: { ideaId: idea.id },
   });
   res.json({ ok: true });
+}));
+
+// ─── Streaming write protocol (V2) ─────────────────────────────────────────
+// Thin HTTP proxies over ideaStreamSessionService so the MCP server (separate
+// process) can open/close streams. Deltas do NOT go through HTTP — the chat
+// agent service forwards model text_delta events directly to `pushDelta()`
+// in-process, and FE subscribes via the existing per-idea SSE channel to
+// receive the broadcast.
+
+// POST /api/ideas/:ideaId/stream/begin
+// body: { baseVersion: number, anchor: IdeaAnchor, conversationId?: string, clientId: string }
+// → { sessionId, startOffset, baseContent, baseVersion }
+router.post("/:ideaId/stream/begin", asyncHandler(async (req: Request, res: Response) => {
+  const { baseVersion, anchor, conversationId, clientId } = req.body ?? {};
+  if (typeof baseVersion !== "number") {
+    res.status(400).json({ error: "baseVersion must be a number" });
+    return;
+  }
+  if (!anchor || typeof anchor !== "object") {
+    res.status(400).json({ error: "anchor required" });
+    return;
+  }
+  if (typeof clientId !== "string" || !clientId) {
+    res.status(400).json({ error: "clientId required" });
+    return;
+  }
+
+  // Look up workspaceId so the session can buildMentionRows on commit without
+  // a second round-trip.
+  const idea = await prisma.idea.findUnique({
+    where: { id: req.params.ideaId },
+    select: { workspaceId: true },
+  });
+  if (!idea) {
+    res.status(404).json({ error: "Idea not found" });
+    return;
+  }
+
+  try {
+    const result = await ideaStream.begin({
+      ideaId: req.params.ideaId,
+      workspaceId: idea.workspaceId,
+      baseVersion,
+      anchor,
+      conversationId: conversationId ?? null,
+      clientId,
+    });
+    res.json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Stale baseVersion / section not found → 400 so the caller retries.
+    res.status(400).json({ error: msg });
+  }
+}));
+
+// POST /api/ideas/stream/:sessionId/end
+// body: { commit: boolean }
+// → { ok, newVersion?, discarded, reason? }
+router.post("/stream/:sessionId/end", asyncHandler(async (req: Request, res: Response) => {
+  const { commit } = req.body ?? {};
+  if (typeof commit !== "boolean") {
+    res.status(400).json({ error: "commit must be a boolean" });
+    return;
+  }
+  const result = await ideaStream.finalize(req.params.sessionId, { commit });
+  res.json(result);
 }));
 
 export default router;

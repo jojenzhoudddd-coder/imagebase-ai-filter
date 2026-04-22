@@ -13,6 +13,7 @@ import designRoutes from "./routes/designRoutes.js";
 import tasteRoutes from "./routes/tasteRoutes.js";
 import ideaRoutes from "./routes/ideaRoutes.js";
 import mentionRoutes from "./routes/mentionRoutes.js";
+import mentionReverseRoutes from "./routes/mentionReverseRoutes.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
@@ -39,7 +40,10 @@ const adapter = new PrismaPg(pool);
 const treePrisma = new PrismaClient({ adapter } as any);
 
 app.use(cors());
-app.use(express.json());
+// Bumped body limit to 10mb so large SVG pastes (Figma exports, embedded <image>
+// blobs, verbose path data) fit. The /tastes/from-svg endpoint still validates
+// the payload and caps it at 5mb in its own handler.
+app.use(express.json({ limit: "10mb" }));
 
 // ── Request logging middleware ──
 function gmt8() {
@@ -88,6 +92,9 @@ app.use("/api/designs", designRoutes);
 app.use("/api/designs", tasteRoutes);
 app.use("/api/ideas", ideaRoutes);
 app.use("/api/workspaces", mentionRoutes);
+// Reverse mention lookup (workspace-agnostic path since callers already know
+// the workspace — keeps the URL shape flat and search-friendly for logs).
+app.use("/api/mentions", mentionReverseRoutes);
 
 // Serve uploaded SVG files
 app.use("/uploads", express.static(path.resolve(__dirname, "../../uploads")));
