@@ -1472,6 +1472,25 @@ export default function App() {
     if (activeTableId) localStorage.setItem("lastActiveTableId", activeTableId);
   }, [activeTableId]);
 
+  // ── Keep tableName in sync with the active table's entry in documentTables.
+  // Acts as a safety net for paths that bump activeTableId before the
+  // workspace-level SSE `table:create` event has flushed into documentTables
+  // (e.g. the Agent's `create_table` tool → onActiveTableChange → switchTable
+  // fires before SSE arrives, so switchTable's documentTables.find() returns
+  // undefined and the header ends up pinned at the previously-displayed name).
+  // As soon as documentTables catches up, this effect re-runs and corrects the
+  // header label without needing a manual refresh.
+  useEffect(() => {
+    if (!activeTableId) return;
+    const tbl = documentTables.find(t => t.id === activeTableId);
+    if (tbl && tbl.name !== tableName) setTableName(tbl.name);
+    // Intentionally not depending on `tableName` — we only want this effect to
+    // fire when the active id or the table list changes. Otherwise it would
+    // fight optimistic renames (which setTableName directly) during the brief
+    // window between optimistic update and SSE echo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTableId, documentTables]);
+
   // ── Workspace-level SSE for sidebar sync ──
   useWorkspaceSync(WORKSPACE_ID, CLIENT_ID, {
     onTableCreate: useCallback((table: { id: string; name: string; order: number }) => {
