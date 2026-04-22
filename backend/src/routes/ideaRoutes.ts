@@ -127,11 +127,16 @@ router.post("/", asyncHandler(async (req: Request, res: Response) => {
     payload: { idea: { id: idea.id, name: idea.name, parentId: idea.parentId, order: idea.order } },
   });
 
+  // NOTE: include `version` — the Agent chains create_idea → begin_idea_stream_write
+  // and needs this to pass as baseVersion. Without it the model guesses wrong
+  // (tends to assume 1) and hits the 400 "stale baseVersion" guard on the first
+  // stream-begin call.
   res.status(201).json({
     id: idea.id,
     name: idea.name,
     parentId: idea.parentId,
     order: idea.order,
+    version: idea.version,
   });
 }));
 

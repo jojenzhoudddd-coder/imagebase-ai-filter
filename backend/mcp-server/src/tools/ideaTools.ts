@@ -137,7 +137,10 @@ export const ideaNavTools: ToolDefinition[] = [
 export const ideaWriteTools: ToolDefinition[] = [
   {
     name: "create_idea",
-    description: "新建一篇空白灵感文档。返回 id + name。",
+    description:
+      "新建一篇空白灵感文档。返回 {id, name, version}。" +
+      "新建的文档 version 恒为 0 —— 如果紧接着要调用 begin_idea_stream_write，" +
+      "直接把返回的 version 当成 baseVersion 传进去，不要猜数字、也不必再调 get_idea。",
     inputSchema: {
       type: "object",
       properties: {
@@ -154,7 +157,12 @@ export const ideaWriteTools: ToolDefinition[] = [
         parentId: args.parentId || null,
       };
       const idea = await apiRequest<any>("/api/ideas", { method: "POST", body });
-      return toolResult({ id: idea.id, name: idea.name });
+      // version is 0 for a fresh idea; fall back to 0 if server-side is older
+      return toolResult({
+        id: idea.id,
+        name: idea.name,
+        version: typeof idea.version === "number" ? idea.version : 0,
+      });
     },
   },
   {
@@ -323,7 +331,9 @@ export const ideaStreamTools: ToolDefinition[] = [
         ideaId: { type: "string" },
         baseVersion: {
           type: "number",
-          description: "当前 idea.version，从 get_idea 取；与实际版本不一致会报错。",
+          description:
+            "当前 idea.version。若刚刚通过 create_idea 创建，直接用 create_idea 返回的 version（= 0）；" +
+            "否则从 get_idea 取。与实际版本不一致会报错。",
         },
         anchor: ANCHOR_SCHEMA,
       },
