@@ -634,6 +634,15 @@
  * 350px chat bubble, so every extra margin creates outsized visual weight. */
 .chat-msg-assistant-md {
   line-height: 1.55;
+  /* CRITICAL: override the parent .chat-msg-assistant's `pre-wrap`. When
+   * react-markdown outputs sibling <p>/<ul>/<h?> blocks, it leaves
+   * whitespace text nodes (literal `\n`) between them. Under `pre-wrap`
+   * those `\n` render as visible blank lines *on top of* each element's
+   * margin — so every paragraph gap balloons by ~1 line-height. `normal`
+   * collapses the whitespace runs so only the margin contributes. Plain
+   * (non-markdown) mode keeps `pre-wrap` so short replies preserve their
+   * original line breaks. */
+  white-space: normal;
 }
 .chat-msg-assistant-md > *:first-child { margin-top: 0; }
 .chat-msg-assistant-md > *:last-child { margin-bottom: 0; }
