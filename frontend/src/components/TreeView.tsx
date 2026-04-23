@@ -55,6 +55,16 @@ const ALBUM_ICON = (
   </svg>
 );
 
+/* Demo icon — a stylized "runnable artifact" playground glyph (bounded
+ * canvas + play triangle), matching the Vibe Demo preview-panel chevron
+ * at 16×16. Uses currentColor so hover/active inherits theme. */
+const DEMO_ICON = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path d="M2 3.333C2 2.597 2.597 2 3.333 2h9.334C13.403 2 14 2.597 14 3.333v9.334c0 .736-.597 1.333-1.333 1.333H3.333A1.333 1.333 0 012 12.667V3.333zm1.333 0v9.334h9.334V3.333H3.333z" fill="currentColor"/>
+    <path d="M6.667 5.333v5.334l4-2.667-4-2.667z" fill="currentColor"/>
+  </svg>
+);
+
 function RenameIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -106,7 +116,7 @@ interface TreeViewProps {
   onSelectItem: (id: string, type: TreeItemType) => void;
   onRenameItem: (id: string, type: TreeItemType, newName: string) => void;
   onDeleteItem: (id: string, type: TreeItemType) => void;
-  onMoveItem: (itemId: string, itemType: "table" | "folder" | "design" | "idea", newParentId: string | null) => void;
+  onMoveItem: (itemId: string, itemType: "table" | "folder" | "design" | "idea" | "demo", newParentId: string | null) => void;
   onReorderItems: (updates: Array<{ id: string; type: TreeItemType; order: number }>) => void;
   folders: Array<{ id: string; name: string }>;
   /** Scroll the node with this id into view whenever the id changes. Used for
@@ -200,6 +210,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
     if (type === "design") return DESIGN_ICON;
     if (type === "album") return ALBUM_ICON;
     if (type === "idea") return IDEA_ICON;
+    if (type === "demo") return DEMO_ICON;
     return TABLE_ICON;
   };
 
@@ -286,7 +297,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
 
     const onMouseUp = () => {
       if (dragRef.current?.isDragging) {
-        const dragType = dragRef.current.type as "table" | "folder" | "design" | "idea";
+        const dragType = dragRef.current.type as "table" | "folder" | "design" | "idea" | "demo";
         const draggedNode = nodeById.get(node.id);
 
         if (dragOverFolderRef.current) {
@@ -434,7 +445,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
               onSelect={(key) => {
                 if (key === "rename") { setMenuId(null); setEditingId(node.id); }
                 else if (key === "delete") { setMenuId(null); onDeleteItem(node.id, node.type); }
-                else if (key === "moveToRoot") { setMenuId(null); onMoveItem(node.id, node.type as "table" | "folder" | "design" | "idea", null); }
+                else if (key === "moveToRoot") { setMenuId(null); onMoveItem(node.id, node.type as "table" | "folder" | "design" | "idea" | "demo", null); }
                 else if (key === "moveTo") {
                   /* Keep main menu open; open the cascading sub-menu. The
                    * sub-menu will use moveToItemRef.current as its anchor
@@ -458,7 +469,7 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
               onSelect={(folderId) => {
                 setMoveMenuId(null);
                 setMenuId(null);
-                onMoveItem(node.id, node.type as "table" | "folder" | "design" | "idea", folderId);
+                onMoveItem(node.id, node.type as "table" | "folder" | "design" | "idea" | "demo", folderId);
               }}
               onClose={() => setMoveMenuId(null)}
               width={180}

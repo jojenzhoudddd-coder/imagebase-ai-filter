@@ -121,22 +121,12 @@ export default function App() {
     [navigate, urlParams.workspaceId],
   );
 
-  // Keep URL in sync with state changes from existing setState callsites.
-  // The effect is guarded: it only pushes history when the URL params don't
-  // already match (otherwise the URL→state effect above would re-fire
-  // infinitely).
-  useEffect(() => {
-    const { artifactType: urlType, artifactId: urlId } = urlParams;
-    const mapped: TreeItemType | null =
-      urlType === "table" ? "table"
-      : urlType === "idea" ? "idea"
-      : urlType === "design" ? "design"
-      : urlType === "demo" ? "demo"
-      : null;
-    if (mapped === activeItemType && urlId === activeTableId) return;
-    if (!["table", "idea", "design", "demo"].includes(activeItemType)) return;
-    navigateToArtifact(activeItemType, activeTableId);
-  }, [activeTableId, activeItemType, urlParams.artifactType, urlParams.artifactId, navigateToArtifact, urlParams]);
+  // Note: we do NOT have a state→URL sync effect. Prior experiment showed it
+  // re-fires infinitely because `useParams()` returns a new object reference
+  // every render and including it in deps triggers each cycle. Instead,
+  // user-intent handlers (handleSelectItem, mention chip clicks, create flows)
+  // call navigateToArtifact() **directly** after their setState calls. The
+  // URL→state effect above handles back/forward + direct URL entry.
 
   const SIDEBAR_NAMES_KEY = "sidebar_item_names";
   const [sidebarNames, setSidebarNames] = useState<Record<string, string>>(() => {
@@ -1483,7 +1473,7 @@ export default function App() {
   }, [ideaDeleteConfirm.ideaId, activeTableId, documentTables, switchTable, toast, t]);
 
   // ── Move item ──
-  const handleMoveItem = useCallback(async (itemId: string, itemType: "table" | "folder" | "design" | "idea", newParentId: string | null) => {
+  const handleMoveItem = useCallback(async (itemId: string, itemType: "table" | "folder" | "design" | "idea" | "demo", newParentId: string | null) => {
     // Optimistic update FIRST
     if (itemType === "table") {
       setDocumentTables(prev => prev.map(t => t.id === itemId ? { ...t, parentId: newParentId } : t));
@@ -1513,14 +1503,17 @@ export default function App() {
       setActiveTableId(id);
       setActiveItemType("design");
       setFocusEntity(null);
+      navigateToArtifact("design", id);
     } else if (type === "idea") {
       setActiveTableId(id);
       setActiveItemType("idea");
       setFocusEntity(null);
+      navigateToArtifact("idea", id);
     } else if (type === "demo") {
       setActiveTableId(id);
       setActiveItemType("demo");
       setFocusEntity(null);
+      navigateToArtifact("demo", id);
     } else if (type === "folder") {
       // Folders are not selectable as content
       return;
@@ -1530,9 +1523,10 @@ export default function App() {
         setActiveItemType("table");
         setFocusEntity(null);
         switchTable(id);
+        navigateToArtifact("table", id);
       }
     }
-  }, [documentTables, switchTable]);
+  }, [documentTables, switchTable, navigateToArtifact]);
 
   // ── Navigate to a mentioned entity (from an @mention chip click) ──
   // v2 mention scope: view / taste / idea. View = open the parent table and
@@ -1550,14 +1544,17 @@ export default function App() {
       setFocusEntity({ type: "view", id: target.viewId });
       setActiveViewId(target.viewId);
       void switchTable(target.tableId);
+      navigateToArtifact("table", target.tableId);
     } else if (target.type === "taste") {
       setActiveTableId(target.designId);
       setActiveItemType("design");
       setFocusEntity({ type: "taste", id: target.tasteId });
+      navigateToArtifact("design", target.designId);
     } else if (target.type === "idea") {
       setActiveTableId(target.id);
       setActiveItemType("idea");
       setFocusEntity(null);
+      navigateToArtifact("idea", target.id);
     } else if (target.type === "idea-section") {
       // Open the parent idea and stash the heading slug on `window` so the
       // IdeaEditor that mounts (or is already mounted) can pick it up and
@@ -1568,6 +1565,7 @@ export default function App() {
       setActiveTableId(target.ideaId);
       setActiveItemType("idea");
       setFocusEntity(null);
+      navigateToArtifact("idea", target.ideaId);
       // Fire a DOM event so an already-mounted IdeaEditor for the same idea
       // (common case: jumping between sections in the same doc) can re-scroll
       // without waiting for an unmount cycle.
@@ -1575,7 +1573,7 @@ export default function App() {
         detail: { ideaId: target.ideaId, slug: target.headingSlug },
       }));
     }
-  }, [switchTable]);
+  }, [switchTable, navigateToArtifact]);
 
   // ── Rename for design/folder ──
   const handleRenameSidebarItemExtended = useCallback(async (itemId: string, newName: string) => {

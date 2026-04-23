@@ -38,7 +38,7 @@ interface Props {
   onCreateDesign?: (name: string, figmaUrl?: string) => Promise<string>;
   onCreateIdea?: () => Promise<string>;
   onDeleteItem?: (id: string, type: TreeItemType) => void;
-  onMoveItem?: (itemId: string, itemType: "table" | "folder" | "design" | "idea", newParentId: string | null) => void;
+  onMoveItem?: (itemId: string, itemType: "table" | "folder" | "design" | "idea" | "demo", newParentId: string | null) => void;
   /** When set, the TreeView scrolls the node with this id into view on the
    * next render. Used after creating a folder (which cannot become the active
    * item) so the user can see where the new node landed. */
@@ -421,8 +421,10 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
       </div>
       <div className="sidebar-nav">
         {(() => {
-          // Build tree nodes from items that have a parentId property (table, design, folder, idea)
-          const treeItemTypes = new Set(["table", "folder", "design", "album", "idea"]);
+          // Build tree nodes from items that have a parentId property
+          // (table, design, folder, idea, demo). V1 added "demo" — missing it
+          // here means Demo sidebar rows get silently dropped on render.
+          const treeItemTypes = new Set(["table", "folder", "design", "album", "idea", "demo"]);
           const treeItems = items.filter(i => treeItemTypes.has(i.type));
           const flatNodes: TreeNodeData[] = treeItems.map(i => ({
             id: i.id,
@@ -463,7 +465,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
                   }
                 }}
                 onMoveItem={(itemId, itemType, newParentId) => {
-                  if (onMoveItem) onMoveItem(itemId, itemType as "table" | "folder" | "design" | "idea", newParentId);
+                  if (onMoveItem) onMoveItem(itemId, itemType as "table" | "folder" | "design" | "idea" | "demo", newParentId);
                 }}
                 onReorderItems={onReorderItems}
                 folders={folders}

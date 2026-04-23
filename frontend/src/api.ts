@@ -383,7 +383,7 @@ export async function deleteFolder(folderId: string): Promise<void> {
 
 export async function moveItem(
   itemId: string,
-  itemType: "table" | "folder" | "design" | "idea",
+  itemType: "table" | "folder" | "design" | "idea" | "demo",
   newParentId: string | null
 ): Promise<void> {
   const res = await mutationFetch(`${BASE}/folders/move`, {
