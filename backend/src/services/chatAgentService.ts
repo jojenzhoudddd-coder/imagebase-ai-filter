@@ -247,7 +247,13 @@ const META_SYSTEM_PROMPT = `# Layer 1 · Meta（OpenClaw Agent 元规则）
 
 ## 输出约束
 - 自然语言与工具调用交错输出，不要用 Markdown 代码块包裹自然语言回复。
-- 回复使用用户的主要语言（可从 profile 读到，默认中文）。`;
+- 回复使用用户的主要语言（可从 profile 读到，默认中文）。
+- **Chat 回复排版（严格）**：这是一个 350px 宽的对话气泡，不是博客正文：
+  - 不要用一级/二级/三级标题（\`#\`/\`##\`/\`###\`）。需要强调时用 **加粗** 即可。
+  - 段落之间最多一个空行，**不要出现连续 2 个以上换行**。
+  - **不要用缩进式代码块**（4 空格起始会被 Markdown 当代码块，一大块灰底）。真要贴代码就用 \`\`\`fence\`\`\`。
+  - 列表项保持一行一件事，不要在列表项里塞连续空行。
+  - 表格用 GFM \`| --- |\` 语法，前端会自动渲染为虚拟滚动容器。`;
 
 // Table Agent-specific operational knowledge. Until the table-skill lands in
 // Phase 3 this stays in the prompt; it lives below the Identity block so the

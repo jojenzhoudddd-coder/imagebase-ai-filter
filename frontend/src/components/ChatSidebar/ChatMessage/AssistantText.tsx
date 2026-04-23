@@ -29,6 +29,48 @@ function looksLikeMarkdown(s: string): boolean {
   return MD_DETECT.test(s);
 }
 
+/**
+ * Normalize the Agent's raw Markdown before handing it to react-markdown.
+ * Models (especially Opus) occasionally emit awkward formatting that renders
+ * poorly in a narrow chat bubble:
+ *
+ *   1. **4-space leading indent** outside a fenced code block → Markdown
+ *      spec turns this into a <pre><code> block, which shows up as a big
+ *      gray box for what was supposed to be regular prose.
+ *   2. **3+ consecutive newlines** create tall empty paragraphs between
+ *      pieces of content.
+ *   3. **Trailing whitespace** inside a line generates `<br>` via GFM's
+ *      hard-break rule.
+ *   4. **Stray `#`/`##`/`###` headings** in a chat message look absurdly
+ *      large relative to the surrounding copy. Demote them to bold+line.
+ *
+ * We explicitly preserve fenced code blocks (```…```) so real code isn't
+ * reflowed. GFM pipe-tables also pass through untouched (their leading
+ * `|` shape is recognized before the indent rule triggers).
+ */
+function normalizeChatMarkdown(input: string): string {
+  if (!input) return input;
+  // Split on fenced code blocks; odd indices are code content, preserve them.
+  const parts = input.split(/(```[\s\S]*?```)/g);
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 1) continue; // fenced code → untouched
+    let s = parts[i];
+    // Demote headings to bold (`## title` → `**title**`). Opus often sprays
+    // H2/H3 in short replies; in a 350px sidebar they overwhelm the content.
+    s = s.replace(/^#{1,6}\s+(.*?)\s*$/gm, "**$1**");
+    // Drop accidental leading spaces (1-3 or 4+) at the start of a line,
+    // unless the line is already a list item or numbered-list item. 4+
+    // spaces would otherwise become <pre><code>.
+    s = s.replace(/^[ \t]+(?=[^\s\-*\d])/gm, "");
+    // Trailing whitespace → nothing (avoids accidental GFM hard-breaks).
+    s = s.replace(/[ \t]+$/gm, "");
+    // Collapse 3+ newlines to 2 (one blank line max between blocks).
+    s = s.replace(/\n{3,}/g, "\n\n");
+    parts[i] = s;
+  }
+  return parts.join("").trim();
+}
+
 export default function AssistantText({
   content,
   streaming,
@@ -39,6 +81,10 @@ export default function AssistantText({
   if (!content && !streaming) return null;
 
   const markdown = useMemo(() => looksLikeMarkdown(content), [content]);
+  const normalized = useMemo(
+    () => (markdown ? normalizeChatMarkdown(content) : content),
+    [markdown, content],
+  );
 
   if (!markdown) {
     return <div className="chat-msg-assistant">{content}</div>;
@@ -51,7 +97,7 @@ export default function AssistantText({
         rehypePlugins={[[rehypeSanitize, chatSanitizeSchema]]}
         components={chatMarkdownComponents}
       >
-        {content}
+        {normalized}
       </ReactMarkdown>
     </div>
   );
