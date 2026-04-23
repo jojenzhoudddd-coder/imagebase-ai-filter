@@ -700,12 +700,18 @@
   text-decoration: none;
 }
 .chat-msg-assistant-md a:hover { text-decoration: underline; }
+/* Safety net: normalizer strips `>` prefixes, but if react-markdown still
+ * produces a <blockquote> (e.g. multi-line `>` that we intentionally keep
+ * for quoting source material), render it as a subtle muted aside — not
+ * the heavy bar-on-the-left block that dominates narrow chat width. */
 .chat-msg-assistant-md blockquote {
-  border-left: 3px solid #DEE0E3;
-  padding-left: 10px;
-  margin: 4px 0;
-  color: #646A73;
+  border-left: 2px solid #EEF0F3;
+  padding-left: 8px;
+  margin: 3px 0;
+  color: #8F959E;
+  font-size: 12px;
 }
+.chat-msg-assistant-md blockquote > p { margin: 0; }
 .chat-msg-assistant-md hr {
   border: 0;
   border-top: 1px solid #EEF0F3;

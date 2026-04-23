@@ -58,10 +58,18 @@ function normalizeChatMarkdown(input: string): string {
     // Demote headings to bold (`## title` → `**title**`). Opus often sprays
     // H2/H3 in short replies; in a 350px sidebar they overwhelm the content.
     s = s.replace(/^#{1,6}\s+(.*?)\s*$/gm, "**$1**");
+    // Demote blockquotes (`> something`) to plain italic-ish text. In a
+    // narrow chat bubble the heavy left-bar is almost always visual
+    // pollution, and models like Opus/Claude use `> …` freely to restate
+    // user input or quote a value — both cases read better as plain text.
+    // Strips 0-3 leading spaces then `>` + optional space.
+    s = s.replace(/^ {0,3}>\s?/gm, "");
     // Drop accidental leading spaces (1-3 or 4+) at the start of a line,
-    // unless the line is already a list item or numbered-list item. 4+
-    // spaces would otherwise become <pre><code>.
-    s = s.replace(/^[ \t]+(?=[^\s\-*\d])/gm, "");
+    // unless the line is already a list item (-, *, digit.) OR was a
+    // blockquote `>` we just stripped (and kept its content). 4+ spaces
+    // would otherwise become <pre><code>. Guard against `>` because we
+    // just removed it — a subsequent indent there is already handled.
+    s = s.replace(/^[ \t]+(?=[^\s\-*\d>])/gm, "");
     // Trailing whitespace → nothing (avoids accidental GFM hard-breaks).
     s = s.replace(/[ \t]+$/gm, "");
     // Collapse 3+ newlines to 2 (one blank line max between blocks).
