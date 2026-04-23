@@ -34,6 +34,8 @@ import { readSoul, readProfile, getAgent } from "./agentService.js";
 import * as agentSvc from "./agentService.js";
 import { resolveModelForCall, resolveAdapter, type ModelEntry } from "./modelRegistry.js";
 import * as ideaStream from "./ideaStreamSessionService.js";
+import { LongTaskTracker } from "./longTaskService.js";
+import { listHandlesIfExists } from "./analyst/duckdbRuntime.js";
 // Importing providers/index.ts registers every adapter with modelRegistry.
 // Must happen before the first runAgent() call. Don't remove the import
 // even though `arkAdapter` is not referenced by name here.
@@ -115,8 +117,23 @@ function autoActivateByTriggers(state: ConvSkillState, userMessage: string): str
 /**
  * Evict skills whose tools haven't been invoked for SKILL_EVICTION_TURNS
  * consecutive turns. Called at end-of-turn. Returns the dropped names.
+ *
+ * Analyst P1: honors `softDeps`. If skill A is active and lists B as a
+ * softDep, B's lastUsedTurn is refreshed to the current turn before the
+ * eviction sweep — i.e. A keeps B alive. Intentionally non-transitive
+ * (see SkillDefinition.softDeps docstring).
  */
 function evictStaleSkills(state: ConvSkillState): string[] {
+  // Refresh softDep lastUsedTurn so protected skills survive this sweep.
+  for (const name of state.active) {
+    const deps = skillsByName[name]?.softDeps;
+    if (!deps) continue;
+    for (const dep of deps) {
+      if (state.active.has(dep)) {
+        state.lastUsedTurn.set(dep, state.turnIndex);
+      }
+    }
+  }
   const dropped: string[] = [];
   for (const name of state.active) {
     const lastUsed = state.lastUsedTurn.get(name) ?? state.turnIndex;
@@ -127,6 +144,40 @@ function evictStaleSkills(state: ConvSkillState): string[] {
     }
   }
   return dropped;
+}
+
+/**
+ * Process `_suggestActivate` hints from a tool's output — activate any named
+ * skill that isn't already active. Safe to call with any JSON-parsed output;
+ * non-matching shapes are ignored.
+ *
+ * Added P1 · cooperative skill activation for cross-skill workflows
+ * (e.g. analyst-skill suggesting idea-skill before writing results).
+ */
+function processSuggestActivate(
+  parsedOutput: unknown,
+  state: ConvSkillState,
+  logFn: (entry: Record<string, unknown>) => void,
+): string[] {
+  const hints = (parsedOutput as { _suggestActivate?: unknown } | null)?._suggestActivate;
+  if (!Array.isArray(hints)) return [];
+  const newly: string[] = [];
+  for (const h of hints) {
+    const name = (h as { skill?: unknown })?.skill;
+    if (typeof name !== "string") continue;
+    if (!skillsByName[name]) continue;
+    if (state.active.has(name)) continue;
+    state.active.add(name);
+    state.lastUsedTurn.set(name, state.turnIndex);
+    newly.push(name);
+    logFn({
+      event: "skill_activated",
+      skill: name,
+      reason: "suggest_activate",
+      hint: (h as { reason?: string })?.reason,
+    });
+  }
+  return newly;
 }
 
 // ─── Logging ───
@@ -366,6 +417,70 @@ function buildRuntimeLayer(
   return lines.join("\n");
 }
 
+// ─── Analyst handles (context injection) ────────────────────────────────
+//
+// Cross-turn result references. tool_result payloads aren't replayed to the
+// model on subsequent turns (see `assembleInput` below — only assistant text
+// content is). Without this section, the Agent genuinely can't reference a
+// handle from an earlier turn even though the underlying DuckDB result is
+// still in _result_meta.
+//
+// We surface up to 10 most-recent handles per conversation. Cheap — one
+// DuckDB SELECT on _result_meta, skipped entirely for conversations that
+// never touched analyst (no .duckdb file yet).
+
+const ANALYST_HANDLES_LIMIT = 10;
+
+async function buildAnalystHandlesSection(conversationId: string): Promise<string> {
+  try {
+    const handles = await listHandlesIfExists(conversationId);
+    if (!handles.length) return "";
+    const lines: string[] = [
+      "# 最近的 Analyst 结果（仍然可用）",
+      "",
+      "列表项格式： `<handle>` · SQL 表名 `<duckdbTable>` · <产生工具> · <行数> · [字段…] · <时间>",
+      "",
+    ];
+    for (const h of handles.slice(0, ANALYST_HANDLES_LIMIT)) {
+      const ts = h.producedAt ? h.producedAt.slice(5, 16).replace("T", " ") : "?";
+      const fieldStr = h.fields
+        .slice(0, 6)
+        .map((f) => f.name)
+        .join(", ");
+      const ellipsis = h.fields.length > 6 ? `…+${h.fields.length - 6}` : "";
+      const descSuffix = h.description ? ` — ${h.description}` : "";
+      lines.push(
+        `- \`${h.handle}\` · SQL 表名 \`${h.duckdbTable}\` · ${h.producedBy} · ${h.rowCount} 行 · [${fieldStr}${ellipsis}]${descSuffix} · ${ts}`,
+      );
+    }
+    lines.push("");
+    lines.push(
+      "**两种名字的用法（千万别搞混）**：",
+    );
+    lines.push(
+      "- 调用 MCP 工具（group_aggregate / pivot_result / write_analysis_to_idea 等）的 `handle` 参数 → 用 **`ducktbl_xxxxxxxxxxxx`**（上面第 1 列）",
+    );
+    lines.push(
+      "- 写 `run_sql` 里的 FROM 子句 → 用 **`r_xxxxxxxxxxxx`**（上面第 2 列，即 duckdbTable）。注：即便你写成 `FROM ducktbl_xxx` 也能 run（后端自动翻译），但写对能省一次重试。",
+    );
+    lines.push("");
+    lines.push(
+      "用户说「保存这个结果 / 整理成文档 / 存为新表」等意图词时，**使用最顶部（最新）handle** 调 write_analysis_to_idea / write_analysis_to_table；不要回「handle 丢了」。",
+    );
+    return lines.join("\n");
+  } catch (err) {
+    // Don't let a DuckDB hiccup kill the turn — just log and return empty.
+    // Without the log the same issue that surfaced as "HTTP 500" in the
+    // FE becomes invisible.
+    logAgent({
+      event: "analyst_handles_section_failed",
+      conversationId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return "";
+  }
+}
+
 // ─── Workspace snapshot (context injection) ──────────────────────────────
 
 async function buildWorkspaceSnapshot(workspaceId: string): Promise<string> {
@@ -466,10 +581,11 @@ async function assembleInput(
     usedFallback: boolean;
   }
 ): Promise<ArkInputItem[]> {
-  const [identity, snapshot, recalled] = await Promise.all([
+  const [identity, snapshot, recalled, analystHandles] = await Promise.all([
     buildIdentityLayer(agentId),
     buildWorkspaceSnapshot(workspaceId),
     buildRecalledMemoriesSection(agentId, newUserMessage),
+    buildAnalystHandlesSection(conversationId),
   ]);
   // Layer 1 + Layer 2 + Skill Catalog + Tool Guidance + Layer 3. Layer 1 is
   // hardcoded at the very top so no amount of identity mutation can override
@@ -486,10 +602,25 @@ async function assembleInput(
   }
   layer3Parts.push(snapshot);
   if (recalled) layer3Parts.push(recalled);
+  if (analystHandles) layer3Parts.push(analystHandles);
   const skillCatalog = buildSkillCatalog(activeSkillNames);
   const systemParts = [META_SYSTEM_PROMPT, identity];
   if (skillCatalog) systemParts.push(skillCatalog);
   systemParts.push(TOOL_GUIDANCE_ZH);
+  // Per-skill prompt fragments for currently-active skills. Each skill that
+  // declares `promptFragment` contributes one block so the model sees its
+  // domain rules alongside Tier 1 guidance. Skipped when no active skills
+  // have fragments (keeps prompt tight for vanilla conversations).
+  const activeFragments: string[] = [];
+  for (const name of activeSkillNames) {
+    const frag = skillsByName[name]?.promptFragment;
+    if (frag && frag.trim()) {
+      activeFragments.push(`# Active Skill · ${name}\n${frag.trim()}`);
+    }
+  }
+  if (activeFragments.length) {
+    systemParts.push(activeFragments.join("\n\n"));
+  }
   systemParts.push(`# Layer 3 · Turn Context\n${layer3Parts.join("\n\n")}`);
   const systemText = systemParts.join("\n\n");
 
@@ -598,7 +729,17 @@ async function* callModelStream(
 // ─── Agent loop ──────────────────────────────────────────────────────────
 
 export interface SseEvent {
-  event: "start" | "thinking" | "message" | "tool_start" | "tool_result" | "confirm" | "error" | "done";
+  event:
+    | "start"
+    | "thinking"
+    | "message"
+    | "tool_start"
+    | "tool_progress"
+    | "tool_heartbeat"
+    | "tool_result"
+    | "confirm"
+    | "error"
+    | "done";
   data: Record<string, unknown>;
 }
 
@@ -677,11 +818,80 @@ export async function* runAgent(
     });
   }
 
+  // Long-task tracker: one per turn. Buffers progress/heartbeat events to a
+  // shared queue *and* signals a waiter-promise so the runAgent generator can
+  // yield them while a tool is still executing (tool await would otherwise
+  // block the generator and starve SSE — breaking nginx keepalive + FE
+  // progress UI).
+  const queuedEvents: SseEvent[] = [];
+  let resolveQueueWaiter: (() => void) | null = null;
+  const signalQueue = () => {
+    const r = resolveQueueWaiter;
+    resolveQueueWaiter = null;
+    if (r) r();
+  };
+  const waitForQueue = () =>
+    new Promise<void>((resolve) => {
+      if (queuedEvents.length > 0) return resolve();
+      resolveQueueWaiter = resolve;
+    });
+
+  const longTask = new LongTaskTracker({
+    onProgress: (p) => {
+      queuedEvents.push({
+        event: "tool_progress",
+        data: {
+          callId: p.callId,
+          phase: p.phase,
+          message: p.message,
+          ...(typeof p.progress === "number" ? { progress: p.progress } : {}),
+          ...(typeof p.current === "number" ? { current: p.current } : {}),
+          ...(typeof p.total === "number" ? { total: p.total } : {}),
+          elapsedMs: p.elapsedMs,
+        },
+      });
+      signalQueue();
+    },
+    onHeartbeat: (p) => {
+      queuedEvents.push({
+        event: "tool_heartbeat",
+        data: { callId: p.callId, elapsedMs: p.elapsedMs },
+      });
+      signalQueue();
+    },
+    onTimeout: (p) => {
+      queuedEvents.push({
+        event: "error",
+        data: {
+          code: "TOOL_TIMEOUT",
+          message: `工具 ${p.tool} 超过 ${p.elapsedMs}ms 未返回，已中止`,
+          callId: p.callId,
+        },
+      });
+      signalQueue();
+    },
+  });
+
   // Build the tool context once — the handlers see the live activation set
   // and can mutate it via the callbacks (used by skillRouterTools).
+  // `callId` is rewritten right before each handler dispatch so the progress
+  // callback always references the currently-executing tool.
   const toolCtx = {
     agentId,
+    conversationId,
+    workspaceId,
     activeSkills: [...skillState.active],
+    callId: undefined as string | undefined,
+    progress: (payload: {
+      phase?: string;
+      progress?: number;
+      message: string;
+      current?: number;
+      total?: number;
+    }) => {
+      if (toolCtx.callId) longTask.emitProgress(toolCtx.callId, payload);
+    },
+    abortSignal: abortSignal,
     onActivateSkill: (name: string) => {
       if (!skillsByName[name]) return;
       skillState.active.add(name);
@@ -694,6 +904,10 @@ export async function* runAgent(
       logAgent({ event: "skill_deactivated", conversationId, skill: name });
     },
   };
+
+  // The tool-call loop below uses the `signalQueue` / `waitForQueue` pair to
+  // stream queued progress/heartbeat events in real time while a tool is
+  // executing — see the pump section inside the runAgent round loop.
 
   // Running copy of ARK input — appended as tool calls happen. Pass the
   // currently-active skills so the system prompt's skill catalog can mark
@@ -886,20 +1100,53 @@ export async function* runAgent(
       yield { event: "tool_start", data: { callId: fc.callId, tool: fc.name, args: parsedArgs } };
       logAgent({ event: "tool_call", round, tool: fc.name, args: parsedArgs });
 
-      let toolOutput: string;
+      // Begin long-task tracking for this call — any progress() emissions
+      // from the handler will queue events; any 180s+ silence triggers an
+      // abort. Reset callId on toolCtx so the progress callback targets us.
+      toolCtx.callId = fc.callId;
+      const toolAbort = longTask.beginTool(fc.callId, fc.name, abortSignal);
+      toolCtx.abortSignal = toolAbort.signal;
+
+      // Spawn the tool call as a detached promise so the generator is not
+      // blocked on `await`. The event-pump loop below yields queued progress
+      // / heartbeat events as they arrive, keeping nginx + browser SSE alive
+      // during long tool calls and feeding the FE progress bar in real time.
+      let toolOutput: string = "";
       let success = true;
-      try {
-        // Pass the live skill context so skillRouterTools can mutate state.
-        toolOutput = await tool.handler(parsedArgs, toolCtx);
-        // Bump lastUsedTurn on the owning skill, if any.
-        const owningSkill = skillNameForTool.get(fc.name);
-        if (owningSkill && skillState.active.has(owningSkill)) {
-          skillState.lastUsedTurn.set(owningSkill, skillState.turnIndex);
+      let toolSettled = false;
+      const toolPromise = (async () => {
+        try {
+          const out = await tool.handler(parsedArgs, toolCtx);
+          toolOutput = out;
+          // Bump lastUsedTurn on the owning skill, if any.
+          const owningSkill = skillNameForTool.get(fc.name);
+          if (owningSkill && skillState.active.has(owningSkill)) {
+            skillState.lastUsedTurn.set(owningSkill, skillState.turnIndex);
+          }
+        } catch (err) {
+          success = false;
+          toolOutput = JSON.stringify({
+            error: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          toolSettled = true;
+          signalQueue(); // wake the pump immediately on completion
         }
-      } catch (err) {
-        success = false;
-        toolOutput = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      })();
+
+      // Pump: drain queue + wait for next signal (either a new queued event
+      // or the tool finishing). Loop terminates when the tool has settled
+      // AND the queue is empty.
+      while (!toolSettled || queuedEvents.length > 0) {
+        while (queuedEvents.length) yield queuedEvents.shift()!;
+        if (toolSettled) break;
+        await waitForQueue();
       }
+
+      await toolPromise;
+      longTask.settleTool();
+      toolCtx.callId = undefined;
+      toolCtx.abortSignal = abortSignal;
 
       // V2 streaming-write hook: detect begin/end so the text_delta router
       // knows when to redirect into the idea session. We look at the tool
@@ -908,6 +1155,12 @@ export async function* runAgent(
       if (success) {
         try {
           const parsed = JSON.parse(toolOutput);
+          // Cooperative skill activation — tools can suggest follow-up
+          // skills via `_suggestActivate: [{skill, reason}]`. Activate
+          // immediately so the next round's tool list includes them.
+          processSuggestActivate(parsed, skillState, (entry) =>
+            logAgent({ ...entry, conversationId }),
+          );
           const marker = parsed?._stream;
           if (marker && typeof marker === "object") {
             if (marker.mode === "begin" && typeof marker.sessionId === "string") {
@@ -1054,6 +1307,9 @@ export async function* runAgent(
   if (evicted.length) {
     logAgent({ event: "skill_evicted", conversationId, skills: evicted, reason: "idle_turns" });
   }
+
+  // Release the long-task tracker's timers (heartbeat + timeout).
+  longTask.dispose();
 
   yield { event: "done", data: { messageId: assistantMsgId } };
   logAgent({

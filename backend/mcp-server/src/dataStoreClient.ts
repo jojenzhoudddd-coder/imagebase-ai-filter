@@ -18,6 +18,10 @@ export interface HttpOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   clientId?: string;
+  /** Per-call context forwarded to analyst routes so they can key DuckDB
+   * sessions off the right conversation. Most tools leave this undefined. */
+  conversationId?: string;
+  workspaceId?: string;
 }
 
 export async function apiRequest<T = unknown>(path: string, opts: HttpOptions = {}): Promise<T> {
@@ -26,6 +30,8 @@ export async function apiRequest<T = unknown>(path: string, opts: HttpOptions = 
   const headers: Record<string, string> = {
     "X-Client-Id": opts.clientId || MCP_CLIENT_ID,
   };
+  if (opts.conversationId) headers["X-Conversation-Id"] = opts.conversationId;
+  if (opts.workspaceId) headers["X-Workspace-Id"] = opts.workspaceId;
   let body: string | undefined;
   if (opts.body !== undefined) {
     headers["Content-Type"] = "application/json";

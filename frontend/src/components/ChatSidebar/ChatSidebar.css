@@ -629,6 +629,259 @@
   font-family: "SF Mono", ui-monospace, "PingFang SC", monospace;
   font-size: 11px;
 }
+/* ── Markdown-rendered assistant text ──────────────────────────────── */
+.chat-msg-assistant-md p {
+  margin: 0 0 8px;
+}
+.chat-msg-assistant-md p:last-child { margin-bottom: 0; }
+.chat-msg-assistant-md h1,
+.chat-msg-assistant-md h2,
+.chat-msg-assistant-md h3,
+.chat-msg-assistant-md h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 10px 0 6px;
+  color: #1F2329;
+}
+.chat-msg-assistant-md ul,
+.chat-msg-assistant-md ol {
+  margin: 6px 0 8px;
+  padding-left: 22px;
+}
+.chat-msg-assistant-md li { margin: 2px 0; }
+.chat-msg-assistant-md code {
+  background: #F2F3F5;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: "SF Mono", ui-monospace, monospace;
+}
+.chat-msg-assistant-md pre {
+  background: #F7F8FA;
+  border: 1px solid #EEF0F3;
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  font-size: 12px;
+  margin: 6px 0;
+}
+.chat-msg-assistant-md pre code {
+  background: transparent;
+  padding: 0;
+}
+.chat-msg-assistant-md em {
+  color: #646A73;
+  font-style: normal;
+  font-size: 12px;
+}
+.chat-msg-assistant-md strong {
+  color: #1F2329;
+  font-weight: 600;
+}
+.chat-msg-assistant-md a {
+  color: #1456F0;
+  text-decoration: none;
+}
+.chat-msg-assistant-md a:hover { text-decoration: underline; }
+.chat-msg-assistant-md blockquote {
+  border-left: 3px solid #DEE0E3;
+  padding-left: 10px;
+  margin: 6px 0;
+  color: #646A73;
+}
+.chat-mention-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  margin: 0 1px;
+  background: #EEF2FF;
+  color: #1456F0;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: default;
+}
+
+/* ── Analyst ChatTableBlock ───────────────────────────────────────── */
+.chat-table-block {
+  margin: 8px 0;
+  border: 1px solid #DEE0E3;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+}
+.chat-table-block-caption {
+  padding: 6px 10px;
+  border-bottom: 1px solid #EEF0F3;
+  color: #646A73;
+  font-size: 11px;
+}
+.chat-table-block-scroll {
+  overflow: auto;
+  border-radius: 6px;
+}
+.chat-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: max-content;
+}
+.chat-table th {
+  position: sticky;
+  top: 0;
+  background: #F7F8FA;
+  color: #2B2F36;
+  font-weight: 500;
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid #DEE0E3;
+  white-space: nowrap;
+  font-size: 11px;
+  z-index: 1;
+}
+.chat-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #F2F3F5;
+  white-space: nowrap;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #2B2F36;
+}
+.chat-table tr:last-child td { border-bottom: none; }
+.chat-table-cell.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: "SF Mono", ui-monospace, monospace;
+  color: #1F2329;
+}
+.chat-table-cell.null { color: #8F959E; }
+.chat-table-cell.boolean { text-align: center; color: #17B26A; }
+.chat-table-block-footer {
+  padding: 6px 10px;
+  border-top: 1px solid #EEF0F3;
+  color: #646A73;
+  font-size: 11px;
+}
+.chat-table-block-truncation { color: #1456F0; }
+.chat-table-block-note { color: #8F959E; }
+.chat-table-block-hint {
+  padding: 8px 10px;
+  color: #8F959E;
+  font-style: italic;
+  font-size: 12px;
+}
+.chat-table-block-empty { background: #F7F8FA; }
+
+/* Nested inside the expanded tool-body — sits between the args block and
+   the result marker. No top-border (body already has the left accent). */
+.chat-tool-analyst-preview {
+  margin: 6px 0 4px;
+}
+.chat-tool-analyst-preview .chat-table-block {
+  margin: 0;
+}
+
+.chat-chart-block {
+  margin: 8px 0;
+  border: 1px solid #DEE0E3;
+  border-radius: 6px;
+  background: #fff;
+  padding: 8px 10px;
+}
+.chat-chart-block-caption {
+  color: #646A73;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.chat-chart-host {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chat-chart-host svg { max-width: 100%; height: auto; }
+.chat-chart-loading,
+.idea-chart-loading {
+  color: #8F959E;
+  font-size: 12px;
+  padding: 24px 0;
+  text-align: center;
+}
+.chat-chart-block-error {
+  background: #FFF4F3;
+  border-color: #FADDDB;
+}
+.chat-chart-block-error .chat-chart-block-header {
+  color: #F54A45;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.chat-chart-block-raw {
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: #646A73;
+  background: #F7F8FA;
+  padding: 6px 8px;
+  border-radius: 4px;
+  max-height: 180px;
+  overflow: auto;
+}
+.idea-chart-embed {
+  margin: 12px 0;
+}
+
+/* ── Long-task progress strip (Analyst P1) ─────────────────────────── */
+.chat-tool-progress {
+  padding: 6px 12px 8px;
+  border-top: 1px solid #EEF0F3;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chat-tool-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.chat-tool-progress-message {
+  flex: 1 1 0;
+  min-width: 0;
+  color: #646A73;
+  font-size: 11px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-tool-progress-elapsed {
+  flex: 0 0 auto;
+  color: #8F959E;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 10px;
+}
+.chat-tool-progress-bar {
+  height: 3px;
+  background: #EEF0F3;
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+.chat-tool-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #1456F0, #5B8CF9);
+  border-radius: 2px;
+  transition: width 180ms ease-out;
+}
+.chat-tool-progress-bar-fill.indeterminate {
+  width: 36%;
+  animation: chat-tool-progress-slide 1.4s ease-in-out infinite;
+}
+@keyframes chat-tool-progress-slide {
+  0%   { transform: translateX(-110%); }
+  60%  { transform: translateX(230%); }
+  100% { transform: translateX(230%); }
+}
+
 .chat-tool-substeps {
   list-style: none;
   margin: 0;

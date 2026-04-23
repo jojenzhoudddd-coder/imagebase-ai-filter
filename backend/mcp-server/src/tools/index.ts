@@ -32,6 +32,7 @@ import { ideaNavTools, ideaTools } from "./ideaTools.js";
 import { mentionTools } from "./mentionTools.js";
 import { designNavTools } from "./designTools.js";
 import { tasteNavTools } from "./tasteTools.js";
+import { dictionaryTools } from "./dictionaryTools.js";
 import { allSkills, skillsByName } from "../skills/index.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
@@ -62,6 +63,9 @@ const TIER1_NAMES = new Set([
   "get_taste",
   "find_mentionable",
   "list_incoming_mentions",
+  // Analyst P1 additions (always-on — semantic map + snapshot awareness)
+  "get_data_dictionary",
+  "list_snapshots",
 ]);
 
 /** Tier 0 — identity + memory + skill routing + cron. Always loaded. */
@@ -79,6 +83,7 @@ export const tier1Tools: ToolDefinition[] = [
   ...designNavTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...tasteNavTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...mentionTools.filter((t) => TIER1_NAMES.has(t.name)),
+  ...dictionaryTools.filter((t) => TIER1_NAMES.has(t.name)),
 ];
 
 /**

@@ -57,4 +57,32 @@ export interface SkillDefinition {
 
   /** The tools bundled under this skill. */
   tools: ToolDefinition[];
+
+  /**
+   * Soft dependencies — when this skill is active, these dependent skills
+   * are kept alive (exempt from idle-turn eviction) but NOT automatically
+   * activated. Use for "I might need to write to an idea at the tail of my
+   * workflow" relationships. Declaring a softDep is a hint to the eviction
+   * machinery only; the dep still has to be loaded via trigger match or
+   * `activate_skill` to appear in the model's tool list.
+   *
+   * Intentionally non-transitive: if A.softDeps=[B] and B.softDeps=[C],
+   * activating A only protects B, not C. Keeps the graph tractable.
+   *
+   * Added P1 · analyst-skill requires this to keep idea-skill and table-skill
+   * alive across long analysis sessions.
+   */
+  softDeps?: string[];
+
+  /**
+   * Optional prompt fragment injected into the system prompt when this skill
+   * is active. Use for domain vocabulary, analytical frameworks, or
+   * skill-specific output rules. Kept concise — the skill catalog already
+   * covers "when to use". This is for "how to use / how to think".
+   *
+   * Added P1 · analyst-skill uses this for truncation rules + field
+   * disambiguation; domain skills (finance/internet/accounting) for
+   * terminology alignment.
+   */
+  promptFragment?: string;
 }

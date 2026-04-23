@@ -430,6 +430,49 @@ export default function ChatSidebar({
           return prev;
         });
       },
+      onToolProgress: (ev) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant"
+              ? {
+                  ...m,
+                  toolCalls: m.toolCalls.map((tc) =>
+                    tc.callId === ev.callId
+                      ? {
+                          ...tc,
+                          progress: {
+                            phase: ev.phase,
+                            message: ev.message,
+                            progress: ev.progress,
+                            current: ev.current,
+                            total: ev.total,
+                            elapsedMs: ev.elapsedMs,
+                          },
+                          heartbeat: undefined,
+                        }
+                      : tc,
+                  ),
+                }
+              : m,
+          ),
+        );
+      },
+      onToolHeartbeat: (ev) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant"
+              ? {
+                  ...m,
+                  toolCalls: m.toolCalls.map((tc) =>
+                    tc.callId === ev.callId
+                      ? { ...tc, heartbeat: { elapsedMs: ev.elapsedMs } }
+                      : tc,
+                  ),
+                }
+              : m,
+          ),
+        );
+      },
       onToolResult: (callId, success, result) => {
         setMessages((prev) => {
           let pointerTid: string | undefined;
@@ -444,7 +487,13 @@ export default function ChatSidebar({
                     if (!pointerTid) {
                       pointerTid = extractTableIdFromCall(tc.tool, tc.args, result);
                     }
-                    return { ...tc, status: (success ? "success" : "error") as ChatToolCall["status"] };
+                    return {
+                      ...tc,
+                      status: (success ? "success" : "error") as ChatToolCall["status"],
+                      result,
+                      progress: undefined,
+                      heartbeat: undefined,
+                    };
                   }),
                 }
               : m

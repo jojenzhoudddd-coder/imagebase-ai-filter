@@ -1,5 +1,5 @@
 import {
-  forwardRef, memo, useCallback, useEffect, useImperativeHandle,
+  forwardRef, lazy, memo, Suspense, useCallback, useEffect, useImperativeHandle,
   useMemo, useRef, useState,
 } from "react";
 import ReactMarkdown from "react-markdown";
@@ -8,6 +8,20 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { parseMentionHref } from "./mentionSyntax";
 import type { ParsedMention } from "./mentionSyntax";
+
+// Analyst P3: lazy-load the vega-lite chart block so Idea editor doesn't
+// pull ~400KB of vega into its bundle until a chart actually appears.
+const ChatChartBlock = lazy(
+  () => import("../ChatSidebar/ChatMessage/ChatChartBlock"),
+);
+
+function LazyIdeaChart({ spec }: { spec: Record<string, unknown> }) {
+  return (
+    <Suspense fallback={<div className="idea-chart-loading">加载图表中…</div>}>
+      <ChatChartBlock spec={spec} />
+    </Suspense>
+  );
+}
 
 /** Platform detection for the heading shortcut — on Mac the primary modifier
  * is Cmd (metaKey); on Windows/Linux it's Ctrl. We reject the "wrong" modifier
@@ -296,9 +310,40 @@ const InnerMarkdown = memo(function InnerMarkdown({
       del: ({ node, children, ...rest }: any) => (
         <del contentEditable={false} data-md-inline-src={inlineSrcFrom(node)} {...rest}>{children}</del>
       ),
-      code: ({ node, children, ...rest }: any) => (
-        <code contentEditable={false} data-md-inline-src={inlineSrcFrom(node)} {...rest}>{children}</code>
-      ),
+      code: ({ node, children, className, ...rest }: any) => {
+        // Fenced ```vega-lite``` blocks → render as a chart. Falls back to
+        // the raw <code> element when the spec doesn't parse as JSON so
+        // nothing gets silently swallowed.
+        const cls = typeof className === "string" ? className : "";
+        if (/^(language-)?vega(-lite)?$/.test(cls.replace(/^language-/, "language-"))
+            && cls.includes("language-")) {
+          const raw = flattenChildren(children);
+          try {
+            const spec = JSON.parse(raw);
+            return (
+              <div
+                className="idea-chart-embed"
+                contentEditable={false}
+                data-md-inline-src={inlineSrcFrom(node)}
+              >
+                <LazyIdeaChart spec={spec} />
+              </div>
+            );
+          } catch {
+            // fall through
+          }
+        }
+        return (
+          <code
+            contentEditable={false}
+            data-md-inline-src={inlineSrcFrom(node)}
+            className={className}
+            {...rest}
+          >
+            {children}
+          </code>
+        );
+      },
       // Links / mention chips
       a({ href, children, node, ...rest }: any) {
         if (typeof href === "string") {

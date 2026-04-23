@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { ChatToolCall } from "../../../api";
 import { useTranslation } from "../../../i18n";
+import ChatTableBlock from "./ChatTableBlock";
 
 /**
  * ToolCallCard — a single tool invocation rendered as an expandable card.
@@ -28,6 +29,12 @@ export default function ToolCallCard({ call }: { call: ChatToolCall }) {
     `chat.tool.status.${status === "awaiting_confirmation" ? "awaiting" : status}`
   );
 
+  // Analyst preview: if this tool returned {preview:{columns, rows, rowCount, truncated}}
+  // we render a compact ChatTableBlock right under the card header when the
+  // card isn't yet expanded. Keeps the result visible without forcing users
+  // to expand every analyst tool call.
+  const analystPreview = useMemo(() => extractAnalystPreview(call.result), [call.result]);
+
   return (
     <div className={`chat-expand-card chat-tool-card ${status}${expanded ? " expanded" : ""}`}>
       <button
@@ -47,6 +54,11 @@ export default function ToolCallCard({ call }: { call: ChatToolCall }) {
         <StatusDot status={status} title={statusTitle} />
         <Chevron expanded={expanded} />
       </button>
+      {/* Progress strip is outside the collapsible body on purpose: users
+          need to see live activity even when the card header is collapsed. */}
+      {status === "running" && (call.progress || call.heartbeat) && (
+        <ProgressStrip progress={call.progress} heartbeat={call.heartbeat} />
+      )}
       {expanded && (
         <div className="chat-expand-card-body chat-tool-body">
           <div className="chat-tool-body-step">
@@ -63,6 +75,19 @@ export default function ToolCallCard({ call }: { call: ChatToolCall }) {
               ))}
             </div>
           )}
+          {/* Analyst result preview lives inside the expanded body so it
+              hides when the card is collapsed. Collapse-by-default keeps
+              long conversations readable; user clicks header to reveal. */}
+          {status === "success" && analystPreview && (
+            <div className="chat-tool-analyst-preview">
+              <ChatTableBlock
+                columns={analystPreview.columns}
+                rows={analystPreview.rows}
+                totalRows={analystPreview.rowCount}
+                footerNote={analystPreview.handle ? `handle=${analystPreview.handle}` : undefined}
+              />
+            </div>
+          )}
           <div className={`chat-tool-body-step result ${status}`}>
             <span className="chat-tool-body-step-marker">
               {t(
@@ -76,6 +101,51 @@ export default function ToolCallCard({ call }: { call: ChatToolCall }) {
   );
 }
 
+/** Progress strip shown below the header while a tool is executing.
+ * Shows progress bar + message when tool reports progress, elapsed timer
+ * when only heartbeat (silent long-running) signals are arriving. */
+function ProgressStrip({
+  progress,
+  heartbeat,
+}: {
+  progress?: ChatToolCall["progress"];
+  heartbeat?: ChatToolCall["heartbeat"];
+}) {
+  const elapsedMs = progress?.elapsedMs ?? heartbeat?.elapsedMs ?? 0;
+  const elapsedLabel = formatElapsed(elapsedMs);
+  const message =
+    progress?.message ||
+    (heartbeat ? `计算中 · ${elapsedLabel}` : `计算中`);
+  const pct =
+    typeof progress?.progress === "number"
+      ? Math.max(0, Math.min(1, progress.progress))
+      : progress?.current && progress?.total
+      ? Math.max(0, Math.min(1, progress.current / progress.total))
+      : undefined;
+  return (
+    <div className="chat-tool-progress">
+      <div className="chat-tool-progress-row">
+        <span className="chat-tool-progress-message">{message}</span>
+        <span className="chat-tool-progress-elapsed">{elapsedLabel}</span>
+      </div>
+      <div className="chat-tool-progress-bar">
+        <div
+          className={`chat-tool-progress-bar-fill${pct === undefined ? " indeterminate" : ""}`}
+          style={pct !== undefined ? { width: `${(pct * 100).toFixed(1)}%` } : undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.round(ms / 100) * 100)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const min = Math.floor(ms / 60_000);
+  const sec = Math.floor((ms % 60_000) / 1000);
+  return `${min}m${String(sec).padStart(2, "0")}s`;
+}
+
 function formatArgValue(v: unknown): string {
   if (v == null) return "—";
   if (typeof v === "string") return v.length > 80 ? v.slice(0, 78) + "…" : v;
@@ -86,6 +156,39 @@ function formatArgValue(v: unknown): string {
   } catch {
     return String(v);
   }
+}
+
+/** If a tool returned an analyst-shaped preview, surface it for inline
+ * rendering. Expected shape (via dataStoreClient toolResult wrapper):
+ *   { _resultHandle?, data: { meta: {...}, preview: { columns, rows, rowCount, truncated } } }
+ * Also handles the unwrapped form some tools emit directly. */
+function extractAnalystPreview(result: unknown): null | {
+  columns: Array<{ name: string; type?: string }>;
+  rows: Array<Record<string, unknown>>;
+  rowCount: number;
+  handle?: string;
+} {
+  if (!result) return null;
+  let parsed: any = result;
+  if (typeof parsed === "string") {
+    try { parsed = JSON.parse(parsed); } catch { return null; }
+  }
+  if (typeof parsed !== "object") return null;
+  const handle = parsed._resultHandle;
+  const data = parsed.data ?? parsed;
+  const preview = data?.preview;
+  if (!preview || !Array.isArray(preview.columns) || !Array.isArray(preview.rows)) {
+    return null;
+  }
+  return {
+    columns: preview.columns,
+    rows: preview.rows,
+    rowCount:
+      typeof preview.rowCount === "number"
+        ? preview.rowCount
+        : preview.rows.length,
+    handle: typeof handle === "string" ? handle : undefined,
+  };
 }
 
 /** Derive a short human-readable target label from common tool args. */

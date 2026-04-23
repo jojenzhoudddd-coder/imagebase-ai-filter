@@ -751,6 +751,20 @@ export interface ChatToolCall {
   result?: unknown;
   status?: "running" | "success" | "error" | "awaiting_confirmation";
   error?: string;
+  /** Latest progress payload reported by the tool during execution.
+   * Analyst P1: tools can emit these for long-running analysis steps so the
+   * UI can render a progress bar inside the tool card. */
+  progress?: {
+    phase?: string;
+    message: string;
+    progress?: number;
+    current?: number;
+    total?: number;
+    elapsedMs: number;
+  };
+  /** Set when the tool has gone silent and the server is emitting heartbeats
+   * to keep the connection alive. UI shows elapsed time. */
+  heartbeat?: { elapsedMs: number };
 }
 
 export interface ChatMessage {
@@ -889,6 +903,21 @@ export async function fetchIncomingMentions(
   return res.json();
 }
 
+export interface ToolProgressEvent {
+  callId: string;
+  phase?: string;
+  message: string;
+  progress?: number;
+  current?: number;
+  total?: number;
+  elapsedMs: number;
+}
+
+export interface ToolHeartbeatEvent {
+  callId: string;
+  elapsedMs: number;
+}
+
 export interface StreamChatOptions {
   conversationId: string;
   message: string;
@@ -896,6 +925,8 @@ export interface StreamChatOptions {
   onThinking?: (delta: string) => void;
   onMessage?: (delta: string) => void;
   onToolStart?: (call: ChatToolCall) => void;
+  onToolProgress?: (ev: ToolProgressEvent) => void;
+  onToolHeartbeat?: (ev: ToolHeartbeatEvent) => void;
   onToolResult?: (callId: string, success: boolean, result: unknown) => void;
   onConfirm?: (pending: PendingConfirm) => void;
   onError?: (code: string, message: string) => void;
@@ -949,6 +980,23 @@ async function readChatSseStream(
               tool: data.tool,
               args: data.args || {},
               status: "running",
+            });
+            break;
+          case "tool_progress":
+            handlers.onToolProgress?.({
+              callId: data.callId,
+              phase: data.phase,
+              message: data.message || "",
+              progress: typeof data.progress === "number" ? data.progress : undefined,
+              current: typeof data.current === "number" ? data.current : undefined,
+              total: typeof data.total === "number" ? data.total : undefined,
+              elapsedMs: typeof data.elapsedMs === "number" ? data.elapsedMs : 0,
+            });
+            break;
+          case "tool_heartbeat":
+            handlers.onToolHeartbeat?.({
+              callId: data.callId,
+              elapsedMs: typeof data.elapsedMs === "number" ? data.elapsedMs : 0,
             });
             break;
           case "tool_result":

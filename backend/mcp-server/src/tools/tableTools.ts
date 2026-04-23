@@ -25,6 +25,43 @@ export interface ToolContext {
   /** Callback fired by skill-router tools to mutate activation state. */
   onActivateSkill?: (name: string) => void;
   onDeactivateSkill?: (name: string) => void;
+  /**
+   * Analyst P1: the conversation this tool call belongs to. Analyst tools
+   * key their DuckDB session off this — same conversation, same .duckdb file.
+   * `undefined` for stdio MCP callers; data-plane tools ignore it.
+   */
+  conversationId?: string;
+  /**
+   * Analyst P1: the workspace context for this tool call. Used by analyst
+   * tools that need to resolve a tableId → workspaceId, and by the
+   * snapshot writer for data-dictionary enrichment.
+   */
+  workspaceId?: string;
+  /**
+   * Analyst P1: the callId of the current tool invocation. Set by the agent
+   * loop so long-running tools can report progress using `progress(...)`
+   * below without having to thread the callId explicitly. Undefined for
+   * stdio MCP callers.
+   */
+  callId?: string;
+  /**
+   * Analyst P1: report progress for the currently-executing tool. Emits a
+   * `tool_progress` SSE event to the client. Safe to call repeatedly — the
+   * agent loop rate-limits downstream if needed. `undefined` when running
+   * under stdio MCP (no-op for tools guarded by `ctx?.progress?.(...)`).
+   */
+  progress?: (payload: {
+    phase?: string;
+    progress?: number;
+    message: string;
+    current?: number;
+    total?: number;
+  }) => void;
+  /**
+   * Analyst P1: abort signal plumbed through from the turn's AbortController.
+   * Tools that do long DuckDB scans or HTTP requests should respect it.
+   */
+  abortSignal?: AbortSignal;
 }
 
 export interface ToolDefinition {

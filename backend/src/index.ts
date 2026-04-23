@@ -14,6 +14,7 @@ import tasteRoutes from "./routes/tasteRoutes.js";
 import ideaRoutes from "./routes/ideaRoutes.js";
 import mentionRoutes from "./routes/mentionRoutes.js";
 import mentionReverseRoutes from "./routes/mentionReverseRoutes.js";
+import analystRoutes from "./routes/analystRoutes.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
@@ -28,6 +29,7 @@ import { startModelProbe, stopModelProbe } from "./services/modelRegistry.js";
 // boot. Must happen before the first runAgent() call.
 import "./services/providers/index.js";
 import { evaluateCron } from "./services/cronScheduler.js";
+import { startAnalystCleanup, stopAnalystCleanup } from "./services/analyst/cleanupCron.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -95,6 +97,8 @@ app.use("/api/workspaces", mentionRoutes);
 // Reverse mention lookup (workspace-agnostic path since callers already know
 // the workspace — keeps the URL shape flat and search-friendly for logs).
 app.use("/api/mentions", mentionReverseRoutes);
+// Analyst P1 — DuckDB-backed analysis routes. See docs/analyst-skill-plan.md.
+app.use("/api/analyst", analystRoutes);
 
 // Serve uploaded SVG files
 app.use("/uploads", express.static(path.resolve(__dirname, "../../uploads")));
@@ -211,6 +215,9 @@ async function start() {
     startModelProbe();
   }
 
+  // Analyst P1 — DuckDB session + snapshot cleanup cron.
+  startAnalystCleanup();
+
   if (process.env.RUNTIME_DISABLED !== "1") {
     startHeartbeat({
       onTick: async (ctx) => {
@@ -247,6 +254,7 @@ async function start() {
     try {
       await stopHeartbeat();
       stopModelProbe();
+      await stopAnalystCleanup();
     } catch (err) {
       console.error("[runtime] error during shutdown:", err);
     }

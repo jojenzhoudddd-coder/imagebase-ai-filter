@@ -16,9 +16,21 @@
 import { tableSkill } from "./tableSkill.js";
 import { ideaSkill } from "./ideaSkill.js";
 import { tasteSkill } from "./tasteSkill.js";
+import { analystSkill } from "./analystSkill.js";
+import { internetAnalystSkill } from "./internetAnalystSkill.js";
+import { accountingAnalystSkill } from "./accountingAnalystSkill.js";
+import { financeAnalystSkill } from "./financeAnalystSkill.js";
 import type { SkillDefinition } from "./types.js";
 
-export const allSkills: SkillDefinition[] = [tableSkill, ideaSkill, tasteSkill];
+export const allSkills: SkillDefinition[] = [
+  tableSkill,
+  ideaSkill,
+  tasteSkill,
+  analystSkill,
+  internetAnalystSkill,
+  accountingAnalystSkill,
+  financeAnalystSkill,
+];
 
 export const skillsByName: Record<string, SkillDefinition> = Object.fromEntries(
   allSkills.map((s) => [s.name, s])

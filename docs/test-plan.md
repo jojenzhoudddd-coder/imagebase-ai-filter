@@ -475,3 +475,143 @@
 - [ ] P1 用例无阻断性问题
 - [ ] 无 console error（忽略已知 DOM nesting warning）
 - [ ] 主流浏览器验证（Chrome, Safari, Edge）
+
+---
+
+## Analyst Skill（AI 问数）测试用例
+
+### P0 — 核心功能
+
+1. **加载 + 全表描述（纯聚合）**
+   - 输入："分析一下需求管理表"
+   - 预期：Agent 激活 analyst-skill → `load_workspace_table` → `describe_result`
+   - 回复包含：行数、每字段非空率、分类字段 top-K、数值字段 mean/p50/p95
+   - **开头有快照时点声明**（"本次分析基于 … 的数据快照"）
+
+2. **单步分组聚合**
+   - 输入："按优先级统计总工时"
+   - 预期：`load_workspace_table` → `group_aggregate(groupBy=["优先级"], metrics=[{field:"工时", op:"sum"}])`
+   - 结果内联为 markdown 表格（ChatTableBlock 渲染）
+
+3. **大表截断声明**
+   - 当 group_aggregate 结果 > 100 行时，回复仅展示前 20 行
+   - **正文必须声明"完整结果共 N 行"并引导对话物化**
+
+4. **time_bucket 时序分析**
+   - 输入："按月看看创建时间趋势"
+   - 预期：`time_bucket(granularity="month", metrics=[{op:"count"}])`
+   - 结果按时间升序
+
+5. **透视表**
+   - 输入："按优先级 × 状态透视工时"
+   - 预期：`pivot_result(rows=["优先级"], columns=["状态"], values=[{field:"工时", op:"sum"}])`
+   - 列名从 columns 字段的值动态展开
+
+6. **字段消歧义（严格）**
+   - 表中有 amount_usd / amount_cny 两个数值字段；输入："分析一下销售额"
+   - 预期：Agent 在调任何聚合工具**前**用自然语言反问："我看到 amount_usd / amount_cny 两个字段，你指的是哪个？"
+   - 不应默默选一个开算
+
+7. **run_sql 兜底 + 安全**
+   - 输入涉及 window function 等专用工具表达不了的场景
+   - 预期：Agent 调 `run_sql` 配合手写 SQL，在回复里解释用了什么表达式
+   - 输入恶意 SQL（"DROP TABLE x" / "DELETE FROM y"）→ 后端返回 `run_sql: 仅支持 SELECT / WITH / CREATE TABLE <name> AS`，Agent 在回复里说明不能执行并拒绝
+
+8. **快照复用 + 显式刷新**
+   - 同一对话内连续问 3 个分析问题 → 只有第一次 `load_workspace_table` 写 parquet，后 2 次复用
+   - 输入："基于最新数据再跑一次" → Agent 调用时加 `refresh:true`，生成新快照
+
+9. **结果物化到 Idea（对话驱动）**
+   - 前置：已有 group_aggregate 结果
+   - 输入："整理成文档"
+   - 预期：Agent 调 `write_analysis_to_idea` → 新建 Idea，内容含标题 + 叙述 + 核心数据 Markdown 表格 + 快照时点
+   - 对话里返回 `[@分析报告 …](mention://idea/…)` chip，可点击跳转
+
+10. **结果物化到新数据表**
+    - 输入："把这个结果存为一张新数据表，叫 '季度汇总'"
+    - 预期：Agent 调 `write_analysis_to_table` → 创建新表 + 默认 primary 字段被改造 + 批量 insert 记录
+    - 超过 5 万行会拒绝并建议改为文档
+
+11. **图表生成 + 对话内渲染**
+    - 前置：已有结果 handle
+    - 输入："画个柱状图"
+    - 预期：Agent 调 `generate_chart(chartType="bar", x="优先级", y="hours")`
+    - 回复里含 ```vega-lite 代码块 → `ChatChartBlock` 用 vega-embed 渲染为交互式 SVG
+
+12. **长任务 progress + heartbeat**
+    - 触发一个 10 万行的 snapshot（大表首次 load）→ Agent 的 tool card 显示进度条 + "已转换 N/10万 行"
+    - 30s 无 progress → 前端显示"计算中 · 30s"并继续 tick，连接不断
+
+13. **softDeps 保活 idea-skill**
+    - analyst-skill 活跃 15 轮，期间没调用 idea-skill 工具
+    - 输入 "写进文档" → idea-skill 仍可被 analyst 的 `_suggestActivate` 无缝激活（没被驱逐）
+
+### P0 — 三个领域 skill
+
+14. **互联网 · DAU/MAU**
+    - 表中有 user_id + date 字段，用户问"最近一个月的日活和月活"
+    - 预期：`internet-analyst-skill` 激活 → `dau_mau` → 返回每日 DAU / 月度 MAU / DAU-MAU 粘性比
+
+15. **互联网 · 漏斗转化**
+    - 表中 user_id + stage 字段，stages = ["浏览", "加购", "下单", "支付"]
+    - 预期：`funnel_conversion` → 每阶段用户数 + 相邻阶段转化率 + 整体转化率
+
+16. **互联网 · Cohort 留存**
+    - 输入："按周看新用户 4 周留存"
+    - 预期：`cohort_retention(granularity="week", periods=4)` → 每 cohort 一行，period_0-period_4 列为留存率
+
+17. **财务 · 杜邦分析**
+    - 用户给出四个数值：净利润 100 / 营收 1000 / 总资产 2000 / 权益 800
+    - 预期：`dupont_analysis` → ROE=12.5% = 10% NPM × 0.5 AT × 2.5 EM（Agent 在回复里逐项解释）
+
+18. **财务 · 比率 + 趋势**
+    - 用户给出多个年度数据 → Agent 各年度调 `current_ratio` / `profit_margins` → 用 `generate_chart` 画趋势
+
+19. **金融 · IRR**
+    - 输入："IRR 多少，初始投资 1000，之后 4 年各收入 300/300/400/500"
+    - 预期：`irr(cashflows=[-1000, 300, 300, 400, 500])` → 16.64%
+
+20. **金融 · 夏普比率**
+    - 用户给出一段日收益率序列
+    - 预期：`sharpe_ratio(returns, riskFreeRate=0.03)` → 年化夏普 + 解读
+
+21. **金融 · 最大回撤**
+    - 输入净值序列 [100, 120, 90, 110, 85, 130]
+    - 预期：`max_drawdown` → 29.17%
+
+### P0 — 数据一致性 & 安全
+
+22. **快照时点声明**
+    - 每次 Analyst 回复开头都应带"本次分析基于 YYYY-MM-DD HH:MM 的数据快照"
+
+23. **AST 白名单拒绝**
+    - 测试 `DROP` / `DELETE` / `UPDATE` / `INSERT` / `ATTACH` / `COPY` / `PRAGMA` / `SET` — 全部返回错误，不执行
+
+24. **会话隔离**
+    - 两个对话同时分析同一张表 → DuckDB 文件分开，handle 互不可见（跨会话调 `resolveHandle` 返回 404）
+
+### P1 — 细节体验
+
+25. **ChatTableBlock 列宽**
+    - 长字符串单元格（> 200 字符）被 ellipsis 截断 + hover 显示完整值
+    - 超过 6 列横向滚动
+    - 数值列右对齐 + `tabular-nums`
+
+26. **Vega-lite lazy load**
+    - 首次渲染图表时动态加载 vega-embed；未含图表的消息不触发加载
+    - 打开 DevTools Network → 确认 embed chunk 只在 chart 出现时加载
+
+27. **清理 cron**
+    - 设置环境变量缩短 IDLE_CLOSE_MS → 观察 cleanup cron log 输出 "idle-closed=N file-deleted=… snapshots-purged=…"
+
+28. **跨会话缓存命中**
+    - 两个会话问同一表的同一个 group_aggregate → 第二次 meta.producedBy = "group_aggregate"（同结构）但命中显著快
+
+29. **字段描述推断**
+    - 调 `propose_field_descriptions(tableId)` → 每个字段有一条 proposed（基于名字模式匹配 / 类型兜底）
+
+### 自动化 Smoke
+
+- `backend/src/scripts/analyst-p1-smoke.ts` — 独立 DuckDB runtime 冒烟，不需要主 backend
+- `backend/src/scripts/analyst-p2-smoke.ts` — 需要 `npm run dev:backend`，跑 P2 HTTP 接口全链路
+- 部署流程强制在 CI 或本地运行这两个脚本

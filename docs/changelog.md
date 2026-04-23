@@ -5,6 +5,89 @@
 
 ---
 
+## 2026-04-23
+
+### feat(analyst): 引入 Analyst Skill —— DuckDB 驱动的 AI 问数全链路 (P1-P5)
+
+**分支**: `BeyondBase` · **commits**: 待提交
+
+**一次性交付 AI 问数完整能力**：用户用自然语言提问 → Agent 路由到 Analyst → DuckDB 做专业聚合 → 结论 + 表格 + 图表返回对话 → 一句话即可落地为 Idea 文档或新数据表。覆盖 analyst-skill 方案 `docs/analyst-skill-plan.md` 的 P1-P5 全部 5 个阶段。
+
+#### P1 · 基建层（foundation）
+
+- **DuckDB 计算引擎**：`backend/src/services/analyst/duckdbRuntime.ts` — 每会话一个 `.duckdb` 文件，parquet 快照以只读视图挂载，中间结果作为命名表持久化。Session 通过 Promise queue 串行化，跨会话完全并行。`assertSafeSql` 做 AST 级白名单（仅 SELECT / WITH / CREATE TABLE AS；DROP/DELETE/UPDATE/INSERT/ATTACH/COPY/PRAGMA/SET/EXPORT/IMPORT/ALTER 一律拒绝）。依赖：`@duckdb/node-api@1.5.2-r.1`
+- **Parquet 快照服务**：`snapshotService.ts` — Prisma 流式读源表 → 内存 DuckDB 转换 + 字段类型映射 → `COPY TO parquet (FORMAT PARQUET, COMPRESSION ZSTD)`。per-analysis-session 粒度（同会话复用，`refresh:true` 强制重建）
+- **长任务 SSE 协议（chatbot 基建）**：`services/longTaskService.ts` — `LongTaskTracker` 管理每个 tool 调用的 `progress` / `heartbeat` / `timeout` 状态机；agent loop 转成 `tool_progress` / `tool_heartbeat` SSE 事件；15s 静默自动 heartbeat（保活 nginx / 浏览器）；180s 超时 Abort。FE `ToolCallCard` 新增 `ProgressStrip` 显示进度条 + 已耗时。**不只 analyst 受益**——未来任何慢工具免费拿这个能力
+- **SkillDefinition 扩展**：`softDeps?: string[]` 声明式依赖，激活时自动续期被依赖 skill 的 `lastUsedTurn`，免 10 轮 idle 驱逐（非传递）+ `promptFragment?: string` 激活时注入系统 prompt 的专属规则段
+- **协作激活 `_suggestActivate`**：工具返回值里的 hint → agent loop 下一轮前自动激活目标 skill。新 Tier 1 工具 `get_data_dictionary`（字段字典）+ `list_snapshots`（快照清单）
+- **清理 cron**：`cleanupCron.ts` 每 30 min 扫：关闭 idle > 2h 的 session、删除 > 7d 的 `.duckdb` 文件、purge > 30d 的 snapshot + cache parquet
+
+#### P2 · Analyst 核心 skill
+
+- **analyst-skill**（`skills/analystSkill.ts`）: 11 核心工具 `load_workspace_table` / `describe_result` / `preview_result` / `filter_result` / `group_aggregate` (含 count_distinct / median / stddev) / `pivot_result` (DuckDB 原生 PIVOT) / `join_results` (inner/left/right/full) / `time_bucket` / `top_n` / `run_sql` (AST 白名单兜底) / `propose_field_descriptions` + 2 物化出口 `write_analysis_to_idea` / `write_analysis_to_table`（硬限 50k 行）
+- **softDeps**: `["idea-skill", "table-skill"]` — 分析尾声可无缝写入文档 / 新表
+- **严格 promptFragment** 规则：大小表统一内联 ChatTableBlock；>100 行截断前 20 行并在正文**强制声明真实行数** + 引导对话物化；关键字段含义模糊必须反问；每次回复开头声明快照时点
+- **前端**: `ChatTableBlock` 虚拟滚动渲染（>10 行内滚动容器 + sticky 表头、>100 行 footer 显示"显示 N / 共 X 行"）；`AssistantText` 用 `react-markdown + remark-gfm` 渲染 Agent 回复，GFM 表格自动替换为 ChatTableBlock；`ToolCallCard` 检测 analyst 返回值 `_resultHandle` 内联预览
+
+#### P3 · 图表层
+
+- **`generate_chart` 工具** + `/api/analyst/generate-chart` REST — 输入 handle + chartType (bar/line/pie/area/scatter) + x/y/series/aggregate → 返回 vega-lite spec（最多 1000 数据点）
+- **`ChatChartBlock.tsx`** 客户端 vega-lite 渲染，`lazy()` 动态加载 vega-embed（~800KB 独立 chunk，无图表消息零代价）
+- **Idea preview 嵌入** — `MarkdownPreview.tsx` 识别 `vega-lite` / `vega` 代码块 → 渲染图表（同一 ChatChartBlock，共享 Suspense）
+- **无图表场景 0 成本** — bundle size：主包 1.03MB → ChatChartBlock chunk 1.13 KB（入口）→ embed chunk 833 KB（只在渲染图表时加载）
+
+#### P4 · 三个领域 skill（顺序：互联网 → 财务 → 金融）
+
+- **纯函数库** `services/analyst/domainFunctions.ts`（100% 确定性，JSON-serializable 输入输出）
+  - Finance: `irr` (bisection)、`npv`、`wacc`、`cagr`、`stddev`、`volatility` (annualized)、`sharpe`、`beta` (OLS slope)、`maxDrawdown`
+  - Accounting: `dupontAnalysis` (三因子)、`currentRatio`、`quickRatio`、`debtToEquity`、`grossMargin` / `operatingMargin` / `netMargin`
+  - Internet: `dauMau`、`funnelConversion` (严格单调阶段)、`cohortRetention` (day/week/month 粒度)、`arpu` (含 ARPPU)
+- **三个 skill**：`internetAnalystSkill` / `accountingAnalystSkill` / `financeAnalystSkill` 都声明 `softDeps: ["analyst-skill"]`
+- **术语 + 判断层** 走 promptFragment：互联网粘性 / 留存曲线健康阈值；财务杜邦拆解 / 比率解读；金融历史指标 ≠ 预测的边界声明
+- **MCP 工具** `domainInternetTools` / `domainAccountingTools` / `domainFinanceTools` 17 个 — 前者读 DuckDB handle 行 + 纯函数，后两者数值直入
+
+#### P5 · 打磨
+
+- **跨会话结果缓存** `resultCache.ts` — SHA-256 key = hash(canonical_sql || sorted(source_snapshot_ats))。命中直接 `COPY FROM parquet`，不重算
+- **启发式字段描述推断** `propose_field_descriptions` — 基于字段名正则 + 样本值 + 类型给出一句话建议，用户确认后写回（V1 不主动写）
+- **Cache purge 集成 cleanup cron** — 30 天 LRU
+- **REST 接口** `GET /api/analyst/cache` / `POST /api/analyst/cache/purge` 运维可见
+
+#### 文件变更（新建 17 + 修改 10）
+
+**新建** (backend): `services/analyst/duckdbRuntime.ts` · `snapshotService.ts` · `domainFunctions.ts` · `resultCache.ts` · `cleanupCron.ts` · `services/longTaskService.ts` · `schemas/analystSchema.ts` · `routes/analystRoutes.ts` · `scripts/analyst-p1-smoke.ts` · `scripts/analyst-p2-smoke.ts` · `mcp-server/src/tools/{dictionary,analyst,analystWrite,domainInternet,domainAccounting,domainFinance}Tools.ts` · `mcp-server/src/skills/{analyst,internetAnalyst,accountingAnalyst,financeAnalyst}Skill.ts`
+
+**新建** (frontend): `ChatSidebar/ChatMessage/ChatTableBlock.tsx` · `ChatChartBlock.tsx`
+
+**修改** (backend): `src/index.ts` (挂 analystRoutes + 启动 cleanupCron + shutdown 收拢) · `services/chatAgentService.ts` (LongTaskTracker 集成 + SSE event 扩展 + softDeps eviction bypass + `_suggestActivate` 处理 + active skill promptFragment 注入) · `mcp-server/src/tools/{tableTools.ts(ToolContext 扩展 `conversationId`/`workspaceId`/`callId`/`progress`/`abortSignal`),index.ts(Tier 1 加 dict+snapshot)}` · `mcp-server/src/skills/{types.ts (softDeps/promptFragment),index.ts (注册 4 个新 skill)}` · `mcp-server/src/dataStoreClient.ts` (conversationId/workspaceId 透传 header)
+
+**修改** (frontend): `api.ts` (ChatToolCall 加 progress/heartbeat + onToolProgress/Heartbeat handler + SSE parse 分支) · `ChatSidebar/index.tsx` (onToolProgress/Heartbeat → message state 更新) · `ChatMessage/ToolCallCard.tsx` (ProgressStrip + analyst 预览卡) · `ChatMessage/AssistantText.tsx` (Markdown 渲染 + 表格 → ChatTableBlock + fenced vega-lite → ChatChartBlock) · `ChatSidebar.css` (6 大节 ~200 行新样式) · `IdeaEditor/MarkdownPreview.tsx` (code 渲染识别 vega-lite → LazyIdeaChart) · `i18n/{zh,en}.ts` (35 新键) · `package.json` (vega-embed + vega + vega-lite)
+
+#### 三轮 Smoke 全通过
+
+- **P1 DuckDB runtime smoke**（独立脚本，隔离 `/tmp/analyst-smoke-*`）: session 创建 ✓ / snapshot 生成 + attach ✓ / createResult + handle 往返 ✓ / preview 截断 ✓ / describe 纯聚合 + top-K ✓ / assertSafeSql 拒绝 DROP/DELETE/多语句 ✓ / closeSession ✓
+- **P2 HTTP smoke**（真实 Prisma + 104 行需求表）: load → rowCount=104 ✓ / describe → 14 字段 ✓ / filter → 100 行 ✓ / run_sql SELECT ✓ / run_sql DELETE reject ✓ / group_aggregate ✓ / top_n ✓ / idea create ✓ / session close ✓
+- **P3+P4+P5 集成 smoke**（end to end）: load+group+generate_chart (4 data points) ✓ / IRR(-1000,300,300,400,500) = 16.64% ✓ / DuPont ROE = 12.5% (NPM 10% × AT 0.5 × EM 2.5) ✓ / MDD(100→120→90→110→85→130) = 29.17% ✓ / data dictionary / propose descriptions / cache list ✓
+
+#### 关键权衡
+
+- **DuckDB 直接作为计算引擎和中间存储**（双用）— 省掉一层协议，相同的引擎既接受复杂 SQL 又持久化中间表供后续工具链引用
+- **Snapshot per-session** (vs per-question) — 多步分析一致性 > 微小新鲜度差；用户显式 refresh 即可打破
+- **物化只走对话**（无"查看更多"按钮） — 统一 UX 避免"按了不知道是不是落地 artifact"的误操作；handle 存在对话历史的 tool_result 中，Agent 自然引用
+- **MCP 工具经 HTTP 代理**（而非直连 DuckDB） — 与 table/idea 工具对称；日志统一；localhost ~2ms 开销可忽略
+- **领域 skill 独立** — prompt 膨胀可控 + 按需加载；合并会让 Agent 每次都看到一堆无关的金融 / 财务工具
+- **计算层纯函数 / 术语层走 prompt** — 金融 skill 之所以能"专业"不是因为 prompt 写了行话，而是 irr/wacc/sharpe 的数值由确定性函数产出
+
+#### P0 用例支持
+
+方案 §16 定义的 P0 用例 1-24 全部由代码路径覆盖（含 HTTP smoke 自动化验证的 13 个 + 人工 playground 可验证的 11 个 LLM 回路用例）。
+
+### fix(idea/canvas): Preview Enter 白屏 + Cmd+Alt+数字标题切换 + Source Tab 缩进 + Taste 空白区反选
+
+（已提交记录留存下方）
+
+---
+
 ## 2026-04-22
 
 ### fix(idea/canvas): Preview Enter 白屏 + Cmd+Alt+数字标题切换 + Source Tab 缩进 + Taste 空白区反选

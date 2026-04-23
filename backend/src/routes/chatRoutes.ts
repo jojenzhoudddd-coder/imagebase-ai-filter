@@ -154,8 +154,18 @@ router.post("/suggestions/refresh", async (req: Request, res: Response) => {
 // GET /api/chat/conversations?workspaceId=xxx
 router.get("/conversations", async (req: Request, res: Response) => {
   const workspaceId = (req.query.workspaceId as string) || "doc_default";
-  const list = await convStore.listConversations(workspaceId);
-  res.json(list);
+  try {
+    const list = await convStore.listConversations(workspaceId);
+    res.json(list);
+  } catch (err) {
+    // Previously threw into Express default handler → bare 500 + empty
+    // sidebar in the UI. Surface the real reason so "lost conversations"
+    // isn't invisible.
+    console.error(`[chatRoutes] list conversations (ws=${workspaceId}) failed:`, err);
+    res.status(500).json({
+      error: `Failed to list conversations: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
 });
 
 // POST /api/chat/conversations
@@ -200,51 +210,79 @@ router.delete("/conversations/:id", async (req: Request, res: Response) => {
 // POST /api/chat/conversations/:id/messages
 // Body: { message: string }
 router.post("/conversations/:id/messages", async (req: Request, res: Response) => {
-  const conv = await convStore.getConversation(req.params.id);
-  if (!conv) {
-    res.status(404).json({ error: "Conversation not found" });
-    return;
-  }
-  const { message } = req.body as { message?: string };
-  if (!message || typeof message !== "string" || !message.trim()) {
-    res.status(400).json({ error: "message is required" });
-    return;
-  }
-
-  setupSse(res);
-
-  const state = getOrCreateTurnState(req.params.id);
-  const ac = resetAbortController(req.params.id);
-
-  // Client disconnect → abort
-  // Detect client disconnect during response streaming. For POST requests
-  // with a body, `req.on("close")` can fire once the body is consumed —
-  // which is immediate for us. `res.on("close")` only fires when the
-  // response connection is actually closed.
-  let responseEnded = false;
-  res.on("close", () => {
-    if (!responseEnded) ac.abort();
-  });
-
-  const ctx: AgentContext = {
-    conversationId: req.params.id,
-    workspaceId: conv.workspaceId,
-    agentId: conv.agentId ?? undefined,
-    pendingConfirmations: state.pendingConfirmations,
-  };
-
+  // Outer guard: anything that throws *before* setupSse reaches this
+  // handler and would otherwise bubble into Express's default 500 with no
+  // body — the FE then only sees "HTTP 500" with no clue. Log the full
+  // error and return a structured JSON body so the chat UI can surface a
+  // real message.
+  let sseStarted = false;
   try {
-    for await (const event of runAgent(ctx, message.trim(), ac.signal)) {
-      writeEvent(res, event);
+    const conv = await convStore.getConversation(req.params.id);
+    if (!conv) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
     }
-  } catch (err) {
-    writeEvent(res, {
-      event: "error",
-      data: { code: "INTERNAL", message: err instanceof Error ? err.message : String(err) },
+    const { message } = req.body as { message?: string };
+    if (!message || typeof message !== "string" || !message.trim()) {
+      res.status(400).json({ error: "message is required" });
+      return;
+    }
+
+    setupSse(res);
+    sseStarted = true;
+
+    const state = getOrCreateTurnState(req.params.id);
+    const ac = resetAbortController(req.params.id);
+
+    // Client disconnect → abort
+    let responseEnded = false;
+    res.on("close", () => {
+      if (!responseEnded) ac.abort();
     });
-  } finally {
-    responseEnded = true;
-    res.end();
+
+    const ctx: AgentContext = {
+      conversationId: req.params.id,
+      workspaceId: conv.workspaceId,
+      agentId: conv.agentId ?? undefined,
+      pendingConfirmations: state.pendingConfirmations,
+    };
+
+    try {
+      for await (const event of runAgent(ctx, message.trim(), ac.signal)) {
+        writeEvent(res, event);
+      }
+    } catch (err) {
+      console.error("[chatRoutes] runAgent threw:", err);
+      writeEvent(res, {
+        event: "error",
+        data: {
+          code: "INTERNAL",
+          message: err instanceof Error ? err.message : String(err),
+        },
+      });
+    } finally {
+      responseEnded = true;
+      res.end();
+    }
+  } catch (outerErr) {
+    const msg = outerErr instanceof Error ? outerErr.message : String(outerErr);
+    console.error("[chatRoutes] outer failure before/during SSE:", outerErr);
+    if (!sseStarted) {
+      // Express will serialize this into a 500 body the FE can parse, so the
+      // user sees the actual reason instead of a bare "HTTP 500".
+      res.status(500).json({ error: `chat request failed: ${msg}` });
+    } else {
+      // SSE already open — try to write a final error event if we still can.
+      try {
+        writeEvent(res, {
+          event: "error",
+          data: { code: "INTERNAL", message: msg },
+        });
+        res.end();
+      } catch {
+        /* response already closed */
+      }
+    }
   }
 });
 
@@ -252,46 +290,61 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
 // POST /api/chat/conversations/:id/confirm
 // Body: { callId: string, confirmed: boolean }
 router.post("/conversations/:id/confirm", async (req: Request, res: Response) => {
-  const conv = await convStore.getConversation(req.params.id);
-  if (!conv) {
-    res.status(404).json({ error: "Conversation not found" });
-    return;
-  }
-  const { callId, confirmed } = req.body as { callId?: string; confirmed?: boolean };
-  if (!callId || typeof confirmed !== "boolean") {
-    res.status(400).json({ error: "callId and confirmed are required" });
-    return;
-  }
-
-  setupSse(res);
-
-  const state = getOrCreateTurnState(req.params.id);
-  const ac = resetAbortController(req.params.id);
-  // See /messages handler for why res.on("close") is preferred over req.on("close").
-  let responseEnded = false;
-  res.on("close", () => {
-    if (!responseEnded) ac.abort();
-  });
-
-  const ctx: AgentContext = {
-    conversationId: req.params.id,
-    workspaceId: conv.workspaceId,
-    agentId: conv.agentId ?? undefined,
-    pendingConfirmations: state.pendingConfirmations,
-  };
-
+  let sseStarted = false;
   try {
-    for await (const event of resumeAfterConfirm(ctx, callId, confirmed, ac.signal)) {
-      writeEvent(res, event);
+    const conv = await convStore.getConversation(req.params.id);
+    if (!conv) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
     }
-  } catch (err) {
-    writeEvent(res, {
-      event: "error",
-      data: { code: "INTERNAL", message: err instanceof Error ? err.message : String(err) },
+    const { callId, confirmed } = req.body as { callId?: string; confirmed?: boolean };
+    if (!callId || typeof confirmed !== "boolean") {
+      res.status(400).json({ error: "callId and confirmed are required" });
+      return;
+    }
+
+    setupSse(res);
+    sseStarted = true;
+
+    const state = getOrCreateTurnState(req.params.id);
+    const ac = resetAbortController(req.params.id);
+    let responseEnded = false;
+    res.on("close", () => {
+      if (!responseEnded) ac.abort();
     });
-  } finally {
-    responseEnded = true;
-    res.end();
+
+    const ctx: AgentContext = {
+      conversationId: req.params.id,
+      workspaceId: conv.workspaceId,
+      agentId: conv.agentId ?? undefined,
+      pendingConfirmations: state.pendingConfirmations,
+    };
+
+    try {
+      for await (const event of resumeAfterConfirm(ctx, callId, confirmed, ac.signal)) {
+        writeEvent(res, event);
+      }
+    } catch (err) {
+      console.error("[chatRoutes] resumeAfterConfirm threw:", err);
+      writeEvent(res, {
+        event: "error",
+        data: { code: "INTERNAL", message: err instanceof Error ? err.message : String(err) },
+      });
+    } finally {
+      responseEnded = true;
+      res.end();
+    }
+  } catch (outerErr) {
+    const msg = outerErr instanceof Error ? outerErr.message : String(outerErr);
+    console.error("[chatRoutes] confirm outer failure:", outerErr);
+    if (!sseStarted) {
+      res.status(500).json({ error: `confirm request failed: ${msg}` });
+    } else {
+      try {
+        writeEvent(res, { event: "error", data: { code: "INTERNAL", message: msg } });
+        res.end();
+      } catch { /* closed */ }
+    }
   }
 });
 
