@@ -1382,3 +1382,127 @@ export async function searchMentions(
   const body = await res.json();
   return body.hits || [];
 }
+
+// ─── Vibe Demo (V1) ───
+export interface DemoBrief {
+  id: string;
+  workspaceId: string;
+  parentId: string | null;
+  order: number;
+  name: string;
+  template: "static" | "react-spa";
+  version: number;
+  lastBuildStatus: "idle" | "building" | "success" | "error" | null;
+  lastBuildAt: string | null;
+  publishSlug: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DemoDetail extends DemoBrief {
+  dataTables: string[];
+  dataIdeas: string[];
+  capabilities: Record<string, string[]>;
+  lastBuildError: string | null;
+  publishedVersion: number | null;
+  files?: Array<{ path: string; size: number; updatedAt: string }>;
+}
+
+export async function listDemos(workspaceId: string): Promise<DemoBrief[]> {
+  const res = await fetch(`${BASE}/demos?workspaceId=${encodeURIComponent(workspaceId)}`);
+  if (!res.ok) throw new Error("Failed to list demos");
+  return res.json();
+}
+
+export async function fetchDemo(demoId: string, includeFiles = true): Promise<DemoDetail> {
+  const res = await fetch(
+    `${BASE}/demos/${encodeURIComponent(demoId)}?includeFiles=${includeFiles}`,
+  );
+  if (!res.ok) throw new Error("Failed to fetch demo");
+  return res.json();
+}
+
+export async function createDemo(
+  workspaceId: string,
+  name: string,
+  template: "static" | "react-spa" = "static"
+): Promise<DemoDetail> {
+  const res = await mutationFetch(`${BASE}/demos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workspaceId, name, template }),
+  });
+  if (!res.ok) throw new Error("Failed to create demo");
+  return res.json();
+}
+
+export async function renameDemo(demoId: string, name: string): Promise<void> {
+  const res = await mutationFetch(`${BASE}/demos/${encodeURIComponent(demoId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Failed to rename demo");
+}
+
+export async function deleteDemo(demoId: string): Promise<void> {
+  const res = await mutationFetch(`${BASE}/demos/${encodeURIComponent(demoId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete demo");
+}
+
+export async function buildDemo(demoId: string): Promise<{
+  ok: boolean;
+  durationMs: number;
+  sizeBytes?: number;
+  fileCount?: number;
+  logTail?: string;
+  error?: string;
+}> {
+  const res = await mutationFetch(`${BASE}/demos/${encodeURIComponent(demoId)}/build`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error("Failed to build demo");
+  return res.json();
+}
+
+export async function publishDemo(demoId: string): Promise<{
+  ok: true;
+  demoId: string;
+  slug: string;
+  publishedVersion: number;
+  publishedAt: string;
+  url: string;
+}> {
+  const res = await mutationFetch(`${BASE}/demos/${encodeURIComponent(demoId)}/publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error((e as any).error || "Failed to publish demo");
+  }
+  return res.json();
+}
+
+export async function unpublishDemo(demoId: string): Promise<void> {
+  const res = await mutationFetch(`${BASE}/demos/${encodeURIComponent(demoId)}/unpublish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error("Failed to unpublish demo");
+}
+
+/** Export Demo source as zip. Returns blob URL. Caller must revoke. */
+export async function exportDemoZip(demoId: string): Promise<string> {
+  const res = await fetch(`${BASE}/demos/${encodeURIComponent(demoId)}/export`);
+  if (!res.ok) throw new Error("Failed to export demo");
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}

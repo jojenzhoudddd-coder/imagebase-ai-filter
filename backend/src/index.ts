@@ -15,6 +15,9 @@ import ideaRoutes from "./routes/ideaRoutes.js";
 import mentionRoutes from "./routes/mentionRoutes.js";
 import mentionReverseRoutes from "./routes/mentionReverseRoutes.js";
 import analystRoutes from "./routes/analystRoutes.js";
+import demoRoutes from "./routes/demoRoutes.js";
+import demoRuntimeRoutes from "./routes/demoRuntimeRoutes.js";
+import publicDemoRoutes from "./routes/publicDemoRoutes.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
@@ -99,6 +102,13 @@ app.use("/api/workspaces", mentionRoutes);
 app.use("/api/mentions", mentionReverseRoutes);
 // Analyst P1 — DuckDB-backed analysis routes. See docs/analyst-skill-plan.md.
 app.use("/api/analyst", analystRoutes);
+// Vibe Demo V1 — see docs/vibe-demo-plan.md.
+// /api/demos/*             owner-facing CRUD + file ops + build + publish
+// /api/demo-runtime/*      runtime SDK endpoints (capability-gated, 7+2 handlers)
+// /share/:slug/*           public anonymous serve of published snapshots
+app.use("/api/demos", demoRoutes);
+app.use("/api/demo-runtime", demoRuntimeRoutes);
+app.use("/share", publicDemoRoutes);
 
 // Serve uploaded SVG files
 app.use("/uploads", express.static(path.resolve(__dirname, "../../uploads")));

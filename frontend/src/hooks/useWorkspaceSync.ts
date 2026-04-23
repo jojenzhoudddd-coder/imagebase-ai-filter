@@ -9,6 +9,12 @@ export interface WorkspaceSyncHandlers {
   onIdeaDelete?: (ideaId: string) => void;
   onIdeaRename?: (ideaId: string, name: string) => void;
   onIdeaReorder?: (updates: Array<{ id: string; order: number }>) => void;
+  // Vibe Demo V1 — demo artifact events
+  onDemoCreate?: (demo: { id: string; name: string; parentId: string | null; order: number }) => void;
+  onDemoDelete?: (demoId: string) => void;
+  onDemoRename?: (demoId: string, name: string) => void;
+  onDemoPublish?: (demoId: string, slug: string) => void;
+  onDemoUnpublish?: (demoId: string) => void;
 }
 
 export function useWorkspaceSync(
@@ -79,6 +85,21 @@ export function useWorkspaceSync(
             break;
           case "idea:reorder":
             h.onIdeaReorder?.(p.updates);
+            break;
+          case "demo:create":
+            h.onDemoCreate?.(p.demo);
+            break;
+          case "demo:delete":
+            h.onDemoDelete?.(p.demoId);
+            break;
+          case "demo:rename":
+            h.onDemoRename?.(p.demoId, p.name);
+            break;
+          case "demo:publish":
+            h.onDemoPublish?.(p.demoId, p.slug);
+            break;
+          case "demo:unpublish":
+            h.onDemoUnpublish?.(p.demoId);
             break;
         }
       } catch (err) {

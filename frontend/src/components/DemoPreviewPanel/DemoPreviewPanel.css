@@ -1,0 +1,263 @@
+/* Vibe Demo V1 — preview panel styles */
+
+.demo-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #F7F8FA;
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+.demo-panel-loading,
+.demo-panel-error {
+  padding: 40px;
+  color: #646A73;
+  text-align: center;
+}
+
+.demo-panel-error { color: #F54A45; }
+
+/* ── Toolbar ───────────────────────────────────────────────────────── */
+.demo-panel-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid #EEF0F3;
+}
+
+.demo-panel-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.demo-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1F2329;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.demo-panel-badge {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  font-size: 10px;
+  color: #fff;
+  border-radius: 4px;
+  letter-spacing: 0.2px;
+}
+.demo-panel-badge-static      { background: #8F959E; }
+.demo-panel-badge-react-spa   { background: #1456F0; }
+
+.demo-panel-build-status {
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.demo-panel-build-success { color: #17B26A; background: #E6F7EE; }
+.demo-panel-build-error   { color: #F54A45; background: #FDECEC; }
+.demo-panel-build-building { color: #1456F0; background: #E8EFFE; }
+.demo-panel-build-idle     { color: #8F959E; }
+
+.demo-panel-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.demo-panel-btn {
+  flex: 0 0 auto;
+  padding: 5px 14px;
+  background: #F2F3F5;
+  border: 1px solid #DEE0E3;
+  border-radius: 4px;
+  color: #1F2329;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 120ms ease;
+}
+.demo-panel-btn:hover:not(:disabled) {
+  background: #E8EAED;
+}
+.demo-panel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.demo-panel-btn-publish {
+  background: #1456F0;
+  border-color: #1456F0;
+  color: #fff;
+}
+.demo-panel-btn-publish:hover:not(:disabled) {
+  background: #0E44C7;
+}
+
+.demo-panel-btn-unpublish {
+  background: #fff;
+  border-color: #F54A45;
+  color: #F54A45;
+}
+.demo-panel-btn-unpublish:hover:not(:disabled) {
+  background: #FDECEC;
+}
+
+/* ── Public URL ───────────────────────────────────────────────────── */
+.demo-panel-public-url {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 20px;
+  background: #E8EFFE;
+  border-bottom: 1px solid #D0DEF8;
+  font-size: 12px;
+}
+.demo-panel-public-url-label {
+  color: #1456F0;
+  font-weight: 500;
+}
+.demo-panel-public-url a {
+  color: #1456F0;
+  text-decoration: none;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 11px;
+}
+.demo-panel-public-url a:hover { text-decoration: underline; }
+.demo-panel-copy-btn {
+  margin-left: auto;
+  padding: 2px 10px;
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid #1456F0;
+  color: #1456F0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.demo-panel-copy-btn:hover { background: #1456F0; color: #fff; }
+
+/* ── Error banner ──────────────────────────────────────────────────── */
+.demo-panel-error-banner {
+  padding: 8px 20px;
+  background: #FDECEC;
+  color: #F54A45;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.demo-panel-error-close { font-size: 16px; opacity: 0.6; }
+
+/* ── Body ─────────────────────────────────────────────────────────── */
+.demo-panel-body {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  overflow: hidden;
+}
+
+.demo-panel-iframe {
+  flex: 1 1 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+}
+
+.demo-panel-build-failed,
+.demo-panel-empty {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #646A73;
+  text-align: center;
+}
+.demo-panel-build-failed h3,
+.demo-panel-empty h3 {
+  margin: 0 0 12px;
+  color: #1F2329;
+  font-size: 18px;
+  font-weight: 500;
+}
+.demo-panel-build-failed pre {
+  max-width: 600px;
+  margin: 12px 0;
+  padding: 12px 16px;
+  background: #1F2329;
+  color: #FF9D9A;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 11px;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-radius: 6px;
+  max-height: 300px;
+  overflow: auto;
+}
+.demo-panel-hint {
+  color: #8F959E;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* ── File tree sidebar ───────────────────────────────────────────── */
+.demo-panel-files {
+  flex: 0 0 auto;
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  background: #fff;
+  border: 1px solid #DEE0E3;
+  border-radius: 6px;
+  padding: 10px 12px;
+  box-shadow: 0 4px 12px rgba(31, 35, 41, 0.06);
+  max-width: 320px;
+}
+.demo-panel-files h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: #8F959E;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.demo-panel-files ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  font-family: "SF Mono", ui-monospace, monospace;
+}
+.demo-panel-files li {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  gap: 12px;
+}
+.demo-panel-file-path {
+  color: #1F2329;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+.demo-panel-file-size {
+  color: #8F959E;
+  flex: 0 0 auto;
+}

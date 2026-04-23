@@ -177,7 +177,7 @@ export interface View {
 
 export type AIGenerateStatus = "idle" | "generating" | "done" | "error";
 
-export type TreeItemType = "table" | "folder" | "design" | "album" | "idea";
+export type TreeItemType = "table" | "folder" | "design" | "album" | "idea" | "demo";
 
 // ─── Idea（Markdown 文档 artifact） ───
 export interface IdeaBrief {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import ViewTabs from "./components/ViewTabs";
@@ -9,12 +10,13 @@ import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import { AddFieldPopover, useFieldSuggestions } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, createRecord, renameTable, fetchWorkspace, renameWorkspace, fetchWorkspaceTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, reorderIdeas, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchWorkspaceTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign, createIdea as apiCreateIdea, renameIdea as apiRenameIdea, deleteIdea as apiDeleteIdea, fetchIncomingMentions } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, createRecord, renameTable, fetchWorkspace, renameWorkspace, fetchWorkspaceTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, reorderIdeas, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchWorkspaceTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign, createIdea as apiCreateIdea, renameIdea as apiRenameIdea, deleteIdea as apiDeleteIdea, fetchIncomingMentions, listDemos } from "./api";
 import type { GeneratedField, FolderBrief, DesignBrief, IncomingMentionRef } from "./api";
 import type { SidebarItem } from "./components/Sidebar";
 import type { TreeItemType, IdeaBrief, FocusEntity } from "./types";
 import SvgCanvas from "./components/SvgCanvas/index";
 import IdeaEditor from "./components/IdeaEditor/index";
+import DemoPreviewPanel from "./components/DemoPreviewPanel/index";
 import { useToast } from "./components/Toast/index";
 import { useTranslation } from "./i18n/index";
 import ConfirmDialog, { ConfirmReference } from "./components/ConfirmDialog/index";
@@ -53,6 +55,16 @@ export default function App() {
   const [documentFolders, setDocumentFolders] = useState<FolderBrief[]>([]);
   const [documentDesigns, setDocumentDesigns] = useState<DesignBrief[]>([]);
   const [documentIdeas, setDocumentIdeas] = useState<IdeaBrief[]>([]);
+  // Vibe Demo V1 — sidebar entries for Demo artifacts (loaded alongside the
+  // other artifact types). Demo detail is fetched on-demand inside
+  // DemoPreviewPanel, so here we only track {id, name, order, parentId}.
+  const [documentDemos, setDocumentDemos] = useState<Array<{
+    id: string;
+    name: string;
+    order: number;
+    parentId: string | null;
+    publishSlug: string | null;
+  }>>([]);
   /* When the user clicks a @mention chip inside an idea, we park the entity
    * here so the destination view (TableView / SvgCanvas) can highlight the
    * field / record / taste on its next render. Cleared by the view after it
@@ -63,6 +75,69 @@ export default function App() {
    * normal auto-scroll doesn't apply). Cleared on next user-driven change. */
   const [scrollToItemId, setScrollToItemId] = useState<string | null>(null);
   const [activeItemType, setActiveItemType] = useState<TreeItemType>("table");
+
+  // ── URL ↔ state sync (Vibe Demo V1) ────────────────────────────────────
+  //
+  // Routes we handle (declared in main.tsx):
+  //   /workspace/:workspaceId
+  //   /workspace/:workspaceId/:artifactType/:artifactId
+  //
+  // One-way flow: URL → state. When the URL changes (user typed, back/forward,
+  // or navigate() called elsewhere), reflect it into activeTableId +
+  // activeItemType. The setter callsites that do `setActiveTableId(...) +
+  // setActiveItemType(...)` additionally call navigateToArtifact() to push
+  // the change back to the URL — see navigateToArtifact() below.
+  const navigate = useNavigate();
+  const urlParams = useParams<{ workspaceId?: string; artifactType?: string; artifactId?: string }>();
+  useEffect(() => {
+    const { artifactType, artifactId } = urlParams;
+    if (!artifactType || !artifactId) return;
+    // Map URL artifactType → TreeItemType (they're mostly the same)
+    const mapped: TreeItemType | null =
+      artifactType === "table" ? "table"
+      : artifactType === "idea" ? "idea"
+      : artifactType === "design" ? "design"
+      : artifactType === "demo" ? "demo"
+      : null;
+    if (!mapped) return;
+    if (activeTableId !== artifactId) setActiveTableId(artifactId);
+    if (activeItemType !== mapped) setActiveItemType(mapped);
+  }, [urlParams.artifactType, urlParams.artifactId]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Push state-driven changes back to the URL. Used everywhere that was
+  // previously calling `setActiveTableId + setActiveItemType` as a pair.
+  const navigateToArtifact = useCallback(
+    (type: TreeItemType, id: string) => {
+      const ws = urlParams.workspaceId || "doc_default";
+      const urlType =
+        type === "table" ? "table"
+        : type === "idea" ? "idea"
+        : type === "design" ? "design"
+        : type === "demo" ? "demo"
+        : null;
+      if (!urlType) return;
+      navigate(`/workspace/${ws}/${urlType}/${id}`);
+    },
+    [navigate, urlParams.workspaceId],
+  );
+
+  // Keep URL in sync with state changes from existing setState callsites.
+  // The effect is guarded: it only pushes history when the URL params don't
+  // already match (otherwise the URL→state effect above would re-fire
+  // infinitely).
+  useEffect(() => {
+    const { artifactType: urlType, artifactId: urlId } = urlParams;
+    const mapped: TreeItemType | null =
+      urlType === "table" ? "table"
+      : urlType === "idea" ? "idea"
+      : urlType === "design" ? "design"
+      : urlType === "demo" ? "demo"
+      : null;
+    if (mapped === activeItemType && urlId === activeTableId) return;
+    if (!["table", "idea", "design", "demo"].includes(activeItemType)) return;
+    navigateToArtifact(activeItemType, activeTableId);
+  }, [activeTableId, activeItemType, urlParams.artifactType, urlParams.artifactId, navigateToArtifact, urlParams]);
+
   const SIDEBAR_NAMES_KEY = "sidebar_item_names";
   const [sidebarNames, setSidebarNames] = useState<Record<string, string>>(() => {
     try {
@@ -277,6 +352,21 @@ export default function App() {
       setDocumentFolders(treeData.folders);
       setDocumentDesigns((treeData.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
       setDocumentIdeas((treeData.ideas || []).map(i => ({ ...i, parentId: i.parentId ?? null })));
+      // Vibe Demo V1 — fetched separately (not part of /tree endpoint yet).
+      // If the call fails it's non-fatal: an empty sidebar section is fine.
+      listDemos(WORKSPACE_ID)
+        .then((demos) =>
+          setDocumentDemos(
+            demos.map((d) => ({
+              id: d.id,
+              name: d.name,
+              order: d.order,
+              parentId: d.parentId ?? null,
+              publishSlug: d.publishSlug ?? null,
+            })),
+          ),
+        )
+        .catch(() => { /* sidebar demos stay empty */ });
       if (doc) setDocumentName(doc.name);
 
       // Determine which table to activate
@@ -1085,12 +1175,22 @@ export default function App() {
       order: i.order,
       parentId: i.parentId,
     }));
+    // Vibe Demo V1 — 4th artifact type in sidebar. A tiny "已发布" affix is
+    // appended to the display name so users can spot shared demos at a glance.
+    const demoItems: SidebarItem[] = documentDemos.map(d => ({
+      id: d.id,
+      type: "demo" as const,
+      displayName: d.publishSlug ? `${d.name} · 🌐` : d.name,
+      active: d.id === activeTableId && activeItemType === "demo",
+      order: d.order,
+      parentId: d.parentId,
+    }));
     const staticItems: SidebarItem[] = [
       { id: "dashboard", type: "static" as const, displayName: sidebarNames.dashboard ?? t("sidebar.dashboard"), active: false, order: Infinity },
       { id: "workflow", type: "static" as const, displayName: sidebarNames.workflow ?? t("sidebar.workflow"), active: false, order: Infinity },
     ];
-    return [...folderItems, ...tableItems, ...designItems, ...ideaItems, ...staticItems];
-  }, [documentTables, documentFolders, documentDesigns, documentIdeas, activeTableId, activeItemType, tableName, sidebarNames, t]);
+    return [...folderItems, ...tableItems, ...designItems, ...ideaItems, ...demoItems, ...staticItems];
+  }, [documentTables, documentFolders, documentDesigns, documentIdeas, documentDemos, activeTableId, activeItemType, tableName, sidebarNames, t]);
 
   // ── Table switching ──
   const switchTable = useCallback(async (tableId: string) => {
@@ -1407,7 +1507,7 @@ export default function App() {
     }
   }, [toast, t]);
 
-  // ── Select item (table, design, or idea) ──
+  // ── Select item (table, design, idea, or demo) ──
   const handleSelectItem = useCallback((id: string, type?: TreeItemType) => {
     if (type === "design") {
       setActiveTableId(id);
@@ -1416,6 +1516,10 @@ export default function App() {
     } else if (type === "idea") {
       setActiveTableId(id);
       setActiveItemType("idea");
+      setFocusEntity(null);
+    } else if (type === "demo") {
+      setActiveTableId(id);
+      setActiveItemType("demo");
       setFocusEntity(null);
     } else if (type === "folder") {
       // Folders are not selectable as content
@@ -1580,6 +1684,25 @@ export default function App() {
                     .sort((a, b) => a.order - b.order);
       });
     }, []),
+    onDemoCreate: useCallback((demo: { id: string; name: string; parentId: string | null; order: number }) => {
+      setDocumentDemos((prev) =>
+        prev.some((d) => d.id === demo.id)
+          ? prev
+          : [...prev, { ...demo, publishSlug: null }].sort((a, b) => a.order - b.order),
+      );
+    }, []),
+    onDemoDelete: useCallback((demoId: string) => {
+      setDocumentDemos((prev) => prev.filter((d) => d.id !== demoId));
+    }, []),
+    onDemoRename: useCallback((demoId: string, name: string) => {
+      setDocumentDemos((prev) => prev.map((d) => (d.id === demoId ? { ...d, name } : d)));
+    }, []),
+    onDemoPublish: useCallback((demoId: string, slug: string) => {
+      setDocumentDemos((prev) => prev.map((d) => (d.id === demoId ? { ...d, publishSlug: slug } : d)));
+    }, []),
+    onDemoUnpublish: useCallback((demoId: string) => {
+      setDocumentDemos((prev) => prev.map((d) => (d.id === demoId ? { ...d, publishSlug: null } : d)));
+    }, []),
   });
 
   useTableSync(activeTableId, CLIENT_ID, {
@@ -1672,7 +1795,19 @@ export default function App() {
               />
             );
           })()}
-          {activeItemType !== "design" && activeItemType !== "idea" && (
+          {/* Vibe Demo preview — shown when a demo artifact is active */}
+          {activeItemType === "demo" && (() => {
+            const demo = documentDemos.find((x) => x.id === activeTableId);
+            if (!demo) return null;
+            return (
+              <DemoPreviewPanel
+                key={activeTableId}
+                demoId={activeTableId}
+                workspaceId={WORKSPACE_ID}
+              />
+            );
+          })()}
+          {activeItemType !== "design" && activeItemType !== "idea" && activeItemType !== "demo" && (
           <>
           <ViewTabs
             views={views}

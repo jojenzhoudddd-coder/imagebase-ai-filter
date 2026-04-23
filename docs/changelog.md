@@ -5,6 +5,103 @@
 
 ---
 
+## 2026-04-23 (下午)
+
+### feat(vibe-demo): Vibe Design + Vibe Coding 全链路 V1
+
+**分支**: `BeyondBase` · **commits**: 待提交
+
+第四类 workspace artifact **Demo** 上线。用户用自然语言描述需求，Agent 通过 demo-skill /
+vibe-design-skill / vibe-coding-skill 生成可运行前端代码，esbuild 编译，iframe 预览，
+点"发布"生成独立 URL (`/share/:slug`) 供任何人匿名访问。见 `docs/vibe-demo-plan.md`。
+
+#### 基建改造
+
+- **统一 ID 格式**：新建 `services/idGenerator.ts`，所有新实体用 `<前缀>+12位数字`
+  （tb / ts / dg / dm / ide / ws / cv / ag / rc / fd / vw）。存量 cuid / prefixed 兼容。
+  V1 范围只切了 Demo 的 id，其他 artifact 的切换放 V2+。
+- **URL 路由全改造**（React Router 6 引入）：所有 artifact 现在有独立可读链接——
+  - `/workspace/:wsId/table/:id` / `/idea/:id` / `/design/:id` / `/demo/:id` / `/conversation/:id`
+  - `/share/:slug`（公开已发布 Demo）
+  - `App.tsx` 有双向 URL↔state sync：`useParams` 驱动 `activeTableId + activeItemType`，
+    反过来 `navigateToArtifact` 把 setState 调用同步到 history。浏览器前进/后退 / 刷新
+    不丢选中 / 复制 URL 分享到同事直达。
+
+#### Vibe Demo 核心
+
+- **Prisma `Demo` 模型**：`dataTables[]` / `dataIdeas[]` 声明 + `capabilities` JSON 白名单
+  + `publishSlug` / `publishedVersion`。文件不进 DB，全部放 `~/.imagebase/demos/<id>/`。
+- **`~/.imagebase/demos/<id>/`**：`files/` 源码 + `dist/` 构建产物 + `published/<N>/` 快照。
+- **esbuild build pipeline**：两模板（`static` / `react-spa`）。React + Tailwind 不打包，
+  走 esm.sh + Tailwind CDN（每个 Demo 不单独 bundle 150KB React）。30s 超时 + per-demo lock。
+- **`/api/demo-runtime/:demoId/*` runtime namespace**：**架构级切分** — 只有 7 个 Table
+  记录级 handler + 2 个 Idea 只读 handler。schema 操作 / 跨表枚举 / 跨 workspace 操作
+  压根没 handler → 404，不是 403。每个 handler 走 `demoCapabilityGuard` 做双层校验
+  （resource 在声明列表 + op 在 capability 白名单 + 资源的 workspaceId 等于 demo 的 workspaceId）。
+- **`window.ImageBase` SDK 动态生成**：根据 Demo 的 capabilities 生成 JS，未声明的方法
+  **不存在于对象上**（devtools 也调不到）。注入到 dist/index.html 的 `<head>`。
+- **滑动窗口限流**：per (demoId, IP, opFamily)，读 200/min + 100k/day，写 30/min + 10k/day，
+  429 带 Retry-After。
+- **发布快照**：`POST /api/demos/:id/publish` 复制 dist → `published/<N>/`，生成 12 位
+  base62 slug（ID 是 12 位纯数字专注可读性；slug 用 base62 扩大 entropy 到 71 位抗枚举）。
+  二次确认弹窗列出每张表 / 每份 Idea 暴露的能力清单。
+- **`/share/:slug` 公开访问**：匿名无登录，`X-Robots-Tag: noindex` + 5min cache + CSP
+  `connect-src 'self'` 防数据外流。
+
+#### MCP 工具 + skills
+
+- `demoNavTools` (Tier 1，2 个)：list_demos / get_demo
+- `demoWriteTools` (Tier 2，11 个)：create_demo / rename_demo / delete_demo⚠️ /
+  list_demo_files / read_demo_file / write_demo_file / delete_demo_file⚠️ /
+  update_demo_capabilities / build_demo / publish_demo⚠️ / unpublish_demo
+- **三个新 skill**：
+  - `demo-skill`：底层工具 + 模板 / SDK / build retry prompt
+  - `vibe-design-skill`：吸纳 Anthropic 官方 `frontend-design` SKILL 的五大着力点（字体 /
+    色彩 / 动效 / 空间 / 背景）+ 反例清单（禁 Inter 禁紫白渐变禁九宫格）+ **阶段化工作流**
+    （先提 3-4 方向 → 用户选 → 产 design token → 明确"交给 coding 实现"）
+  - `vibe-coding-skill`：React+TS+Tailwind 栈规范 + CRUD 模式 + **阶段等待**（同时激活时
+    等 design 定稿；独立激活时走中性视觉）
+- 路由矩阵：
+  - "给我搭一个 CRM" → 仅 coding
+  - "做个漂亮的 CRM" → design + coding（顺序）
+  - "做个好看的落地页" → 仅 design（纯视觉无交互）
+  - "基于产品调研做个 HTML 报告" → 可能两者都激活
+
+#### 前端 UI
+
+- `DemoPreviewPanel` 组件：iframe + 顶栏（构建 / 发布 / 导出 zip）+ 文件列表侧栏 +
+  公开 URL 展示 + SSE 订阅 `demo:build-status` 自动刷新 iframe
+- 侧栏新增 demo 类型 artifact 条目（已发布的加 🌐 标记）
+- `useWorkspaceSync` 扩展 `demo:create / delete / rename / publish / unpublish` 五个事件
+
+#### 安全硬约束
+
+- iframe `sandbox="allow-scripts allow-forms allow-popups"`，**不加** `allow-same-origin`
+- CSP：`connect-src 'self'`（Demo 里任何 fetch 只能回本站）；`script-src` 白名单
+  esm.sh + tailwindcss.com
+- slug 12 位 base62 = 62^12 ≈ 3×10^21，抗枚举
+- 发布确认弹窗明确列出能力清单 + "此 URL 无需登录"
+
+#### 验证
+
+- 后端 P0 smoke（`backend/src/scripts/demo-v1-smoke.ts`）**17/17 全通过**：
+  create / write / capabilities / build / preview / SDK / 已声明 query 200 /
+  **未声明 query 403** / 已声明 createRecord 201 / **未声明 deleteRecord 403** /
+  **schema 操作 404** / publish / `/share/:slug` 200 / unpublish / `/share/:slug` 404 / delete
+- 回归测试：Analyst P2 smoke 10/10 全通过，URL 改造未破坏既有功能
+
+#### V2+ 延后项（已写在 plan 里）
+
+- ChatCodingFlowCard 多步可视化（V1 用现有 ProgressStrip 足够）
+- 构建失败自动 retry loop（V1 靠 prompt 引导 Agent 自修）
+- 文件树可编辑 + 代码 Shiki 高亮查看
+- per-field 权限（V1 per-table 粒度）
+- 自定义域名 + 使用统计
+- Idea SDK 写入能力（V1 只读）
+- 外部 script 白名单严格检查
+
+---
+
 ## 2026-04-23
 
 ### feat(analyst): 引入 Analyst Skill —— DuckDB 驱动的 AI 问数全链路 (P1-P5)

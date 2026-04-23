@@ -33,6 +33,7 @@ import { mentionTools } from "./mentionTools.js";
 import { designNavTools } from "./designTools.js";
 import { tasteNavTools } from "./tasteTools.js";
 import { dictionaryTools } from "./dictionaryTools.js";
+import { demoNavTools } from "./demoTools.js";
 import { allSkills, skillsByName } from "../skills/index.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
@@ -66,6 +67,9 @@ const TIER1_NAMES = new Set([
   // Analyst P1 additions (always-on — semantic map + snapshot awareness)
   "get_data_dictionary",
   "list_snapshots",
+  // Vibe Demo V1 nav
+  "list_demos",
+  "get_demo",
 ]);
 
 /** Tier 0 — identity + memory + skill routing + cron. Always loaded. */
@@ -84,6 +88,7 @@ export const tier1Tools: ToolDefinition[] = [
   ...tasteNavTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...mentionTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...dictionaryTools.filter((t) => TIER1_NAMES.has(t.name)),
+  ...demoNavTools.filter((t) => TIER1_NAMES.has(t.name)),
 ];
 
 /**

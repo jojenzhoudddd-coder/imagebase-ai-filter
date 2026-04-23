@@ -88,6 +88,7 @@ model Workspace {
   folders   Folder[]
   designs   Design[]
   ideas     Idea[]
+  demos     Demo[]
 
   @@index([orgId])
   @@map("workspaces")
@@ -177,7 +178,7 @@ model Conversation {
 model Message {
   id             String   @id @default(cuid())
   conversationId String
-  role           String   // "user" | "assistant" | "tool"
+  role           String // "user" | "assistant" | "tool"
   content        String
   thinking       String?
   toolCalls      Json?
@@ -215,25 +216,25 @@ model Design {
 // ─── Taste（设计资源，通过 designId 关联，如 Record 之于 Table） ───
 
 model Taste {
-  id               String    @id @default(cuid())
-  designId         String
-  name             String
-  fileName         String
-  filePath         String?
-  x                Float     @default(0)
-  y                Float     @default(0)
-  width            Float     @default(200)
-  height           Float     @default(200)
-  order            Int       @default(0)
-  source           String    @default("upload")
-  figmaUrl         String?
+  id              String    @id @default(cuid())
+  designId        String
+  name            String
+  fileName        String
+  filePath        String?
+  x               Float     @default(0)
+  y               Float     @default(0)
+  width           Float     @default(200)
+  height          Float     @default(200)
+  order           Int       @default(0)
+  source          String    @default("upload")
+  figmaUrl        String?
   // Taste × Chatbot (Phase 1): 设计风格结构化 meta。null 表示未生成；
   // svgHash 作为缓存失效 key，SVG 内容变更后 regenerate 会重算。
-  meta             Json?
-  metaGeneratedAt  DateTime?
-  svgHash          String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  meta            Json?
+  metaGeneratedAt DateTime?
+  svgHash         String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   design Design @relation(fields: [designId], references: [id], onDelete: Cascade)
 
@@ -275,23 +276,63 @@ model Idea {
 // 软处理——把孤儿 Mention 行留在表里（sourceId 仍有效，指向新"坏链"），下一次 source 保存
 // 时 diff 会把坏链自动清掉；或者管理端批清。不做 DB 级 CASCADE 以避免 Idea→Mention→Idea 环。
 model Mention {
-  id             String   @id @default(cuid())
-  workspaceId    String
+  id          String @id @default(cuid())
+  workspaceId String
 
-  sourceType     String   // 目前只有 "idea"；预留 "table-record" 等扩展
-  sourceId       String
+  sourceType String // 目前只有 "idea"；预留 "table-record" 等扩展
+  sourceId   String
 
-  targetType     String   // "view" | "taste" | "idea" | "idea-section"
-  targetId       String   // idea-section 用 "<ideaId>#<slug>" 组合键
+  targetType String // "view" | "taste" | "idea" | "idea-section"
+  targetId   String // idea-section 用 "<ideaId>#<slug>" 组合键
 
-  rawLabel       String   // Agent / 用户写进 Markdown 的可视文本（[@label] 里的 label）
-  contextExcerpt String?  // 前后各 80 字符，给反向面板提供预览
+  rawLabel       String // Agent / 用户写进 Markdown 的可视文本（[@label] 里的 label）
+  contextExcerpt String? // 前后各 80 字符，给反向面板提供预览
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 
   // 反向查询："某个 target 被谁引用了"——mention 二次确认卡片直接用这个
   @@index([workspaceId, targetType, targetId])
   // 正向清理："某个 source 的所有外链"——diff 重建时 deleteMany where sourceType/sourceId
   @@index([sourceType, sourceId])
   @@map("mentions")
+}
+
+// ─── Demo（Vibe design + Vibe coding 的产物，可运行的前端代码 artifact） ───
+// - id 使用应用侧生成的格式（见 services/idGenerator.ts），非 cuid
+// - 文件内容不进 DB：全部落在 ~/.imagebase/demos/<id>/files|dist|published/
+// - capabilities 是 JSON 白名单；per-resource 粒度，发布后前端 SDK 按此动态裁剪
+// - publishSlug 一旦生成不复用；unpublish 清空后重发布会拿新 slug
+model Demo {
+  id          String  @id // 应用侧生成 "dm" + 12 位数字
+  workspaceId String
+  parentId    String? // 未来支持 sidebar 层级；V1 默认 null
+  order       Int     @default(0)
+
+  name     String
+  template String @default("static") // "static" | "react-spa"
+  version  Int    @default(0) // 源码版本，每次文件写入 ++
+
+  // 数据访问声明 —— 发布时权限的唯一来源
+  dataTables   String[] @default([]) // 声明可访问的 tableId 列表
+  dataIdeas    String[] @default([]) // 声明可访问的 ideaId 列表（只读）
+  capabilities Json     @default("{}") // { resourceId: Capability[] }
+
+  // 构建状态
+  lastBuildAt     DateTime?
+  lastBuildStatus String? // "idle" | "building" | "success" | "error"
+  lastBuildError  String?
+
+  // 发布状态
+  publishSlug      String?   @unique
+  publishedVersion Int?
+  publishedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([publishSlug])
+  @@map("demos")
 }

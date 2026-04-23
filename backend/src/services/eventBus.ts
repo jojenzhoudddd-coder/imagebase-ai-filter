@@ -30,7 +30,10 @@ export interface WorkspaceChangeEvent {
     | "item:move"
     | "design:create" | "design:rename" | "design:delete" | "design:reorder" | "design:auto-layout"
     | "taste:create" | "taste:update" | "taste:delete" | "taste:meta-updated"
-    | "idea:create" | "idea:rename" | "idea:delete" | "idea:reorder";
+    | "idea:create" | "idea:rename" | "idea:delete" | "idea:reorder"
+    | "demo:create" | "demo:rename" | "demo:delete" | "demo:reorder"
+    | "demo:file-update" | "demo:build-status"
+    | "demo:publish" | "demo:unpublish";
   workspaceId: string;
   clientId: string;
   timestamp: number;

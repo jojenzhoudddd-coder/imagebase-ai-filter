@@ -20,6 +20,9 @@ import { analystSkill } from "./analystSkill.js";
 import { internetAnalystSkill } from "./internetAnalystSkill.js";
 import { accountingAnalystSkill } from "./accountingAnalystSkill.js";
 import { financeAnalystSkill } from "./financeAnalystSkill.js";
+import { demoSkill } from "./demoSkill.js";
+import { vibeDesignSkill } from "./vibeDesignSkill.js";
+import { vibeCodingSkill } from "./vibeCodingSkill.js";
 import type { SkillDefinition } from "./types.js";
 
 export const allSkills: SkillDefinition[] = [
@@ -30,6 +33,9 @@ export const allSkills: SkillDefinition[] = [
   internetAnalystSkill,
   accountingAnalystSkill,
   financeAnalystSkill,
+  demoSkill,
+  vibeDesignSkill,
+  vibeCodingSkill,
 ];
 
 export const skillsByName: Record<string, SkillDefinition> = Object.fromEntries(
