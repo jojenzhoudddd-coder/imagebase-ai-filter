@@ -669,11 +669,26 @@
   margin: 2px 0 4px;
   padding-left: 20px;
 }
+/* Explicit list-style so nested UL changes glyph (• → ◦ → ▪), and OL
+ * cycles decimal → lower-alpha → lower-roman. Some CSS resets earlier in
+ * the cascade can strip these, so pin them here. */
+.chat-msg-assistant-md ul { list-style-type: disc; }
+.chat-msg-assistant-md ul ul { list-style-type: circle; }
+.chat-msg-assistant-md ul ul ul { list-style-type: square; }
+.chat-msg-assistant-md ol { list-style-type: decimal; }
+.chat-msg-assistant-md ol ol { list-style-type: lower-alpha; }
+.chat-msg-assistant-md ol ol ol { list-style-type: lower-roman; }
 .chat-msg-assistant-md li { margin: 1px 0; }
 .chat-msg-assistant-md li > p { margin: 0; }
+/* Nested list gets a touch more vertical separation from its parent line
+ * so the hierarchy reads — 1px + 20px indent was mushing levels together. */
 .chat-msg-assistant-md li > ul,
 .chat-msg-assistant-md li > ol {
-  margin: 1px 0;
+  margin: 2px 0 2px;
+  padding-left: 18px;
+}
+.chat-msg-assistant-md li::marker {
+  color: #8F959E;
 }
 .chat-msg-assistant-md code {
   background: #F2F3F5;
