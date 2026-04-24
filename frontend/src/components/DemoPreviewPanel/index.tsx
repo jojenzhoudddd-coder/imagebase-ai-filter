@@ -14,6 +14,7 @@ import InlineEdit from "../InlineEdit";
 import ConfirmDialog from "../ConfirmDialog/index";
 import { useTranslation } from "../../i18n/index";
 import {
+  CLIENT_ID,
   fetchDemo,
   buildDemo,
   publishDemo,
@@ -159,7 +160,9 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
 
   // SSE: refresh on build/publish and reload iframe after successful build.
   useEffect(() => {
-    const es = new EventSource(`/api/sync/workspaces/${encodeURIComponent(workspaceId)}/events`);
+    const es = new EventSource(
+      `/api/sync/workspaces/${encodeURIComponent(workspaceId)}/events?clientId=${encodeURIComponent(CLIENT_ID)}`,
+    );
     const refetch = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data);

@@ -321,7 +321,8 @@
   cursor: pointer;
   transition: background 0.15s;
   font-family: inherit;
-  margin-top: 4px;
+  /* 与上一个字段拉开呼吸感：form 自带 gap 14px + 额外 16px = 30px 总间距。 */
+  margin-top: 16px;
 }
 .auth-submit:hover:not(:disabled) { background: #0D45D6; }
 .auth-submit:disabled {
