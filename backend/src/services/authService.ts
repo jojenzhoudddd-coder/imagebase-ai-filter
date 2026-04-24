@@ -14,6 +14,7 @@ import type { Request, Response, NextFunction } from "express";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
+import { ensureAgentFiles } from "./agentService.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -178,27 +179,39 @@ export async function setUserPassword(id: string, plain: string) {
 }
 
 /**
- * Create a fresh user + their personal org + default workspace. Everything
+ * 随机给新用户挑一个头像（/public/avatars/avatar_1.png … avatar_22.png 任选其一），
+ * 写入 user.avatarUrl，避免登录后出现"头像是别人的"这种错觉。
+ * 之前 FE 会 fallback 到 `/avatars/me.jpg`（作者本人照片），属严重 bug。
+ */
+function pickDefaultAvatarUrl(): string {
+  const n = Math.floor(Math.random() * 22) + 1; // 1..22
+  return `/avatars/avatar_${n}.png`;
+}
+
+/**
+ * Create a fresh user + their personal org + default workspace + bootstrap
+ * agent + onboarding artifacts (1 empty table / design / idea)。Everything
  * wired in one transaction so a partial failure rolls back.
  *
  * `username` is the single identity field the user chooses — it drives the
- * breadcrumb label, the default workspace name, and (elsewhere) the default
- * chatbot name. `name` (which legacy code still reads) is set equal to
- * `username` so nothing downstream breaks.
+ * breadcrumb label, the default workspace name, and the default agent name.
+ * `name` (legacy column) is always set equal to `username`.
  */
 export async function createUserWithWorkspace(input: {
   email: string;
   username: string;
   password: string;
-}): Promise<{ userId: string; workspaceId: string; name: string }> {
+}): Promise<{ userId: string; workspaceId: string; agentId: string; name: string; avatarUrl: string }> {
   const passwordHash = await hashPassword(input.password);
   const name = input.username.trim();
+  const avatarUrl = pickDefaultAvatarUrl();
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
         email: input.email,
         username: input.username.trim(),
         name,
+        avatarUrl,
         passwordHash,
       },
     });
@@ -215,8 +228,47 @@ export async function createUserWithWorkspace(input: {
         name, // workspace 默认名 = username
       },
     });
-    return { userId: user.id, workspaceId: ws.id, name };
+
+    // ── 注册时的 onboarding 数据：1 张空表 + 1 个空 taste（design）+ 1 个空 idea
+    // 这样新用户登入时 sidebar 不会空荡荡一片。默认视图内置一个 "view_all"
+    // 以保持和现有 UI 期望一致（FE TableView 依赖至少一个 view）。
+    await tx.table.create({
+      data: {
+        workspaceId: ws.id,
+        name: `${name}'s Table`,
+        fields: [] as any,
+        views: [{ id: "view_all", name: "全部", type: "grid" }] as any,
+        order: 0,
+      },
+    });
+    await tx.design.create({
+      data: {
+        workspaceId: ws.id,
+        name: `${name}'s Taste`,
+        order: 0,
+      },
+    });
+    await tx.idea.create({
+      data: {
+        workspaceId: ws.id,
+        name: `${name}'s Idea`,
+        order: 0,
+      },
+    });
+
+    // ── 创建这个用户自己的 Agent（不复用 agent_default —— 那是 user_default 的）
+    const agent = await tx.agent.create({
+      data: {
+        userId: user.id,
+        name: `${name}'s Agent`,
+      },
+    });
+
+    return { userId: user.id, workspaceId: ws.id, agentId: agent.id, name, avatarUrl };
   });
+
+  // Agent 的文件系统目录必须在事务外 / 事务成功后创建（写文件不可回滚）
+  await ensureAgentFiles(result.agentId);
   return result;
 }
 

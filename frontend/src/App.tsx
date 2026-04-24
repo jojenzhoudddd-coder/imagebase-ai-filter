@@ -27,15 +27,10 @@ import { useSplitResize } from "./hooks/useSplitResize";
 import ChatSidebar from "./components/ChatSidebar/index";
 import { useAuth } from "./auth/AuthContext";
 
-// WORKSPACE_ID 在组件内部根据 URL + AuthContext 动态派生（见 App() 顶部）。
-// 之前这里是 `const WORKSPACE_ID = "doc_default"`，导致所有登录用户都拿
-// 到 seed workspace 的数据——是严重的跨用户数据泄漏，已修掉。
-
-// Phase 1 MVP: the user has exactly one Agent (seeded on first boot as
-// `agent_default`, display name "Claw"). It's workspace-agnostic — the same
-// Agent follows you across every workspace and owns the persistent identity
-// / memory. When multi-agent support lands this becomes a state + picker.
-const AGENT_ID = "agent_default";
+// WORKSPACE_ID + AGENT_ID 都在组件内部根据 AuthContext 动态派生（见 App()
+// 顶部）。之前两者都是 module-level 常量 `"doc_default"` / `"agent_default"`，
+// 导致所有登录用户都共享同一套数据 + 同一个 chatbot identity —— 是严重的
+// 跨用户泄漏，已修掉。
 
 const MAX_UNDO = 20;
 type CellValue = string | number | boolean | string[] | null;
@@ -99,8 +94,12 @@ export default function App() {
   // when URL is missing (e.g. deep links that dropped the segment).
   // A guard effect below kicks any user off URLs targeting a workspace
   // they don't actually own.
-  const { workspaces: userWorkspaces, workspaceId: authWorkspaceId } = useAuth();
+  const { workspaces: userWorkspaces, workspaceId: authWorkspaceId, agentId: authAgentId } = useAuth();
   const WORKSPACE_ID = urlParams.workspaceId || authWorkspaceId || "";
+  // Agent id 跟登录用户绑定（后端 /me 返回）。空字符串保护：未加载完成时
+  // 不应触发 agent-scoped 请求。所有用到它的地方都是在 RequireAuth 之后，
+  // AuthContext 已经拿到数据。
+  const AGENT_ID = authAgentId || "";
   const userOwnsThisWorkspace = useMemo(
     () => userWorkspaces.some((w) => w.id === WORKSPACE_ID),
     [userWorkspaces, WORKSPACE_ID],
@@ -188,6 +187,7 @@ export default function App() {
   // the badge clears promptly after the user reads messages inside the chat.
   const [agentUnread, setAgentUnread] = useState<number>(0);
   useEffect(() => {
+    if (!AGENT_ID) return; // /me 还没加载完，agent 未知 —— 先不 poll
     let alive = true;
     const fetchUnread = async () => {
       try {
@@ -202,7 +202,7 @@ export default function App() {
     fetchUnread();
     const id = window.setInterval(fetchUnread, 30_000);
     return () => { alive = false; window.clearInterval(id); };
-  }, [chatAgentOpen]);
+  }, [chatAgentOpen, AGENT_ID]);
 
   // Which side the chat panel is on. Persisted in localStorage so swap sticks.
   const [chatSide, setChatSide] = useState<"left" | "right">(() => {
@@ -1282,11 +1282,9 @@ export default function App() {
       order: d.order,
       parentId: d.parentId,
     }));
-    const staticItems: SidebarItem[] = [
-      { id: "dashboard", type: "static" as const, displayName: sidebarNames.dashboard ?? t("sidebar.dashboard"), active: false, order: Infinity },
-      { id: "workflow", type: "static" as const, displayName: sidebarNames.workflow ?? t("sidebar.workflow"), active: false, order: Infinity },
-    ];
-    return [...folderItems, ...tableItems, ...designItems, ...ideaItems, ...demoItems, ...staticItems];
+    // 不再显示 "Dashboard / Workflow" 两个静态占位项（产品决策：这两个
+    // 功能目前没有实现，占位会误导用户）。
+    return [...folderItems, ...tableItems, ...designItems, ...ideaItems, ...demoItems];
   }, [documentTables, documentFolders, documentDesigns, documentIdeas, documentDemos, activeTableId, activeItemType, tableName, sidebarNames, t]);
 
   // ── Table switching ──

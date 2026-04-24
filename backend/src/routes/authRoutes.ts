@@ -28,6 +28,17 @@ import {
   updateUserProfile,
   verifyPassword,
 } from "../services/authService.js";
+import { listAgents } from "../services/agentService.js";
+
+/**
+ * 取某个用户的"主" agent id —— 目前每个用户只有一个 agent（注册时创建）。
+ * 如果以后允许多 agent，这里可以改为读 user.config 里的 "lastAgentId"。
+ * legacy `user_default` 用户的 agent 是 `agent_default`（Phase 1 seed）。
+ */
+async function primaryAgentIdFor(userId: string): Promise<string | null> {
+  const agents = await listAgents(userId);
+  return agents[0]?.id ?? null;
+}
 
 const router = Router();
 
@@ -56,7 +67,7 @@ router.post("/register", async (req: Request, res: Response) => {
   }
 
   try {
-    const { userId, workspaceId, name } = await createUserWithWorkspace({
+    const { userId, workspaceId, agentId, name, avatarUrl } = await createUserWithWorkspace({
       email: email.trim().toLowerCase(),
       username: username.trim(),
       password,
@@ -70,9 +81,10 @@ router.post("/register", async (req: Request, res: Response) => {
         email: email.trim().toLowerCase(),
         username: username.trim(),
         name,
-        avatarUrl: null,
+        avatarUrl,
       },
       workspaceId,
+      agentId,
     });
   } catch (err: any) {
     // Prisma unique constraint — the only unique column we care about
@@ -116,7 +128,10 @@ router.post("/login", async (req: Request, res: Response) => {
 
   const token = signAuthToken({ sub: u.id, login: u.email });
   setAuthCookie(res, token);
-  const workspaces = await listUserWorkspaces(u.id);
+  const [workspaces, agentId] = await Promise.all([
+    listUserWorkspaces(u.id),
+    primaryAgentIdFor(u.id),
+  ]);
   res.json({
     ok: true,
     user: {
@@ -128,6 +143,7 @@ router.post("/login", async (req: Request, res: Response) => {
     },
     workspaces,
     workspaceId: workspaces[0]?.id ?? null,
+    agentId,
   });
 });
 
@@ -144,11 +160,15 @@ router.get("/me", async (req: Request, res: Response) => {
     res.status(401).json({ error: "Not authenticated", code: "NOT_AUTHENTICATED" });
     return;
   }
-  const workspaces = await listUserWorkspaces(u.id);
+  const [workspaces, agentId] = await Promise.all([
+    listUserWorkspaces(u.id),
+    primaryAgentIdFor(u.id),
+  ]);
   res.json({
     user: u,
     workspaces,
     workspaceId: workspaces[0]?.id ?? null,
+    agentId,
   });
 });
 

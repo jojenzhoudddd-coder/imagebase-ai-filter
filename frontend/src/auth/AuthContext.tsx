@@ -35,6 +35,8 @@ interface MeResponse {
   user: AuthUser;
   workspaces: AuthWorkspace[];
   workspaceId: string | null;
+  /** 当前用户的"主" agent id —— chatbot / inbox / cron 都用它。 */
+  agentId: string | null;
 }
 
 /**
@@ -51,6 +53,8 @@ interface AuthContextValue {
   workspaces: AuthWorkspace[];
   /** Primary workspace the app should render. Typically user's personal one. */
   workspaceId: string | null;
+  /** Primary agent id — 每个用户注册时后端会创建一个。旧 user_default 的是 agent_default。 */
+  agentId: string | null;
   /** True while the initial session check is in flight. Routes should show
    * a loading state rather than the login page while this is true. */
   loading: boolean;
@@ -71,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [workspaces, setWorkspaces] = useState<AuthWorkspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [agentId, setAgentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -81,10 +86,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(data.user);
         setWorkspaces(data.workspaces ?? []);
         setWorkspaceId(data.workspaceId);
+        setAgentId(data.agentId);
       } else {
         setUser(null);
         setWorkspaces([]);
         setWorkspaceId(null);
+        setAgentId(null);
       }
     } finally {
       setLoading(false);
@@ -115,6 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
     setWorkspaces(data.workspaces ?? []);
     setWorkspaceId(data.workspaceId);
+    setAgentId(data.agentId ?? null);
   }, []);
 
   const register = useCallback(async (input: {
@@ -134,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
     setWorkspaces(data.workspaces ?? []);
     setWorkspaceId(data.workspaceId);
+    setAgentId(data.agentId ?? null);
   }, []);
 
   const logout = useCallback(async () => {
@@ -144,6 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setWorkspaces([]);
     setWorkspaceId(null);
+    setAgentId(null);
   }, []);
 
   const patchUser = useCallback((patch: Partial<AuthUser>) => {
@@ -151,8 +161,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, workspaces, workspaceId, loading, login, register, logout, refresh, patchUser }),
-    [user, workspaces, workspaceId, loading, login, register, logout, refresh, patchUser],
+    () => ({ user, workspaces, workspaceId, agentId, loading, login, register, logout, refresh, patchUser }),
+    [user, workspaces, workspaceId, agentId, loading, login, register, logout, refresh, patchUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

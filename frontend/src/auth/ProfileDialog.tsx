@@ -1,24 +1,30 @@
 /**
- * ProfileDialog — edit display name + username + avatar. Avatar upload
- * posts a data URL to /api/auth/avatar which the backend decodes and
- * writes to uploads/avatars/. Changes are reflected in AuthContext
- * immediately via patchUser so the topbar avatar updates without a
- * refetch.
+ * ProfileDialog — edit username + avatar.
+ *
+ * "Display name" 已并入 username —— 同一个字段既是登录后展示用的昵称、
+ * 面包屑首项，也是 workspace / 默认 chatbot 的底色。PATCH /api/auth/profile
+ * 同步把 backend user.name 也写成 username，保持 legacy 列一致。
+ *
+ * Avatar upload: POST /api/auth/avatar（data URL），后端解码写到
+ * uploads/avatars/ 并 update User.avatarUrl。改完走 patchUser 立即反馈到
+ * 顶栏，不需要 refetch /me。
  */
 
 import { useCallback, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useAuth } from "./AuthContext";
+import { useToast } from "../components/Toast/index";
+import { useTranslation } from "../i18n/index";
 import "./ProfileDialog.css";
 
 interface Props { onClose: () => void }
 
 export default function ProfileDialog({ onClose }: Props) {
+  const { t } = useTranslation();
+  const toast = useToast();
   const { user, patchUser } = useAuth();
-  const [name, setName] = useState(user?.name ?? "");
   const [username, setUsername] = useState(user?.username ?? "");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatarUrl ?? null);
   const [pendingAvatarDataUrl, setPendingAvatarDataUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -26,11 +32,11 @@ export default function ProfileDialog({ onClose }: Props) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!/^image\/(png|jpe?g|gif|webp)$/.test(file.type)) {
-      setError("仅支持 PNG / JPG / GIF / WebP");
+      toast.error("仅支持 PNG / JPG / GIF / WebP");
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
-      setError("头像大小不能超过 2MB");
+      toast.error("头像大小不能超过 2MB");
       return;
     }
     const reader = new FileReader();
@@ -38,18 +44,26 @@ export default function ProfileDialog({ onClose }: Props) {
       const dataUrl = reader.result as string;
       setAvatarPreview(dataUrl);
       setPendingAvatarDataUrl(dataUrl);
-      setError(null);
     };
     reader.readAsDataURL(file);
-  }, []);
+  }, [toast]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setError(null);
+    const trimmedUsername = username.trim();
+    // 校验 —— 规则与注册页一致
+    if (!trimmedUsername) {
+      toast.error(t("auth.toast.usernameRequired"));
+      return;
+    }
+    if (!/^[a-zA-Z0-9_-]{2,32}$/.test(trimmedUsername)) {
+      toast.error(t("auth.toast.usernameInvalid"));
+      return;
+    }
+
     setSaving(true);
     try {
-      // Upload avatar first (if changed) so we don't overwrite a later
-      // profile edit with stale avatarUrl.
+      // 1. Avatar（如有）先上传，避免被后续 profile PATCH 覆盖
       if (pendingAvatarDataUrl) {
         const res = await fetch("/api/auth/avatar", {
           method: "POST",
@@ -64,15 +78,15 @@ export default function ProfileDialog({ onClose }: Props) {
         const data = await res.json();
         patchUser({ avatarUrl: data.user.avatarUrl });
       }
-      // Patch name / username
-      if (name !== user?.name || username !== (user?.username ?? "")) {
+      // 2. username 改动 —— 同步把 name 也改成一样的（保持 legacy 列一致）
+      if (trimmedUsername !== (user?.username ?? "") || trimmedUsername !== user?.name) {
         const res = await fetch("/api/auth/profile", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
           body: JSON.stringify({
-            name: name.trim(),
-            username: username.trim() || null,
+            name: trimmedUsername,
+            username: trimmedUsername,
           }),
         });
         if (!res.ok) {
@@ -82,9 +96,10 @@ export default function ProfileDialog({ onClose }: Props) {
         const data = await res.json();
         patchUser({ name: data.user.name, username: data.user.username });
       }
+      toast.success("已保存");
       onClose();
     } catch (err: any) {
-      setError(err?.message || "保存失败");
+      toast.error(err?.message || "保存失败");
     } finally {
       setSaving(false);
     }
@@ -98,9 +113,9 @@ export default function ProfileDialog({ onClose }: Props) {
           <div className="profile-avatar-row">
             <img
               className="profile-avatar-preview"
-              src={avatarPreview || "/avatars/me.jpg"}
+              src={avatarPreview || "/avatars/avatar_1.png"}
               alt="avatar"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/avatars/me.jpg"; }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/avatars/avatar_1.png"; }}
             />
             <button
               type="button"
@@ -119,25 +134,15 @@ export default function ProfileDialog({ onClose }: Props) {
             />
           </div>
           <div className="profile-field">
-            <label htmlFor="p-name">显示名</label>
-            <input
-              id="p-name"
-              className="profile-input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              disabled={saving}
-            />
-          </div>
-          <div className="profile-field">
             <label htmlFor="p-username">用户名</label>
             <input
               id="p-username"
               className="profile-input"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="可选，2-32 字符 a-z A-Z 0-9 _ -"
+              placeholder="2-32 字符 a-z A-Z 0-9 _ -"
               disabled={saving}
+              required
             />
           </div>
           <div className="profile-field">
@@ -146,7 +151,6 @@ export default function ProfileDialog({ onClose }: Props) {
               {user?.email}
             </div>
           </div>
-          {error && <div className="profile-error">{error}</div>}
           <div className="profile-actions">
             <button type="button" className="profile-btn profile-btn-cancel" onClick={onClose} disabled={saving}>
               取消

@@ -27,7 +27,10 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
   const [editingDocName, setEditingDocName] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const userAvatar = user?.avatarUrl || "/avatars/me.jpg";
+  // 头像默认值：后端 register 时已随机分配 /avatars/avatar_N.png，兜底
+  // 走 avatar_1。以前这里写的是 /avatars/me.jpg（作者本人头像），任何没
+  // avatarUrl 的新用户都会错误地显示成那张脸，已修掉。
+  const userAvatar = user?.avatarUrl || "/avatars/avatar_1.png";
   const handleLogout = async () => {
     setAvatarMenuOpen(false);
     await logout();
@@ -132,7 +135,8 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
         <div className="topbar-info">
           {/* Row 1: breadcrumb */}
           <div className="topbar-breadcrumb">
-            <span className="topbar-crumb">Quan</span>
+            {/* 面包屑首项 = 当前登录用户的 username（name 同步为 username） */}
+            <span className="topbar-crumb">{user?.name || user?.username || ""}</span>
             {/* Figma: Chevron right — line 716 */}
             <svg className="topbar-sep-arrow" width="8" height="12" viewBox="143 15.5 6.5 10" fill="none">
               <path d="M144.146 16.6464C143.951 16.8417 143.951 17.1583 144.146 17.3536L147.293 20.5L144.146 23.6464C143.951 23.8417 143.951 24.1583 144.146 24.3536C144.342 24.5488 144.658 24.5488 144.854 24.3536L148.354 20.8536C148.447 20.7598 148.5 20.6326 148.5 20.5C148.5 20.3674 148.447 20.2402 148.354 20.1464L144.854 16.6464C144.658 16.4512 144.342 16.4512 144.146 16.6464Z" fill="#8F959E"/>
@@ -280,7 +284,7 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
           alt={user?.name || "avatar"}
           ref={avatarRef}
           onClick={handleAvatarClick}
-          onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/avatars/me.jpg"; }}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/avatars/avatar_1.png"; }}
         />
       </div>
 
