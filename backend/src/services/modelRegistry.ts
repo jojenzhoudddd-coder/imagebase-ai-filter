@@ -186,6 +186,10 @@ export function resolveModelForCall(requestedId: string | null | undefined): {
   resolved: ModelEntry;
   usedFallback: boolean;
 } {
+  // Lift any expired circuit breakers before reading `available`. Keeps
+  // the "cooling → available again" transition zero-latency: as soon as
+  // the first post-cooldown call comes in, the flip takes effect.
+  relaxExpiredBreakers();
   const requested = getModel(requestedId ?? undefined);
   if (requested && requested.available !== false) {
     return { requested, resolved: requested, usedFallback: false };
@@ -234,6 +238,7 @@ export function pickOverloadFallback(
   current: ModelEntry,
   alreadyTried: Set<string> = new Set(),
 ): ModelEntry | null {
+  relaxExpiredBreakers();
   const tried = new Set(alreadyTried);
   tried.add(current.id);
   const avail = (m: ModelEntry) =>
@@ -329,6 +334,95 @@ export async function probeModels(): Promise<ProbeResult> {
   }
 
   return { probedAt: Date.now(), changes };
+}
+
+// ─── Circuit breaker ────────────────────────────────────────────────────
+//
+// Per-model rolling failure counter. When a model fails more than
+// BREAKER_THRESHOLD times inside BREAKER_WINDOW_MS, mark it temporarily
+// unavailable for BREAKER_COOLDOWN_MS. `resolveModelForCall` /
+// `pickOverloadFallback` already skip unavailable models, so the breaker
+// plugs into existing selection logic for free.
+//
+// Separate from probeModels() which checks the advertised catalog —
+// the breaker checks real observed behavior, which is more accurate
+// when OneAPI's /v1/models returns a model that's actually broken.
+
+const BREAKER_WINDOW_MS = 60_000;        // 1 min rolling window
+const BREAKER_THRESHOLD = 3;             // 3 failures in window → trip
+const BREAKER_COOLDOWN_MS = 3 * 60_000;  // 3 min off
+
+interface BreakerState {
+  /** Timestamps of recent failures (epoch ms), only those within window. */
+  failures: number[];
+  /** Epoch ms the current cooldown ends; 0 = not tripped. */
+  cooldownUntil: number;
+  /** Last probe result; we restore `available` to this when the cooldown ends. */
+  probeAvailable: boolean;
+}
+const breakers = new Map<string, BreakerState>();
+
+function getBreaker(modelId: string, probeAvailable = true): BreakerState {
+  let b = breakers.get(modelId);
+  if (!b) {
+    b = { failures: [], cooldownUntil: 0, probeAvailable };
+    breakers.set(modelId, b);
+  }
+  return b;
+}
+
+/**
+ * Call when a model request fails with upstream signals that suggest the
+ * model itself is flaky (overload, 5xx, timeout). Returns true if the
+ * breaker tripped this call (i.e. model just became unavailable).
+ */
+export function recordModelFailure(modelId: string, reason: string): boolean {
+  const model = getModel(modelId);
+  if (!model) return false;
+  const now = Date.now();
+  const b = getBreaker(modelId, model.available ?? true);
+  // Prune failures outside the window
+  b.failures = b.failures.filter((t) => now - t < BREAKER_WINDOW_MS);
+  b.failures.push(now);
+  if (b.failures.length >= BREAKER_THRESHOLD && b.cooldownUntil <= now) {
+    b.probeAvailable = model.available ?? true;
+    b.cooldownUntil = now + BREAKER_COOLDOWN_MS;
+    model.available = false;
+    console.warn(
+      `[breaker] model ${modelId} tripped (${b.failures.length} failures in ` +
+      `${BREAKER_WINDOW_MS / 1000}s, reason=${reason}). cooling for ` +
+      `${BREAKER_COOLDOWN_MS / 1000}s`
+    );
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Call periodically (or lazily on every selection) to lift expired breakers.
+ * Restores `available` to the last probe value so the model becomes
+ * selectable again.
+ */
+export function relaxExpiredBreakers(): void {
+  const now = Date.now();
+  for (const [id, b] of breakers) {
+    if (b.cooldownUntil > 0 && b.cooldownUntil <= now) {
+      const model = getModel(id);
+      if (model) {
+        model.available = b.probeAvailable;
+        console.info(`[breaker] model ${id} cooldown elapsed, restored available=${b.probeAvailable}`);
+      }
+      b.cooldownUntil = 0;
+      b.failures = [];
+    }
+  }
+}
+
+/** Call when a model request succeeds — clear its failure window so a
+ * later transient blip doesn't compound with old stale failures. */
+export function recordModelSuccess(modelId: string): void {
+  const b = breakers.get(modelId);
+  if (b) b.failures = [];
 }
 
 // Kick off a background probe loop. Safe to call multiple times — subsequent

@@ -118,8 +118,11 @@ async function withOverloadRetry<T>(
       if (!(err instanceof UpstreamOverloadError)) throw err;
       if (i === opts.maxAttempts - 1) break;
       // Exponential backoff 1s → 2s → 4s, capped at 6s. Retry-After wins when set.
+      // Add ±25% jitter so concurrent clients don't retry in lockstep and
+      // pile onto upstream at the same instant (thundering herd).
       const expDelay = Math.min(6_000, 1_000 * 2 ** i);
-      const delay = Math.max(expDelay, err.retryableAfterMs);
+      const jitter = expDelay * (0.75 + Math.random() * 0.5);
+      const delay = Math.max(Math.round(jitter), err.retryableAfterMs);
       opts.onRetry?.(err, delay, i);
       await new Promise<void>((resolve, reject) => {
         const t = setTimeout(resolve, delay);

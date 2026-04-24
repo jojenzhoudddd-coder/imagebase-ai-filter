@@ -36,6 +36,8 @@ import {
   resolveModelForCall,
   resolveAdapter,
   pickOverloadFallback,
+  recordModelFailure,
+  recordModelSuccess,
   type ModelEntry,
 } from "./modelRegistry.js";
 import { UpstreamOverloadError } from "./providers/oneapiAdapter.js";
@@ -1186,6 +1188,10 @@ export async function* runAgent(
       if (err instanceof UpstreamOverloadError) {
         triedForOverload.add(model.id);
         overloadChain.push(model.displayName);
+        // Feed the circuit breaker: 3 overloads in 60s on the same model
+        // → auto-skip that model for 3 min. Prevents user from wasting a
+        // second fresh turn on the same ailing upstream.
+        recordModelFailure(model.id, `upstream_overload status=${err.status}`);
         const next = pickOverloadFallback(model, triedForOverload);
         logAgent({
           event: "upstream_overload",
@@ -1239,6 +1245,10 @@ export async function* runAgent(
       yield { event: "message", data: { text: notice, delta: true } };
       accumulatedText += notice;
     }
+
+    // Successful round on `model` — clear its circuit-breaker failure window
+    // so a later unrelated blip doesn't trip on compounded stale failures.
+    recordModelSuccess(model.id);
 
     // No tool calls → final answer; break out.
     if (funcCalls.length === 0) {
