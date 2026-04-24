@@ -1,0 +1,121 @@
+.profile-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 35, 41, 0.38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(2px);
+}
+.profile-card {
+  background: #fff;
+  border-radius: 10px;
+  width: 420px;
+  max-width: calc(100vw - 48px);
+  padding: 24px 28px 20px;
+  box-shadow: 0 16px 48px rgba(31, 35, 41, 0.14);
+}
+.profile-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1F2329;
+  margin-bottom: 20px;
+}
+.profile-form { display: flex; flex-direction: column; gap: 16px; }
+.profile-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+.profile-avatar-preview {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #DEE0E3;
+}
+.profile-avatar-btn {
+  height: 32px;
+  padding: 0 14px;
+  background: #fff;
+  color: #1F2329;
+  border: 1px solid #DEE0E3;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.profile-avatar-btn:hover { background: #F5F6F7; }
+.profile-avatar-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.profile-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1F2329;
+  margin-bottom: 6px;
+}
+.profile-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #DEE0E3;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #1F2329;
+  font-family: inherit;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.profile-input:focus {
+  outline: none;
+  border-color: #1456F0;
+  box-shadow: 0 0 0 3px rgba(20, 86, 240, 0.12);
+}
+.profile-input-readonly {
+  display: flex;
+  align-items: center;
+  background: #F7F8FA;
+  color: #646A73;
+  cursor: not-allowed;
+}
+
+.profile-error {
+  padding: 8px 12px;
+  background: #FDECEC;
+  border: 1px solid #FADDDB;
+  border-radius: 4px;
+  color: #F54A45;
+  font-size: 13px;
+}
+
+.profile-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.profile-btn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-family: inherit;
+}
+.profile-btn-cancel {
+  background: #fff;
+  color: #1F2329;
+  border-color: #DEE0E3;
+}
+.profile-btn-cancel:hover { background: #F5F6F7; }
+.profile-btn-ok {
+  background: #1456F0;
+  color: #fff;
+}
+.profile-btn-ok:hover { background: #1347D1; }
+.profile-btn:disabled { opacity: 0.5; cursor: not-allowed; }

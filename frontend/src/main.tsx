@@ -5,6 +5,10 @@ import "./index.css";
 import App from "./App";
 import { ToastProvider } from "./components/Toast/index";
 import { LanguageProvider } from "./i18n/index";
+import { AuthProvider } from "./auth/AuthContext";
+import LoginPage from "./auth/LoginPage";
+import RegisterPage from "./auth/RegisterPage";
+import RequireAuth from "./auth/RequireAuth";
 
 /**
  * Router layout (all artifacts get readable URLs — see docs/vibe-demo-plan.md §3):
@@ -22,12 +26,30 @@ createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <LanguageProvider>
         <ToastProvider>
-          <Routes>
-            <Route path="/" element={<Navigate to="/workspace/doc_default" replace />} />
-            <Route path="/workspace/:workspaceId" element={<App />} />
-            <Route path="/workspace/:workspaceId/:artifactType/:artifactId" element={<App />} />
-            <Route path="*" element={<App />} />
-          </Routes>
+          <AuthProvider>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+
+              {/* Everything else requires auth. `RequireAuth` bounces to
+                  /login when the /me check says logged out. */}
+              <Route path="/" element={
+                <RequireAuth>
+                  <Navigate to="/workspace/doc_default" replace />
+                </RequireAuth>
+              } />
+              <Route path="/workspace/:workspaceId" element={
+                <RequireAuth><App /></RequireAuth>
+              } />
+              <Route path="/workspace/:workspaceId/:artifactType/:artifactId" element={
+                <RequireAuth><App /></RequireAuth>
+              } />
+              <Route path="*" element={
+                <RequireAuth><App /></RequireAuth>
+              } />
+            </Routes>
+          </AuthProvider>
         </ToastProvider>
       </LanguageProvider>
     </BrowserRouter>

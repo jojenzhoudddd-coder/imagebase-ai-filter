@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation, setLocale } from "../i18n/index";
 import type { Locale } from "../i18n/index";
 import InlineEdit from "./InlineEdit";
+import { useAuth } from "../auth/AuthContext";
+import ProfileDialog from "../auth/ProfileDialog";
 import "./TopBar.css";
 
 interface Props {
@@ -19,7 +22,17 @@ interface Props {
 
 export default function TopBar({ tableName, documentName, deleteProtection = true, onDeleteProtectionChange, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount }: Props) {
   const { t, locale } = useTranslation();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [editingDocName, setEditingDocName] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  const userAvatar = user?.avatarUrl || "/avatars/me.jpg";
+  const handleLogout = async () => {
+    setAvatarMenuOpen(false);
+    await logout();
+    navigate("/login", { replace: true });
+  };
 
   // ── More button menu ──
   const [menuOpen, setMenuOpen] = useState(false);
@@ -261,7 +274,14 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
           </button>
         </div>
         <span className="topbar-divider" />
-        <img className="topbar-avatar" src="/avatars/me.jpg" alt="avatar" ref={avatarRef} onClick={handleAvatarClick} />
+        <img
+          className="topbar-avatar"
+          src={userAvatar}
+          alt={user?.name || "avatar"}
+          ref={avatarRef}
+          onClick={handleAvatarClick}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/avatars/me.jpg"; }}
+        />
       </div>
 
       {/* Cascading menu from More button */}
@@ -316,6 +336,26 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
       {/* Avatar dropdown menu */}
       {avatarMenuOpen && avatarMenuPos && (
         <div className="topbar-menu" ref={avatarMenuRef} style={{ position: "fixed", top: avatarMenuPos.top, right: avatarMenuPos.right }}>
+          {/* User info header (current user + handle) */}
+          {user && (
+            <div className="topbar-menu-header">
+              <div className="topbar-menu-header-name">{user.name}</div>
+              <div className="topbar-menu-header-handle">
+                {user.username ? `@${user.username}` : user.email}
+              </div>
+            </div>
+          )}
+          {/* Profile settings */}
+          <div
+            className="topbar-menu-item"
+            onClick={() => { setAvatarMenuOpen(false); setProfileOpen(true); }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon">
+              <circle cx="8" cy="5.5" r="2.5" stroke="currentColor" strokeWidth="1.2"/>
+              <path d="M2.5 14c0-2.485 2.462-4.5 5.5-4.5s5.5 2.015 5.5 4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
+            <span className="topbar-menu-label">个人信息</span>
+          </div>
           {/* Language submenu */}
           <div
             className="topbar-menu-item has-submenu"
@@ -368,8 +408,19 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
               </div>
             )}
           </div>
+          {/* Logout */}
+          <div className="topbar-menu-divider" />
+          <div className="topbar-menu-item topbar-menu-item-danger" onClick={handleLogout}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon">
+              <path d="M9.5 2h-5A1.5 1.5 0 003 3.5v9A1.5 1.5 0 004.5 14h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              <path d="M7 8h7m0 0l-2.5-2.5M14 8l-2.5 2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span className="topbar-menu-label">退出登录</span>
+          </div>
         </div>
       )}
+
+      {profileOpen && <ProfileDialog onClose={() => setProfileOpen(false)} />}
     </div>
   );
 }

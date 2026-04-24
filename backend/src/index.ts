@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import tableRoutes from "./routes/tableRoutes.js";
@@ -18,6 +19,8 @@ import analystRoutes from "./routes/analystRoutes.js";
 import demoRoutes from "./routes/demoRoutes.js";
 import demoRuntimeRoutes from "./routes/demoRuntimeRoutes.js";
 import publicDemoRoutes from "./routes/publicDemoRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
+import { attachUser, ensureSeedUserCredentials } from "./services/authService.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
@@ -49,6 +52,12 @@ app.use(cors());
 // blobs, verbose path data) fit. The /tastes/from-svg endpoint still validates
 // the payload and caps it at 5mb in its own handler.
 app.use(express.json({ limit: "10mb" }));
+app.use(cookieParser());
+
+// Parse the auth cookie on every /api request so downstream handlers can
+// check req.user without each one reaching into cookies manually. Put this
+// BEFORE any /api/* route mount so every handler sees the decoded user.
+app.use("/api", attachUser);
 
 // ── Request logging middleware ──
 function gmt8() {
@@ -83,6 +92,7 @@ app.use("/api", (req, res, next) => {
   next();
 });
 
+app.use("/api/auth", authRoutes);
 app.use("/api/tables", tableRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/sync", sseRoutes);
@@ -202,6 +212,22 @@ async function start() {
     console.log(`Default agent ready: ${agent.id} (${agent.name})`);
   } catch (err) {
     console.error("Failed to ensure default agent:", err);
+  }
+
+  // One-shot seed: make sure `user_default` (the legacy seed user) is
+  // login-capable as quan / 12345qwert so existing deployments can sign
+  // in right after the user-system lands. Idempotent — only stamps fields
+  // that are missing (never overwrites a user-set password).
+  try {
+    await ensureSeedUserCredentials({
+      userId: "user_default",
+      defaultUsername: "quan",
+      defaultPassword: "12345qwert",
+      defaultEmail: "quan@imagebase.local",
+      defaultName: "Quan",
+    });
+  } catch (err) {
+    console.warn("Failed to seed user credentials (non-fatal):", err);
   }
 
   app.listen(PORT, "0.0.0.0", () => {

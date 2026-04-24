@@ -12,8 +12,14 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
+  /// Used as the login handle when `email` is actually a handle (legacy rows
+  /// like `user_quan`). When both are set, login accepts either.
+  username  String?  @unique
   name      String
   avatarUrl String?
+  /// bcrypt hash of the password. Null means "never set a password yet"
+  /// (legacy rows pre-auth — treated as "must reset" once auth lands).
+  passwordHash String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
