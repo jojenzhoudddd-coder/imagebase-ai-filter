@@ -24,29 +24,48 @@ import {
 import "./DemoPreviewPanel.css";
 
 /* ─── Inline icons ─────────────────────────────────────────────────────────
- * 14×14 · currentColor · aligned visually with the text buttons (4px gap).
- * Reused in build / publish / unpublish / export buttons so each action
- * gets a visual anchor. Matches the sidebar-icon convention (solid-fill
- * path + currentColor) instead of stroke icons. */
+ * 14px render size · 24×24 viewBox · solid-fill geometry with fill="currentColor"
+ * ——— 与 UD 07 图标库 icon_*_outlined 系列的视觉语言严格一致（2px 描边粗细、
+ * 圆角端点、实心 path 而非 stroke）：
+ *   BuildIcon    ↔ icon_refresh_outlined（循环箭头，刷新/重新构建）
+ *   PublishIcon  ↔ icon_ccm-outbox_outlined（发件箱向上箭头，发布/上传）
+ *   UnpublishIcon↔ icon_tab-fix_outlined（收件箱向下箭头，收回/取消发布）
+ *   ExportIcon   ↔ icon_base-agent-tool-download_outlined（下载/导出）
+ * 和 sidebar 的 DEMO_ICON 同一套几何规则，所以顶栏按钮与左侧产物 icon 视觉
+ * 一致。 */
 const BuildIcon = (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M11.78 1.47a.75.75 0 011.06 0l1.69 1.69a.75.75 0 010 1.06l-1.06 1.06-2.75-2.75 1.06-1.06zM10.66 2.59l-7.6 7.6a.75.75 0 00-.2.36l-.84 3.36a.5.5 0 00.61.61l3.36-.84a.75.75 0 00.36-.2l7.6-7.6-3.29-3.29zM3.54 11.72l.74-2.96 5.6-5.6 2.22 2.22-5.6 5.6-2.96.74z" fill="currentColor"/>
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12 4C14.2091 4 16.2091 4.89543 17.6569 6.34315L19.4142 4.58579C19.7392 4.26082 20.2608 4.2072 20.6434 4.45492C21.026 4.70263 21.2179 5.16016 21.1236 5.61803L20.1236 10.618C20.0489 10.9916 19.7416 11.2989 19.368 11.3736L14.368 12.3736C13.9102 12.4679 13.4526 12.276 13.2049 11.8934C12.9572 11.5108 13.0108 10.9892 13.3358 10.6642L15.1568 8.8432C14.3472 8.32212 13.3916 8 12.3333 8C9.57188 8 7.33329 10.2386 7.33329 13H3.33329C3.33329 8.02944 7.36273 4 12.3333 4H12ZM20.6667 11C20.6667 15.9706 16.6372 20 11.6667 20H11.9999C9.79076 20 7.79076 19.1046 6.34298 17.6568L4.58566 19.4142C4.26069 19.7392 3.73905 19.7928 3.35648 19.5451C2.97391 19.2974 2.78196 18.8398 2.87633 18.382L3.87633 13.382C3.95099 13.0084 4.25831 12.7011 4.63189 12.6264L9.63189 11.6264C10.0898 11.5321 10.5473 11.724 10.795 12.1066C11.0427 12.4892 10.9891 13.0108 10.6641 13.3358L8.84313 15.1568C9.65272 15.6779 10.6083 16 11.6667 16C14.428 16 16.6666 13.7614 16.6666 11H20.6667Z" fill="currentColor"/>
   </svg>
 );
 const PublishIcon = (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M8 1.5a.75.75 0 01.53.22l3.5 3.5a.75.75 0 11-1.06 1.06L8.75 4.06V10a.75.75 0 01-1.5 0V4.06L5.03 6.28a.75.75 0 11-1.06-1.06l3.5-3.5A.75.75 0 018 1.5zM3 9.75a.75.75 0 00-1.5 0v3.75A1.75 1.75 0 003.25 15.25h9.5A1.75 1.75 0 0014.5 13.5V9.75a.75.75 0 00-1.5 0v3.75a.25.25 0 01-.25.25h-9.5a.25.25 0 01-.25-.25V9.75z" fill="currentColor"/>
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12 2.58579L12.7071 3.29289L16.7071 7.29289C17.0976 7.68342 17.0976 8.31658 16.7071 8.70711C16.3166 9.09763 15.6834 9.09763 15.2929 8.70711L13 6.41421V15C13 15.5523 12.5523 16 12 16C11.4477 16 11 15.5523 11 15V6.41421L8.70711 8.70711C8.31658 9.09763 7.68342 9.09763 7.29289 8.70711C6.90237 8.31658 6.90237 7.68342 7.29289 7.29289L11.2929 3.29289L12 2.58579Z" fill="currentColor"/>
+    <path d="M4 13C4.55228 13 5 13.4477 5 14V19C5 19.5523 5.44772 20 6 20H18C18.5523 20 19 19.5523 19 19V14C19 13.4477 19.4477 13 20 13C20.5523 13 21 13.4477 21 14V19C21 20.6569 19.6569 22 18 22H6C4.34315 22 3 20.6569 3 19V14C3 13.4477 3.44772 13 4 13Z" fill="currentColor"/>
   </svg>
 );
 const UnpublishIcon = (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M8 14.5a.75.75 0 01-.53-.22l-3.5-3.5a.75.75 0 111.06-1.06l2.22 2.22V6a.75.75 0 011.5 0v5.94l2.22-2.22a.75.75 0 111.06 1.06l-3.5 3.5a.75.75 0 01-.53.22zM3 6.25a.75.75 0 01-1.5 0V2.5A1.75 1.75 0 013.25.75h9.5A1.75 1.75 0 0114.5 2.5v3.75a.75.75 0 01-1.5 0V2.5a.25.25 0 00-.25-.25h-9.5A.25.25 0 003 2.5v3.75z" fill="currentColor"/>
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12 16.4142L11.2929 15.7071L7.29289 11.7071C6.90237 11.3166 6.90237 10.6834 7.29289 10.2929C7.68342 9.90237 8.31658 9.90237 8.70711 10.2929L11 12.5858V4C11 3.44772 11.4477 3 12 3C12.5523 3 13 3.44772 13 4V12.5858L15.2929 10.2929C15.6834 9.90237 16.3166 9.90237 16.7071 10.2929C17.0976 10.6834 17.0976 11.3166 16.7071 11.7071L12.7071 15.7071L12 16.4142Z" fill="currentColor"/>
+    <path d="M4 13C4.55228 13 5 13.4477 5 14V19C5 19.5523 5.44772 20 6 20H18C18.5523 20 19 19.5523 19 19V14C19 13.4477 19.4477 13 20 13C20.5523 13 21 13.4477 21 14V19C21 20.6569 19.6569 22 18 22H6C4.34315 22 3 20.6569 3 19V14C3 13.4477 3.44772 13 4 13Z" fill="currentColor"/>
   </svg>
 );
 const ExportIcon = (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M2.75 2A1.75 1.75 0 001 3.75v8.5c0 .966.784 1.75 1.75 1.75h10.5A1.75 1.75 0 0015 12.25v-8.5A1.75 1.75 0 0013.25 2H2.75zm-.25 1.75a.25.25 0 01.25-.25h10.5a.25.25 0 01.25.25V5.5h-11V3.75zm0 3.25h11v5.25a.25.25 0 01-.25.25H2.75a.25.25 0 01-.25-.25V7z" fill="currentColor"/>
-    <path d="M8 8.25a.75.75 0 01.75.75v2.19l.72-.72a.75.75 0 111.06 1.06l-2 2a.75.75 0 01-1.06 0l-2-2a.75.75 0 111.06-1.06l.72.72V9A.75.75 0 018 8.25z" fill="currentColor"/>
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M5 4C4.44772 4 4 4.44772 4 5V19C4 19.5523 4.44772 20 5 20H19C19.5523 20 20 19.5523 20 19V12C20 11.4477 20.4477 11 21 11C21.5523 11 22 11.4477 22 12V19C22 20.6569 20.6569 22 19 22H5C3.34315 22 2 20.6569 2 19V5C2 3.34315 3.34315 2 5 2H12C12.5523 2 13 2.44772 13 3C13 3.55228 12.5523 4 12 4H5Z" fill="currentColor"/>
+    <path d="M15 3C15 2.44772 15.4477 2 16 2H21C21.5523 2 22 2.44772 22 3V8C22 8.55228 21.5523 9 21 9C20.4477 9 20 8.55228 20 8V5.41421L13.7071 11.7071C13.3166 12.0976 12.6834 12.0976 12.2929 11.7071C11.9024 11.3166 11.9024 10.6834 12.2929 10.2929L18.5858 4H16C15.4477 4 15 3.55228 15 3Z" fill="currentColor"/>
+  </svg>
+);
+const FilesIcon = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M4 4C4 2.89543 4.89543 2 6 2H13.5858C14.1162 2 14.6249 2.21071 15 2.58579L19.4142 7C19.7893 7.37507 20 7.88378 20 8.41421V20C20 21.1046 19.1046 22 18 22H6C4.89543 22 4 21.1046 4 20V4ZM13 4H6V20H18V9H14C13.4477 9 13 8.55228 13 8V4ZM15 4.41421L17.5858 7H15V4.41421Z" fill="currentColor"/>
+    <path d="M8 12C8 11.4477 8.44772 11 9 11H15C15.5523 11 16 11.4477 16 12C16 12.5523 15.5523 13 15 13H9C8.44772 13 8 12.5523 8 12Z" fill="currentColor"/>
+    <path d="M8 16C8 15.4477 8.44772 15 9 15H15C15.5523 15 16 15.4477 16 16C16 16.5523 15.5523 17 15 17H9C8.44772 17 8 16.5523 8 16Z" fill="currentColor"/>
+  </svg>
+);
+const ChevronDownIcon = (
+  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M3.528 6.195a.667.667 0 01.944 0L8 9.724l3.528-3.529a.667.667 0 11.944.944l-4 4a.667.667 0 01-.944 0l-4-4a.667.667 0 010-.944z" fill="currentColor"/>
   </svg>
 );
 
@@ -64,7 +83,22 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
   const [busy, setBusy] = useState<"build" | "publish" | "unpublish" | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
   const [isEditingName, setIsEditingName] = useState(false);
+  const [filesOpen, setFilesOpen] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const filesPopoverRef = useRef<HTMLDivElement | null>(null);
+
+  // Close files popover on click outside (standard popover pattern used
+  // elsewhere in the app, e.g. DropdownMenu). Scoped to document so we
+  // catch clicks that missed the button but hit the iframe wrapper.
+  useEffect(() => {
+    if (!filesOpen) return;
+    function onDocClick(e: MouseEvent) {
+      const el = filesPopoverRef.current;
+      if (el && !el.contains(e.target as Node)) setFilesOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [filesOpen]);
 
   const load = useCallback(async () => {
     try {
@@ -264,6 +298,33 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
             {ExportIcon}
             {t("demo.exportWorkend")}
           </button>
+          {demo.files && demo.files.length > 0 && (
+            <div className="demo-panel-files-wrap" ref={filesPopoverRef}>
+              <button
+                className="demo-panel-topbar-btn"
+                onClick={() => setFilesOpen((v) => !v)}
+                aria-expanded={filesOpen}
+              >
+                {FilesIcon}
+                {t("demo.filesHeader")} · {demo.files.length}
+                {ChevronDownIcon}
+              </button>
+              {filesOpen && (
+                <div className="demo-panel-files-popover">
+                  <ul>
+                    {demo.files.map((f) => (
+                      <li key={f.path}>
+                        <span className="demo-panel-file-path" title={f.path}>{f.path}</span>
+                        <span className="demo-panel-file-size">
+                          {f.size < 1024 ? `${f.size} B` : `${(f.size / 1024).toFixed(1)} KB`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -313,21 +374,6 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
         )}
       </div>
 
-      {demo.files && demo.files.length > 0 && (
-        <aside className="demo-panel-files">
-          <h4>{t("demo.filesHeader")} · {demo.files.length}</h4>
-          <ul>
-            {demo.files.map((f) => (
-              <li key={f.path}>
-                <span className="demo-panel-file-path">{f.path}</span>
-                <span className="demo-panel-file-size">
-                  {f.size < 1024 ? `${f.size} B` : `${(f.size / 1024).toFixed(1)} KB`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      )}
     </div>
   );
 }

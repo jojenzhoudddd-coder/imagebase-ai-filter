@@ -208,38 +208,39 @@
   margin-top: 8px;
 }
 
-/* ─── File list aside (overlay bottom-right) ─── */
-.demo-panel-files {
+/* ─── File list popover (topbar dropdown) ──────────────────────────────────
+ * 旧版是固定在右下角的 aside，会遮挡 iframe 内容。现在挂在 topbar "Files · N"
+ * 按钮下面，按钮本身是标准 hover 文字按钮，点击 toggle 一个下拉面板。 */
+.demo-panel-files-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.demo-panel-files-popover {
   position: absolute;
-  right: 16px;
-  bottom: 16px;
+  top: calc(100% + 4px);
+  right: 0;
   background: #fff;
   border: 1px solid var(--color-border, #DEE0E3);
   border-radius: 6px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   box-shadow: 0 4px 12px rgba(31, 35, 41, 0.08);
-  max-width: 320px;
-  z-index: 2;
+  min-width: 280px;
+  max-width: 360px;
+  max-height: 320px;
+  overflow: auto;
+  z-index: 20;
 }
-.demo-panel-files h4 {
-  margin: 0 0 6px;
-  font-size: 11px;
-  color: var(--color-text-tertiary, #8F959E);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-.demo-panel-files ul {
+.demo-panel-files-popover ul {
   margin: 0;
   padding: 0;
   list-style: none;
   font-size: 11px;
   font-family: "SF Mono", ui-monospace, monospace;
 }
-.demo-panel-files li {
+.demo-panel-files-popover li {
   display: flex;
   justify-content: space-between;
-  padding: 2px 0;
+  padding: 3px 0;
   gap: 12px;
 }
 .demo-panel-file-path {
@@ -247,7 +248,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 200px;
+  max-width: 220px;
 }
 .demo-panel-file-size {
   color: var(--color-text-tertiary, #8F959E);
