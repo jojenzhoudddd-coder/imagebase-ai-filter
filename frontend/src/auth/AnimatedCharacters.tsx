@@ -1,20 +1,25 @@
 /**
- * AnimatedCharacters — ported from arsh342/careercompass.
- * Source: src/components/ui/animated-characters.tsx (MIT-style).
+ * AnimatedCharacters — ported from arsh342/careercompass, recolored to
+ * represent AI Filter's four artifact types using the project design
+ * language's palette (see docs/design-resources.md §2).
  *
- * Four cartoon characters (purple / black / orange / yellow) that:
- *   - track the mouse cursor (eyes + body skew)
- *   - blink randomly
- *   - look at each other when the login form is being typed in
- *   - purple character peeks mischievously at the visible password
- *   - all characters turn away when the password is masked
+ * Artifact mapping (z-index ascending = back→front):
+ *   purple   #7B4BDC   →  Taste (design canvas / visual exploration)
+ *   blue     #1456F0   →  Table (structured data / primary brand)
+ *   orange   #F5A623   →  Idea  (warning / idea lightbulb)
+ *   green    #34A853   →  Demo  (success / runnable)
+ *
+ * Behaviour (unchanged from upstream):
+ *   - Eyes + body skew follow the mouse cursor
+ *   - Random 3-7s blink intervals (height:2px + overflow:hidden)
+ *   - `isTyping` triggers an 800ms "look at each other" pose
+ *   - `showPassword && passwordLength>0` → Taste peeks mischievously;
+ *     `!showPassword && passwordLength>0` → all characters turn away
  *
  * Port notes:
- *   - Replaced "use client" directive (Next.js) — not needed in Vite/CRA
- *   - Replaced Tailwind utility classes with plain inline styles +
- *     minimal className so the component doesn't require a Tailwind
- *     config; visuals are identical
- *   - Everything inside one file for drop-in use
+ *   - Removed "use client" directive (Next.js), Tailwind classes replaced
+ *     with inline styles so no Tailwind config is required
+ *   - Colors sourced from project tokens, not upstream's cartoon palette
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -281,7 +286,8 @@ export function AnimatedCharacters({
           left: "70px",
           width: "180px",
           height: isTyping || isHidingPassword ? "440px" : "400px",
-          backgroundColor: "#6C3FF5",
+          // Taste — 设计画布，用设计语言中对应的紫色
+          backgroundColor: "#7B4BDC",
           borderRadius: "10px 10px 0 0",
           zIndex: 1,
           transform:
@@ -362,7 +368,8 @@ export function AnimatedCharacters({
           left: "240px",
           width: "120px",
           height: "310px",
-          backgroundColor: "#2D2D2D",
+          // Table — 主品牌蓝（数据表是最常用的 artifact）
+          backgroundColor: "#1456F0",
           borderRadius: "8px 8px 0 0",
           zIndex: 2,
           transform:
@@ -438,7 +445,8 @@ export function AnimatedCharacters({
           width: "240px",
           height: "200px",
           zIndex: 3,
-          backgroundColor: "#FF9B6B",
+          // Idea — 设计语言里的 Warning 橙（灵感 / 想法的亮色提示）
+          backgroundColor: "#F5A623",
           borderRadius: "120px 120px 0 0",
           transform:
             passwordLength > 0 && showPassword
@@ -490,7 +498,8 @@ export function AnimatedCharacters({
           left: "310px",
           width: "140px",
           height: "230px",
-          backgroundColor: "#E8D754",
+          // Demo — 设计语言里的 Success 绿（可运行产物 / 上线）
+          backgroundColor: "#34A853",
           borderRadius: "70px 70px 0 0",
           zIndex: 4,
           transform:

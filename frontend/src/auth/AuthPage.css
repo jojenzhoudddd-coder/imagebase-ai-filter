@@ -1,11 +1,13 @@
 /**
- * Auth page visuals — faithful port of arsh342/careercompass login.
+ * Auth page — careercompass layout adapted to AI Filter design language.
  *
- * Layout: min-h-screen grid with lg:grid-cols-2 (single column below 1024px).
- * Left panel: grayscale diagonal gradient + grid pattern overlay + two
- *   large blurred gray orbs. Houses the AnimatedCharacters scene which
- *   is interactive (eyes track cursor, blink, peek at passwords).
- * Right panel: centered max-width form with 420px cap.
+ * Delta from upstream:
+ *   1. lg grid 2:1 (not 1:1) — more room for the 4-character scene
+ *   2. Typography / input / button / spacing all via project tokens
+ *      (PingFang SC 14px/22px, #1F2329 text, #1456F0 primary, 4/6/8/12px
+ *      radius scale, 32px input height, --color-border).
+ *   3. Characters recolored to represent Table/Taste/Idea/Demo artifacts
+ *      (colors live in AnimatedCharacters.tsx).
  */
 
 .auth-shell {
@@ -14,57 +16,46 @@
   overflow: hidden;
   display: grid;
   grid-template-columns: 1fr;
-  font-family: var(--font-family, -apple-system, BlinkMacSystemFont, "SF Pro", "PingFang SC", system-ui, sans-serif);
-  background: #fff;
-  color: #0F1116;
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #FFFFFF;
+  color: #1F2329;
+  font-size: 14px;
+  line-height: 22px;
 }
 @media (min-width: 1024px) {
   .auth-shell {
-    grid-template-columns: 1fr 1fr;
+    /* 2:1 left:right — the character scene is the hero; form stays compact */
+    grid-template-columns: 2fr 1fr;
   }
 }
 
-/* ─── Left pane: animated characters ─────────────────────────────── */
+/* ─── Left pane: animated characters scene ────────────────────────── */
 .auth-hero {
   position: relative;
   display: none;
   flex-direction: column;
   justify-content: space-between;
-  padding: 48px;
-  color: #fff;
-  /* Matching careercompass `bg-gradient-to-br from-gray-400 via-gray-500 to-gray-600` */
-  background: linear-gradient(135deg, #9CA3AF 0%, #6B7280 50%, #4B5563 100%);
+  padding: 32px 40px;
+  color: #FFFFFF;
+  /* Cool grayscale base + subtle primary-blue wash so the hero still feels
+   * on-brand without pulling attention from the characters. */
+  background:
+    radial-gradient(circle at 25% 20%, rgba(20, 86, 240, 0.18), transparent 55%),
+    radial-gradient(circle at 80% 80%, rgba(123, 75, 220, 0.12), transparent 55%),
+    linear-gradient(135deg, #2B2F36 0%, #1F2329 100%);
 }
 @media (min-width: 1024px) { .auth-hero { display: flex; } }
 
-/* Subtle grid pattern overlay (`bg-grid-white/[0.05] bg-[size:20px_20px]`) */
+/* Subtle dot grid overlay (matches our app's low-contrast overlay pattern) */
 .auth-hero::before {
   content: "";
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-  background-size: 20px 20px;
+    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
   pointer-events: none;
-}
-
-/* Two big blurred gray orbs on the gradient */
-.auth-hero-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(64px);
-  pointer-events: none;
-}
-.auth-hero-orb-a {
-  width: 256px; height: 256px;
-  top: 25%; right: 25%;
-  background: rgba(156, 163, 175, 0.2); /* gray-400/20 */
-}
-.auth-hero-orb-b {
-  width: 384px; height: 384px;
-  bottom: 25%; left: 25%;
-  background: rgba(209, 213, 219, 0.2); /* gray-300/20 */
 }
 
 .auth-hero-brand {
@@ -73,29 +64,75 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 18px;
-  font-weight: 600;
-  color: #fff;
-  letter-spacing: 0.2px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.95);
 }
 .auth-hero-logo {
-  width: 32px; height: 32px; border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(8px);
+  width: 28px; height: 28px; border-radius: 6px;
+  background: #1456F0;
   display: inline-flex;
   align-items: center; justify-content: center;
-  font-weight: 700;
-  padding: 4px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #FFFFFF;
 }
 
-/* Animated characters container — mimics `flex items-end justify-center h-[500px]` */
+/* Headline above the character scene — tiny tagline in design-language font */
+.auth-hero-headline {
+  position: relative;
+  z-index: 20;
+  max-width: 640px;
+}
+.auth-hero-headline-title {
+  font-size: 28px;
+  line-height: 40px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  margin: 0 0 8px;
+  color: #FFFFFF;
+}
+.auth-hero-headline-sub {
+  font-size: 14px;
+  line-height: 22px;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+}
+
+/* Characters container — flex bottom, room for the 550×400 scene */
 .auth-hero-stage {
   position: relative;
   z-index: 20;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  height: 500px;
+  flex: 1;
+  min-height: 420px;
+}
+
+/* Legend row under the characters: 4 labels for Table / Taste / Idea / Demo
+ * with matching colored swatches so users understand what each character
+ * represents. */
+.auth-hero-legend {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  font-size: 12px;
+  line-height: 20px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 8px;
+}
+.auth-hero-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.auth-hero-legend-dot {
+  width: 8px; height: 8px; border-radius: 50%;
 }
 
 .auth-hero-footer {
@@ -103,221 +140,213 @@
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 32px;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.75);
+  gap: 20px;
+  font-size: 12px;
+  line-height: 20px;
+  color: rgba(255, 255, 255, 0.55);
 }
 .auth-hero-footer a {
   color: inherit;
   text-decoration: none;
   transition: color 0.15s;
 }
-.auth-hero-footer a:hover { color: #fff; }
+.auth-hero-footer a:hover { color: rgba(255, 255, 255, 0.9); }
 
-/* ─── Right pane: form ────────────────────────────────────────────── */
+/* ─── Right pane: form ─────────────────────────────────────────────
+ * Sits on the 1/3 column; max-width 380px so the form doesn't stretch on
+ * ultra-wide monitors. Centered vertically. */
 .auth-form-pane {
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 32px;
-  background: #fff;
+  background: #FFFFFF;
 }
 .auth-form-inner {
   width: 100%;
-  max-width: 420px;
+  max-width: 380px;
 }
 
-/* Mobile-only logo row (hidden on lg) */
+/* Mobile-only logo — hidden on lg */
 .auth-mobile-brand {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 48px;
-  color: #0F1116;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 32px;
+  color: #1F2329;
 }
 .auth-mobile-brand .auth-mobile-logo {
-  width: 32px; height: 32px; border-radius: 8px;
-  background: #0F1116; color: #fff;
+  width: 28px; height: 28px; border-radius: 6px;
+  background: #1456F0; color: #FFFFFF;
   display: inline-flex; align-items: center; justify-content: center;
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 12px;
 }
 @media (min-width: 1024px) { .auth-mobile-brand { display: none; } }
 
-/* Header: "Welcome back!" / subtitle */
-.auth-form-header {
-  text-align: center;
-  margin-bottom: 40px;
-}
+/* Form header — title uses panel-title scale (500 weight, 20px) */
+.auth-form-header { margin-bottom: 24px; }
 .auth-form-title {
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin: 0 0 8px;
-  color: #0F1116;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: #1F2329;
 }
 .auth-form-subtitle {
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 20px;
   color: #646A73;
   margin: 0;
 }
 
-/* Form + fields */
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
+.auth-field { display: flex; flex-direction: column; gap: 6px; }
 .auth-field label {
-  display: block;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 20px;
   font-weight: 500;
-  color: #0F1116;
-  margin-bottom: 8px;
+  color: #1F2329;
 }
 .auth-field-hint {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 18px;
   color: #8F959E;
-  margin-top: 4px;
+  margin-top: 2px;
 }
-.auth-input-wrap {
-  position: relative;
-}
+.auth-input-wrap { position: relative; }
+
+/* Input: design-token spec — 32px height, 1px border, 4px radius, focus
+ * primary. Font inherits the app-wide 14px PingFang SC. */
 .auth-input {
   width: 100%;
-  height: 48px;
-  padding: 0 12px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #DEE0E3;
+  border-radius: 4px;
   font-size: 14px;
-  color: #0F1116;
-  background: #fff;
+  line-height: 22px;
+  color: #1F2329;
+  background: #FFFFFF;
   font-family: inherit;
   transition: border-color 0.15s, box-shadow 0.15s;
   box-sizing: border-box;
 }
 .auth-input:focus {
   outline: none;
-  border-color: #0F1116;
+  border-color: #1456F0;
+  box-shadow: 0 0 0 2px rgba(20, 86, 240, 0.10);
 }
-.auth-input::placeholder { color: #BBBFC4; }
+.auth-input::placeholder { color: #B0B5BD; }
+.auth-input-wrap .auth-input { padding-right: 36px; }
 .auth-password-toggle {
   position: absolute;
-  right: 12px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
   background: none;
   border: none;
-  padding: 4px;
-  color: #646A73;
+  padding: 0;
+  color: #8F959E;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.15s;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
 }
-.auth-password-toggle:hover { color: #0F1116; }
+.auth-password-toggle:hover {
+  color: #1F2329;
+  background: #F0F1F3;
+}
 
+/* Remember-me + forgot-password row */
 .auth-field-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-size: 13px;
+  line-height: 20px;
+  margin-top: -4px;
 }
 .auth-remember {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   cursor: pointer;
   color: #1F2329;
   font-weight: 400;
 }
 .auth-remember input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   cursor: pointer;
-  accent-color: #0F1116;
+  accent-color: #1456F0;
 }
 .auth-form-link {
-  color: #0F1116;
-  font-weight: 500;
+  color: #1456F0;
+  font-weight: 400;
   text-decoration: none;
 }
 .auth-form-link:hover { text-decoration: underline; }
 
 .auth-form-error {
-  padding: 10px 12px;
-  background: rgba(245, 74, 69, 0.1);
-  border: 1px solid rgba(245, 74, 69, 0.3);
-  border-radius: 6px;
-  color: #C33227;
+  padding: 8px 10px;
+  background: rgba(216, 57, 49, 0.08);
+  border: 1px solid rgba(216, 57, 49, 0.24);
+  border-radius: 4px;
+  color: #D83931;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 20px;
 }
 
 .auth-form-switch {
-  margin-top: 32px;
+  margin-top: 24px;
   text-align: center;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 20px;
   color: #646A73;
 }
 .auth-form-switch a {
-  color: #0F1116;
+  color: #1456F0;
   font-weight: 500;
   text-decoration: none;
   margin-left: 4px;
 }
 .auth-form-switch a:hover { text-decoration: underline; }
 
-/* ─── InteractiveHoverButton (ported IHB styles) ──────────────────── */
-.ihb {
-  position: relative;
+/* Primary button — design-language spec (32px, #1456F0, 4px radius, 14px,
+ * 500 weight). Full-width in form context. */
+.auth-submit {
   width: 100%;
-  height: 48px;
-  font-size: 15px;
+  height: 32px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 4px;
+  background: #1456F0;
+  color: #FFFFFF;
+  font-size: 14px;
   font-weight: 500;
+  line-height: 22px;
   cursor: pointer;
-  overflow: hidden;
-  border-radius: 9999px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  background: #fff;
-  color: #0F1116;
-  padding: 0 24px;
+  transition: background 0.15s;
   font-family: inherit;
-  transition: border-color 0.15s;
+  margin-top: 4px;
 }
-.ihb:disabled { opacity: 0.6; cursor: not-allowed; }
-.ihb-label {
-  display: inline-block;
-  transition: transform 0.3s, opacity 0.3s;
-}
-.ihb:hover:not(:disabled) .ihb-label {
-  transform: translateX(48px);
-  opacity: 0;
-}
-.ihb-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: #0F1116;
-  color: #fff;
-  opacity: 0;
-  transition: opacity 0.3s;
-  border-radius: 9999px;
-}
-.ihb:hover:not(:disabled) .ihb-overlay { opacity: 1; }
-
-/* Secondary IHB variant (for "Register here" / "Log in with Google") */
-.ihb-secondary {
-  background: #fff;
-  color: #0F1116;
+.auth-submit:hover:not(:disabled) { background: #0D45D6; }
+.auth-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ─── Loading state for /me check ─────────────────────────────────── */
@@ -328,5 +357,5 @@
   justify-content: center;
   color: #646A73;
   font-size: 14px;
-  font-family: var(--font-family, -apple-system, BlinkMacSystemFont, "SF Pro", "PingFang SC", system-ui, sans-serif);
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }

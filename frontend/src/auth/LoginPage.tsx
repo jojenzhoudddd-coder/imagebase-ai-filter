@@ -1,50 +1,39 @@
 /**
- * LoginPage — port of arsh342/careercompass login/page.tsx.
+ * LoginPage — careercompass's animated-character hero + interaction model,
+ * re-laid-out to AI Filter's design language:
+ *   · 2:1 split (hero wider than form — characters are the star)
+ *   · PingFang SC / 14px base / 22px line-height
+ *   · Form uses 32px inputs, 4px radius, #1456F0 primary, #1F2329 text
+ *   · Characters recolored to map to Table / Taste / Idea / Demo
  *
- * Visual 1:1 faithful to upstream:
- *   - Split grid (lg:grid-cols-2)
- *   - Left: grayscale gradient + grid overlay + blurred orbs +
- *     AnimatedCharacters (eyes track cursor, blink, peek at password)
- *   - Right: "Welcome back!" header + 420px max-width form with
- *     email/password fields, eye-toggle, remember-30-days checkbox,
- *     InteractiveHoverButton submit + switch-to-register link
- *
- * Differences from upstream:
- *   - Our backend accepts login by EMAIL or USERNAME (single field),
- *     so the email input is relabeled "用户名或邮箱". Seed user quan
- *     logs in with that handle; regular email users type their address.
- *   - Firebase + Google OAuth stripped — our backend is bcrypt + JWT,
- *     single provider. Sign-up link still present.
+ * Kept intact from upstream:
+ *   · `isTyping` binds focus → characters look at each other
+ *   · `showPassword` + `passwordLength` → Taste peeks, others turn away
  */
 
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { AnimatedCharacters } from "./AnimatedCharacters";
-import { InteractiveHoverButton } from "./InteractiveHoverButton";
 import "./AuthPage.css";
+
+// Colors here mirror the character component so legend swatches match 1:1.
+const ARTIFACT_COLORS = {
+  table: "#1456F0",
+  taste: "#7B4BDC",
+  idea:  "#F5A623",
+  demo:  "#34A853",
+};
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path
-        d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6S1.5 10 1.5 10z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="10" cy="10" r="3" stroke="currentColor" strokeWidth="1.5" />
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M1.2 8S3.6 3.2 8 3.2s6.8 4.8 6.8 4.8S12.4 12.8 8 12.8 1.2 8 1.2 8z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="2.4" stroke="currentColor" strokeWidth="1.2" />
     </svg>
   ) : (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path
-        d="M2 2l16 16M7.5 7.5a3 3 0 004.24 4.24M4.2 4.2C2.67 5.5 1.5 7.5 1.5 10s3 6 8.5 6c1.62 0 3.05-.37 4.24-.98M8.2 4.2A8.6 8.6 0 0110 4c5.5 0 8.5 6 8.5 6-.46.92-1.1 1.82-1.9 2.6"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M1.6 1.6l12.8 12.8M6 6a2.4 2.4 0 003.4 3.4M3.4 3.4C2.1 4.4 1.2 6 1.2 8s3 4.8 6.8 4.8c1.3 0 2.4-.3 3.4-.8M6.6 3.4A6.9 6.9 0 018 3.2c4.4 0 6.8 4.8 6.8 4.8-.4.7-.9 1.5-1.6 2.1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -67,7 +56,7 @@ export default function LoginPage() {
       await login(handle.trim(), password);
       navigate("/", { replace: true });
     } catch (err: any) {
-      setError(err?.message || "Login failed");
+      setError(err?.message || "登录失败");
     } finally {
       setSubmitting(false);
     }
@@ -75,14 +64,18 @@ export default function LoginPage() {
 
   return (
     <div className="auth-shell">
-      {/* ─── Left: animated characters + brand + footer links ─── */}
+      {/* ─── Left (2/3): hero with animated-character scene ─── */}
       <div className="auth-hero">
-        <div className="auth-hero-orb auth-hero-orb-a" aria-hidden="true" />
-        <div className="auth-hero-orb auth-hero-orb-b" aria-hidden="true" />
-
         <div className="auth-hero-brand">
           <span className="auth-hero-logo">IB</span>
-          <span>ImageBase</span>
+          <span>ImageBase · AI Work</span>
+        </div>
+
+        <div className="auth-hero-headline">
+          <h2 className="auth-hero-headline-title">Table · Taste · Idea · Demo</h2>
+          <p className="auth-hero-headline-sub">
+            四种产物，一个工作空间。Agent 会帮你把它们串起来——你输入时，它们也在看。
+          </p>
         </div>
 
         <div className="auth-hero-stage">
@@ -93,13 +86,32 @@ export default function LoginPage() {
           />
         </div>
 
+        <div className="auth-hero-legend">
+          <span className="auth-hero-legend-item">
+            <span className="auth-hero-legend-dot" style={{ backgroundColor: ARTIFACT_COLORS.table }} />
+            Table
+          </span>
+          <span className="auth-hero-legend-item">
+            <span className="auth-hero-legend-dot" style={{ backgroundColor: ARTIFACT_COLORS.taste }} />
+            Taste
+          </span>
+          <span className="auth-hero-legend-item">
+            <span className="auth-hero-legend-dot" style={{ backgroundColor: ARTIFACT_COLORS.idea }} />
+            Idea
+          </span>
+          <span className="auth-hero-legend-item">
+            <span className="auth-hero-legend-dot" style={{ backgroundColor: ARTIFACT_COLORS.demo }} />
+            Demo
+          </span>
+        </div>
+
         <div className="auth-hero-footer">
           <a href="#" onClick={(e) => e.preventDefault()}>隐私政策</a>
           <a href="#" onClick={(e) => e.preventDefault()}>服务条款</a>
         </div>
       </div>
 
-      {/* ─── Right: form ─── */}
+      {/* ─── Right (1/3): compact form ─── */}
       <div className="auth-form-pane">
         <div className="auth-form-inner">
           <div className="auth-mobile-brand">
@@ -108,8 +120,8 @@ export default function LoginPage() {
           </div>
 
           <div className="auth-form-header">
-            <h1 className="auth-form-title">Welcome back!</h1>
-            <p className="auth-form-subtitle">请输入您的账号信息</p>
+            <h1 className="auth-form-title">欢迎回来</h1>
+            <p className="auth-form-subtitle">登录进入你的工作空间</p>
           </div>
 
           <form className="auth-form" onSubmit={onSubmit}>
@@ -140,7 +152,9 @@ export default function LoginPage() {
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  onFocus={() => setIsTyping(true)}
+                  onBlur={() => setIsTyping(false)}
+                  placeholder="请输入密码"
                   disabled={submitting}
                   required
                 />
@@ -161,17 +175,15 @@ export default function LoginPage() {
                 <span>30 天内免登录</span>
               </label>
               <a className="auth-form-link" href="#" onClick={(e) => e.preventDefault()}>
-                忘记密码?
+                忘记密码
               </a>
             </div>
 
             {error && <div className="auth-form-error">{error}</div>}
 
-            <InteractiveHoverButton
-              type="submit"
-              text={submitting ? "登录中…" : "登录"}
-              disabled={submitting}
-            />
+            <button className="auth-submit" type="submit" disabled={submitting}>
+              {submitting ? "登录中…" : "登录"}
+            </button>
           </form>
 
           <div className="auth-form-switch">
