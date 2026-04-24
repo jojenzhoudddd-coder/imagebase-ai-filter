@@ -96,13 +96,17 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
   const [previewKey, setPreviewKey] = useState(0);
   const [isEditingName, setIsEditingName] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
-  // Separate confirm dialogs for publish / unpublish / publish-success — all
-  // three replace the native window.confirm/prompt which looked like a
-  // browser alert mid-flow. `publishSuccess` parks the generated public URL
-  // so the dialog can show copy-to-clipboard UX instead of a prompt().
+  // Three mutually-exclusive surfaces around the publish button:
+  //   publishConfirm       — pre-publish confirmation popover (not yet published)
+  //   publishedPopoverOpen — post-publish info popover (URL + copy + unpublish)
+  //   unpublishConfirm     — modal "are you sure?" when user hits unpublish
+  // After a successful publish we auto-open `publishedPopoverOpen` so it
+  // doubles as the "publish success" acknowledgement (no separate success
+  // modal). The horizontal URL bar that used to live between topbar and
+  // iframe is also rolled into this popover.
   const [publishConfirm, setPublishConfirm] = useState(false);
+  const [publishedPopoverOpen, setPublishedPopoverOpen] = useState(false);
   const [unpublishConfirm, setUnpublishConfirm] = useState(false);
-  const [publishSuccessUrl, setPublishSuccessUrl] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const filesPopoverRef = useRef<HTMLDivElement | null>(null);
   const publishPopoverRef = useRef<HTMLDivElement | null>(null);
@@ -120,17 +124,21 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [filesOpen]);
 
-  // Publish confirm lives as a popover anchored to the publish button
-  // (not a modal overlay). Same click-outside-closes pattern.
+  // Publish-confirm + published-info both live as popovers anchored to the
+  // same publish/published button wrap. Shared click-outside listener: any
+  // click outside the wrap dismisses whichever popover is currently open.
   useEffect(() => {
-    if (!publishConfirm) return;
+    if (!publishConfirm && !publishedPopoverOpen) return;
     function onDocClick(e: MouseEvent) {
       const el = publishPopoverRef.current;
-      if (el && !el.contains(e.target as Node)) setPublishConfirm(false);
+      if (el && !el.contains(e.target as Node)) {
+        setPublishConfirm(false);
+        setPublishedPopoverOpen(false);
+      }
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
-  }, [publishConfirm]);
+  }, [publishConfirm, publishedPopoverOpen]);
 
   const load = useCallback(async () => {
     try {
@@ -207,9 +215,14 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
     setPublishConfirm(false);
     setBusy("publish");
     try {
-      const r = await publishDemo(demoId);
+      await publishDemo(demoId);
       await load();
-      if (r.url) setPublishSuccessUrl(r.url);
+      // Publish success: open the Published popover so the user sees the
+      // URL + can copy / unpublish in one place. The popover itself builds
+      // the URL from window.location.origin (see publicUrl memo), so we
+      // don't need to thread `r.url` / `r.slug` through — load() has already
+      // updated demo.publishSlug which flows into publicUrl.
+      setPublishedPopoverOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -354,17 +367,24 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
             {ExportIcon}
             {t("demo.exportWorkend")}
           </button>
-          {demo.publishSlug ? (
-            <button
-              className="demo-panel-topbar-btn"
-              onClick={handleUnpublish}
-              disabled={busy !== null}
-            >
-              {UnpublishIcon}
-              {busy === "unpublish" ? t("demo.unpublishing") : t("demo.unpublish")}
-            </button>
-          ) : (
-            <div className="demo-panel-publish-wrap" ref={publishPopoverRef}>
+          {/* Publish / Published button — single relative wrap so both
+             popovers (pre-publish confirm + post-publish info) anchor to
+             the same top-right spot. */}
+          <div className="demo-panel-publish-wrap" ref={publishPopoverRef}>
+            {demo.publishSlug ? (
+              // Status-style button showing "Published" + chevron. Click
+              // toggles the info popover (URL / copy / unpublish).
+              <button
+                className="demo-panel-topbar-btn"
+                onClick={() => setPublishedPopoverOpen((v) => !v)}
+                disabled={busy !== null}
+                aria-expanded={publishedPopoverOpen}
+              >
+                {PublishIcon}
+                {t("demo.published")}
+                {ChevronDownIcon}
+              </button>
+            ) : (
               <button
                 className="demo-panel-topbar-btn demo-panel-topbar-btn-primary"
                 onClick={handlePublish}
@@ -374,59 +394,78 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
                 {PublishIcon}
                 {busy === "publish" ? t("demo.publishing") : t("demo.publishAsWorkend")}
               </button>
-              {publishConfirm && (
-                /* Popover anchored to the publish button: 4px below the button,
-                 * right-edge aligned. Reuses ConfirmDialog's card visuals
-                 * (title / message / actions) so the look is identical — only
-                 * the container changes from centered-modal-overlay to
-                 * absolutely-positioned dropdown. */
-                <div className="demo-panel-publish-popover">
-                  <div className="confirm-title">
-                    {t("demo.publishConfirmTitle").replace("{{name}}", demo.name)}
-                  </div>
-                  <div className="confirm-message">{publishConfirmMessage}</div>
-                  <div className="confirm-actions">
-                    <button
-                      className="confirm-btn confirm-btn-cancel"
-                      onClick={() => setPublishConfirm(false)}
-                    >
-                      {t("confirm.cancel")}
-                    </button>
-                    <button
-                      className="confirm-btn confirm-btn-ok"
-                      onClick={confirmPublish}
-                    >
-                      {t("demo.publishAsWorkend")}
-                    </button>
-                  </div>
+            )}
+            {publishConfirm && (
+              /* Pre-publish confirm popover — 4px below button, right-aligned.
+               * Reuses ConfirmDialog's card visuals (title / message /
+               * actions). */
+              <div className="demo-panel-publish-popover">
+                <div className="confirm-title">
+                  {t("demo.publishConfirmTitle").replace("{{name}}", demo.name)}
                 </div>
-              )}
-            </div>
-          )}
+                <div className="confirm-message">{publishConfirmMessage}</div>
+                <div className="confirm-actions">
+                  <button
+                    className="confirm-btn confirm-btn-cancel"
+                    onClick={() => setPublishConfirm(false)}
+                  >
+                    {t("confirm.cancel")}
+                  </button>
+                  <button
+                    className="confirm-btn confirm-btn-ok"
+                    onClick={confirmPublish}
+                  >
+                    {t("demo.publishAsWorkend")}
+                  </button>
+                </div>
+              </div>
+            )}
+            {publishedPopoverOpen && publicUrl && (
+              /* Post-publish info popover. Replaces both the old horizontal
+               * public-url bar below the topbar AND the separate success
+               * dialog. Contains: "Published as workend:" label + the URL
+               * + copy icon + unpublish button. */
+              <div className="demo-panel-publish-popover demo-panel-published-popover">
+                <div className="confirm-title">{t("demo.publishedAsWorkend")}</div>
+                <div className="demo-panel-published-url-row">
+                  <a
+                    className="demo-panel-published-url"
+                    href={publicUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {publicUrl}
+                  </a>
+                  <button
+                    className="demo-panel-copy-btn"
+                    onClick={() => { navigator.clipboard?.writeText(publicUrl); }}
+                    title={t("demo.copyUrl")}
+                    aria-label={t("demo.copyUrl")}
+                  >
+                    {CopyIcon}
+                  </button>
+                </div>
+                <div className="confirm-actions">
+                  <button
+                    className="confirm-btn confirm-btn-cancel"
+                    onClick={() => {
+                      setPublishedPopoverOpen(false);
+                      handleUnpublish();
+                    }}
+                    disabled={busy !== null}
+                  >
+                    {UnpublishIcon}
+                    {busy === "unpublish" ? t("demo.unpublishing") : t("demo.unpublish")}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {publicUrl && (
-        <div className="demo-panel-public-url">
-          <span className="demo-panel-public-url-label">{t("demo.publicUrlLabel")}</span>
-          {/* link + copy-icon wrapped in one group so the icon sits
-              immediately after the URL text, not pushed to the far right
-              by flex-grow. The outer bar's flex continues from here. */}
-          <span className="demo-panel-public-url-group">
-            <a href={publicUrl} target="_blank" rel="noreferrer">
-              {publicUrl}
-            </a>
-            <button
-              className="demo-panel-copy-btn"
-              onClick={() => { navigator.clipboard?.writeText(publicUrl); }}
-              title={t("demo.copyUrl")}
-              aria-label={t("demo.copyUrl")}
-            >
-              {CopyIcon}
-            </button>
-          </span>
-        </div>
-      )}
+      {/* Public URL bar removed — info rolled into the "Published" popover
+         anchored to the publish button in the topbar. */}
 
       {error && (
         <div className="demo-panel-error-banner" onClick={() => setError(null)}>
@@ -474,20 +513,8 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
         onCancel={() => setUnpublishConfirm(false)}
       />
 
-      {/* ─── Publish success — replaces window.prompt with a copy-aware card ─── */}
-      <ConfirmDialog
-        open={!!publishSuccessUrl}
-        variant="default"
-        title={t("demo.publishSuccessPrompt")}
-        message={publishSuccessUrl || ""}
-        confirmLabel={t("demo.copyUrl")}
-        cancelLabel={t("confirm.done")}
-        onConfirm={() => {
-          if (publishSuccessUrl) navigator.clipboard?.writeText(publishSuccessUrl);
-          setPublishSuccessUrl(null);
-        }}
-        onCancel={() => setPublishSuccessUrl(null)}
-      />
+      {/* publish-success popover lives inline in the topbar above (anchored
+          to the publish/unpublish button wrap), not as a modal. */}
     </div>
   );
 }

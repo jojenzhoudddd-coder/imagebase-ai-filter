@@ -514,6 +514,8 @@ export const en = {
   "demo.status.error": "Build failed",
   "demo.status.idle": "Not built",
   "demo.publicUrlLabel": "Published as workend:",
+  "demo.published": "Published",
+  "demo.publishedAsWorkend": "Published as workend",
   "demo.copyUrl": "Copy",
   "demo.loading": "Loading demo...",
   "demo.loadFailed": "Load failed",

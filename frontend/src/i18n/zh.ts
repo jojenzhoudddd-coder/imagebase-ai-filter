@@ -518,6 +518,8 @@ export const zh: TranslationKeys = {
   "demo.status.error": "构建失败",
   "demo.status.idle": "未构建",
   "demo.publicUrlLabel": "已作为 workend 发布：",
+  "demo.published": "已 workend",
+  "demo.publishedAsWorkend": "已发布为 workend",
   "demo.copyUrl": "复制",
   "demo.loading": "加载 Demo...",
   "demo.loadFailed": "加载失败",

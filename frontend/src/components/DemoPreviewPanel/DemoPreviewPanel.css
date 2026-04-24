@@ -255,6 +255,31 @@
   cursor: default;
 }
 
+/* Post-publish popover URL row: link takes remaining space (ellipsis),
+ * copy icon sits immediately to the right. */
+.demo-panel-published-url-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 20px;
+  padding: 8px 10px;
+  background: var(--color-bg-hover, #F5F6F7);
+  border-radius: 4px;
+  min-width: 0;
+}
+.demo-panel-published-url {
+  color: #1456F0;
+  text-decoration: none;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1 1 0;
+}
+.demo-panel-published-url:hover { text-decoration: underline; }
+
 /* ─── File list popover (topbar dropdown) ──────────────────────────────────
  * 旧版是固定在右下角的 aside，会遮挡 iframe 内容。现在挂在 topbar "Files · N"
  * 按钮下面，按钮本身是标准 hover 文字按钮，点击 toggle 一个下拉面板。 */
