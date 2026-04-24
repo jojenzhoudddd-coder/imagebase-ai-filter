@@ -13,7 +13,7 @@
  * a blank card.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 export interface ChatChartBlockProps {
   spec: Record<string, unknown>;
@@ -23,10 +23,43 @@ export interface ChatChartBlockProps {
   caption?: string;
 }
 
-export default function ChatChartBlock({ spec, height = 280, caption }: ChatChartBlockProps) {
+// Local error boundary — a malformed vega spec (or a vega-embed internal throw)
+// used to cascade through React's reconciliation and white-screen the entire
+// chat feed. We now contain the damage here so the rest of the message tree
+// keeps rendering even when one chart breaks.
+class ChartErrorBoundary extends Component<
+  { children: ReactNode; spec: Record<string, unknown> },
+  { err: Error | null }
+> {
+  state = { err: null as Error | null };
+  static getDerivedStateFromError(err: Error) { return { err }; }
+  componentDidCatch(err: Error) { console.warn("[ChatChartBlock] render crashed:", err); }
+  render() {
+    if (this.state.err) {
+      return (
+        <div className="chat-chart-block chat-chart-block-error">
+          <div className="chat-chart-block-header">图表渲染失败：{this.state.err.message}</div>
+          <pre className="chat-chart-block-raw">{JSON.stringify(this.props.spec, null, 2).slice(0, 800)}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function ChatChartBlockInner({ spec, height = 280, caption }: ChatChartBlockProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rendering, setRendering] = useState(true);
+
+  // Spec may arrive as a fresh object on every parent render (it's JSON.parsed
+  // inside AssistantText's code renderer). Without memoizing by content,
+  // the effect below re-runs on every chat chunk, racing vega-embed's async
+  // init against its own cleanup and leaving the host in an inconsistent
+  // state — which is the exact trigger for the NotFoundError cascade.
+  const specKey = useMemo(() => {
+    try { return JSON.stringify(spec); } catch { return ""; }
+  }, [spec]);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,10 +90,15 @@ export default function ChatChartBlock({ spec, height = 280, caption }: ChatChar
     })();
     return () => {
       cancelled = true;
-      // Clear the host so React doesn't complain about a detached vega view
-      if (hostRef.current) hostRef.current.innerHTML = "";
+      // Clear the host so a stale vega view doesn't overlap with the next
+      // render. Guard against the ref already being detached.
+      const el = hostRef.current;
+      if (el) {
+        try { el.innerHTML = ""; } catch { /* swallow — detached node is fine */ }
+      }
     };
-  }, [spec, height]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [specKey, height]);
 
   if (error) {
     return (
@@ -73,12 +111,34 @@ export default function ChatChartBlock({ spec, height = 280, caption }: ChatChar
     );
   }
 
+  // CRITICAL: the vega host MUST NOT have any React children. vega-embed
+  // mutates the host via innerHTML; if React owns anything inside it, the
+  // next reconcile fails with "Failed to execute 'removeChild' on 'Node'"
+  // and white-screens the whole chat feed (and outer app, since the error
+  // unwinds through the message list). Loading indicator lives OUTSIDE the
+  // host as an absolutely-positioned sibling.
   return (
     <div className="chat-chart-block">
       {caption && <div className="chat-chart-block-caption">{caption}</div>}
-      <div ref={hostRef} className="chat-chart-host" style={{ minHeight: height }}>
-        {rendering && <div className="chat-chart-loading">加载图表中…</div>}
+      <div className="chat-chart-host-wrap" style={{ position: "relative", minHeight: height }}>
+        <div ref={hostRef} className="chat-chart-host" />
+        {rendering && (
+          <div
+            className="chat-chart-loading"
+            style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}
+          >
+            加载图表中…
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+export default function ChatChartBlock(props: ChatChartBlockProps) {
+  return (
+    <ChartErrorBoundary spec={props.spec}>
+      <ChatChartBlockInner {...props} />
+    </ChartErrorBoundary>
   );
 }
