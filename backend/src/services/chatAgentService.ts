@@ -483,7 +483,27 @@ const TOOL_OUTPUT_MAX_CHARS = 500_000;
 const TOOL_OUTPUT_HEAD_CHARS = 460_000;
 const TOOL_OUTPUT_TAIL_CHARS = 30_000;
 
+// Image tool_results use IBASE_IMAGE_v1__ prefix + JSON payload. Truncating
+// in the middle of base64 would break JSON parsing downstream — the adapters
+// would fall back to treating the payload as plain text, and the whole
+// base64 blob leaks into the prompt as raw characters (the very 2M-token
+// explosion we're trying to prevent). Give images their own generous cap
+// (1.2MB chars = one 1440×900 PNG @ 1.5× comfortably). Beyond that we drop
+// the image entirely and substitute a friendly note.
+const IBASE_IMAGE_MARKER = "__IBASE_IMAGE_v1__";
+const IMAGE_TOOL_OUTPUT_MAX_CHARS = 1_200_000;
+
 function truncateToolOutput(output: string, toolName: string): string {
+  // Image payload path — preserve intact under IMAGE_TOOL_OUTPUT_MAX_CHARS,
+  // replace wholesale above it. Never splice mid-base64.
+  if (output.startsWith(IBASE_IMAGE_MARKER)) {
+    if (output.length <= IMAGE_TOOL_OUTPUT_MAX_CHARS) return output;
+    return (
+      `[image result from "${toolName}" was ${output.length.toLocaleString()} chars, ` +
+      `over the ${IMAGE_TOOL_OUTPUT_MAX_CHARS.toLocaleString()}-char cap — dropped. ` +
+      `Re-capture at a smaller scale (screenshot_demo width/height, view_taste_image scale:1).]`
+    );
+  }
   if (output.length <= TOOL_OUTPUT_MAX_CHARS) return output;
   const head = output.slice(0, TOOL_OUTPUT_HEAD_CHARS);
   const tail = output.slice(-TOOL_OUTPUT_TAIL_CHARS);

@@ -32,6 +32,44 @@ import type {
 const ARK_BASE_URL =
   process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 
+/**
+ * Strip IBASE_IMAGE markers from the input array. ARK (Doubao) Responses
+ * API accepts images via its own content-parts schema, not as inlined
+ * base64 strings — if we pass through the raw `__IBASE_IMAGE_v1__<json>`
+ * payload, ARK treats it as text, and a typical PNG (~100KB base64)
+ * instantly blows the max_message_tokens limit (observed: ARK 400
+ * "Total tokens of image and text exceed max message tokens").
+ *
+ * This usually triggers when a turn that captured an image on Claude
+ * falls back to ARK (overload cascade). The image history is replayed
+ * every round, so one view_taste_image call can kill dozens of subsequent
+ * ARK rounds until the session is reset.
+ *
+ * Replace image tool_results with a short text-only note so ARK can
+ * continue the turn without exploding. Visual fidelity is lost — the
+ * Agent simply doesn't "see" those images anymore — but data-loss beats
+ * turn-killing 400.
+ */
+const IBASE_IMAGE_MARKER = "__IBASE_IMAGE_v1__";
+function sanitizeInputForArk(input: unknown[]): unknown[] {
+  return input.map((it: any) => {
+    if (!it || typeof it !== "object") return it;
+    if (it.type !== "function_call_output") return it;
+    const raw = typeof it.output === "string" ? it.output : "";
+    if (!raw.startsWith(IBASE_IMAGE_MARKER)) return it;
+    let payload: { mediaType?: string; caption?: string; text?: string } = {};
+    try {
+      payload = JSON.parse(raw.slice(IBASE_IMAGE_MARKER.length));
+    } catch { /* malformed marker — drop silently */ }
+    const replacement =
+      (payload.caption ? payload.caption + "\n\n" : "") +
+      (payload.text ?? "") +
+      "\n\n[image omitted — Volcano ARK vision schema not implemented on this channel. " +
+      "Switch to a Claude model in the picker to see the pixels.]";
+    return { ...it, output: replacement.trim() };
+  });
+}
+
 export const arkAdapter: ProviderAdapter = {
   name: "ark",
 
@@ -41,9 +79,12 @@ export const arkAdapter: ProviderAdapter = {
     const apiKey = process.env.ARK_API_KEY;
     if (!apiKey) throw new Error("ARK_API_KEY not configured");
 
+    // Strip IBASE_IMAGE markers before handing off — ARK can't read them
+    // and the raw base64 blows max_message_tokens.
+    const sanitizedInput = sanitizeInputForArk(input as unknown[]);
     const body: Record<string, unknown> = {
       model: model.providerModelId,
-      input,
+      input: sanitizedInput,
       max_output_tokens: model.defaults.maxOutputTokens,
       temperature: model.defaults.temperature,
       stream: true,
