@@ -7,6 +7,8 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { AnimatedCharacters } from "./AnimatedCharacters";
+import LanguageSwitcher from "./LanguageSwitcher";
+import { useTranslation } from "../i18n/index";
 import "./AuthPage.css";
 
 function EyeIcon({ open }: { open: boolean }) {
@@ -23,6 +25,7 @@ function EyeIcon({ open }: { open: boolean }) {
 }
 
 export default function RegisterPage() {
+  const { t } = useTranslation();
   const { register } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -47,7 +50,7 @@ export default function RegisterPage() {
       });
       navigate("/", { replace: true });
     } catch (err: any) {
-      setError(err?.message || "注册失败");
+      setError(err?.message || t("auth.register.failed"));
     } finally {
       setSubmitting(false);
     }
@@ -55,11 +58,14 @@ export default function RegisterPage() {
 
   return (
     <div className="auth-shell">
+      <LanguageSwitcher />
+
       <div className="auth-hero">
         <div className="auth-hero-glass" aria-hidden="true" />
 
         <div className="auth-hero-headline">
-          <h2 className="auth-hero-headline-title">Table · Taste · Idea · Demo</h2>
+          <h2 className="auth-hero-headline-title">{t("auth.heroTitle")}</h2>
+          <p className="auth-hero-headline-sub">{t("auth.heroSubtitle")}</p>
         </div>
 
         <div className="auth-hero-stage">
@@ -71,8 +77,8 @@ export default function RegisterPage() {
         </div>
 
         <div className="auth-hero-footer">
-          <a href="#" onClick={(e) => e.preventDefault()}>隐私政策</a>
-          <a href="#" onClick={(e) => e.preventDefault()}>服务条款</a>
+          <a href="#" onClick={(e) => e.preventDefault()}>{t("auth.privacy")}</a>
+          <a href="#" onClick={(e) => e.preventDefault()}>{t("auth.terms")}</a>
         </div>
       </div>
 
@@ -84,13 +90,13 @@ export default function RegisterPage() {
           </div>
 
           <div className="auth-form-header">
-            <h1 className="auth-form-title">创建账号</h1>
-            <p className="auth-form-subtitle">几秒钟开始使用</p>
+            <h1 className="auth-form-title">{t("auth.register.title")}</h1>
+            <p className="auth-form-subtitle">{t("auth.register.subtitle")}</p>
           </div>
 
           <form className="auth-form" onSubmit={onSubmit}>
             <div className="auth-field">
-              <label htmlFor="email">邮箱</label>
+              <label htmlFor="email">{t("auth.register.emailLabel")}</label>
               <input
                 id="email"
                 className="auth-input"
@@ -101,13 +107,13 @@ export default function RegisterPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 onFocus={() => setIsTyping(true)}
                 onBlur={() => setIsTyping(false)}
-                placeholder="you@example.com"
+                placeholder={t("auth.register.emailPlaceholder")}
                 disabled={submitting}
                 required
               />
             </div>
             <div className="auth-field">
-              <label htmlFor="username">用户名（可选）</label>
+              <label htmlFor="username">{t("auth.register.usernameLabel")}</label>
               <input
                 id="username"
                 className="auth-input"
@@ -117,26 +123,26 @@ export default function RegisterPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 onFocus={() => setIsTyping(true)}
                 onBlur={() => setIsTyping(false)}
-                placeholder="2-32 字符 a-z A-Z 0-9 _ -"
+                placeholder={t("auth.register.usernamePlaceholder")}
                 disabled={submitting}
               />
-              <span className="auth-field-hint">登录时可输入用户名或邮箱</span>
+              <span className="auth-field-hint">{t("auth.register.usernameHint")}</span>
             </div>
             <div className="auth-field">
-              <label htmlFor="name">显示名</label>
+              <label htmlFor="name">{t("auth.register.nameLabel")}</label>
               <input
                 id="name"
                 className="auth-input"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="你希望别人怎么称呼你"
+                placeholder={t("auth.register.namePlaceholder")}
                 disabled={submitting}
                 required
               />
             </div>
             <div className="auth-field">
-              <label htmlFor="password">密码</label>
+              <label htmlFor="password">{t("auth.register.passwordLabel")}</label>
               <div className="auth-input-wrap">
                 <input
                   id="password"
@@ -145,7 +151,7 @@ export default function RegisterPage() {
                   autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="至少 6 位"
+                  placeholder={t("auth.register.passwordPlaceholder")}
                   minLength={6}
                   disabled={submitting}
                   required
@@ -154,7 +160,7 @@ export default function RegisterPage() {
                   type="button"
                   className="auth-password-toggle"
                   onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                  aria-label={showPassword ? t("auth.hidePassword") : t("auth.showPassword")}
                 >
                   <EyeIcon open={!showPassword} />
                 </button>
@@ -164,12 +170,12 @@ export default function RegisterPage() {
             {error && <div className="auth-form-error">{error}</div>}
 
             <button className="auth-submit" type="submit" disabled={submitting}>
-              {submitting ? "创建中…" : "创建账号"}
+              {submitting ? t("auth.register.submitting") : t("auth.register.submit")}
             </button>
           </form>
 
           <div className="auth-form-switch">
-            已有账号?<Link to="/login">登录</Link>
+            {t("auth.register.haveAccount")}<Link to="/login">{t("auth.register.toLogin")}</Link>
           </div>
         </div>
       </div>

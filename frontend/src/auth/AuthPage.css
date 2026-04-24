@@ -11,6 +11,7 @@
  */
 
 .auth-shell {
+  position: relative;     /* anchors top-right language switcher */
   min-height: 100vh;
   max-height: 100vh;
   overflow: hidden;
@@ -106,6 +107,45 @@
   font-weight: 600;
   color: #1F2329;
 }
+
+/* Subtitle under the artifact headline. Tracks .auth-form-subtitle
+ * styling so the two halves stay visually symmetric. */
+.auth-hero-headline-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  color: #646A73;
+}
+
+/* Top-right language switcher — pinned absolute to the whole shell so
+ * it sits regardless of 3:2 split. Minimal pill, matches topbar hover
+ * text-button pattern used elsewhere in the app. */
+.auth-lang-switch {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #646A73;
+  font-size: 13px;
+  line-height: 20px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.auth-lang-switch:hover {
+  background: #F0F1F3;
+  color: #1F2329;
+}
+.auth-lang-switch svg { flex-shrink: 0; }
 
 /* Characters — vertically centered in the remaining space, then nudged
  * 60px down from center to sit lower in the pane (per design preference). */

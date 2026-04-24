@@ -15,6 +15,8 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { AnimatedCharacters } from "./AnimatedCharacters";
+import LanguageSwitcher from "./LanguageSwitcher";
+import { useTranslation } from "../i18n/index";
 import "./AuthPage.css";
 
 function EyeIcon({ open }: { open: boolean }) {
@@ -31,6 +33,7 @@ function EyeIcon({ open }: { open: boolean }) {
 }
 
 export default function LoginPage() {
+  const { t } = useTranslation();
   const { login } = useAuth();
   const navigate = useNavigate();
   const [handle, setHandle] = useState("");
@@ -48,7 +51,7 @@ export default function LoginPage() {
       await login(handle.trim(), password);
       navigate("/", { replace: true });
     } catch (err: any) {
-      setError(err?.message || "登录失败");
+      setError(err?.message || t("auth.login.failed"));
     } finally {
       setSubmitting(false);
     }
@@ -56,15 +59,19 @@ export default function LoginPage() {
 
   return (
     <div className="auth-shell">
-      {/* ─── Left (2/3): hero with animated-character scene ─── */}
+      {/* Top-right language toggle — floats over the whole shell */}
+      <LanguageSwitcher />
+
+      {/* ─── Left (3/5): hero with animated-character scene ─── */}
       <div className="auth-hero">
         {/* Frosted glass layer — sits on top of the colorful ripple base
             but BELOW the characters (z-index ordering in AuthPage.css). */}
         <div className="auth-hero-glass" aria-hidden="true" />
 
-        {/* Top-left artifact-four headline */}
+        {/* Top-left artifact-four headline + tagline */}
         <div className="auth-hero-headline">
-          <h2 className="auth-hero-headline-title">Table · Taste · Idea · Demo</h2>
+          <h2 className="auth-hero-headline-title">{t("auth.heroTitle")}</h2>
+          <p className="auth-hero-headline-sub">{t("auth.heroSubtitle")}</p>
         </div>
 
         <div className="auth-hero-stage">
@@ -76,8 +83,8 @@ export default function LoginPage() {
         </div>
 
         <div className="auth-hero-footer">
-          <a href="#" onClick={(e) => e.preventDefault()}>隐私政策</a>
-          <a href="#" onClick={(e) => e.preventDefault()}>服务条款</a>
+          <a href="#" onClick={(e) => e.preventDefault()}>{t("auth.privacy")}</a>
+          <a href="#" onClick={(e) => e.preventDefault()}>{t("auth.terms")}</a>
         </div>
       </div>
 
@@ -90,13 +97,13 @@ export default function LoginPage() {
           </div>
 
           <div className="auth-form-header">
-            <h1 className="auth-form-title">欢迎回来</h1>
-            <p className="auth-form-subtitle">登录进入你的工作空间</p>
+            <h1 className="auth-form-title">{t("auth.login.title")}</h1>
+            <p className="auth-form-subtitle">{t("auth.login.subtitle")}</p>
           </div>
 
           <form className="auth-form" onSubmit={onSubmit}>
             <div className="auth-field">
-              <label htmlFor="handle">用户名或邮箱</label>
+              <label htmlFor="handle">{t("auth.login.handleLabel")}</label>
               <input
                 id="handle"
                 className="auth-input"
@@ -107,13 +114,13 @@ export default function LoginPage() {
                 onChange={(e) => setHandle(e.target.value)}
                 onFocus={() => setIsTyping(true)}
                 onBlur={() => setIsTyping(false)}
-                placeholder="quan 或 you@example.com"
+                placeholder={t("auth.login.handlePlaceholder")}
                 disabled={submitting}
                 required
               />
             </div>
             <div className="auth-field">
-              <label htmlFor="password">密码</label>
+              <label htmlFor="password">{t("auth.login.passwordLabel")}</label>
               <div className="auth-input-wrap">
                 <input
                   id="password"
@@ -124,7 +131,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   onFocus={() => setIsTyping(true)}
                   onBlur={() => setIsTyping(false)}
-                  placeholder="请输入密码"
+                  placeholder={t("auth.login.passwordPlaceholder")}
                   disabled={submitting}
                   required
                 />
@@ -132,7 +139,7 @@ export default function LoginPage() {
                   type="button"
                   className="auth-password-toggle"
                   onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                  aria-label={showPassword ? t("auth.hidePassword") : t("auth.showPassword")}
                 >
                   <EyeIcon open={!showPassword} />
                 </button>
@@ -142,22 +149,22 @@ export default function LoginPage() {
             <div className="auth-field-row">
               <label className="auth-remember">
                 <input type="checkbox" />
-                <span>30 天内免登录</span>
+                <span>{t("auth.login.remember")}</span>
               </label>
               <a className="auth-form-link" href="#" onClick={(e) => e.preventDefault()}>
-                忘记密码
+                {t("auth.login.forgot")}
               </a>
             </div>
 
             {error && <div className="auth-form-error">{error}</div>}
 
             <button className="auth-submit" type="submit" disabled={submitting}>
-              {submitting ? "登录中…" : "登录"}
+              {submitting ? t("auth.login.submitting") : t("auth.login.submit")}
             </button>
           </form>
 
           <div className="auth-form-switch">
-            还没有账号?<Link to="/register">立即注册</Link>
+            {t("auth.login.noAccount")}<Link to="/register">{t("auth.login.toRegister")}</Link>
           </div>
         </div>
       </div>

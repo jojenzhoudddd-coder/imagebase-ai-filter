@@ -8,12 +8,14 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
+import { useTranslation } from "../i18n/index";
 import "./AuthPage.css";
 
 export default function RequireAuth({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const { user, loading } = useAuth();
   const location = useLocation();
-  if (loading) return <div className="auth-loading">正在恢复会话…</div>;
+  if (loading) return <div className="auth-loading">{t("auth.sessionRestoring")}</div>;
   if (!user) {
     // Preserve the attempted URL so we can bounce the user back after login.
     return <Navigate to="/login" state={{ from: location }} replace />;
