@@ -21,6 +21,7 @@ import demoRuntimeRoutes from "./routes/demoRuntimeRoutes.js";
 import publicDemoRoutes from "./routes/publicDemoRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import { attachUser, ensureSeedUserCredentials } from "./services/authService.js";
+import { requireWorkspaceAccess } from "./middleware/requireWorkspaceAccess.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
@@ -58,6 +59,12 @@ app.use(cookieParser());
 // check req.user without each one reaching into cookies manually. Put this
 // BEFORE any /api/* route mount so every handler sees the decoded user.
 app.use("/api", attachUser);
+
+// Workspace access guard —— 只要请求带 workspaceId（URL/body/query 任一位置）
+// 就校验登录用户对该 workspace 是否有权。/api/auth/* 和 share 路径豁免。
+// Artifact-level 路由（tableId/ideaId/...）里的 workspace 归属校验暂未做，
+// 属于 follow-up 审计项。
+app.use("/api", requireWorkspaceAccess);
 
 // ── Request logging middleware ──
 function gmt8() {

@@ -25,8 +25,12 @@ import { useTableSync } from "./hooks/useTableSync";
 import { useWorkspaceSync } from "./hooks/useWorkspaceSync";
 import { useSplitResize } from "./hooks/useSplitResize";
 import ChatSidebar from "./components/ChatSidebar/index";
+import { useAuth } from "./auth/AuthContext";
 
-const WORKSPACE_ID = "doc_default";
+// WORKSPACE_ID 在组件内部根据 URL + AuthContext 动态派生（见 App() 顶部）。
+// 之前这里是 `const WORKSPACE_ID = "doc_default"`，导致所有登录用户都拿
+// 到 seed workspace 的数据——是严重的跨用户数据泄漏，已修掉。
+
 // Phase 1 MVP: the user has exactly one Agent (seeded on first boot as
 // `agent_default`, display name "Claw"). It's workspace-agnostic — the same
 // Agent follows you across every workspace and owns the persistent identity
@@ -89,6 +93,31 @@ export default function App() {
   // the change back to the URL — see navigateToArtifact() below.
   const navigate = useNavigate();
   const urlParams = useParams<{ workspaceId?: string; artifactType?: string; artifactId?: string }>();
+
+  // ── Workspace scoping ────────────────────────────────────────────────
+  // Derived from URL first; falls back to the user's own first workspace
+  // when URL is missing (e.g. deep links that dropped the segment).
+  // A guard effect below kicks any user off URLs targeting a workspace
+  // they don't actually own.
+  const { workspaces: userWorkspaces, workspaceId: authWorkspaceId } = useAuth();
+  const WORKSPACE_ID = urlParams.workspaceId || authWorkspaceId || "";
+  const userOwnsThisWorkspace = useMemo(
+    () => userWorkspaces.some((w) => w.id === WORKSPACE_ID),
+    [userWorkspaces, WORKSPACE_ID],
+  );
+  useEffect(() => {
+    if (!urlParams.workspaceId) return; // no URL workspace → fall through to auth default
+    if (userWorkspaces.length === 0) return; // /me not loaded yet
+    if (userOwnsThisWorkspace) return; // fine
+    if (authWorkspaceId && urlParams.workspaceId !== authWorkspaceId) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[auth] URL targets workspace ${urlParams.workspaceId} which isn't yours — redirecting to ${authWorkspaceId}`,
+      );
+      navigate(`/workspace/${authWorkspaceId}`, { replace: true });
+    }
+  }, [urlParams.workspaceId, userWorkspaces, userOwnsThisWorkspace, authWorkspaceId, navigate]);
+
   useEffect(() => {
     const { artifactType, artifactId } = urlParams;
     if (!artifactType || !artifactId) return;
@@ -108,7 +137,7 @@ export default function App() {
   // previously calling `setActiveTableId + setActiveItemType` as a pair.
   const navigateToArtifact = useCallback(
     (type: TreeItemType, id: string) => {
-      const ws = urlParams.workspaceId || "doc_default";
+      const ws = urlParams.workspaceId || authWorkspaceId || WORKSPACE_ID;
       const urlType =
         type === "table" ? "table"
         : type === "idea" ? "idea"
@@ -118,7 +147,7 @@ export default function App() {
       if (!urlType) return;
       navigate(`/workspace/${ws}/${urlType}/${id}`);
     },
-    [navigate, urlParams.workspaceId],
+    [navigate, urlParams.workspaceId, authWorkspaceId, WORKSPACE_ID],
   );
 
   // Note: we do NOT have a state→URL sync effect. Prior experiment showed it
