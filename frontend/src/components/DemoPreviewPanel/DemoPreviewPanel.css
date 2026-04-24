@@ -54,7 +54,10 @@
   padding: 0 4px;
   user-select: none;
 }
-.demo-panel-status-success { color: #17B26A; }
+/* Build status chip. success 不用绿色 — 对齐 idea/table 其他状态指示的
+ * 中性灰色调，避免顶栏出现抢眼的绿。error 依然红色（需要注意），building
+ * 保持品牌蓝（正在进行中）。 */
+.demo-panel-status-success { color: var(--color-text-tertiary, #646A73); }
 .demo-panel-status-error   { color: #F54A45; cursor: help; }
 .demo-panel-status-building { color: #1456F0; }
 

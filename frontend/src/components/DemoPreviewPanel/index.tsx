@@ -23,6 +23,33 @@ import {
 } from "../../api";
 import "./DemoPreviewPanel.css";
 
+/* ─── Inline icons ─────────────────────────────────────────────────────────
+ * 14×14 · currentColor · aligned visually with the text buttons (4px gap).
+ * Reused in build / publish / unpublish / export buttons so each action
+ * gets a visual anchor. Matches the sidebar-icon convention (solid-fill
+ * path + currentColor) instead of stroke icons. */
+const BuildIcon = (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M11.78 1.47a.75.75 0 011.06 0l1.69 1.69a.75.75 0 010 1.06l-1.06 1.06-2.75-2.75 1.06-1.06zM10.66 2.59l-7.6 7.6a.75.75 0 00-.2.36l-.84 3.36a.5.5 0 00.61.61l3.36-.84a.75.75 0 00.36-.2l7.6-7.6-3.29-3.29zM3.54 11.72l.74-2.96 5.6-5.6 2.22 2.22-5.6 5.6-2.96.74z" fill="currentColor"/>
+  </svg>
+);
+const PublishIcon = (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M8 1.5a.75.75 0 01.53.22l3.5 3.5a.75.75 0 11-1.06 1.06L8.75 4.06V10a.75.75 0 01-1.5 0V4.06L5.03 6.28a.75.75 0 11-1.06-1.06l3.5-3.5A.75.75 0 018 1.5zM3 9.75a.75.75 0 00-1.5 0v3.75A1.75 1.75 0 003.25 15.25h9.5A1.75 1.75 0 0014.5 13.5V9.75a.75.75 0 00-1.5 0v3.75a.25.25 0 01-.25.25h-9.5a.25.25 0 01-.25-.25V9.75z" fill="currentColor"/>
+  </svg>
+);
+const UnpublishIcon = (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M8 14.5a.75.75 0 01-.53-.22l-3.5-3.5a.75.75 0 111.06-1.06l2.22 2.22V6a.75.75 0 011.5 0v5.94l2.22-2.22a.75.75 0 111.06 1.06l-3.5 3.5a.75.75 0 01-.53.22zM3 6.25a.75.75 0 01-1.5 0V2.5A1.75 1.75 0 013.25.75h9.5A1.75 1.75 0 0114.5 2.5v3.75a.75.75 0 01-1.5 0V2.5a.25.25 0 00-.25-.25h-9.5A.25.25 0 003 2.5v3.75z" fill="currentColor"/>
+  </svg>
+);
+const ExportIcon = (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M2.75 2A1.75 1.75 0 001 3.75v8.5c0 .966.784 1.75 1.75 1.75h10.5A1.75 1.75 0 0015 12.25v-8.5A1.75 1.75 0 0013.25 2H2.75zm-.25 1.75a.25.25 0 01.25-.25h10.5a.25.25 0 01.25.25V5.5h-11V3.75zm0 3.25h11v5.25a.25.25 0 01-.25.25H2.75a.25.25 0 01-.25-.25V7z" fill="currentColor"/>
+    <path d="M8 8.25a.75.75 0 01.75.75v2.19l.72-.72a.75.75 0 111.06 1.06l-2 2a.75.75 0 01-1.06 0l-2-2a.75.75 0 111.06-1.06l.72.72V9A.75.75 0 018 8.25z" fill="currentColor"/>
+  </svg>
+);
+
 interface DemoPreviewPanelProps {
   demoId: string;
   workspaceId: string;
@@ -210,6 +237,7 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
             onClick={handleBuild}
             disabled={busy !== null}
           >
+            {BuildIcon}
             {busy === "build" ? t("demo.building") : demo.lastBuildStatus === "success" ? t("demo.rebuild") : t("demo.build")}
           </button>
           {demo.publishSlug ? (
@@ -218,6 +246,7 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
               onClick={handleUnpublish}
               disabled={busy !== null}
             >
+              {UnpublishIcon}
               {busy === "unpublish" ? t("demo.unpublishing") : t("demo.unpublish")}
             </button>
           ) : (
@@ -227,10 +256,12 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
               disabled={busy !== null || demo.lastBuildStatus !== "success"}
               title={demo.lastBuildStatus !== "success" ? t("demo.buildFirst") : undefined}
             >
+              {PublishIcon}
               {busy === "publish" ? t("demo.publishing") : t("demo.publishAsWorkend")}
             </button>
           )}
           <button className="demo-panel-topbar-btn" onClick={handleExport}>
+            {ExportIcon}
             {t("demo.exportWorkend")}
           </button>
         </div>
