@@ -272,6 +272,18 @@ async function start() {
   };
   process.once("SIGINT", () => void shutdown("SIGINT"));
   process.once("SIGTERM", () => void shutdown("SIGTERM"));
+
+  // Last-line-of-defense: one bad request that throws through an un-
+  // wrapped async handler used to kill the whole backend → every user
+  // got 502 until pm2 restarted. Log loudly but keep the server up;
+  // the bad request itself is already lost (res was never sent) but
+  // every other in-flight / subsequent request stays happy.
+  process.on("uncaughtException", (err) => {
+    console.error("[process] uncaughtException — keeping server alive:", err);
+  });
+  process.on("unhandledRejection", (reason) => {
+    console.error("[process] unhandledRejection — keeping server alive:", reason);
+  });
 }
 
 start().catch((err) => {

@@ -404,7 +404,12 @@ router.post("/:tableId/records/query", async (req: Request, res: Response) => {
   const fieldMap = new Map<string, Field>(table.fields.map(f => [f.id, f]));
 
   let records = filterRecords(table.records, filter, fieldMap);
-  if (sort && sort.rules.length > 0) {
+  // Defensive: callers sometimes pass `{}` or a partially-populated sort
+  // object (e.g. `{direction:"asc"}` without `rules`). Null-check both the
+  // outer object and `.rules` — a thrown TypeError here on a request-handler
+  // path without an async error boundary was PM2-killing the whole backend
+  // and returning 502 to every user. Optional chaining guards both.
+  if (sort && Array.isArray(sort.rules) && sort.rules.length > 0) {
     records = sortRecords(records, sort, fieldMap);
   }
 
