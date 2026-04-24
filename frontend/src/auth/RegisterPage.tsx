@@ -62,8 +62,6 @@ export default function RegisterPage() {
 
       <div className="auth-card">
       <div className="auth-hero">
-        <div className="auth-hero-glass" aria-hidden="true" />
-
         <div className="auth-hero-headline">
           <h2 className="auth-hero-headline-title">{t("auth.heroTitle")}</h2>
           <p className="auth-hero-headline-sub">{t("auth.heroSubtitle")}</p>

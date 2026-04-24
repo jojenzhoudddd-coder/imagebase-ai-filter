@@ -66,12 +66,9 @@ export default function LoginPage() {
           and the credential form. When the viewport resizes, the backdrop
           stretches and the card stays centered via flex on .auth-shell. */}
       <div className="auth-card">
-      {/* ─── Left (3/5): hero with animated-character scene ─── */}
+      {/* ─── Left (3/5): frosted-glass hero with animated-character scene
+          The hero itself is the glass — see .auth-hero in AuthPage.css. */}
       <div className="auth-hero">
-        {/* Frosted glass layer — sits on top of the colorful ripple base
-            but BELOW the characters (z-index ordering in AuthPage.css). */}
-        <div className="auth-hero-glass" aria-hidden="true" />
-
         {/* Top-left artifact-four headline + tagline */}
         <div className="auth-hero-headline">
           <h2 className="auth-hero-headline-title">{t("auth.heroTitle")}</h2>

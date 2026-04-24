@@ -24,29 +24,35 @@
   font-size: 14px;
   line-height: 22px;
   box-sizing: border-box;
-  /* Primary-blue ambient wash + a second deeper accent at the opposite
-   * corner, over a very light blue-tinted gray base. Reads as "branded
-   * landing" without burying the card. */
+  /* Deeper neutral gray from the design-token family — anchored on
+   * --color-bg-active #E8E9EB with a soft lighter highlight toward the
+   * top-left and a darker edge-shadow toward the bottom-right for quiet
+   * depth. No blue accents; the card should be the only colored element. */
   background:
-    radial-gradient(ellipse at 15% 25%, rgba(20, 86, 240, 0.22), transparent 55%),
-    radial-gradient(ellipse at 85% 75%, rgba(20, 86, 240, 0.14), transparent 55%),
-    linear-gradient(135deg, #E6EEFF 0%, #F2F4F8 50%, #E8EEF8 100%);
+    radial-gradient(ellipse at 25% 20%, #EEEFF1 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 85%, #D4D6DA 0%, transparent 55%),
+    #E8E9EB;
   overflow: hidden;
 }
 
-/* Subtle dot pattern on top of the gradient — breaks up the flat wash,
- * mirrors the screenshot reference while staying quieter than it. */
+/* Very subtle dot pattern on top of the gray — keeps the backdrop from
+ * feeling like a flat wall without introducing color. */
 .auth-shell::before {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(20, 86, 240, 0.10) 1.2px, transparent 1.6px);
+  background-image: radial-gradient(rgba(31, 35, 41, 0.06) 1px, transparent 1.4px);
   background-size: 28px 28px;
   background-position: 0 0;
   pointer-events: none;
 }
 
 /* ─── Card: fixed size, centered ──────────────────────────────────── */
+/* Note: card background is TRANSPARENT. The right side (.auth-form-pane)
+ * paints its own solid white. The left side (.auth-hero) paints its own
+ * semi-transparent gray + backdrop-filter to act as a real frosted-glass
+ * panel over the darker backdrop. This is what gives the left half its
+ * "glass" look when the deeper gray shell shows through. */
 .auth-card {
   position: relative;
   z-index: 1;
@@ -56,7 +62,7 @@
   max-height: calc(100vh - 48px);
   display: grid;
   grid-template-columns: 1fr;
-  background: #FFFFFF;
+  background: transparent;
   border-radius: 12px;
   box-shadow: 0 16px 48px rgba(15, 23, 42, 0.12),
               0 2px 6px rgba(15, 23, 42, 0.06);
@@ -69,7 +75,13 @@
   }
 }
 
-/* ─── Left side of card: animated-characters scene ───────────────── */
+/* ─── Left side of card: frosted-glass hero with animated characters ───
+ * The hero IS the glass. It's semi-transparent so the deeper gray shell
+ * behind the card shows through; backdrop-filter blurs that show-through
+ * into the classic frosted look. On top of that glass we paint the four
+ * artifact-colored radial washes (low alpha so the gray still dominates)
+ * for the "炫彩涟漪" breathing effect. No inner .auth-hero-glass needed
+ * anymore — the hero itself does the job. */
 .auth-hero {
   position: relative;
   display: none;
@@ -77,13 +89,17 @@
   padding: 32px 36px 24px;
   overflow: hidden;
   background:
-    radial-gradient(circle at 20% 20%, rgba(20, 86, 240, 0.16), transparent 50%),
-    radial-gradient(circle at 80% 30%, rgba(123, 75, 220, 0.14), transparent 50%),
-    radial-gradient(circle at 75% 85%, rgba(245, 166, 35, 0.14), transparent 50%),
-    radial-gradient(circle at 25% 80%, rgba(52, 168, 83, 0.14), transparent 50%),
-    #F5F6F7;
+    radial-gradient(circle at 20% 20%, rgba(20, 86, 240, 0.14), transparent 50%),
+    radial-gradient(circle at 80% 30%, rgba(123, 75, 220, 0.12), transparent 50%),
+    radial-gradient(circle at 75% 85%, rgba(245, 166, 35, 0.12), transparent 50%),
+    radial-gradient(circle at 25% 80%, rgba(52, 168, 83, 0.12), transparent 50%),
+    rgba(255, 255, 255, 0.55);
   background-size: 200% 200%, 200% 200%, 200% 200%, 200% 200%, 100% 100%;
   animation: auth-hero-ripple 18s ease-in-out infinite;
+  backdrop-filter: blur(28px) saturate(1.3);
+  -webkit-backdrop-filter: blur(28px) saturate(1.3);
+  /* Soft inner boundary between the glass and the opaque form side. */
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
 }
 @media (min-width: 960px) { .auth-hero { display: flex; } }
 
@@ -92,15 +108,8 @@
   50%      { background-position: 20% 10%, 80% 20%, 80% 90%, 20% 80%, 0 0; }
 }
 
-.auth-hero-glass {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background: rgba(245, 246, 247, 0.78);
-  backdrop-filter: blur(56px) saturate(1.3);
-  -webkit-backdrop-filter: blur(56px) saturate(1.3);
-  pointer-events: none;
-}
+/* Kept as a no-op for any legacy refs in the JSX — renders nothing. */
+.auth-hero-glass { display: none; }
 
 .auth-hero-headline {
   position: relative;
