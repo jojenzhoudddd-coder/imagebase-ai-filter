@@ -96,12 +96,14 @@
   margin-bottom: 0;
   pointer-events: none; /* don't block mouse events to characters below */
 }
+/* Match .auth-form-title ("欢迎回来") exactly — same visual weight as
+ * the form header so the two sides read as balanced labels rather than
+ * hero-vs-form. */
 .auth-hero-headline-title {
   margin: 0;
-  font-size: 60px;
-  line-height: 72px;
+  font-size: 20px;
+  line-height: 28px;
   font-weight: 600;
-  letter-spacing: -0.8px;
   color: #1F2329;
 }
 
