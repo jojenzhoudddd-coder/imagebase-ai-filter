@@ -1,22 +1,18 @@
 /**
- * LoginPage — careercompass's animated-character hero + interaction model,
- * re-laid-out to AI Filter's design language:
- *   · 2:1 split (hero wider than form — characters are the star)
- *   · PingFang SC / 14px base / 22px line-height
- *   · Form uses 32px inputs, 4px radius, #1456F0 primary, #1F2329 text
- *   · Characters recolored to map to Table / Taste / Idea / Demo
+ * LoginPage — email + password.
  *
- * Kept intact from upstream:
- *   · `isTyping` binds focus → characters look at each other
- *   · `showPassword` + `passwordLength` → Taste peeks, others turn away
+ * 所有反馈（客户端校验错误、服务端错误、成功）都走 toast，不再有
+ * 行内 error 区域、remember checkbox、forgot link。cookie 默认 30 天。
  */
 
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "./AuthContext";
+import { useAuth, type AuthError } from "./AuthContext";
 import { AnimatedCharacters } from "./AnimatedCharacters";
 import LanguageSwitcher from "./LanguageSwitcher";
 import { useTranslation } from "../i18n/index";
+import { useToast } from "../components/Toast/index";
+import { codeToToastKey } from "./authErrorToToast";
 import "./AuthPage.css";
 
 function EyeIcon({ open }: { open: boolean }) {
@@ -32,26 +28,37 @@ function EyeIcon({ open }: { open: boolean }) {
   );
 }
 
+const EMAIL_RE = /^\S+@\S+\.\S+$/;
+
 export default function LoginPage() {
   const { t } = useTranslation();
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [handle, setHandle] = useState("");
+  const toast = useToast();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setError(null);
+    const trimmedEmail = email.trim();
+
+    // 客户端校验（toast 即时反馈，不发请求）
+    if (!trimmedEmail) { toast.error(t("auth.toast.emailRequired")); return; }
+    if (!EMAIL_RE.test(trimmedEmail)) { toast.error(t("auth.toast.emailInvalid")); return; }
+    if (!password) { toast.error(t("auth.toast.passwordRequired")); return; }
+
     setSubmitting(true);
     try {
-      await login(handle.trim(), password);
+      await login(trimmedEmail, password);
+      toast.success(t("auth.toast.loginSuccess"));
       navigate("/", { replace: true });
-    } catch (err: any) {
-      setError(err?.message || t("auth.login.failed"));
+    } catch (err) {
+      const authErr = err as AuthError;
+      const key = codeToToastKey(authErr.code);
+      toast.error(t(key));
     } finally {
       setSubmitting(false);
     }
@@ -59,17 +66,10 @@ export default function LoginPage() {
 
   return (
     <div className="auth-shell">
-      {/* Top-right language toggle — floats over the whole shell */}
       <LanguageSwitcher />
 
-      {/* Centered fixed-size card containing both the hero (illustration)
-          and the credential form. When the viewport resizes, the backdrop
-          stretches and the card stays centered via flex on .auth-shell. */}
       <div className="auth-card">
-      {/* ─── Left (3/5): frosted-glass hero with animated-character scene
-          The hero itself is the glass — see .auth-hero in AuthPage.css. */}
       <div className="auth-hero">
-        {/* Top-left artifact-four headline + tagline */}
         <div className="auth-hero-headline">
           <h2 className="auth-hero-headline-title">{t("auth.heroTitle")}</h2>
           <p className="auth-hero-headline-sub">{t("auth.heroSubtitle")}</p>
@@ -89,7 +89,6 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* ─── Right (1/3): compact form ─── */}
       <div className="auth-form-pane">
         <div className="auth-form-inner">
           <div className="auth-mobile-brand">
@@ -102,22 +101,21 @@ export default function LoginPage() {
             <p className="auth-form-subtitle">{t("auth.login.subtitle")}</p>
           </div>
 
-          <form className="auth-form" onSubmit={onSubmit}>
+          <form className="auth-form" onSubmit={onSubmit} noValidate>
             <div className="auth-field">
-              <label htmlFor="handle">{t("auth.login.handleLabel")}</label>
+              <label htmlFor="email">{t("auth.login.emailLabel")}</label>
               <input
-                id="handle"
+                id="email"
                 className="auth-input"
-                type="text"
-                autoComplete="username"
+                type="email"
+                autoComplete="email"
                 autoFocus
-                value={handle}
-                onChange={(e) => setHandle(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 onFocus={() => setIsTyping(true)}
                 onBlur={() => setIsTyping(false)}
-                placeholder={t("auth.login.handlePlaceholder")}
+                placeholder={t("auth.login.emailPlaceholder")}
                 disabled={submitting}
-                required
               />
             </div>
             <div className="auth-field">
@@ -134,7 +132,6 @@ export default function LoginPage() {
                   onBlur={() => setIsTyping(false)}
                   placeholder={t("auth.login.passwordPlaceholder")}
                   disabled={submitting}
-                  required
                 />
                 <button
                   type="button"
@@ -146,18 +143,6 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
-
-            <div className="auth-field-row">
-              <label className="auth-remember">
-                <input type="checkbox" />
-                <span>{t("auth.login.remember")}</span>
-              </label>
-              <a className="auth-form-link" href="#" onClick={(e) => e.preventDefault()}>
-                {t("auth.login.forgot")}
-              </a>
-            </div>
-
-            {error && <div className="auth-form-error">{error}</div>}
 
             <button className="auth-submit" type="submit" disabled={submitting}>
               {submitting ? t("auth.login.submitting") : t("auth.login.submit")}

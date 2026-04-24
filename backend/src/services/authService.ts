@@ -142,15 +142,19 @@ export function currentUser(req: Request): {
 
 // ─── Lookup + mutation helpers ──────────────────────────────────────────
 
-/** Accept login by email OR username. Returns null if nothing matches. */
+/**
+ * Email-only login. Username is kept only for display (breadcrumb /
+ * workspace / chatbot name) — it's no longer a login handle.
+ */
+export async function findUserByEmail(email: string) {
+  const e = email.trim().toLowerCase();
+  if (!e) return null;
+  return prisma.user.findUnique({ where: { email: e } });
+}
+
+/** @deprecated Kept as a thin alias for any residual call site. */
 export async function findUserForLogin(loginHandle: string) {
-  const h = loginHandle.trim();
-  if (!h) return null;
-  // Email lookup first (preferred; usually unambiguous)
-  const byEmail = await prisma.user.findUnique({ where: { email: h } });
-  if (byEmail) return byEmail;
-  // Username fallback
-  return prisma.user.findUnique({ where: { username: h } });
+  return findUserByEmail(loginHandle);
 }
 
 export async function findUserById(id: string) {
@@ -175,28 +179,31 @@ export async function setUserPassword(id: string, plain: string) {
 
 /**
  * Create a fresh user + their personal org + default workspace. Everything
- * wired in one transaction so a partial failure rolls back. Returns the
- * user + the id of the newly-created default workspace (FE stashes that
- * as its currentWorkspace).
+ * wired in one transaction so a partial failure rolls back.
+ *
+ * `username` is the single identity field the user chooses — it drives the
+ * breadcrumb label, the default workspace name, and (elsewhere) the default
+ * chatbot name. `name` (which legacy code still reads) is set equal to
+ * `username` so nothing downstream breaks.
  */
 export async function createUserWithWorkspace(input: {
   email: string;
-  username?: string;
-  name: string;
+  username: string;
   password: string;
-}): Promise<{ userId: string; workspaceId: string }> {
+}): Promise<{ userId: string; workspaceId: string; name: string }> {
   const passwordHash = await hashPassword(input.password);
+  const name = input.username.trim();
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
         email: input.email,
-        username: input.username || null,
-        name: input.name,
+        username: input.username.trim(),
+        name,
         passwordHash,
       },
     });
     const org = await tx.org.create({
-      data: { name: `${input.name} 的空间` },
+      data: { name: `${name} 的空间` },
     });
     await tx.orgMember.create({
       data: { orgId: org.id, userId: user.id, role: "owner" },
@@ -205,10 +212,10 @@ export async function createUserWithWorkspace(input: {
       data: {
         orgId: org.id,
         createdById: user.id,
-        name: `${input.name} 的第一个工作空间`,
+        name, // workspace 默认名 = username
       },
     });
-    return { userId: user.id, workspaceId: ws.id };
+    return { userId: user.id, workspaceId: ws.id, name };
   });
   return result;
 }

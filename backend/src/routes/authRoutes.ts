@@ -1,11 +1,14 @@
 /**
- * /api/auth/* — user registration, login, logout, profile read/write.
+ * /api/auth/* — email-only login + 3-field register (email / password / username).
  *
  * Cookie-based session. On login we sign a JWT and drop it into an
  * httpOnly cookie (see authService.setAuthCookie); the cookie travels
  * automatically on subsequent /api/* requests and `attachUser`
  * middleware populates `req.user`. No CSRF token because SameSite=Lax
  * covers the vectors we care about (no cross-site POST cookie sending).
+ *
+ * Error responses always carry a stable `code` field so the frontend can
+ * map it to an i18n key for toasts. `error` is the dev-facing message.
  */
 
 import { Router, type Request, type Response } from "express";
@@ -17,7 +20,7 @@ import {
   clearAuthCookie,
   createUserWithWorkspace,
   currentUser,
-  findUserForLogin,
+  findUserByEmail,
   listUserWorkspaces,
   requireAuth,
   setAuthCookie,
@@ -28,69 +31,102 @@ import {
 
 const router = Router();
 
+// Rules — also enforced client-side for immediate feedback
+const EMAIL_RE = /^\S+@\S+\.\S+$/;
+const USERNAME_RE = /^[a-zA-Z0-9_-]{2,32}$/;
+const PASSWORD_MIN = 6;
+
 // ─── POST /api/auth/register ────────────────────────────────────────────
-// Body: { email, username?, name, password }
+// Body: { email, password, username }
+// Note: no `name` — `name` is derived server-side from `username`.
 router.post("/register", async (req: Request, res: Response) => {
-  const { email, username, name, password } = req.body ?? {};
-  if (!email || typeof email !== "string" || !/^\S+@\S+\.\S+$/.test(email)) {
-    res.status(400).json({ error: "invalid email" }); return;
+  const { email, password, username } = req.body ?? {};
+
+  if (!email || typeof email !== "string" || !EMAIL_RE.test(email)) {
+    res.status(400).json({ error: "invalid email", code: "EMAIL_INVALID" });
+    return;
   }
-  if (!password || typeof password !== "string" || password.length < 6) {
-    res.status(400).json({ error: "password must be at least 6 chars" }); return;
+  if (!password || typeof password !== "string" || password.length < PASSWORD_MIN) {
+    res.status(400).json({ error: "password too short", code: "PASSWORD_TOO_SHORT" });
+    return;
   }
-  if (!name || typeof name !== "string" || !name.trim()) {
-    res.status(400).json({ error: "name required" }); return;
+  if (!username || typeof username !== "string" || !USERNAME_RE.test(username)) {
+    res.status(400).json({ error: "invalid username", code: "USERNAME_INVALID" });
+    return;
   }
-  if (username && !/^[a-zA-Z0-9_-]{2,32}$/.test(username)) {
-    res.status(400).json({ error: "username must be 2-32 chars, [A-Za-z0-9_-]" }); return;
-  }
+
   try {
-    const { userId, workspaceId } = await createUserWithWorkspace({
-      email, username, name: name.trim(), password,
+    const { userId, workspaceId, name } = await createUserWithWorkspace({
+      email: email.trim().toLowerCase(),
+      username: username.trim(),
+      password,
     });
-    const token = signAuthToken({ sub: userId, login: username || email });
+    const token = signAuthToken({ sub: userId, login: email });
     setAuthCookie(res, token);
     res.json({
       ok: true,
-      user: { id: userId, email, username: username || null, name: name.trim(), avatarUrl: null },
+      user: {
+        id: userId,
+        email: email.trim().toLowerCase(),
+        username: username.trim(),
+        name,
+        avatarUrl: null,
+      },
       workspaceId,
     });
   } catch (err: any) {
-    // Likely unique-constraint violation on email / username
-    const msg = err?.message || String(err);
-    if (msg.includes("Unique constraint") || err?.code === "P2002") {
-      res.status(409).json({ error: "Email or username already in use" }); return;
+    // Prisma unique constraint — the only unique column we care about
+    // here is `email` (username is intentionally non-unique).
+    if (err?.code === "P2002") {
+      res.status(409).json({ error: "Email already registered", code: "EMAIL_TAKEN" });
+      return;
     }
     console.error("[auth:register]", err);
-    res.status(500).json({ error: "register failed", detail: msg });
+    res.status(500).json({
+      error: "register failed",
+      code: "SERVER_ERROR",
+      detail: err?.message || String(err),
+    });
   }
 });
 
 // ─── POST /api/auth/login ───────────────────────────────────────────────
-// Body: { handle, password }  — handle is email or username
+// Body: { email, password }  — email-only login, no username fallback.
 router.post("/login", async (req: Request, res: Response) => {
-  const { handle, password } = req.body ?? {};
-  if (!handle || !password) {
-    res.status(400).json({ error: "handle + password required" }); return;
+  const { email, password } = req.body ?? {};
+  if (!email || typeof email !== "string" || !password) {
+    res.status(400).json({ error: "email + password required", code: "MISSING_FIELDS" });
+    return;
   }
-  const u = await findUserForLogin(String(handle));
-  if (!u) { res.status(401).json({ error: "Invalid credentials" }); return; }
-  const ok = await verifyPassword(String(password), u.passwordHash);
-  if (!ok) { res.status(401).json({ error: "Invalid credentials" }); return; }
+  if (!EMAIL_RE.test(email)) {
+    res.status(400).json({ error: "invalid email", code: "EMAIL_INVALID" });
+    return;
+  }
 
-  const token = signAuthToken({ sub: u.id, login: u.username || u.email });
+  const u = await findUserByEmail(email.trim().toLowerCase());
+  if (!u) {
+    res.status(401).json({ error: "Invalid credentials", code: "INVALID_CREDENTIALS" });
+    return;
+  }
+  const ok = await verifyPassword(String(password), u.passwordHash);
+  if (!ok) {
+    res.status(401).json({ error: "Invalid credentials", code: "INVALID_CREDENTIALS" });
+    return;
+  }
+
+  const token = signAuthToken({ sub: u.id, login: u.email });
   setAuthCookie(res, token);
   const workspaces = await listUserWorkspaces(u.id);
   res.json({
     ok: true,
     user: {
-      id: u.id, email: u.email, username: u.username,
-      name: u.name, avatarUrl: u.avatarUrl,
+      id: u.id,
+      email: u.email,
+      username: u.username,
+      name: u.name,
+      avatarUrl: u.avatarUrl,
     },
     workspaces,
-    // Convenience: the FE uses whichever the user was last on, or falls
-    // back to the first workspace if none stored. workspaceId here is the
-    // deterministic "default" (first by createdAt).
     workspaceId: workspaces[0]?.id ?? null,
   });
 });
@@ -102,11 +138,12 @@ router.post("/logout", (_req: Request, res: Response) => {
 });
 
 // ─── GET /api/auth/me ───────────────────────────────────────────────────
-// Returns the current user + their accessible workspaces. Also the primary
-// means the FE checks "am I logged in?"
 router.get("/me", async (req: Request, res: Response) => {
   const u = currentUser(req);
-  if (!u) { res.status(401).json({ error: "Not authenticated" }); return; }
+  if (!u) {
+    res.status(401).json({ error: "Not authenticated", code: "NOT_AUTHENTICATED" });
+    return;
+  }
   const workspaces = await listUserWorkspaces(u.id);
   res.json({
     user: u,
@@ -116,59 +153,62 @@ router.get("/me", async (req: Request, res: Response) => {
 });
 
 // ─── PATCH /api/auth/profile ────────────────────────────────────────────
-// Body: { name?, username? }  (avatar goes through /avatar upload endpoint)
+// Body: { name?, username? }
 router.patch("/profile", requireAuth, async (req: Request, res: Response) => {
   const u = currentUser(req)!;
   const { name, username } = req.body ?? {};
   const patch: { name?: string; username?: string } = {};
   if (typeof name === "string") {
     const trimmed = name.trim();
-    if (!trimmed) { res.status(400).json({ error: "name can't be empty" }); return; }
+    if (!trimmed) {
+      res.status(400).json({ error: "name can't be empty", code: "NAME_INVALID" });
+      return;
+    }
     patch.name = trimmed;
   }
   if (username !== undefined) {
-    if (username && !/^[a-zA-Z0-9_-]{2,32}$/.test(String(username))) {
-      res.status(400).json({ error: "username must be 2-32 chars, [A-Za-z0-9_-]" }); return;
+    if (username && !USERNAME_RE.test(String(username))) {
+      res.status(400).json({ error: "invalid username", code: "USERNAME_INVALID" });
+      return;
     }
     patch.username = username || undefined;
   }
-  if (!Object.keys(patch).length) { res.json({ user: u }); return; }
+  if (!Object.keys(patch).length) {
+    res.json({ user: u });
+    return;
+  }
   try {
     const updated = await updateUserProfile(u.id, patch);
     res.json({ user: updated });
   } catch (err: any) {
-    if (err?.code === "P2002") {
-      res.status(409).json({ error: "Username already in use" }); return;
-    }
     console.error("[auth:profile]", err);
-    res.status(500).json({ error: "profile update failed" });
+    res.status(500).json({ error: "profile update failed", code: "SERVER_ERROR" });
   }
 });
 
 // ─── POST /api/auth/avatar ──────────────────────────────────────────────
-// Body: { dataUrl: "data:image/png;base64,..." } — tiny v1 inline-upload
-// path. Decodes the data URL, writes to uploads/avatars/<userId>.<ext>,
-// and updates the User.avatarUrl. Big enough for profile avatars; for
-// real image management we'll wire multer later.
 router.post("/avatar", requireAuth, async (req: Request, res: Response) => {
   const u = currentUser(req)!;
   const { dataUrl } = req.body ?? {};
   if (typeof dataUrl !== "string") {
-    res.status(400).json({ error: "dataUrl required" }); return;
+    res.status(400).json({ error: "dataUrl required", code: "MISSING_FIELDS" });
+    return;
   }
   const m = /^data:(image\/(png|jpe?g|gif|webp));base64,(.+)$/.exec(dataUrl);
-  if (!m) { res.status(400).json({ error: "unsupported image format" }); return; }
+  if (!m) {
+    res.status(400).json({ error: "unsupported image format", code: "AVATAR_INVALID" });
+    return;
+  }
   const mediaType = m[1];
   const ext = m[2] === "jpeg" ? "jpg" : m[2];
   const bytes = Buffer.from(m[3], "base64");
-  // Cap at 2MB — anything larger should use a proper upload UI first.
   if (bytes.length > 2 * 1024 * 1024) {
-    res.status(413).json({ error: "avatar too large (max 2MB)" }); return;
+    res.status(413).json({ error: "avatar too large (max 2MB)", code: "AVATAR_TOO_LARGE" });
+    return;
   }
 
   const dir = path.resolve(process.cwd(), "uploads/avatars");
   await fsp.mkdir(dir, { recursive: true });
-  // Hash content into filename so browser caches cleanly on update.
   const hash = crypto.createHash("sha1").update(bytes).digest("hex").slice(0, 12);
   const fileName = `${u.id}_${hash}.${ext}`;
   const abs = path.join(dir, fileName);

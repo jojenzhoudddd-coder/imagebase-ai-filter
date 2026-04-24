@@ -1,14 +1,18 @@
 /**
- * RegisterPage — mirrors LoginPage: same 2:1 split, AnimatedCharacters
- * scene, legend, design-token form. Adds username / name fields.
+ * RegisterPage — 顺序：email → password → password 二次 → username。
+ *
+ * username 同时作为 display name（面包屑 / workspace 名 / chatbot 名）。
+ * 所有校验错误和服务端反馈均以 toast 形式弹出，不再有行内 error 区。
  */
 
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "./AuthContext";
+import { useAuth, type AuthError } from "./AuthContext";
 import { AnimatedCharacters } from "./AnimatedCharacters";
 import LanguageSwitcher from "./LanguageSwitcher";
 import { useTranslation } from "../i18n/index";
+import { useToast } from "../components/Toast/index";
+import { codeToToastKey } from "./authErrorToToast";
 import "./AuthPage.css";
 
 function EyeIcon({ open }: { open: boolean }) {
@@ -24,33 +28,52 @@ function EyeIcon({ open }: { open: boolean }) {
   );
 }
 
+const EMAIL_RE = /^\S+@\S+\.\S+$/;
+const USERNAME_RE = /^[a-zA-Z0-9_-]{2,32}$/;
+const PASSWORD_MIN = 6;
+
 export default function RegisterPage() {
   const { t } = useTranslation();
   const { register } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
+
   const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
-  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [username, setUsername] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setError(null);
+    const trimmedEmail = email.trim();
+    const trimmedUsername = username.trim();
+
+    // 客户端校验（按注册 UI 从上到下的顺序）
+    if (!trimmedEmail) { toast.error(t("auth.toast.emailRequired")); return; }
+    if (!EMAIL_RE.test(trimmedEmail)) { toast.error(t("auth.toast.emailInvalid")); return; }
+    if (!password) { toast.error(t("auth.toast.passwordRequired")); return; }
+    if (password.length < PASSWORD_MIN) { toast.error(t("auth.toast.passwordTooShort")); return; }
+    if (!passwordConfirm) { toast.error(t("auth.toast.passwordConfirmRequired")); return; }
+    if (password !== passwordConfirm) { toast.error(t("auth.toast.passwordMismatch")); return; }
+    if (!trimmedUsername) { toast.error(t("auth.toast.usernameRequired")); return; }
+    if (!USERNAME_RE.test(trimmedUsername)) { toast.error(t("auth.toast.usernameInvalid")); return; }
+
     setSubmitting(true);
     try {
       await register({
-        email: email.trim(),
-        username: username.trim() || undefined,
-        name: name.trim(),
+        email: trimmedEmail,
         password,
+        username: trimmedUsername,
       });
+      toast.success(`${t("auth.toast.registerSuccess")}${trimmedUsername ? `, ${trimmedUsername}` : ""}`);
       navigate("/", { replace: true });
-    } catch (err: any) {
-      setError(err?.message || t("auth.register.failed"));
+    } catch (err) {
+      const authErr = err as AuthError;
+      const key = codeToToastKey(authErr.code);
+      toast.error(t(key));
     } finally {
       setSubmitting(false);
     }
@@ -93,7 +116,8 @@ export default function RegisterPage() {
             <p className="auth-form-subtitle">{t("auth.register.subtitle")}</p>
           </div>
 
-          <form className="auth-form" onSubmit={onSubmit}>
+          <form className="auth-form" onSubmit={onSubmit} noValidate>
+            {/* 1. Email */}
             <div className="auth-field">
               <label htmlFor="email">{t("auth.register.emailLabel")}</label>
               <input
@@ -108,38 +132,10 @@ export default function RegisterPage() {
                 onBlur={() => setIsTyping(false)}
                 placeholder={t("auth.register.emailPlaceholder")}
                 disabled={submitting}
-                required
               />
             </div>
-            <div className="auth-field">
-              <label htmlFor="username">{t("auth.register.usernameLabel")}</label>
-              <input
-                id="username"
-                className="auth-input"
-                type="text"
-                autoComplete="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                onFocus={() => setIsTyping(true)}
-                onBlur={() => setIsTyping(false)}
-                placeholder={t("auth.register.usernamePlaceholder")}
-                disabled={submitting}
-              />
-              <span className="auth-field-hint">{t("auth.register.usernameHint")}</span>
-            </div>
-            <div className="auth-field">
-              <label htmlFor="name">{t("auth.register.nameLabel")}</label>
-              <input
-                id="name"
-                className="auth-input"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={t("auth.register.namePlaceholder")}
-                disabled={submitting}
-                required
-              />
-            </div>
+
+            {/* 2. Password */}
             <div className="auth-field">
               <label htmlFor="password">{t("auth.register.passwordLabel")}</label>
               <div className="auth-input-wrap">
@@ -151,9 +147,7 @@ export default function RegisterPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder={t("auth.register.passwordPlaceholder")}
-                  minLength={6}
                   disabled={submitting}
-                  required
                 />
                 <button
                   type="button"
@@ -166,7 +160,36 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {error && <div className="auth-form-error">{error}</div>}
+            {/* 3. Password confirm */}
+            <div className="auth-field">
+              <label htmlFor="passwordConfirm">{t("auth.register.passwordConfirmLabel")}</label>
+              <input
+                id="passwordConfirm"
+                className="auth-input"
+                type={showPassword ? "text" : "password"}
+                autoComplete="new-password"
+                value={passwordConfirm}
+                onChange={(e) => setPasswordConfirm(e.target.value)}
+                placeholder={t("auth.register.passwordConfirmPlaceholder")}
+                disabled={submitting}
+              />
+            </div>
+
+            {/* 4. Username — 必填，作为 display name */}
+            <div className="auth-field">
+              <label htmlFor="username">{t("auth.register.usernameLabel")}</label>
+              <input
+                id="username"
+                className="auth-input"
+                type="text"
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder={t("auth.register.usernamePlaceholder")}
+                disabled={submitting}
+              />
+              <span className="auth-field-hint">{t("auth.register.usernameHint")}</span>
+            </div>
 
             <button className="auth-submit" type="submit" disabled={submitting}>
               {submitting ? t("auth.register.submitting") : t("auth.register.submit")}

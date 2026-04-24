@@ -24,9 +24,9 @@
   font-size: 14px;
   line-height: 22px;
   box-sizing: border-box;
-  /* 薰衣草底图 — /public/auth-bg.svg 承担底色 + 丝带 + 点阵 + 圈。
-   * 底色兜底用最深的紫，万一 SVG 加载失败也不会露白。 */
-  background: #BEBBE3 url("/auth-bg.svg") center / cover no-repeat;
+  /* 用户提供的薰衣草底图 — public/auth-bg.png。#BEBBE3 是提取自
+   * 图片的近似主色，万一图片没加载也不会露白。 */
+  background: #BEBBE3 url("/auth-bg.png") center / cover no-repeat;
   overflow: hidden;
 }
 
@@ -42,8 +42,9 @@
 .auth-card {
   position: relative;
   z-index: 1;
-  width: 920px;
-  height: 600px;
+  /* 黄金比例：长边 1000 / 短边 618 (1000÷1.618≈618)。 */
+  width: 1000px;
+  height: 618px;
   max-width: calc(100vw - 48px);
   max-height: calc(100vh - 48px);
   display: grid;
@@ -61,38 +62,23 @@
   }
 }
 
-/* ─── Left side of card: frosted-glass hero with animated characters ───
- * The hero IS the glass. It's semi-transparent so the deeper gray shell
- * behind the card shows through; backdrop-filter blurs that show-through
- * into the classic frosted look. On top of that glass we paint the four
- * artifact-colored radial washes (low alpha so the gray still dominates)
- * for the "炫彩涟漪" breathing effect. No inner .auth-hero-glass needed
- * anymore — the hero itself does the job. */
+/* ─── Left side of card: 纯粹的毛玻璃 ─────────────────────────────
+ * 就是 "白色半透明 + backdrop blur" —— 让下层的紫色底图模糊后透
+ * 上来即可，不做任何色彩渲染、不加涟漪、不加动画。白色不透明度
+ * 决定 "磨砂" 深浅；blur 决定 "磨砂" 的颗粒感。 */
 .auth-hero {
   position: relative;
   display: none;
   flex-direction: column;
   padding: 32px 36px 24px;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(20, 86, 240, 0.14), transparent 50%),
-    radial-gradient(circle at 80% 30%, rgba(123, 75, 220, 0.12), transparent 50%),
-    radial-gradient(circle at 75% 85%, rgba(245, 166, 35, 0.12), transparent 50%),
-    radial-gradient(circle at 25% 80%, rgba(52, 168, 83, 0.12), transparent 50%),
-    rgba(255, 255, 255, 0.55);
-  background-size: 200% 200%, 200% 200%, 200% 200%, 200% 200%, 100% 100%;
-  animation: auth-hero-ripple 18s ease-in-out infinite;
-  backdrop-filter: blur(28px) saturate(1.3);
-  -webkit-backdrop-filter: blur(28px) saturate(1.3);
-  /* Soft inner boundary between the glass and the opaque form side. */
-  border-right: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  /* 毛玻璃右侧边界 —— 与白色表单面之间的细分隔线。 */
+  border-right: 1px solid rgba(255, 255, 255, 0.5);
 }
 @media (min-width: 960px) { .auth-hero { display: flex; } }
-
-@keyframes auth-hero-ripple {
-  0%, 100% { background-position: 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0 0; }
-  50%      { background-position: 20% 10%, 80% 20%, 80% 90%, 20% 80%, 0 0; }
-}
 
 /* Kept as a no-op for any legacy refs in the JSX — renders nothing. */
 .auth-hero-glass { display: none; }
@@ -125,9 +111,13 @@
   justify-content: center;
   flex: 1;
   margin: auto 0;
-  /* Scale the character scene slightly so the 550×400 original fits
-   * comfortably inside the smaller card hero area. */
-  transform: translateY(20px) scale(0.82);
+  /* 角色定位（独立于 hero padding，不影响左上标题）：
+   *   目标：Yellow 左 ↔ 玻璃左 = 100px，Green 右 ↔ 玻璃右 = 130px
+   *   玻璃宽 600；角色内容在 550×400 scene 内占 x 0-450（右侧 100px 原生空白）。
+   *   span = 450 × scale = 600 - 100 - 130 = 370 → scale = 370/450 ≈ 0.822
+   *   char 内容中心目标 (100+470)/2 = 285（玻璃中心 300 偏左 15px）；
+   *   translateX(+26) 校正 scene div 右侧原生空白并把中心推到 285。 */
+  transform: translateX(26px) translateY(20px) scale(0.822);
   transform-origin: center center;
 }
 

@@ -37,6 +37,15 @@ interface MeResponse {
   workspaceId: string | null;
 }
 
+/**
+ * 后端用来驱动 i18n toast 的错误代码。前端 map 到 `auth.toast.*` key。
+ * 未知 code 时显示通用 "network/server error" 文案。
+ */
+export interface AuthError extends Error {
+  code?: string;
+  status?: number;
+}
+
 interface AuthContextValue {
   user: AuthUser | null;
   workspaces: AuthWorkspace[];
@@ -45,9 +54,9 @@ interface AuthContextValue {
   /** True while the initial session check is in flight. Routes should show
    * a loading state rather than the login page while this is true. */
   loading: boolean;
-  login: (handle: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   register: (input: {
-    email: string; username?: string; name: string; password: string;
+    email: string; password: string; username: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
   /** Re-pull /me. Call after profile edits. */
@@ -84,16 +93,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const login = useCallback(async (handle: string, password: string) => {
+  const throwAuthError = (body: any, status: number, fallbackMsg: string): never => {
+    const e: AuthError = new Error(body?.error || fallbackMsg);
+    e.code = body?.code;
+    e.status = status;
+    throw e;
+  };
+
+  const login = useCallback(async (email: string, password: string) => {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ handle, password }),
+      body: JSON.stringify({ email, password }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `login failed (${res.status})`);
+      throwAuthError(err, res.status, `login failed (${res.status})`);
     }
     const data = await res.json();
     setUser(data.user);
@@ -102,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const register = useCallback(async (input: {
-    email: string; username?: string; name: string; password: string;
+    email: string; password: string; username: string;
   }) => {
     const res = await fetch("/api/auth/register", {
       method: "POST",
@@ -112,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `register failed (${res.status})`);
+      throwAuthError(err, res.status, `register failed (${res.status})`);
     }
     const data = await res.json();
     setUser(data.user);

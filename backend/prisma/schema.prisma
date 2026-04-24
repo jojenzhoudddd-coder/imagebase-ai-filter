@@ -12,9 +12,10 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
-  /// Used as the login handle when `email` is actually a handle (legacy rows
-  /// like `user_quan`). When both are set, login accepts either.
-  username  String?  @unique
+  /// Display handle — shown in breadcrumb, default workspace name, default
+  /// chatbot name. **Not unique, not used for login** (email is the only
+  /// login identifier). Users can change it freely and collisions are fine.
+  username  String?
   name      String
   avatarUrl String?
   /// bcrypt hash of the password. Null means "never set a password yet"

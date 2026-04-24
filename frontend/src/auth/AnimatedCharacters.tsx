@@ -4,10 +4,14 @@
  * language's palette (see docs/design-resources.md §2).
  *
  * Artifact mapping (z-index ascending = back→front):
- *   purple   #7B4BDC   →  Taste (design canvas / visual exploration)
- *   blue     #1456F0   →  Table (structured data / primary brand)
- *   orange   #F5A623   →  Idea  (warning / idea lightbulb)
- *   green    #34A853   →  Demo  (success / runnable)
+ *   purple   #7C50D3   →  Taste (design canvas / visual exploration)
+ *   blue     #1F5AE5   →  Table (structured data / primary brand)
+ *   orange   #E9A22C   →  Idea  (warning / idea lightbulb)
+ *   green    #3CA458   →  Demo  (success / runnable)
+ *
+ *   Note: 上述为轻度降饱和版（= 品牌原色 90% + 中性灰 #808080 10% 混色），
+ *   与底图（毛玻璃上透出的薰衣草）搭配更柔和；品牌原色分别是
+ *   #7B4BDC / #1456F0 / #F5A623 / #34A853。
  *
  * Behaviour (unchanged from upstream):
  *   - Eyes + body skew follow the mouse cursor
@@ -292,7 +296,7 @@ export function AnimatedCharacters({
           width: "180px",
           height: isTyping || isHidingPassword ? "440px" : "400px",
           // Taste — 设计画布，用设计语言中对应的紫色
-          backgroundColor: "#7B4BDC",
+          backgroundColor: "#7C50D3",
           borderRadius: "10px 10px 0 0",
           zIndex: 1,
           transform:
@@ -374,7 +378,7 @@ export function AnimatedCharacters({
           width: "120px",
           height: "310px",
           // Table — 主品牌蓝（数据表是最常用的 artifact）
-          backgroundColor: "#1456F0",
+          backgroundColor: "#1F5AE5",
           borderRadius: "8px 8px 0 0",
           zIndex: 2,
           transform:
@@ -451,7 +455,7 @@ export function AnimatedCharacters({
           height: "200px",
           zIndex: 3,
           // Idea — 设计语言里的 Warning 橙（灵感 / 想法的亮色提示）
-          backgroundColor: "#F5A623",
+          backgroundColor: "#E9A22C",
           borderRadius: "120px 120px 0 0",
           transform:
             passwordLength > 0 && showPassword
@@ -504,7 +508,7 @@ export function AnimatedCharacters({
           width: "140px",
           height: "230px",
           // Demo — 设计语言里的 Success 绿（可运行产物 / 上线）
-          backgroundColor: "#34A853",
+          backgroundColor: "#3CA458",
           borderRadius: "70px 70px 0 0",
           zIndex: 4,
           transform:
