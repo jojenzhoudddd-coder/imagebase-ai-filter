@@ -24,8 +24,9 @@
 }
 @media (min-width: 1024px) {
   .auth-shell {
-    /* 2:1 left:right — the character scene is the hero; form stays compact */
-    grid-template-columns: 2fr 1fr;
+    /* 3:2 left:right — character scene stays the hero but form gets
+     * more breathing room than 2:1. */
+    grid-template-columns: 3fr 2fr;
   }
 }
 
@@ -46,15 +47,16 @@
   flex-direction: column;
   padding: 40px 40px 32px;
   overflow: hidden;
-  /* Gray base — matches the app's --color-bg #F5F6F7 so the auth page
-   * reads as part of the same shell rather than a standalone landing.
-   * Four artifact-colored radial washes drift slowly on top for the
-   * "炫彩涟漪" effect; glass layer above softens them into color bleed. */
+  /* Gray base — matches --color-bg #F5F6F7 exactly so the auth page
+   * reads as part of the same shell. The "炫彩涟漪" effect is delivered
+   * by four artifact-colored radial washes drifting very gently (low
+   * alpha so gray remains the dominant tone, not color). The glass
+   * layer above softens what little color breaks through. */
   background:
-    radial-gradient(circle at 20% 20%, rgba(20, 86, 240, 0.32), transparent 45%),
-    radial-gradient(circle at 80% 30%, rgba(123, 75, 220, 0.28), transparent 45%),
-    radial-gradient(circle at 75% 85%, rgba(245, 166, 35, 0.26), transparent 45%),
-    radial-gradient(circle at 25% 80%, rgba(52, 168, 83, 0.26), transparent 45%),
+    radial-gradient(circle at 20% 20%, rgba(20, 86, 240, 0.16), transparent 50%),
+    radial-gradient(circle at 80% 30%, rgba(123, 75, 220, 0.14), transparent 50%),
+    radial-gradient(circle at 75% 85%, rgba(245, 166, 35, 0.14), transparent 50%),
+    radial-gradient(circle at 25% 80%, rgba(52, 168, 83, 0.14), transparent 50%),
     #F5F6F7;
   background-size: 200% 200%, 200% 200%, 200% 200%, 200% 200%, 100% 100%;
   animation: auth-hero-ripple 18s ease-in-out infinite;
@@ -70,16 +72,18 @@
   }
 }
 
-/* Frosted glass layer — sits above the colorful base but below the
- * characters. Tuned to let a hint of the ripples through while still
- * reading as a neutral, subtly-gray surface that ties back to --color-bg. */
+/* Frosted glass layer — mostly-opaque gray that matches --color-bg, with
+ * a backdrop blur so the low-alpha color washes beneath drift through
+ * as very subtle "breathing" rather than showing as obvious orbs. The
+ * pane should read as solid gray with a barely-there tint shift over
+ * time, not as a colorful gradient. */
 .auth-hero-glass {
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: rgba(245, 246, 247, 0.55);
-  backdrop-filter: blur(48px) saturate(1.6);
-  -webkit-backdrop-filter: blur(48px) saturate(1.6);
+  background: rgba(245, 246, 247, 0.78);
+  backdrop-filter: blur(56px) saturate(1.3);
+  -webkit-backdrop-filter: blur(56px) saturate(1.3);
   pointer-events: none;
 }
 
@@ -94,10 +98,10 @@
 }
 .auth-hero-headline-title {
   margin: 0;
-  font-size: 44px;
-  line-height: 56px;
+  font-size: 60px;
+  line-height: 72px;
   font-weight: 600;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.8px;
   color: #1F2329;
 }
 
