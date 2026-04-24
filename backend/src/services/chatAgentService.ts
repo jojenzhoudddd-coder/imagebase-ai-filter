@@ -238,6 +238,11 @@ const META_SYSTEM_PROMPT = `# Layer 1 · Meta（OpenClaw Agent 元规则）
 5. 调用工具前先用一两句自然语言说明即将做什么（不用 Markdown 代码块）。
 6. 工具调用失败连续 ≥ 3 次时，停下来询问用户如何继续，不要盲目重试。
 7. 不确定用户意图时，先问清楚再动手，不要猜。
+8. **计划 / 结论 / 待用户确认的问题必须作为可见文本输出**，不要只留在
+   thinking（深度思考）里。用户看不到 thinking 的内容——只有 \`text\` 输出
+   才会进主气泡、才会在下一轮被重放给你看。如果你一轮里做了 tool_call 又
+   打算等用户选方案 / 回答问题，**必须**在这轮结束前用一段文字明确说出来；
+   否则用户看到的就是"几个工具卡 + 一片空白"，下一轮你还会忘记自己的计划。
 
 ## 安全红线（不可突破）
 - 带 "⚠️" 的删除 / 重置类工具，必须先用自然语言向用户解释并等待二次确认。
@@ -461,9 +466,15 @@ const ANALYST_HANDLES_LIMIT = 10;
 // model knows content was dropped. For analyst results the handle-based
 // pattern already keeps inline payloads small, so this rarely triggers
 // on analyst-skill — it's the safety net for everything else.
-const TOOL_OUTPUT_MAX_CHARS = 60_000; // ≈ 15K tokens, one result-worst-case
-const TOOL_OUTPUT_HEAD_CHARS = 48_000;
-const TOOL_OUTPUT_TAIL_CHARS = 8_000;
+// 200KB ≈ 50K tokens per single result. A Demo-generation turn commonly
+// does 5-8 tool calls in one round — 200KB × 8 = 1.6MB ≈ 400K tokens,
+// × 10 loop rounds worst case = ~1MB sustained context, which fits under
+// Claude's 1M limit. Was 60KB originally but design-SVG / idea-markdown
+// / demo-file reads routinely exceed that, leading to the Agent "not
+// seeing" the file it just read.
+const TOOL_OUTPUT_MAX_CHARS = 200_000;
+const TOOL_OUTPUT_HEAD_CHARS = 180_000;
+const TOOL_OUTPUT_TAIL_CHARS = 15_000;
 
 function truncateToolOutput(output: string, toolName: string): string {
   if (output.length <= TOOL_OUTPUT_MAX_CHARS) return output;
@@ -720,10 +731,28 @@ async function assembleInput(
     if (m.role === "user") {
       input.push({ role: "user", content: [{ type: "input_text", text: m.content }] });
     } else if (m.role === "assistant") {
-      // Assistant textual content goes in as user-context for simplicity
-      // (tool_calls aren't replayed — they're side effects already applied)
-      if (m.content) {
-        input.push({ role: "assistant", content: [{ type: "input_text", text: m.content }] });
+      // Prefer the visible text (m.content). If the assistant turn emitted
+      // only a `thinking` stream and no user-visible content (common with
+      // Claude + extended thinking — the model reasons in thinking blocks
+      // and the `content` block stays empty), fall back to a summarized
+      // replay of the thinking so the next turn keeps the train of thought.
+      // Without this, "chain-of-thought plans" from the previous turn are
+      // lost, and the user sees the Agent mysteriously "forget" its own
+      // conclusions (observed symptom: tool cards appear but no plan text,
+      // then next turn the Agent refers to plans that were never spoken).
+      //
+      // OneAPI's Anthropic channel strips thinking_delta text on the way
+      // out (see oneapiAdapter), so we can't faithfully re-emit the real
+      // thinking block even if we wanted to — wrapping as assistant text
+      // is the pragmatic workaround.
+      const replayText =
+        m.content && m.content.trim()
+          ? m.content
+          : m.thinking && m.thinking.trim()
+            ? `<思考摘要>\n${m.thinking.trim()}\n</思考摘要>`
+            : "";
+      if (replayText) {
+        input.push({ role: "assistant", content: [{ type: "input_text", text: replayText }] });
       }
     }
     // role === "tool" messages are not replayed to the model
