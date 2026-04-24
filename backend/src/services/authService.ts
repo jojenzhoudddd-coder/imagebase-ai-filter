@@ -225,7 +225,9 @@ export async function createUserWithWorkspace(input: {
       data: {
         orgId: org.id,
         createdById: user.id,
-        name, // workspace 默认名 = username
+        // 默认 workspace 名 = "<username>'s Workspace"。不直接用 username，
+        // 否则面包屑 `username > username` 看起来很蠢。
+        name: `${name}'s Workspace`,
       },
     });
 

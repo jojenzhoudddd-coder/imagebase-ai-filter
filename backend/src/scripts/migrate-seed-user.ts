@@ -89,8 +89,9 @@ async function main() {
     console.log(`  user.passwordHash = ${user.passwordHash ? "(existing)" : "(null)"} → <new bcrypt>`);
 
     const ws = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+    const workspaceName = `${username}'s Workspace`;
     if (ws) {
-      console.log(`  workspace.name   = ${ws.name} → ${username}`);
+      console.log(`  workspace.name   = ${ws.name} → ${workspaceName}`);
       const org = await prisma.org.findUnique({ where: { id: ws.orgId } });
       if (org) {
         console.log(`  org.name         = ${org.name} → ${username} 的空间`);
@@ -119,7 +120,7 @@ async function main() {
       if (ws) {
         await tx.workspace.update({
           where: { id: workspaceId },
-          data: { name: username },
+          data: { name: workspaceName },
         });
         await tx.org.update({
           where: { id: ws.orgId },

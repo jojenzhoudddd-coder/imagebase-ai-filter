@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "./AuthContext";
 import { useToast } from "../components/Toast/index";
 import { useTranslation } from "../i18n/index";
@@ -119,7 +120,10 @@ export default function ProfileDialog({ onClose }: Props) {
     }
   }
 
-  return (
+  // Portal 到 document.body —— 绕开任何可能的 stacking-context 嵌套（比如
+  // sidebar-resize-handle 在本地 z-index 比较下"恰好"赢的情况）。Portal 后
+  // 对话框直接挂在 body 下，z-index:2000 稳赢所有同级元素。
+  return createPortal(
     <div className="profile-overlay" onMouseDown={onClose}>
       <div className="profile-card" onMouseDown={(e) => e.stopPropagation()}>
         <div className="profile-title">个人信息</div>
@@ -175,6 +179,7 @@ export default function ProfileDialog({ onClose }: Props) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
