@@ -14,7 +14,12 @@ import { useCallback, useRef, useState, type ChangeEvent, type FormEvent } from 
 import { useAuth } from "./AuthContext";
 import { useToast } from "../components/Toast/index";
 import { useTranslation } from "../i18n/index";
+import { downscaleImage } from "./downscaleImage";
 import "./ProfileDialog.css";
+
+// 源图大小上限 —— 仅为 sanity check（防止用户选了 100MB 的 TIFF 导致浏览器卡死）。
+// 实际上传给后端的是压缩后的 ~40KB JPEG，不会被后端 2MB 限制拦住。
+const SOURCE_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 
 interface Props { onClose: () => void }
 
@@ -35,18 +40,27 @@ export default function ProfileDialog({ onClose }: Props) {
       toast.error("仅支持 PNG / JPG / GIF / WebP");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("头像大小不能超过 2MB");
+    if (file.size > SOURCE_MAX_BYTES) {
+      toast.error("源图过大（超过 20MB），请换一张");
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      setAvatarPreview(dataUrl);
-      setPendingAvatarDataUrl(dataUrl);
+    reader.onload = async () => {
+      const originalDataUrl = reader.result as string;
+      // 先用原图做即时预览，不等压缩 —— 用户视觉反馈更快
+      setAvatarPreview(originalDataUrl);
+      try {
+        // 压缩：不管源图多大，统一缩到 256px / JPEG 0.85，上传体积 ~40KB
+        const compressed = await downscaleImage(originalDataUrl, 256, 0.85);
+        setAvatarPreview(compressed); // 预览也更新到压缩版（避免高分屏看到虚）
+        setPendingAvatarDataUrl(compressed);
+      } catch (err: any) {
+        toast.error(err?.message || "图片处理失败");
+        setAvatarPreview(user?.avatarUrl ?? null);
+      }
     };
     reader.readAsDataURL(file);
-  }, [toast]);
+  }, [toast, user?.avatarUrl]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
