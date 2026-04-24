@@ -111,6 +111,16 @@
   font-weight: 500;
   flex-shrink: 0;
 }
+/* link + copy icon pairing. flex:1 on the group so it consumes remaining
+ * space; the <a> inside is the overflow target, the copy icon stays tight
+ * next to the ellipsized URL (not pushed to the far right). */
+.demo-panel-public-url-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 0;
+  min-width: 0;
+}
 .demo-panel-public-url a {
   color: #1456F0;
   text-decoration: none;
@@ -120,22 +130,31 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
-  flex: 1 1 0;
+  flex: 0 1 auto;
 }
 .demo-panel-public-url a:hover { text-decoration: underline; }
 
+/* Copy action：icon-only 按钮，紧跟链接之后 */
 .demo-panel-copy-btn {
   flex-shrink: 0;
-  padding: 2px 10px;
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
   background: transparent;
-  border: 1px solid #1456F0;
-  color: #1456F0;
-  border-radius: 3px;
+  border: none;
+  border-radius: 4px;
+  color: var(--color-text-tertiary, #646A73);
   cursor: pointer;
   font-family: inherit;
+  transition: background 0.15s, color 0.15s;
 }
-.demo-panel-copy-btn:hover { background: #1456F0; color: #fff; }
+.demo-panel-copy-btn:hover {
+  background: var(--color-bg-hover, #F0F0F0);
+  color: #1456F0;
+}
 
 /* ─── Error banner ─── */
 .demo-panel-error-banner {

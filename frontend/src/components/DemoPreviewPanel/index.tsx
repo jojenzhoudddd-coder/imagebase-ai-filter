@@ -73,6 +73,13 @@ const ChevronDownIcon = (
     <path d="M3.528 6.195a.667.667 0 01.944 0L8 9.724l3.528-3.529a.667.667 0 11.944.944l-4 4a.667.667 0 01-.944 0l-4-4a.667.667 0 010-.944z" fill="currentColor"/>
   </svg>
 );
+/* CopyIcon ← icon_copy_outlined (0041f38a…)，用在公开 URL 行的复制按钮 */
+const CopyIcon = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M9 3C9 2.44772 9.44772 2 10 2H20C20.5523 2 21 2.44772 21 3V15C21 15.5523 20.5523 16 20 16C19.4477 16 19 15.5523 19 15V4H10C9.44771 4 9 3.55228 9 3Z" fill="currentColor"/>
+    <path d="M5 6C3.89543 6 3 6.89543 3 8V20C3 21.1046 3.89543 22 5 22H15C16.1046 22 17 21.1046 17 20V8C17 6.89543 16.1046 6 15 6H5ZM5 8H15V20H5L5 8Z" fill="currentColor"/>
+  </svg>
+);
 
 interface DemoPreviewPanelProps {
   demoId: string;
@@ -360,15 +367,22 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
       {publicUrl && (
         <div className="demo-panel-public-url">
           <span className="demo-panel-public-url-label">{t("demo.publicUrlLabel")}</span>
-          <a href={publicUrl} target="_blank" rel="noreferrer">
-            {publicUrl}
-          </a>
-          <button
-            className="demo-panel-copy-btn"
-            onClick={() => { navigator.clipboard?.writeText(publicUrl); }}
-          >
-            {t("demo.copyUrl")}
-          </button>
+          {/* link + copy-icon wrapped in one group so the icon sits
+              immediately after the URL text, not pushed to the far right
+              by flex-grow. The outer bar's flex continues from here. */}
+          <span className="demo-panel-public-url-group">
+            <a href={publicUrl} target="_blank" rel="noreferrer">
+              {publicUrl}
+            </a>
+            <button
+              className="demo-panel-copy-btn"
+              onClick={() => { navigator.clipboard?.writeText(publicUrl); }}
+              title={t("demo.copyUrl")}
+              aria-label={t("demo.copyUrl")}
+            >
+              {CopyIcon}
+            </button>
+          </span>
         </div>
       )}
 
