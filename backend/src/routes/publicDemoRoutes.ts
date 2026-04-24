@@ -48,6 +48,30 @@ async function serveShare(req: Request, res: Response, rel: string): Promise<voi
     // automatically uses the RIGHT demoId because the SDK was generated with
     // DEMO_ID baked in at build time. No path rewriting needed here.
 
+    // For HTML: inject a <base href="/share/<slug>/"> so relative URLs
+    // like <script src="./bundle.js"> resolve to /share/<slug>/bundle.js
+    // regardless of whether the user hit /share/<slug> or /share/<slug>/.
+    // Without this, a bare URL (no trailing slash) makes the browser use
+    // /share/ as the base → script requests go to /share/bundle.js which
+    // slugs lookup as "bundle.js" → 404 → blank page. Earlier attempt to
+    // fix this with a 301 redirect created an infinite loop because Express
+    // router (non-strict) matches /share/:slug and /share/:slug/ to the
+    // SAME route — the redirect destination kept re-hitting the redirect
+    // source.
+    if (rel === "index.html" || rel === "") {
+      const html = content.toString("utf-8");
+      const base = `<base href="/share/${encodeURIComponent(slug)}/">`;
+      let patched: string;
+      if (/<head[^>]*>/i.test(html)) {
+        patched = html.replace(/<head([^>]*)>/i, (m, attrs) => `<head${attrs}>\n  ${base}`);
+      } else if (/<html[^>]*>/i.test(html)) {
+        patched = html.replace(/<html([^>]*)>/i, (m, attrs) => `<html${attrs}>\n<head>${base}</head>`);
+      } else {
+        patched = `${base}\n${html}`;
+      }
+      content = Buffer.from(patched, "utf-8");
+    }
+
     res.setHeader("Content-Type", contentType(rel));
     res.setHeader(
       "Content-Security-Policy",
@@ -71,23 +95,10 @@ async function serveShare(req: Request, res: Response, rel: string): Promise<voi
   }
 }
 
-// Bare /share/:slug → 301 to /share/:slug/ so the browser uses the slug path
-// as the base URL. Without the trailing slash, the HTML's `<script src="./bundle.js">`
-// resolves to /share/bundle.js (slug="bundle.js" → 404) and the page goes blank.
-// This is the classic "index.html at a URL without trailing slash" problem —
-// the static-file servers (nginx / express.static) redirect automatically,
-// we have to do it explicitly because we serve by slug lookup.
+// Serve index.html for both /share/:slug and /share/:slug/ — `<base href>`
+// injection in serveShare handles the relative-URL resolution. No redirect,
+// so no loop.
 router.get("/:slug", async (req: Request, res: Response) => {
-  // Verify slug exists before redirecting so bogus URLs still 404 properly.
-  const resolved = await resolveSlug(prisma, req.params.slug);
-  if (!resolved) {
-    res.status(404).type("text/plain").send("Demo not found or unpublished.");
-    return;
-  }
-  res.redirect(301, `/share/${encodeURIComponent(req.params.slug)}/`);
-});
-
-router.get("/:slug/", async (req: Request, res: Response) => {
   await serveShare(req, res, "index.html");
 });
 
