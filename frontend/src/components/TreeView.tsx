@@ -55,17 +55,13 @@ const ALBUM_ICON = (
   </svg>
 );
 
-/* Demo icon — browser-window glyph, matching the design-system convention
- * used for "runnable web artifact" (same pattern as DouyinSuite's
- * `icon-code-browser` / Keystone's `BrowserWindow`). A rounded frame with
- * a separated top bar + three traffic-light dots reads universally as
- * "deployable app preview" — the conceptual identity of a Vibe Demo.
- * Uses currentColor so hover/active inherits theme. Matches the 16×16
- * viewBox + solid-fill rhythm of the sibling TABLE_ICON / IDEA_ICON. */
+/* Demo icon — from UD 07 图标库 (`icon_ai-visualizetable_outlined`). Reads
+ * as "AI-generated visual/table artifact", the conceptual identity of a
+ * Vibe Demo. fill="currentColor" so it inherits theme from row state. */
 const DEMO_ICON = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <path d="M2.667 2C1.747 2 1 2.747 1 3.667v8.666C1 13.253 1.747 14 2.667 14h10.666c.92 0 1.667-.747 1.667-1.667V3.667C15 2.747 14.253 2 13.333 2H2.667zm0 1.333h10.666a.333.333 0 01.334.334v1.666H2.333V3.667a.333.333 0 01.334-.334zM2.333 6.667h11.334v5.666a.333.333 0 01-.334.334H2.667a.333.333 0 01-.334-.334V6.667z" fill="currentColor"/>
-    <path d="M3.667 4.333a.5.5 0 100 1 .5.5 0 000-1zm1.666 0a.5.5 0 100 1 .5.5 0 000-1zm1.667 0a.5.5 0 100 1 .5.5 0 000-1z" fill="currentColor"/>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <path d="M18.8086 14.8779C18.9189 14.878 19.0078 14.967 19.0137 15.0771C19.1142 17.0166 20.6689 18.5713 22.6084 18.6719C22.7187 18.6776 22.8086 18.7675 22.8086 18.8779C22.8083 18.9882 22.7185 19.0773 22.6084 19.083C20.6689 19.1836 19.1142 20.7383 19.0137 22.6777C19.0078 22.7879 18.9189 22.8779 18.8086 22.8779C18.6982 22.8779 18.6094 22.7879 18.6035 22.6777C18.503 20.7383 16.9481 19.1837 15.0088 19.083C14.8986 19.0773 14.8089 18.9882 14.8086 18.8779C14.8086 18.7675 14.8985 18.6776 15.0088 18.6719C16.9481 18.5711 18.503 17.0165 18.6035 15.0771C18.6094 14.967 18.6982 14.8779 18.8086 14.8779Z" fill="currentColor"/>
+    <path d="M20 2C21.1046 2 22 2.89545 22 4V16.4111C20.768 15.745 20.0001 14.4572 20 13.0566V10H10V20H12.8848C14.2947 20 15.5933 20.7661 16.2754 22H4C2.89548 22 2.00001 21.1045 2 20V4C2 2.89544 2.89544 2.00001 4 2H20ZM4 20H8V10H4V20ZM4 8H8V4H4V8ZM10 8H20V4H10V8Z" fill="currentColor"/>
   </svg>
 );
 
