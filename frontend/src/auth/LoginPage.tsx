@@ -17,14 +17,6 @@ import { useAuth } from "./AuthContext";
 import { AnimatedCharacters } from "./AnimatedCharacters";
 import "./AuthPage.css";
 
-// Colors here mirror the character component so legend swatches match 1:1.
-const ARTIFACT_COLORS = {
-  table: "#1456F0",
-  taste: "#7B4BDC",
-  idea:  "#F5A623",
-  demo:  "#34A853",
-};
-
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -70,31 +62,17 @@ export default function LoginPage() {
             but BELOW the characters (z-index ordering in AuthPage.css). */}
         <div className="auth-hero-glass" aria-hidden="true" />
 
+        {/* Top-left artifact-four headline */}
+        <div className="auth-hero-headline">
+          <h2 className="auth-hero-headline-title">Table · Taste · Idea · Demo</h2>
+        </div>
+
         <div className="auth-hero-stage">
           <AnimatedCharacters
             isTyping={isTyping}
             showPassword={showPassword}
             passwordLength={password.length}
           />
-        </div>
-
-        <div className="auth-hero-legend">
-          <span className="auth-hero-legend-item">
-            <span className="auth-hero-legend-dot" style={{ backgroundColor: ARTIFACT_COLORS.table }} />
-            Table
-          </span>
-          <span className="auth-hero-legend-item">
-            <span className="auth-hero-legend-dot" style={{ backgroundColor: ARTIFACT_COLORS.taste }} />
-            Taste
-          </span>
-          <span className="auth-hero-legend-item">
-            <span className="auth-hero-legend-dot" style={{ backgroundColor: ARTIFACT_COLORS.idea }} />
-            Idea
-          </span>
-          <span className="auth-hero-legend-item">
-            <span className="auth-hero-legend-dot" style={{ backgroundColor: ARTIFACT_COLORS.demo }} />
-            Demo
-          </span>
         </div>
 
         <div className="auth-hero-footer">

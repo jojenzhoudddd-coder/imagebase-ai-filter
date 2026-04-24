@@ -46,15 +46,16 @@
   flex-direction: column;
   padding: 40px 40px 32px;
   overflow: hidden;
-  /* White base with four drifting colorful washes (Table blue + Taste purple
-   * + Idea orange + Demo green). Each radial gradient is positioned off the
-   * edge to move during the subtle drift animation below. */
+  /* Gray base — matches the app's --color-bg #F5F6F7 so the auth page
+   * reads as part of the same shell rather than a standalone landing.
+   * Four artifact-colored radial washes drift slowly on top for the
+   * "炫彩涟漪" effect; glass layer above softens them into color bleed. */
   background:
-    radial-gradient(circle at 20% 20%, rgba(20, 86, 240, 0.35), transparent 45%),
-    radial-gradient(circle at 80% 30%, rgba(123, 75, 220, 0.30), transparent 45%),
-    radial-gradient(circle at 75% 85%, rgba(245, 166, 35, 0.28), transparent 45%),
-    radial-gradient(circle at 25% 80%, rgba(52, 168, 83, 0.28), transparent 45%),
-    #FFFFFF;
+    radial-gradient(circle at 20% 20%, rgba(20, 86, 240, 0.32), transparent 45%),
+    radial-gradient(circle at 80% 30%, rgba(123, 75, 220, 0.28), transparent 45%),
+    radial-gradient(circle at 75% 85%, rgba(245, 166, 35, 0.26), transparent 45%),
+    radial-gradient(circle at 25% 80%, rgba(52, 168, 83, 0.26), transparent 45%),
+    #F5F6F7;
   background-size: 200% 200%, 200% 200%, 200% 200%, 200% 200%, 100% 100%;
   animation: auth-hero-ripple 18s ease-in-out infinite;
 }
@@ -70,20 +71,38 @@
 }
 
 /* Frosted glass layer — sits above the colorful base but below the
- * characters. backdrop-filter blurs the ripples underneath so they read
- * as soft color bleed rather than crisp gradients. */
+ * characters. Tuned to let a hint of the ripples through while still
+ * reading as a neutral, subtly-gray surface that ties back to --color-bg. */
 .auth-hero-glass {
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(245, 246, 247, 0.55);
   backdrop-filter: blur(48px) saturate(1.6);
   -webkit-backdrop-filter: blur(48px) saturate(1.6);
   pointer-events: none;
 }
 
-/* Characters are vertically centered. Legend + footer pinned to bottom
- * via margin:auto on the stage. */
+/* Top-left headline — four artifact nouns as the hero tagline. Big
+ * weight-500 sans so it reads as a statement, not a label. Uses
+ * text-primary on the soft gray-ripple base for quiet authority. */
+.auth-hero-headline {
+  position: relative;
+  z-index: 2;
+  margin-bottom: 0;
+  pointer-events: none; /* don't block mouse events to characters below */
+}
+.auth-hero-headline-title {
+  margin: 0;
+  font-size: 44px;
+  line-height: 56px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  color: #1F2329;
+}
+
+/* Characters — vertically centered in the remaining space, then nudged
+ * 60px down from center to sit lower in the pane (per design preference). */
 .auth-hero-stage {
   position: relative;
   z-index: 2;
@@ -92,30 +111,7 @@
   justify-content: center;
   flex: 1;
   margin: auto 0;
-}
-
-/* Legend row — 4 labels for Table / Taste / Idea / Demo with matching
- * colored swatches. Sits above the glass so it stays crisp. */
-.auth-hero-legend {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  font-size: 12px;
-  line-height: 20px;
-  color: #1F2329;
-  margin-top: 8px;
-  margin-bottom: 16px;
-}
-.auth-hero-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.auth-hero-legend-dot {
-  width: 8px; height: 8px; border-radius: 50%;
+  transform: translateY(60px);
 }
 
 .auth-hero-footer {
