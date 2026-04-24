@@ -146,6 +146,75 @@ export function buildSdkJs(opts: BuildSdkOptions): string {
   var DEMO_ID = ${JSON.stringify(demoId)};
   var BASE = location.origin + ${JSON.stringify(base)} + "/" + DEMO_ID;
 
+  // ─── Runtime error overlay ─────────────────────────────────────────────
+  // Agent-generated Demo code frequently throws on unexpected data shapes
+  // (e.g. record.fields.xxx where fields is undefined). Without a safety
+  // net, React unmounts the whole tree on a render-phase throw and the
+  // iframe goes blank — no clue for the user or the Agent what broke.
+  // This handler catches uncaught errors + unhandled rejections + the
+  // "root mounted but empty" case and paints a readable error card so
+  // the failure is visible and iterable.
+  function _showError(kind, message, stack) {
+    try {
+      var existing = document.getElementById("__imagebase_err__");
+      if (existing) existing.remove();
+      var root = document.getElementById("root");
+      if (root) root.style.visibility = "hidden";
+      var box = document.createElement("div");
+      box.id = "__imagebase_err__";
+      box.style.cssText = [
+        "position:fixed", "inset:0", "z-index:2147483647",
+        "background:#FEF3F2", "color:#991B1B",
+        "padding:24px", "overflow:auto",
+        "font:13px/1.6 -apple-system,BlinkMacSystemFont,'SF Pro',sans-serif",
+      ].join(";");
+      box.innerHTML =
+        '<div style="max-width:820px;margin:0 auto">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+            '<span style="width:18px;height:18px;border-radius:50%;background:#DC2626;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">!</span>' +
+            '<span style="font-weight:600;font-size:14px">Demo 运行时错误 (' + kind + ')</span>' +
+          '</div>' +
+          '<div style="padding:10px 12px;background:#fff;border:1px solid #FECACA;border-radius:6px;margin-bottom:10px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;white-space:pre-wrap;word-break:break-word">' +
+            String(message || "(no message)").replace(/[&<>]/g, function (c) {
+              return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c];
+            }) +
+          '</div>' +
+          (stack ?
+            '<details style="padding:10px 12px;background:#fff;border:1px solid #FECACA;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px"><summary style="cursor:pointer;color:#6B7280">堆栈</summary><pre style="margin:8px 0 0;white-space:pre-wrap;word-break:break-word">' +
+              String(stack).replace(/[&<>]/g, function (c) {
+                return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c];
+              }) +
+            '</pre></details>' : '') +
+          '<div style="margin-top:12px;color:#6B7280;font-size:12px">提示：把这段错误复制给 Agent，它会据此修复代码。</div>' +
+        '</div>';
+      (document.body || document.documentElement).appendChild(box);
+    } catch (_) { /* last-resort: nothing we can do */ }
+  }
+  window.addEventListener("error", function (e) {
+    _showError("error", (e && (e.message || e.error && e.error.message)) || "unknown",
+      e && e.error && e.error.stack);
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var reason = e && e.reason;
+    var msg = reason && (reason.message || reason.toString()) || "unhandled promise rejection";
+    _showError("rejection", msg, reason && reason.stack);
+  });
+  // "Mounted but empty" net: if the root is still empty 2s after load,
+  // that usually means React threw during initial render before rendering
+  // anything. The error listener above should have fired; if it didn't,
+  // surface a generic message so the user isn't staring at a blank page.
+  window.addEventListener("load", function () {
+    setTimeout(function () {
+      var root = document.getElementById("root");
+      if (root && !root.hasChildNodes() && !document.getElementById("__imagebase_err__")) {
+        _showError("empty", "Demo mounted an empty tree. Likely an uncaught error during render.", null);
+      }
+    }, 2000);
+  });
+  // Expose so user code (or an ErrorBoundary) can call manually.
+  window.__imagebaseShowError = _showError;
+
+
   async function _req(method, path, body) {
     var r = await fetch(BASE + path, {
       method: method,
