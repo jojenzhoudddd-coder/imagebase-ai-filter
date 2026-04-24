@@ -2,10 +2,12 @@
  * Model registry — single source of truth for which models the Table Agent
  * can use, and how to reach them.
  *
- * The 5-item whitelist below is confirmed by the user (see chat history):
+ * The whitelist below is confirmed by the user (see chat history):
  *   doubao-2.0       (Volcano ARK, current production model, default fallback)
  *   claude-opus-4.7  (via OneAPI, default-preferred)
  *   claude-opus-4.6  (via OneAPI, currently available)
+ *   gpt-5.5          (via OneAPI)
+ *   gpt-5.5-mini     (via OneAPI)
  *   gpt-5.4          (via OneAPI)
  *   gpt-5.4-mini     (via OneAPI)
  *
@@ -116,6 +118,30 @@ export const MODELS: ModelEntry[] = [
     visible: true,
   },
   // ── OpenAI family (via OneAPI) ───────────────────────────────────────
+  // Newer GPT-5.5 entries go first so they render near the top of the picker
+  // under the "OpenAI" group. Availability is set async by probeModels — if
+  // OneAPI doesn't actually route `gpt-5.5` the entry will silently fall
+  // back via resolveModelForCall.
+  {
+    id: "gpt-5.5",
+    displayName: "GPT-5.5",
+    provider: "oneapi",
+    providerModelId: "gpt-5.5",
+    capabilities: { thinking: false, toolUse: true, contextWindow: 200000 },
+    defaults: { temperature: 0.1, maxOutputTokens: 8000 },
+    group: "openai",
+    visible: true,
+  },
+  {
+    id: "gpt-5.5-mini",
+    displayName: "GPT-5.5 mini",
+    provider: "oneapi",
+    providerModelId: "gpt-5.5-mini",
+    capabilities: { thinking: false, toolUse: true, contextWindow: 128000 },
+    defaults: { temperature: 0.1, maxOutputTokens: 4000 },
+    group: "openai",
+    visible: true,
+  },
   {
     id: "gpt-5.4",
     displayName: "GPT-5.4",
