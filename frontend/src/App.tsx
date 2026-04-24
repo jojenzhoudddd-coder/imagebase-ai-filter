@@ -330,7 +330,24 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handler);
   }, [filterPanelOpen]);
 
-  // Load initial data: document tables list, then active table data
+  // Load initial data: workspace tree → decide active artifact → load it.
+  //
+  // Selection precedence (first-match wins):
+  //   1. URL-carried artifact (?/workspace/:ws/:type/:id) — user arrived via
+  //      deep link, back/forward, or a deliberate refresh on a non-root URL.
+  //      We honour the URL as-is, don't override.
+  //   2. lastActiveArtifact_v2 in localStorage — refresh on a root URL
+  //      restores whichever artifact (table / idea / design / demo) was
+  //      active before reload. Promoted to the URL via navigateToArtifact
+  //      so subsequent refreshes at the new URL stay stable.
+  //   3. Legacy lastActiveTableId in localStorage — backward-compat for
+  //      users whose only stored preference is a table id.
+  //   4. First table in the workspace tree — fresh entry.
+  //
+  // Non-table artifacts (idea / design / demo) only need state + URL set;
+  // their respective panels (IdeaEditor / SvgCanvas / DemoPreviewPanel)
+  // fetch their own detail from the active id. Tables are loaded inline
+  // here because fields/records/views feed the main TableView.
   useEffect(() => {
     const init = async () => {
       const [treeData, doc] = await Promise.all([
@@ -343,50 +360,110 @@ export default function App() {
       setDocumentDesigns((treeData.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
       setDocumentIdeas((treeData.ideas || []).map(i => ({ ...i, parentId: i.parentId ?? null })));
       // Vibe Demo V1 — fetched separately (not part of /tree endpoint yet).
-      // If the call fails it's non-fatal: an empty sidebar section is fine.
-      listDemos(WORKSPACE_ID)
-        .then((demos) =>
-          setDocumentDemos(
-            demos.map((d) => ({
-              id: d.id,
-              name: d.name,
-              order: d.order,
-              parentId: d.parentId ?? null,
-              publishSlug: d.publishSlug ?? null,
-            })),
-          ),
-        )
-        .catch(() => { /* sidebar demos stay empty */ });
+      // Await here (not fire-and-forget) because we may need to resolve a
+      // persisted lastActiveArtifact_v2 of type "demo" against this list.
+      let demos: Array<{
+        id: string; name: string; order: number; parentId: string | null; publishSlug: string | null;
+      }> = [];
+      try {
+        const fetched = await listDemos(WORKSPACE_ID);
+        demos = fetched.map((d) => ({
+          id: d.id, name: d.name, order: d.order,
+          parentId: d.parentId ?? null, publishSlug: d.publishSlug ?? null,
+        }));
+        setDocumentDemos(demos);
+      } catch { /* sidebar demos stay empty */ }
+      const ideas = (treeData.ideas || []).map(i => ({ ...i, parentId: i.parentId ?? null }));
+      const designs = (treeData.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null }));
       if (doc) setDocumentName(doc.name);
 
-      // Determine which table to activate
-      const lastActive = localStorage.getItem("lastActiveTableId");
-      const targetId = tables.find(t => t.id === lastActive)?.id ?? tables[0]?.id;
-      if (!targetId) return;
+      // ── Pick a target artifact ─────────────────────────────────────────
+      type Target =
+        | { type: "table"; id: string }
+        | { type: "idea"; id: string }
+        | { type: "design"; id: string }
+        | { type: "demo"; id: string };
+      let target: Target | null = null;
 
-      setActiveTableId(targetId);
-      const tbl = tables.find(t => t.id === targetId);
-      if (tbl) setTableName(tbl.name);
+      // 1. URL
+      const urlType = urlParams.artifactType;
+      const urlId = urlParams.artifactId;
+      if (urlType && urlId) {
+        if (urlType === "table" && tables.find(t => t.id === urlId)) target = { type: "table", id: urlId };
+        else if (urlType === "idea" && ideas.find(i => i.id === urlId)) target = { type: "idea", id: urlId };
+        else if (urlType === "design" && designs.find(d => d.id === urlId)) target = { type: "design", id: urlId };
+        else if (urlType === "demo" && demos.find(d => d.id === urlId)) target = { type: "demo", id: urlId };
+        // else: URL references a now-deleted artifact — fall through to
+        // localStorage / first-table. We intentionally don't navigate the
+        // URL yet; if we end up with a different target, the
+        // `navigateToArtifact` call below replaces the URL cleanly.
+      }
 
-      const [f, r, v] = await Promise.all([
-        fetchFields(targetId),
-        fetchRecords(targetId),
-        fetchViews(targetId),
-      ]);
-      setFields(f);
-      setAllRecords(r);
-      setViews(v);
+      // 2. lastActiveArtifact_v2
+      if (!target) {
+        try {
+          const stored = localStorage.getItem("lastActiveArtifact_v2");
+          if (stored) {
+            const parsed = JSON.parse(stored) as { type?: string; id?: string };
+            if (parsed?.type && parsed?.id) {
+              if (parsed.type === "table" && tables.find(t => t.id === parsed.id)) target = { type: "table", id: parsed.id };
+              else if (parsed.type === "idea" && ideas.find(i => i.id === parsed.id)) target = { type: "idea", id: parsed.id };
+              else if (parsed.type === "design" && designs.find(d => d.id === parsed.id)) target = { type: "design", id: parsed.id };
+              else if (parsed.type === "demo" && demos.find(d => d.id === parsed.id)) target = { type: "demo", id: parsed.id };
+            }
+          }
+        } catch { /* bad JSON — ignore */ }
+      }
 
-      const activeView = v[0];
-      if (activeView) {
-        setActiveViewId(activeView.id);
-        const viewFilter = activeView.filter ?? { logic: "and", conditions: [] };
-        setSavedFilter(viewFilter);
-        setFilter(viewFilter);
-        initFieldOrderFromView(activeView, f);
+      // 3. Legacy lastActiveTableId
+      if (!target) {
+        const legacy = localStorage.getItem("lastActiveTableId");
+        if (legacy && tables.find(t => t.id === legacy)) target = { type: "table", id: legacy };
+      }
+
+      // 4. First table fallback
+      if (!target && tables.length > 0) target = { type: "table", id: tables[0].id };
+
+      if (!target) return; // empty workspace — nothing to select
+
+      // ── Apply selection ───────────────────────────────────────────────
+      setActiveTableId(target.id);
+      setActiveItemType(target.type);
+      // Reflect into URL if the URL doesn't already match — needed for
+      // localStorage-restored / first-table-fallback paths so refresh stays
+      // on the artifact.
+      if (target.id !== urlId || target.type !== urlType) {
+        navigateToArtifact(target.type, target.id);
+      }
+
+      // Tables need their fields/records/views loaded here because the main
+      // TableView reads them from App state. Other artifact types own their
+      // own load inside their panel, so we stop here for non-tables.
+      if (target.type === "table") {
+        const tbl = tables.find(t => t.id === target!.id);
+        if (tbl) setTableName(tbl.name);
+
+        const [f, r, v] = await Promise.all([
+          fetchFields(target.id),
+          fetchRecords(target.id),
+          fetchViews(target.id),
+        ]);
+        setFields(f);
+        setAllRecords(r);
+        setViews(v);
+
+        const activeView = v[0];
+        if (activeView) {
+          setActiveViewId(activeView.id);
+          const viewFilter = activeView.filter ?? { logic: "and", conditions: [] };
+          setSavedFilter(viewFilter);
+          setFilter(viewFilter);
+          initFieldOrderFromView(activeView, f);
+        }
       }
     };
     init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Initialize fieldOrder & hiddenFields from a view
@@ -1664,10 +1741,23 @@ export default function App() {
     handleRenameSidebarItem(itemId, newName);
   }, [documentFolders, documentDesigns, documentIdeas, documentDemos, handleRenameSidebarItem, toast, t]);
 
-  // ── Persist active table to localStorage ──
+  // ── Persist active artifact (type + id) to localStorage ──
+  // Used on next load to restore the previously-selected artifact when the
+  // URL doesn't already carry it (e.g. user lands on /workspace/doc_default
+  // from the shortcut). Stored as JSON {type, id}; legacy "lastActiveTableId"
+  // is kept in sync as a fallback for any older code path that still reads it.
   useEffect(() => {
-    if (activeTableId) localStorage.setItem("lastActiveTableId", activeTableId);
-  }, [activeTableId]);
+    if (!activeTableId) return;
+    try {
+      localStorage.setItem(
+        "lastActiveArtifact_v2",
+        JSON.stringify({ type: activeItemType, id: activeTableId })
+      );
+      if (activeItemType === "table") {
+        localStorage.setItem("lastActiveTableId", activeTableId);
+      }
+    } catch { /* quota / disabled — swallow */ }
+  }, [activeTableId, activeItemType]);
 
   // ── Keep tableName in sync with the active table's entry in documentTables.
   // Acts as a safety net for paths that bump activeTableId before the
