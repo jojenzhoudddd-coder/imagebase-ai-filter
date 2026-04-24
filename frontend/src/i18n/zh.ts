@@ -30,6 +30,15 @@ export const zh: TranslationKeys = {
   "topbar.language": "语言",
   "topbar.langEnglish": "English",
   "topbar.langChinese": "简体中文",
+  "topbar.logout": "退出登录",
+  "topbar.changeAvatar": "更换头像",
+  "topbar.usernameLabel": "用户名",
+  "topbar.saveAvatar": "确定",
+  "topbar.cancelAvatar": "取消",
+  "topbar.cropTitle": "裁剪头像",
+  "topbar.cropHint": "拖动选框选择方形区域",
+  "topbar.avatarSaved": "头像已更新",
+  "topbar.nameSaved": "用户名已更新",
 
   // Auth pages (login / register)
   "auth.heroTitle": "Table · Taste · Idea · Demo",

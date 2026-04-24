@@ -227,7 +227,11 @@ router.post("/avatar", requireAuth, async (req: Request, res: Response) => {
     return;
   }
 
-  const dir = path.resolve(process.cwd(), "uploads/avatars");
+  // 与 index.ts 里 `app.use("/uploads", express.static(...))` 的路径保持一致
+  // (<projectRoot>/uploads/avatars)。之前用 process.cwd() 会写到
+  // backend/uploads/avatars，而静态服务指向 project_root/uploads —— 结果
+  // 文件确实落盘了，但 URL 是 404，用户看到的就是"fallback 回默认头像"。
+  const dir = path.resolve(__dirname, "../../../uploads/avatars");
   await fsp.mkdir(dir, { recursive: true });
   const hash = crypto.createHash("sha1").update(bytes).digest("hex").slice(0, 12);
   const fileName = `${u.id}_${hash}.${ext}`;

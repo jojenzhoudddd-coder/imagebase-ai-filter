@@ -46,7 +46,9 @@ export default function App() {
   const [views, setViews] = useState<View[]>([]);
   const [activeViewId, setActiveViewId] = useState("view_all");
   const [tableName, setTableName] = useState("需求管理表");
-  const [documentName, setDocumentName] = useState("Default Document");
+  // 空串占位 —— 真实的 workspace.name 会在 bootstrap effect 里从后端拉回来
+  // 覆盖。之前是 "Default Document"，在接口返回前会闪一下英文文案，很丑。
+  const [documentName, setDocumentName] = useState("");
   const [activeTableId, setActiveTableId] = useState<string>("tbl_requirements");
   const activeTableIdRef = useRef(activeTableId);
   activeTableIdRef.current = activeTableId;

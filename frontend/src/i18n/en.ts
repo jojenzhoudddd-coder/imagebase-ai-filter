@@ -28,6 +28,15 @@ export const en = {
   "topbar.language": "Language",
   "topbar.langEnglish": "English",
   "topbar.langChinese": "简体中文",
+  "topbar.logout": "Sign out",
+  "topbar.changeAvatar": "Change avatar",
+  "topbar.usernameLabel": "Username",
+  "topbar.saveAvatar": "Save",
+  "topbar.cancelAvatar": "Cancel",
+  "topbar.cropTitle": "Crop avatar",
+  "topbar.cropHint": "Drag to pick a square region",
+  "topbar.avatarSaved": "Avatar updated",
+  "topbar.nameSaved": "Username updated",
 
   // Auth pages (login / register)
   "auth.heroTitle": "Table · Taste · Idea · Demo",

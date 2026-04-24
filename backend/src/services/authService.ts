@@ -234,10 +234,11 @@ export async function createUserWithWorkspace(input: {
     // ── 注册时的 onboarding 数据：1 张空表 + 1 个空 taste（design）+ 1 个空 idea
     // 这样新用户登入时 sidebar 不会空荡荡一片。默认视图内置一个 "view_all"
     // 以保持和现有 UI 期望一致（FE TableView 依赖至少一个 view）。
+    // 名字保持简洁通用（不带 username 前缀），用户之后可自行改名。
     await tx.table.create({
       data: {
         workspaceId: ws.id,
-        name: `${name}'s Table`,
+        name: "Table",
         fields: [] as any,
         views: [{ id: "view_all", name: "全部", type: "grid" }] as any,
         order: 0,
@@ -246,14 +247,14 @@ export async function createUserWithWorkspace(input: {
     await tx.design.create({
       data: {
         workspaceId: ws.id,
-        name: `${name}'s Taste`,
+        name: "Taste",
         order: 0,
       },
     });
     await tx.idea.create({
       data: {
         workspaceId: ws.id,
-        name: `${name}'s Idea`,
+        name: "Idea",
         order: 0,
       },
     });

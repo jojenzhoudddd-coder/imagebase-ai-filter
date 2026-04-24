@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation, setLocale } from "../i18n/index";
 import type { Locale } from "../i18n/index";
 import InlineEdit from "./InlineEdit";
 import { useAuth } from "../auth/AuthContext";
-import ProfileDialog from "../auth/ProfileDialog";
+import { useToast } from "./Toast/index";
+import AvatarCropDialog from "../auth/AvatarCropDialog";
 import "./TopBar.css";
 
 interface Props {
@@ -22,10 +23,10 @@ interface Props {
 
 export default function TopBar({ tableName, documentName, deleteProtection = true, onDeleteProtectionChange, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount }: Props) {
   const { t, locale } = useTranslation();
-  const { user, logout } = useAuth();
+  const { user, patchUser, logout } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const [editingDocName, setEditingDocName] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
 
   // 头像默认值：后端 register 时已随机分配 /avatars/avatar_N.png，兜底
   // 走 avatar_1。以前这里写的是 /avatars/me.jpg（作者本人头像），任何没
@@ -35,6 +36,88 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
     setAvatarMenuOpen(false);
     await logout();
     navigate("/login", { replace: true });
+  };
+
+  // ── Avatar upload + crop ──
+  const avatarFileRef = useRef<HTMLInputElement>(null);
+  const [cropSource, setCropSource] = useState<string | null>(null); // 选好图后放进这里 → 打开 crop dialog
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const onAvatarFilePicked = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // 清空 input value，否则重复选同一张不会触发 change
+    e.target.value = "";
+    if (!file) return;
+    if (!/^image\/(png|jpe?g|gif|webp)$/.test(file.type)) {
+      toast.error("仅支持 PNG / JPG / GIF / WebP");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("源图过大（超过 20MB）");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setCropSource(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleCroppedAvatar = async (croppedDataUrl: string) => {
+    setCropSource(null);
+    setAvatarUploading(true);
+    try {
+      const res = await fetch("/api/auth/avatar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ dataUrl: croppedDataUrl }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "upload failed");
+      }
+      const data = await res.json();
+      patchUser({ avatarUrl: data.user.avatarUrl });
+      toast.success(t("topbar.avatarSaved"));
+    } catch (err: any) {
+      toast.error(err?.message || "upload failed");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  // ── Inline username edit in popover ──
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [usernameSaving, setUsernameSaving] = useState(false);
+  useEffect(() => { setUsernameDraft(user?.username ?? ""); }, [user?.username]);
+
+  const saveUsername = async () => {
+    const trimmed = usernameDraft.trim();
+    if (!trimmed) { toast.error(t("auth.toast.usernameRequired")); return; }
+    if (!/^[a-zA-Z0-9_-]{2,32}$/.test(trimmed)) { toast.error(t("auth.toast.usernameInvalid")); return; }
+    if (trimmed === user?.username) { setEditingUsername(false); return; }
+    setUsernameSaving(true);
+    try {
+      const res = await fetch("/api/auth/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ name: trimmed, username: trimmed }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "save failed");
+      }
+      const data = await res.json();
+      // 注意：只更新 user 自身的 name/username —— 不触动 workspace / agent 的名字。
+      patchUser({ name: data.user.name, username: data.user.username });
+      toast.success(t("topbar.nameSaved"));
+      setEditingUsername(false);
+    } catch (err: any) {
+      toast.error(err?.message || "save failed");
+    } finally {
+      setUsernameSaving(false);
+    }
   };
 
   // ── More button menu ──
@@ -337,29 +420,65 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
           </div>
         </div>
       )}
-      {/* Avatar dropdown menu */}
+      {/* Avatar dropdown menu —— 把个人信息编辑整合进来，不再弹二次对话框 */}
       {avatarMenuOpen && avatarMenuPos && (
-        <div className="topbar-menu" ref={avatarMenuRef} style={{ position: "fixed", top: avatarMenuPos.top, right: avatarMenuPos.right }}>
-          {/* User info header (current user + handle) */}
+        <div className="topbar-menu topbar-profile-popover" ref={avatarMenuRef} style={{ position: "fixed", top: avatarMenuPos.top, right: avatarMenuPos.right }}>
+          {/* 头像 + 用户名 + 邮箱（大头区） */}
           {user && (
-            <div className="topbar-menu-header">
-              <div className="topbar-menu-header-name">{user.name}</div>
-              <div className="topbar-menu-header-handle">
-                {user.username ? `@${user.username}` : user.email}
+            <div className="topbar-profile-header">
+              <div
+                className="topbar-profile-avatar-wrap"
+                onClick={() => avatarFileRef.current?.click()}
+                title={t("topbar.changeAvatar")}
+              >
+                <img
+                  className="topbar-profile-avatar"
+                  src={userAvatar}
+                  alt=""
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/avatars/avatar_1.png"; }}
+                />
+                <div className="topbar-profile-avatar-overlay">
+                  {avatarUploading ? "…" : t("topbar.changeAvatar")}
+                </div>
               </div>
+              <input
+                ref={avatarFileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                style={{ display: "none" }}
+                onChange={onAvatarFilePicked}
+              />
+              {/* Username: 单击进入编辑态 */}
+              {editingUsername ? (
+                <div className="topbar-profile-username-edit">
+                  <input
+                    className="topbar-profile-username-input"
+                    value={usernameDraft}
+                    autoFocus
+                    onChange={(e) => setUsernameDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); saveUsername(); }
+                      else if (e.key === "Escape") { setEditingUsername(false); setUsernameDraft(user?.username ?? ""); }
+                    }}
+                    disabled={usernameSaving}
+                    maxLength={32}
+                  />
+                  <button className="topbar-profile-username-save" onClick={saveUsername} disabled={usernameSaving}>✓</button>
+                  <button className="topbar-profile-username-cancel" onClick={() => { setEditingUsername(false); setUsernameDraft(user?.username ?? ""); }} disabled={usernameSaving}>×</button>
+                </div>
+              ) : (
+                <div
+                  className="topbar-profile-username"
+                  onClick={() => setEditingUsername(true)}
+                  title={t("topbar.usernameLabel")}
+                >
+                  {user.username || user.name}
+                </div>
+              )}
+              {/* Email（灰色、只读） */}
+              <div className="topbar-profile-email">{user.email}</div>
             </div>
           )}
-          {/* Profile settings */}
-          <div
-            className="topbar-menu-item"
-            onClick={() => { setAvatarMenuOpen(false); setProfileOpen(true); }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon">
-              <circle cx="8" cy="5.5" r="2.5" stroke="currentColor" strokeWidth="1.2"/>
-              <path d="M2.5 14c0-2.485 2.462-4.5 5.5-4.5s5.5 2.015 5.5 4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            </svg>
-            <span className="topbar-menu-label">个人信息</span>
-          </div>
           {/* Language submenu */}
           <div
             className="topbar-menu-item has-submenu"
@@ -419,12 +538,18 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
               <path d="M9.5 2h-5A1.5 1.5 0 003 3.5v9A1.5 1.5 0 004.5 14h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
               <path d="M7 8h7m0 0l-2.5-2.5M14 8l-2.5 2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            <span className="topbar-menu-label">退出登录</span>
+            <span className="topbar-menu-label">{t("topbar.logout")}</span>
           </div>
         </div>
       )}
 
-      {profileOpen && <ProfileDialog onClose={() => setProfileOpen(false)} />}
+      {cropSource && (
+        <AvatarCropDialog
+          sourceDataUrl={cropSource}
+          onConfirm={handleCroppedAvatar}
+          onCancel={() => setCropSource(null)}
+        />
+      )}
     </div>
   );
 }
