@@ -314,8 +314,44 @@ router.get("/:demoId/file", asyncHandler(async (req, res) => {
     const content = await store.readFile(req.params.demoId, p);
     res.json({ path: p, content });
   } catch (err: any) {
-    if (err?.code === "ENOENT") res.status(404).json({ error: "File not found" });
-    else throw err;
+    if (err?.code === "ENOENT") {
+      // Distinguish "demo doesn't exist" from "file missing within demo" —
+      // both used to return the same opaque "File not found", which made
+      // the Agent unable to self-correct (it'd try alternate filenames
+      // forever on a deleted demo, or miss the true file list when it
+      // guessed the wrong name on an existing demo).
+      const demoExists = await prisma.demo.findUnique({
+        where: { id: req.params.demoId },
+        select: { id: true, template: true },
+      });
+      if (!demoExists) {
+        res.status(404).json({
+          error: `Demo ${req.params.demoId} not found (it may have been deleted). Call list_demos(workspaceId) to see current demos.`,
+          code: "DEMO_NOT_FOUND",
+        });
+        return;
+      }
+      // Demo exists — list its current files so the Agent can retry with a
+      // real filename instead of guessing.
+      let availableFiles: string[] = [];
+      try {
+        const files = await store.listFiles(req.params.demoId);
+        availableFiles = files.map((f) => f.path);
+      } catch { /* fs error — leave empty */ }
+      res.status(404).json({
+        error:
+          `File "${p}" not found in demo ${req.params.demoId} ` +
+          `(template=${demoExists.template}). ` +
+          (availableFiles.length
+            ? `Available files: ${availableFiles.join(", ")}. Retry with one of these paths.`
+            : `The demo currently has no files. Call write_demo_file first.`),
+        code: "FILE_NOT_FOUND",
+        availableFiles,
+        template: demoExists.template,
+      });
+      return;
+    }
+    throw err;
   }
 }));
 
