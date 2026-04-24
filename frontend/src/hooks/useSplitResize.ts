@@ -98,6 +98,33 @@ export function useSplitResize(opts: SplitResizeOptions): SplitResizeResult {
       document.body.style.userSelect = "none";
       document.body.style.cursor = "col-resize";
 
+      // ─── Pointer-event capture overlay ─────────────────────────────────
+      // Without this, dragging the cursor over the Demo preview iframe (or
+      // any other iframe / canvas / textarea in the right panel) hands the
+      // browser's event loop to the child document — and the parent's
+      // document-level mouseup listener never fires, so release-to-stop
+      // silently fails and the user ends up "stuck" dragging.
+      //
+      // Fix: render a transparent full-screen overlay above everything at
+      // mousedown. All pointer events during the drag hit this overlay,
+      // not the iframe. Mousemove/mouseup we wire below fire reliably.
+      // Removed on mouseup (inside onUp).
+      const overlay = document.createElement("div");
+      overlay.dataset.splitResizeOverlay = "1";
+      overlay.style.cssText = [
+        "position:fixed",
+        "inset:0",
+        // Above any modal / sidebar / demo / iframe in the app — we're the
+        // top-level mouse-event capture for this transient drag only.
+        "z-index:2147483647",
+        "cursor:col-resize",
+        // Transparent but must be rendered to catch events.
+        "background:transparent",
+        // user-select handled on body too, belt-and-braces here.
+        "user-select:none",
+      ].join(";");
+      document.body.appendChild(overlay);
+
       const rect = container.getBoundingClientRect();
       const containerWidth = rect.width;
 
@@ -126,13 +153,19 @@ export function useSplitResize(opts: SplitResizeOptions): SplitResizeResult {
         setIsDragging(false);
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
+        window.removeEventListener("blur", onUp);
         writeRatio(storageKey, ratioRef.current);
       };
 
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
+      // Safety net: if the cursor leaves the window (into OS chrome) and is
+      // released there, mouseup may not fire on document. Listen for the
+      // window-level fallback too.
+      window.addEventListener("blur", onUp);
     },
     [minLeftPx, minRightPx, maxRatio, storageKey]
   );

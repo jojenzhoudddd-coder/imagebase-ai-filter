@@ -169,6 +169,27 @@
   border-radius: 4px 4px 0 0;
 }
 
+/* ─── Sidebar drag: stop the right side from stealing the drag ─────────────
+ * 拖动 sidebar 分隔条时，鼠标进入 Demo iframe / Figma iframe / 画布 /
+ * IdeaEditor / TableView 都会让对方捕获事件，导致松开鼠标后拖动不停止。
+ * 在 body 上加了 .sidebar-resizing 的那一刻起，把右侧整个主内容区域
+ * 的 pointer-events 关掉；关键子元素（iframe / textarea / 画布）也单独
+ * 加规则确保穿透（有时容器级别的 pointer-events 不够因为子元素可能
+ * 重新开启 pointer-events，这里列了 belt-and-braces）。 */
+body.sidebar-resizing .app-main {
+  pointer-events: none;
+}
+body.sidebar-resizing .demo-panel-iframe,
+body.sidebar-resizing .design-panel-iframe,
+body.sidebar-resizing iframe,
+body.sidebar-resizing .svg-canvas,
+body.sidebar-resizing .idea-editor-textarea,
+body.sidebar-resizing .idea-markdown-preview,
+body.sidebar-resizing .table-view,
+body.sidebar-resizing textarea {
+  pointer-events: none !important;
+}
+
 .app-content {
   display: flex;
   flex: 1;
