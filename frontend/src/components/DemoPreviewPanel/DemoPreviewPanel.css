@@ -227,6 +227,34 @@
   margin-top: 8px;
 }
 
+/* ─── Publish confirm popover ──────────────────────────────────────────────
+ * Replaces the centered modal for publish only. Anchored to the publish
+ * button: 4px below the button region, right-edge aligned to the button's
+ * right edge. Visuals inside reuse .confirm-card / .confirm-title /
+ * .confirm-message / .confirm-actions rules from ConfirmDialog.css so the
+ * look is identical to the modal version — only the container changes.
+ */
+.demo-panel-publish-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.demo-panel-publish-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  width: 420px;
+  max-width: calc(100vw - 40px);
+  background: #fff;
+  border: 1px solid var(--color-border, #DEE0E3);
+  border-radius: 8px;
+  padding: 20px 24px;
+  box-shadow: 0 8px 24px rgba(31, 35, 41, 0.12);
+  /* Cursor used on the trigger is not inherited — reset so buttons inside
+   * can show pointer/text cursors normally. */
+  cursor: default;
+}
+
 /* ─── File list popover (topbar dropdown) ──────────────────────────────────
  * 旧版是固定在右下角的 aside，会遮挡 iframe 内容。现在挂在 topbar "Files · N"
  * 按钮下面，按钮本身是标准 hover 文字按钮，点击 toggle 一个下拉面板。 */

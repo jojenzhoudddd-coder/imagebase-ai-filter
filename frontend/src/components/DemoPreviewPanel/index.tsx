@@ -105,6 +105,7 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
   const [publishSuccessUrl, setPublishSuccessUrl] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const filesPopoverRef = useRef<HTMLDivElement | null>(null);
+  const publishPopoverRef = useRef<HTMLDivElement | null>(null);
 
   // Close files popover on click outside (standard popover pattern used
   // elsewhere in the app, e.g. DropdownMenu). Scoped to document so we
@@ -118,6 +119,18 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [filesOpen]);
+
+  // Publish confirm lives as a popover anchored to the publish button
+  // (not a modal overlay). Same click-outside-closes pattern.
+  useEffect(() => {
+    if (!publishConfirm) return;
+    function onDocClick(e: MouseEvent) {
+      const el = publishPopoverRef.current;
+      if (el && !el.contains(e.target as Node)) setPublishConfirm(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [publishConfirm]);
 
   const load = useCallback(async () => {
     try {
@@ -351,15 +364,44 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
               {busy === "unpublish" ? t("demo.unpublishing") : t("demo.unpublish")}
             </button>
           ) : (
-            <button
-              className="demo-panel-topbar-btn demo-panel-topbar-btn-primary"
-              onClick={handlePublish}
-              disabled={busy !== null || demo.lastBuildStatus !== "success"}
-              title={demo.lastBuildStatus !== "success" ? t("demo.buildFirst") : undefined}
-            >
-              {PublishIcon}
-              {busy === "publish" ? t("demo.publishing") : t("demo.publishAsWorkend")}
-            </button>
+            <div className="demo-panel-publish-wrap" ref={publishPopoverRef}>
+              <button
+                className="demo-panel-topbar-btn demo-panel-topbar-btn-primary"
+                onClick={handlePublish}
+                disabled={busy !== null || demo.lastBuildStatus !== "success"}
+                title={demo.lastBuildStatus !== "success" ? t("demo.buildFirst") : undefined}
+              >
+                {PublishIcon}
+                {busy === "publish" ? t("demo.publishing") : t("demo.publishAsWorkend")}
+              </button>
+              {publishConfirm && (
+                /* Popover anchored to the publish button: 4px below the button,
+                 * right-edge aligned. Reuses ConfirmDialog's card visuals
+                 * (title / message / actions) so the look is identical — only
+                 * the container changes from centered-modal-overlay to
+                 * absolutely-positioned dropdown. */
+                <div className="demo-panel-publish-popover">
+                  <div className="confirm-title">
+                    {t("demo.publishConfirmTitle").replace("{{name}}", demo.name)}
+                  </div>
+                  <div className="confirm-message">{publishConfirmMessage}</div>
+                  <div className="confirm-actions">
+                    <button
+                      className="confirm-btn confirm-btn-cancel"
+                      onClick={() => setPublishConfirm(false)}
+                    >
+                      {t("confirm.cancel")}
+                    </button>
+                    <button
+                      className="confirm-btn confirm-btn-ok"
+                      onClick={confirmPublish}
+                    >
+                      {t("demo.publishAsWorkend")}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -417,17 +459,8 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
         )}
       </div>
 
-      {/* ─── Publish confirm — replaces native window.confirm ─── */}
-      <ConfirmDialog
-        open={publishConfirm}
-        variant="default"
-        title={t("demo.publishConfirmTitle").replace("{{name}}", demo.name)}
-        message={publishConfirmMessage}
-        confirmLabel={t("demo.publishAsWorkend")}
-        cancelLabel={t("confirm.cancel")}
-        onConfirm={confirmPublish}
-        onCancel={() => setPublishConfirm(false)}
-      />
+      {/* ─── Publish confirm — rendered as an anchored popover inside the
+             topbar (see the .demo-panel-publish-wrap above). Not a modal. ─── */}
 
       {/* ─── Unpublish confirm ─── */}
       <ConfirmDialog
