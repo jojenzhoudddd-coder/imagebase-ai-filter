@@ -147,6 +147,7 @@ export const en = {
   // ConfirmDialog
   "confirm.confirm": "Confirm",
   "confirm.cancel": "Cancel",
+  "confirm.done": "Done",
   "confirm.clear": "Clear",
   "confirm.delete": "Delete",
   "confirm.refsTitle": "Currently referenced in {{count}} location(s) — these will become dead links:",

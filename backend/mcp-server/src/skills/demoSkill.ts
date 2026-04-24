@@ -55,6 +55,105 @@ interface ImageBase {
 }
 \`\`\`
 
+## 数据形态契约（写代码前必读——跳过这节代码几乎必坏）
+
+### Record 的真实形状
+
+\`query\` / \`getRecord\` / \`createRecord\` / \`updateRecord\` 都返回同一个 shape：
+
+\`\`\`json
+{
+  "id": "rec_xxx",
+  "tableId": "tbl_yyy",
+  "cells": {
+    "fld_name": "登录页重构",
+    "fld_assignee": "u_alice",
+    "fld_priority": "P0",
+    "fld_tags": ["opt_fe", "opt_urgent"],
+    "fld_date": "2026-04-20"
+  }
+}
+\`\`\`
+
+**访问值只能 \`record.cells[fieldId]\`**。不存在 \`record.fields\`、\`record.values\`、\`record[fieldId]\`——你自己猜的这些 shape 都会返回 undefined，页面显示空白。
+
+### cells 写入形状
+
+\`createRecord(tableId, cells)\` / \`updateRecord(tableId, recordId, cells)\` 的 \`cells\` 是**扁平的 \`{fieldId: value}\` map**。key 必须是字段 id（\`fld_xxx\`），不是字段名（"优先级"）。**不要**外包 \`{fields: {...}}\`（那是 Airtable 的 API，不是这里）。
+
+### describeTable 返回的字段元数据
+
+\`\`\`json
+{
+  "id": "tbl_yyy",
+  "fields": [
+    { "id": "fld_priority", "name": "优先级", "type": "SingleSelect",
+      "config": { "options": [{"id":"opt_p0","name":"P0","color":"#002270"}, ...] } },
+    { "id": "fld_assignee", "name": "负责人", "type": "User",
+      "config": { "users": [{"id":"u_alice","name":"Alice","avatar":"..."}] } }
+  ]
+}
+\`\`\`
+
+## 渲染 ID 类字段（硬规则）
+
+**SingleSelect / MultiSelect / User / Group 字段的 cell 存的是 ID，不是显示名**。直接 \`<td>{record.cells[fid]}</td>\` 用户看到的就是 \`u_alice\` / \`opt_p0\`——这是用户最常抱怨"完成度低"的根源。
+
+必须：
+
+1. 组件 mount 时 \`describeTable(tableId)\` 一次
+2. 为每个 ID 类字段建 label map：\`{[id]: name, [name]: name}\`（双键——系统里有些 cell 存 id 有些存 name，双键让两种都命中）
+3. 渲染时 \`labelMap[fid]?.[cell] ?? cell\`——查不到才 fallback 到原值
+
+\`\`\`tsx
+const labelMaps = useMemo(() => {
+  if (!schema) return {};
+  const out: Record<string, Record<string, string>> = {};
+  for (const f of schema.fields ?? []) {
+    if (f.type === "SingleSelect" || f.type === "MultiSelect") {
+      const m: Record<string, string> = {};
+      for (const o of f.config?.options ?? []) { m[o.id] = o.name; m[o.name] = o.name; }
+      out[f.id] = m;
+    } else if (f.type === "User" || f.type === "Group") {
+      const m: Record<string, string> = {};
+      for (const u of f.config?.users ?? []) m[u.id] = u.name;
+      out[f.id] = m;
+    }
+  }
+  return out;
+}, [schema]);
+
+const label = (fid: string, v: any) => {
+  if (v == null) return "";
+  if (Array.isArray(v)) return v.map(x => labelMaps[fid]?.[x] ?? x).join(", ");
+  return labelMaps[fid]?.[v] ?? v;
+};
+// render：{label("fld_priority", r.cells.fld_priority)}
+\`\`\`
+
+## 预构建 preflight（按顺序，不能跳）
+
+1. \`get_data_dictionary\` 或 \`describeTable\` 每个要用的 tableId
+2. \`update_demo_capabilities\`——dataTables 声明 + per-resource 写类能力（\`createRecord\` / \`updateRecord\` / \`deleteRecord\`）显式加
+3. \`write_demo_file\` 写代码（遵守上面的数据契约 + ID→label 规则）
+4. \`build_demo\`
+5. **构建后自检（下一节，不做不算交付）**
+
+## 构建后自检（不跑完不宣告完成）
+
+\`build_demo\` 返回 \`success\` **只代表 esbuild 没报错**，不代表 Demo 能跑。必须自检：
+
+1. Preview URL 可通过 chat Demo Card 或 \`/workspace/:wsId/demo/:demoId\` 打开
+2. SDK 已内置运行时错误拦截——iframe 里如果出现 id 为 \`__imagebase_err__\` 的红底覆盖层，说明代码抛了未捕获错误（含"mounted but empty"兜底）
+3. 功能 smoke：至少在心里 walk through 一次读（数据能出）+ 一次写（如果声明了写 capability），看代码路径是不是闭环
+4. 若发现错误：
+   - \`Cannot read properties of undefined (reading '某字段')\` → 多半是 \`record.cells\` 没用上（见"数据形态契约"节）
+   - 页面显示 \`u_xxx\` / \`opt_xxx\` 这种 ID → 没建 label map（见"渲染 ID 类字段"节）
+   - \`window.ImageBase.createRecord is not a function\` → capability 漏声明
+   - 读取返回空 → tableId 拼错或 capability 没声明
+5. 定位 → 改代码 → 重新 build → 重新自检。**自检 retry 上限 3 次**，仍失败停下告诉用户具体报错
+6. 全通过才可以说 "Demo 完成了"
+
 ## 硬规则
 
 - 生成 Demo 前调 get_data_dictionary / describe_table / readIdea 了解字段和内容

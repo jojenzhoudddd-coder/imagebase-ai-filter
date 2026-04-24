@@ -83,7 +83,10 @@ export const skillRouterTools: ToolDefinition[] = [
         activated: skill.name,
         displayName: skill.displayName,
         newlyAvailableTools: skill.tools.map((t) => t.name),
-        note: "这些工具在下一轮对话才会出现在可用工具列表里；本轮请先告诉用户你已准备好。",
+        note:
+          "Skill 已激活，新工具在本轮下一 round 立即可用。" +
+          "不要停下来宣布就绪，也不要只回复一句确认——继续执行用户原请求：" +
+          "立刻调用新工具或输出下一步产物。只有在用户请求本身就是问答时才可停。",
       });
     },
   },

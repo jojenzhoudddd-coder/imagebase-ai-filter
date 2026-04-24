@@ -71,7 +71,23 @@ async function serveShare(req: Request, res: Response, rel: string): Promise<voi
   }
 }
 
+// Bare /share/:slug → 301 to /share/:slug/ so the browser uses the slug path
+// as the base URL. Without the trailing slash, the HTML's `<script src="./bundle.js">`
+// resolves to /share/bundle.js (slug="bundle.js" → 404) and the page goes blank.
+// This is the classic "index.html at a URL without trailing slash" problem —
+// the static-file servers (nginx / express.static) redirect automatically,
+// we have to do it explicitly because we serve by slug lookup.
 router.get("/:slug", async (req: Request, res: Response) => {
+  // Verify slug exists before redirecting so bogus URLs still 404 properly.
+  const resolved = await resolveSlug(prisma, req.params.slug);
+  if (!resolved) {
+    res.status(404).type("text/plain").send("Demo not found or unpublished.");
+    return;
+  }
+  res.redirect(301, `/share/${encodeURIComponent(req.params.slug)}/`);
+});
+
+router.get("/:slug/", async (req: Request, res: Response) => {
   await serveShare(req, res, "index.html");
 });
 

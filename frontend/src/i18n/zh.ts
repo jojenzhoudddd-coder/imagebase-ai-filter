@@ -149,6 +149,7 @@ export const zh: TranslationKeys = {
   // ConfirmDialog
   "confirm.confirm": "确认",
   "confirm.cancel": "取消",
+  "confirm.done": "知道了",
   "confirm.clear": "清除",
   "confirm.delete": "删除",
   "confirm.refsTitle": "当前有 {{count}} 处引用，删除后将变成死链：",

@@ -29,6 +29,9 @@
   line-height: 22px;
   color: var(--color-text-secondary);
   margin-bottom: 24px;
+  /* 允许消息中的 \n 直接换行 —— publish 确认用到多行内容描述 capability 列表 */
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .confirm-actions {

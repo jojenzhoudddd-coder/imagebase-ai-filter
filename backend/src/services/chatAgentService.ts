@@ -583,48 +583,51 @@ function getPool(pg: any) {
 // a provider-agnostic canonical format and each adapter will serialize from it.
 type ArkInputItem = ProviderInputItem;
 
-async function assembleInput(
-  conversationId: string,
-  workspaceId: string,
-  agentId: string,
-  newUserMessage: string,
-  activeSkillNames: string[] = [],
+/**
+ * Pre-built layer parts captured once per turn. The only piece that varies
+ * by round is which skills are currently active (because `activate_skill`
+ * may fire mid-turn). Everything else (identity, workspace snapshot, runtime
+ * info, recalled memories, analyst handles) is stable within a single turn,
+ * so we compute it once at turn start and re-concat cheaply each round.
+ */
+export interface PrebuiltSystemLayers {
+  identity: string;
+  snapshot: string;
+  recalled: string | null;
+  analystHandles: string | null;
   runtime?: {
     model: ModelEntry;
     requestedId: string | null | undefined;
     usedFallback: boolean;
-  }
-): Promise<ArkInputItem[]> {
-  const [identity, snapshot, recalled, analystHandles] = await Promise.all([
-    buildIdentityLayer(agentId),
-    buildWorkspaceSnapshot(workspaceId),
-    buildRecalledMemoriesSection(agentId, newUserMessage),
-    buildAnalystHandlesSection(conversationId),
-  ]);
-  // Layer 1 + Layer 2 + Skill Catalog + Tool Guidance + Layer 3. Layer 1 is
-  // hardcoded at the very top so no amount of identity mutation can override
-  // meta behavior. The skill catalog sits between identity and tool guidance
-  // so the model reads "who am I → what bundles can I pull in → how do I use
-  // the ones already loaded" in order. Layer 3 Turn Context stacks runtime
-  // info + workspace snapshot + auto-recalled memories (Phase 2 Day 3); we
-  // skip empty pieces to keep the prompt tight. Runtime goes first in Layer
-  // 3 because "what model am I" is the most frequently asked meta-question
-  // and also the cheapest to surface.
+  };
+}
+
+/**
+ * Assemble the system-prompt text from cached layers + current active skills.
+ * Called once at turn start AND before every subsequent round so that any
+ * skill activated mid-turn gets its `promptFragment` injected on the next
+ * model call (without this, newly-activated skills are silently invisible
+ * to the model and it gives up).
+ */
+export function buildSystemText(
+  layers: PrebuiltSystemLayers,
+  activeSkillNames: string[]
+): string {
   const layer3Parts: string[] = [];
-  if (runtime) {
-    layer3Parts.push(buildRuntimeLayer(runtime.model, runtime.requestedId, runtime.usedFallback));
+  if (layers.runtime) {
+    layer3Parts.push(
+      buildRuntimeLayer(layers.runtime.model, layers.runtime.requestedId, layers.runtime.usedFallback)
+    );
   }
-  layer3Parts.push(snapshot);
-  if (recalled) layer3Parts.push(recalled);
-  if (analystHandles) layer3Parts.push(analystHandles);
+  layer3Parts.push(layers.snapshot);
+  if (layers.recalled) layer3Parts.push(layers.recalled);
+  if (layers.analystHandles) layer3Parts.push(layers.analystHandles);
+
   const skillCatalog = buildSkillCatalog(activeSkillNames);
-  const systemParts = [META_SYSTEM_PROMPT, identity];
+  const systemParts = [META_SYSTEM_PROMPT, layers.identity];
   if (skillCatalog) systemParts.push(skillCatalog);
   systemParts.push(TOOL_GUIDANCE_ZH);
-  // Per-skill prompt fragments for currently-active skills. Each skill that
-  // declares `promptFragment` contributes one block so the model sees its
-  // domain rules alongside Tier 1 guidance. Skipped when no active skills
-  // have fragments (keeps prompt tight for vanilla conversations).
+
   const activeFragments: string[] = [];
   for (const name of activeSkillNames) {
     const frag = skillsByName[name]?.promptFragment;
@@ -636,7 +639,31 @@ async function assembleInput(
     systemParts.push(activeFragments.join("\n\n"));
   }
   systemParts.push(`# Layer 3 · Turn Context\n${layer3Parts.join("\n\n")}`);
-  const systemText = systemParts.join("\n\n");
+  return systemParts.join("\n\n");
+}
+
+async function assembleInput(
+  conversationId: string,
+  workspaceId: string,
+  agentId: string,
+  newUserMessage: string,
+  activeSkillNames: string[] = [],
+  runtime?: {
+    model: ModelEntry;
+    requestedId: string | null | undefined;
+    usedFallback: boolean;
+  }
+): Promise<{ input: ArkInputItem[]; layers: PrebuiltSystemLayers }> {
+  const [identity, snapshot, recalled, analystHandles] = await Promise.all([
+    buildIdentityLayer(agentId),
+    buildWorkspaceSnapshot(workspaceId),
+    buildRecalledMemoriesSection(agentId, newUserMessage),
+    buildAnalystHandlesSection(conversationId),
+  ]);
+  const layers: PrebuiltSystemLayers = {
+    identity, snapshot, recalled, analystHandles, runtime,
+  };
+  const systemText = buildSystemText(layers, activeSkillNames);
 
   const history = await convStore.getMessages(conversationId);
   // Sliding window: last 20 messages (plan Phase 3.2)
@@ -669,7 +696,7 @@ async function assembleInput(
   }
 
   input.push({ role: "user", content: [{ type: "input_text", text: newUserMessage }] });
-  return input;
+  return { input, layers };
 }
 
 // ─── Incoming-refs pre-fetch for danger confirmation ────────────────────
@@ -930,7 +957,7 @@ export async function* runAgent(
   // tells the Agent exactly which LLM it's running on — without this the
   // model has no idea and either guesses or parrots OneAPI's injected
   // "Claude Code" identity.
-  const input = await assembleInput(
+  const { input, layers: prebuiltLayers } = await assembleInput(
     conversationId,
     workspaceId,
     agentId,
@@ -938,6 +965,10 @@ export async function* runAgent(
     [...skillState.active],
     { model, requestedId: storedModelId, usedFallback }
   );
+  // Track which skills the system prompt currently reflects so we only
+  // rebuild when the set actually changes (cheap guard; string concat is
+  // fast but no point paying it every round).
+  let lastPromptSkillSnapshot = [...skillState.active].sort().join("|");
 
   // Persist the user message now that assembleInput has already snapshotted
   // the pre-existing window. Subsequent turns will see this message on their
@@ -983,6 +1014,20 @@ export async function* runAgent(
     // expose that skill's tools on the NEXT round.
     toolCtx.activeSkills = [...skillState.active];
     const activeTools = resolveActiveTools(toolCtx.activeSkills);
+
+    // Rebuild the system prompt when the active skill set changed since
+    // last round. Without this the newly-activated skill's promptFragment
+    // and the skill-catalog ✅ flag stay stale, and the model — now seeing
+    // new tools but still reading "this skill is not loaded; call
+    // activate_skill" — gets confused and often emits a single textual
+    // acknowledgement then quits. See the `activate_skill` tool's `note`
+    // field which also tells the model to continue (the two work together).
+    const nowSkillSnapshot = [...skillState.active].sort().join("|");
+    if (nowSkillSnapshot !== lastPromptSkillSnapshot) {
+      const rebuilt = buildSystemText(prebuiltLayers, [...skillState.active]);
+      input[0] = { role: "system", content: [{ type: "input_text", text: rebuilt }] };
+      lastPromptSkillSnapshot = nowSkillSnapshot;
+    }
 
     // Consume the ARK stream, forwarding deltas to the client in real time
     // and collecting tool calls to execute after the stream ends.

@@ -46,19 +46,27 @@ export const VIBE_CODING_PROMPT = `## 你是"实现阶段"负责人（Vibe Codin
 - 状态管理：useState / useReducer 够用时不上 zustand / redux
 - 请求：\`fetch\` + window.ImageBase SDK
 
-### 数据接入流程（必须）
+### 数据接入流程（严格按序，跳一步必坏）
 
-1. 写代码前先调 \`get_data_dictionary(workspaceId)\` 或 \`describeTable\` 了解字段
-2. 决定用哪些 tableId → 调 \`update_demo_capabilities\` 声明
-3. 代码里用 \`window.ImageBase\` SDK 读写（不要硬编码假数据）
-4. 写入类操作必须声明对应 capability（createRecord / updateRecord / deleteRecord）
+1. **侦查**：\`get_data_dictionary(workspaceId)\` + 每个用到的 table 调 \`describeTable\` 拿 fields（id / name / type / config.options / config.users）
+2. **Capability 声明**：\`update_demo_capabilities\` 必须在 \`write_demo_file\` + \`build_demo\` **之前**
+   - dataTables = 代码里会用到的所有 tableId
+   - 写类能力显式声明：\`capabilities: { "tbl_xxx": ["createRecord", "updateRecord", "deleteRecord"] }\`
+   - 漏声明 → SDK 上就没那个方法 → \`ImageBase.createRecord is not a function\`
+3. **契约**：看 demo-skill 的"数据形态契约"节——\`record.cells[fieldId]\` 是唯一正确的访问方式；\`cells\` 写入是 \`{fieldId: value}\` 扁平 map
+4. **ID → label**：SingleSelect / MultiSelect / User 字段直接渲染会显示 ID，**必须**走 label map（见 demo-skill 的"渲染 ID 类字段"节）
+5. **只走 SDK**：代码里读写统一 \`window.ImageBase.*\`，不能 fetch \`/api/tables/...\`
+6. **Build + 自检**：看 demo-skill 的"构建后自检"节
 
-### CRUD 代码模式（示例）
+### CRUD 参考实现（覆盖了契约 + label map + 写入回流）
 
 \`\`\`tsx
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+
+const TID = 'tbl_requirements'; // 换成你真实的 tableId
 
 function App() {
+  const [schema, setSchema] = useState<any>(null);
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,29 +74,51 @@ function App() {
   useEffect(() => {
     (async () => {
       try {
-        const rows = await window.ImageBase.query('tb123456789012', { limit: 100 });
-        setRecords(rows);
-      } catch (e: any) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
-      }
+        const [s, rs] = await Promise.all([
+          window.ImageBase.describeTable(TID),
+          window.ImageBase.query(TID, { limit: 100 }),
+        ]);
+        setSchema(s);
+        setRecords(rs);
+      } catch (e: any) { setError(e.message); }
+      finally { setLoading(false); }
     })();
   }, []);
 
-  async function handleSubmit(cells: any) {
-    try {
-      const r = await window.ImageBase.createRecord('tb123456789012', cells);
-      setRecords([r, ...records]);
-    } catch (e: any) {
-      alert(e.message);
+  // 为 ID 类字段建双键 label map
+  const labelMaps = useMemo(() => {
+    const out: Record<string, Record<string, string>> = {};
+    for (const f of schema?.fields ?? []) {
+      if (f.type === 'SingleSelect' || f.type === 'MultiSelect') {
+        const m: Record<string, string> = {};
+        for (const o of f.config?.options ?? []) { m[o.id] = o.name; m[o.name] = o.name; }
+        out[f.id] = m;
+      } else if (f.type === 'User' || f.type === 'Group') {
+        const m: Record<string, string> = {};
+        for (const u of f.config?.users ?? []) m[u.id] = u.name;
+        out[f.id] = m;
+      }
     }
+    return out;
+  }, [schema]);
+
+  const label = (fid: string, v: any) => {
+    if (v == null) return '';
+    if (Array.isArray(v)) return v.map(x => labelMaps[fid]?.[x] ?? x).join(', ');
+    return labelMaps[fid]?.[v] ?? v;
+  };
+
+  async function handleCreate(cells: Record<string, any>) {
+    // cells key 必须是 field id (fld_xxx)，不是字段名
+    try {
+      const rec = await window.ImageBase.createRecord(TID, cells);
+      setRecords([rec, ...records]); // 返回的 rec 也有 cells 字段，刚好回填列表
+    } catch (e: any) { alert(e.message); }
   }
 
   if (loading) return <div className="p-8 text-gray-400">加载中...</div>;
-  if (error) return <div className="p-8 text-red-500">{error}</div>;
-
-  // ... render list + form ...
+  if (error)   return <div className="p-8 text-red-500">{error}</div>;
+  // render: {label('fld_priority', r.cells.fld_priority)} 而不是 {r.cells.fld_priority}
 }
 \`\`\`
 
@@ -97,14 +127,18 @@ function App() {
 - 所有 SDK 调用必须 try/catch
 - loading / error / empty state 都要处理（别只画 happy path）
 - 用户友好的错误提示（不是扔 stacktrace）
-- 字段类型转换（Number / DateTime / SingleSelect 的 value 格式不同——参考 describeTable 的 fields）
-- 要写入时，UI 里明确 CTA 文案 "提交" / "保存" / "删除"（不要默认动作不说明）
+- 要写入时，UI 里明确 CTA 文案 "提交" / "保存" / "删除"
+- **访问字段值永远 \`record.cells[fieldId]\`**（不是 fields / values / 字段名）
+- **ID 类字段永远走 label map**（SingleSelect / MultiSelect / User / Group）
 
-### 反例
-- 用硬编码的假数据代替真 SDK 调用
+### 反例（用户看到后会说"完成度太低"）
+- 用硬编码假数据代替真 SDK 调用
 - 写"接下来你可以手动连接 API"——你就是来连的
 - 忽略 error state 只画成功态
-- 在 Demo 代码里尝试 fetch \`/api/tables/xxx\`（那是 owner API，不是 SDK）
+- 在 Demo 代码里 fetch \`/api/tables/xxx\`（那是 owner API）
+- 直接 \`{record.cells.fld_assignee}\` 渲染显示 \`u_alice\`
+- \`{record.fields.name}\` / \`{record[fieldId]}\` → 全部 undefined，页面空白
+- \`createRecord(tid, {fields: {...}})\` → 服务端不认，记录不会落库
 `;
 
 export const vibeCodingSkill: SkillDefinition = {
