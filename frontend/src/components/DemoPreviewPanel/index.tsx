@@ -286,6 +286,18 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
     return `${window.location.origin}/share/${demo.publishSlug}`;
   }, [demo?.publishSlug]);
 
+  // "Has unpublished changes" — true when the Demo is published AND the
+  // current source version is ahead of the snapshot taken at last publish.
+  // Drives the green dot onboarding on the Published button + the blue
+  // Republish CTA inside the popover. Null sourceVersionAtPublish (legacy
+  // rows) is treated as "no drift detected yet" to avoid a false positive
+  // on every pre-existing publish.
+  const hasPendingChanges = useMemo(() => {
+    if (!demo?.publishSlug) return false;
+    if (demo.sourceVersionAtPublish == null) return false;
+    return demo.version > demo.sourceVersionAtPublish;
+  }, [demo?.publishSlug, demo?.sourceVersionAtPublish, demo?.version]);
+
   const statusLabel = useMemo(() => {
     if (!demo?.lastBuildStatus) return null;
     switch (demo.lastBuildStatus) {
@@ -373,16 +385,22 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
           <div className="demo-panel-publish-wrap" ref={publishPopoverRef}>
             {demo.publishSlug ? (
               // Status-style button showing "Published" + chevron. Click
-              // toggles the info popover (URL / copy / unpublish).
+              // toggles the info popover (URL / copy / unpublish / maybe
+              // republish). A small green dot sits at the top-right of
+              // the button when source files have been modified after the
+              // last publish — onboarding the user to open the popover
+              // and use the Republish CTA inside.
               <button
-                className="demo-panel-topbar-btn"
+                className="demo-panel-topbar-btn demo-panel-published-btn"
                 onClick={() => setPublishedPopoverOpen((v) => !v)}
                 disabled={busy !== null}
                 aria-expanded={publishedPopoverOpen}
+                title={hasPendingChanges ? t("demo.pendingChanges") : undefined}
               >
                 {PublishIcon}
                 {t("demo.published")}
                 {ChevronDownIcon}
+                {hasPendingChanges && <span className="demo-panel-pending-dot" aria-hidden="true" />}
               </button>
             ) : (
               <button
@@ -445,6 +463,18 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
                     {CopyIcon}
                   </button>
                 </div>
+                {/* Pending-changes notice + Republish CTA. Only shown when
+                 * the source version has drifted past the version at last
+                 * publish. Republish re-runs the publish flow (backend
+                 * copies current dist/ → published/<N+1>/, keeps the same
+                 * slug). The URL stays the same so the user never has to
+                 * re-share. */}
+                {hasPendingChanges && (
+                  <div className="demo-panel-pending-notice">
+                    <span className="demo-panel-pending-dot demo-panel-pending-dot-inline" />
+                    {t("demo.pendingChanges")}
+                  </div>
+                )}
                 <div className="confirm-actions">
                   <button
                     className="confirm-btn confirm-btn-cancel"
@@ -457,6 +487,17 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
                     {UnpublishIcon}
                     {busy === "unpublish" ? t("demo.unpublishing") : t("demo.unpublish")}
                   </button>
+                  {hasPendingChanges && (
+                    <button
+                      className="confirm-btn confirm-btn-ok"
+                      onClick={confirmPublish}
+                      disabled={busy !== null || demo.lastBuildStatus !== "success"}
+                      title={demo.lastBuildStatus !== "success" ? t("demo.buildFirst") : undefined}
+                    >
+                      {PublishIcon}
+                      {busy === "publish" ? t("demo.publishing") : t("demo.republish")}
+                    </button>
+                  )}
                 </div>
               </div>
             )}

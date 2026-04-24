@@ -140,6 +140,7 @@ export const demoSummarySchema = z.object({
   lastBuildAt: z.string().nullable(),
   publishSlug: z.string().nullable(),
   publishedAt: z.string().nullable(),
+  sourceVersionAtPublish: z.number().int().nonnegative().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

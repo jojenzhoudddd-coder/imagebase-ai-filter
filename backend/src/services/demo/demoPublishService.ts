@@ -64,6 +64,11 @@ export async function publishDemo({
       publishSlug: slug,
       publishedVersion: nextVersion,
       publishedAt,
+      // Stamp the source version at the moment we publish. Subsequent file
+      // writes bump `version` further; the FE compares (version >
+      // sourceVersionAtPublish) to decide whether to show the "has unpublished
+      // changes" green dot + Republish button.
+      sourceVersionAtPublish: demo.version,
     },
   });
 
@@ -90,6 +95,9 @@ export async function unpublishDemo({
       // publishedVersion stays — we kept the snapshot on disk so user can
       // re-publish with a different slug to "take back" the old URL.
       publishedAt: null,
+      // Clear the version stamp so re-publish starts fresh (no leftover
+      // "has unpublished changes" indicator on the newly unpublished demo).
+      sourceVersionAtPublish: null,
     },
   });
 }

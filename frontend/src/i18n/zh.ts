@@ -520,6 +520,8 @@ export const zh: TranslationKeys = {
   "demo.publicUrlLabel": "已作为 workend 发布：",
   "demo.published": "已 workend",
   "demo.publishedAsWorkend": "已发布为 workend",
+  "demo.republish": "重新发布",
+  "demo.pendingChanges": "有未发布的改动",
   "demo.copyUrl": "复制",
   "demo.loading": "加载 Demo...",
   "demo.loadFailed": "加载失败",

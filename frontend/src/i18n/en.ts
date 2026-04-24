@@ -516,6 +516,8 @@ export const en = {
   "demo.publicUrlLabel": "Published as workend:",
   "demo.published": "Published",
   "demo.publishedAsWorkend": "Published as workend",
+  "demo.republish": "Republish",
+  "demo.pendingChanges": "Unpublished changes",
   "demo.copyUrl": "Copy",
   "demo.loading": "Loading demo...",
   "demo.loadFailed": "Load failed",

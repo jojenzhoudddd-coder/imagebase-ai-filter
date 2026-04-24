@@ -323,9 +323,13 @@ model Demo {
   lastBuildError  String?
 
   // 发布状态
-  publishSlug      String?   @unique
-  publishedVersion Int?
-  publishedAt      DateTime?
+  publishSlug            String?   @unique
+  publishedVersion       Int?
+  publishedAt            DateTime?
+  // Source `version` 的快照——publish 时拍下当时的 version 号。后续文件
+  // 被写入会让 version 继续递增；前端用 (version > sourceVersionAtPublish)
+  // 判定"有未发布的变更"，在 Published 按钮上显示绿点 + 展开 Republish。
+  sourceVersionAtPublish Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

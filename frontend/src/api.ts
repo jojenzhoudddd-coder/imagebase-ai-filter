@@ -1396,6 +1396,10 @@ export interface DemoBrief {
   lastBuildAt: string | null;
   publishSlug: string | null;
   publishedAt: string | null;
+  // Source `version` 的快照——publish 时拍下的值。FE 用 (version >
+  // sourceVersionAtPublish) 判定"有未发布的变更"，在 Published 按钮上
+  // 显示绿点 + popover 里显示 Republish 按钮。
+  sourceVersionAtPublish: number | null;
   createdAt: string;
   updatedAt: string;
 }

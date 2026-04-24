@@ -255,6 +255,44 @@
   cursor: default;
 }
 
+/* "Has unpublished changes" onboarding dot on the Published button.
+ * A small green circle pinned to the top-right corner of the button,
+ * slightly overhanging the edge to read as a badge rather than inline
+ * content. Paired with the Republish CTA inside the popover. */
+.demo-panel-published-btn {
+  position: relative;
+}
+.demo-panel-pending-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #17B26A;
+  box-shadow: 0 0 0 1.5px #fff;
+  pointer-events: none;
+}
+/* When reused inline inside the popover's pending-changes notice,
+ * reset position and the white halo (which only makes sense on top of
+ * a button background). */
+.demo-panel-pending-dot-inline {
+  position: static;
+  box-shadow: none;
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.demo-panel-pending-notice {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: #F0FAF3;
+  border: 1px solid #CCEBD7;
+  border-radius: 6px;
+  color: #2A8B57;
+  font-size: 13px;
+}
+
 /* Post-publish popover URL row: link takes remaining space (ellipsis),
  * copy icon sits immediately to the right. */
 .demo-panel-published-url-row {

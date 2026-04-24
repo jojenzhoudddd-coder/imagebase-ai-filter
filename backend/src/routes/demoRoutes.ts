@@ -68,6 +68,9 @@ function toSummary(d: any): any {
     lastBuildAt: d.lastBuildAt?.toISOString?.() ?? d.lastBuildAt ?? null,
     publishSlug: d.publishSlug,
     publishedAt: d.publishedAt?.toISOString?.() ?? d.publishedAt ?? null,
+    // Source-version snapshot at last publish. FE compares this to `version`
+    // to decide whether to show the "has unpublished changes" indicator.
+    sourceVersionAtPublish: d.sourceVersionAtPublish ?? null,
     createdAt: d.createdAt?.toISOString?.() ?? d.createdAt,
     updatedAt: d.updatedAt?.toISOString?.() ?? d.updatedAt,
   };
