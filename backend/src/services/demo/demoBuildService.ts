@@ -248,7 +248,13 @@ async function buildReactSpa(
     entryPoints: [path.join(srcRoot, entry)],
     outfile: path.join(distRoot, "bundle.js"),
     bundle: true,
-    format: "iife",
+    // CRITICAL: `esm` not `iife`. The scaffolded index.html uses
+    // `<script type="module">` + an importmap that maps bare specifiers
+    // (`react`, `react-dom/client`) to esm.sh CDN URLs. ESM output
+    // preserves `import React from "react"` statements which the browser
+    // resolves via importmap at load time. IIFE format can't do this —
+    // it chokes on external specifiers since there's no runtime import.
+    format: "esm",
     target: "es2020",
     jsx: "automatic",
     jsxImportSource: "react",
@@ -265,17 +271,10 @@ async function buildReactSpa(
       ".jpg": "file",
       ".svg": "file",
     },
-    // React & ReactDOM loaded from CDN in index.html — mark them external
-    // so esbuild doesn't try to resolve them in node_modules (we have none).
+    // React & ReactDOM loaded via importmap → esm.sh — externalized so
+    // esbuild emits `import ... from "react"` verbatim and the browser
+    // resolves it.
     external: ["react", "react-dom", "react-dom/client", "react/jsx-runtime"],
-    // Override imports to CDN URLs via banner+alias — simpler via plugin,
-    // but V1 uses prompt convention: Agent writes `import React from "react"`,
-    // index.html pre-declares `window.React` from CDN, bundle references it.
-    // Instead of injecting import map, we use a simple rewriting banner.
-    banner: {
-      js: "",
-    },
-    footer: { js: "" },
   };
 
   const result = await esbuild(opts);

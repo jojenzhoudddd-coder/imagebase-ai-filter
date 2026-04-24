@@ -106,6 +106,32 @@ router.get("/", asyncHandler(async (req, res) => {
   res.json(rows.map(toSummary));
 }));
 
+// ─── Reorder ──────────────────────────────────────────────────────────────
+// Must be declared BEFORE the `/:demoId` GET/PATCH/DELETE handlers so Express
+// doesn't route "reorder" into :demoId param. Mirrors ideaRoutes/reorder.
+
+router.put("/reorder", asyncHandler(async (req, res) => {
+  const { updates, workspaceId } = req.body;
+  if (!Array.isArray(updates)) {
+    res.status(400).json({ error: "updates must be an array" });
+    return;
+  }
+  const wsId = workspaceId || "doc_default";
+  await Promise.all(
+    updates.map((u: { id: string; order: number }) =>
+      prisma.demo.update({ where: { id: u.id }, data: { order: u.order } })
+    )
+  );
+  eventBus.emitWorkspaceChange({
+    type: "demo:reorder",
+    workspaceId: wsId,
+    clientId: getClientId(req),
+    timestamp: Date.now(),
+    payload: { updates },
+  });
+  res.json({ ok: true });
+}));
+
 // ─── Get ──────────────────────────────────────────────────────────────────
 
 router.get("/:demoId", asyncHandler(async (req, res) => {

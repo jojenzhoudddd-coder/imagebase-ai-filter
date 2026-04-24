@@ -10,7 +10,7 @@ import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import { AddFieldPopover, useFieldSuggestions } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, createRecord, renameTable, fetchWorkspace, renameWorkspace, fetchWorkspaceTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, reorderIdeas, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchWorkspaceTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign, createIdea as apiCreateIdea, renameIdea as apiRenameIdea, deleteIdea as apiDeleteIdea, fetchIncomingMentions, listDemos } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, createRecord, renameTable, fetchWorkspace, renameWorkspace, fetchWorkspaceTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, reorderIdeas, reorderDemos, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchWorkspaceTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign, createIdea as apiCreateIdea, renameIdea as apiRenameIdea, deleteIdea as apiDeleteIdea, renameDemo as apiRenameDemo, deleteDemo as apiDeleteDemo, fetchIncomingMentions, listDemos } from "./api";
 import type { GeneratedField, FolderBrief, DesignBrief, IncomingMentionRef } from "./api";
 import type { SidebarItem } from "./components/Sidebar";
 import type { TreeItemType, IdeaBrief, FocusEntity } from "./types";
@@ -1165,12 +1165,13 @@ export default function App() {
       order: i.order,
       parentId: i.parentId,
     }));
-    // Vibe Demo V1 — 4th artifact type in sidebar. A tiny "已发布" affix is
-    // appended to the display name so users can spot shared demos at a glance.
+    // Vibe Demo V1 — 4th artifact type in sidebar. Display name is plain —
+    // publish status lives in the preview panel toolbar, not the sidebar
+    // row, per product decision.
     const demoItems: SidebarItem[] = documentDemos.map(d => ({
       id: d.id,
       type: "demo" as const,
-      displayName: d.publishSlug ? `${d.name} · 🌐` : d.name,
+      displayName: d.name,
       active: d.id === activeTableId && activeItemType === "demo",
       order: d.order,
       parentId: d.parentId,
@@ -1271,6 +1272,7 @@ export default function App() {
     const folderUpdates = updates.filter(u => u.type === "folder");
     const designUpdates = updates.filter(u => u.type === "design");
     const ideaUpdates = updates.filter(u => u.type === "idea");
+    const demoUpdates = updates.filter(u => u.type === "demo");
 
     if (tableUpdates.length > 0) {
       const orderMap = new Map(tableUpdates.map(u => [u.id, u.order]));
@@ -1300,6 +1302,13 @@ export default function App() {
             .sort((a, b) => a.order - b.order)
       );
     }
+    if (demoUpdates.length > 0) {
+      const orderMap = new Map(demoUpdates.map(u => [u.id, u.order]));
+      setDocumentDemos(prev =>
+        prev.map(d => orderMap.has(d.id) ? { ...d, order: orderMap.get(d.id)! } : d)
+            .sort((a, b) => a.order - b.order)
+      );
+    }
 
     try {
       const calls: Promise<void>[] = [];
@@ -1315,6 +1324,9 @@ export default function App() {
       if (ideaUpdates.length > 0) {
         calls.push(reorderIdeas(ideaUpdates.map(u => ({ id: u.id, order: u.order })), WORKSPACE_ID));
       }
+      if (demoUpdates.length > 0) {
+        calls.push(reorderDemos(demoUpdates.map(u => ({ id: u.id, order: u.order })), WORKSPACE_ID));
+      }
       await Promise.all(calls);
     } catch {
       toast.error(t("toast.reorderFailed"));
@@ -1324,6 +1336,14 @@ export default function App() {
         setDocumentDesigns((tree.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
         setDocumentIdeas((tree.ideas || []).map(i => ({ ...i, parentId: i.parentId ?? null })));
       });
+      // Demos are fetched separately (not part of /tree yet) — refetch in
+      // parallel so an errant reorder rolls back to canonical order.
+      listDemos(WORKSPACE_ID).then(demos =>
+        setDocumentDemos(demos.map(d => ({
+          id: d.id, name: d.name, order: d.order,
+          parentId: d.parentId, publishSlug: d.publishSlug,
+        })))
+      ).catch(() => { /* ignore */ });
     }
   }, [toast, t]);
 
@@ -1425,6 +1445,17 @@ export default function App() {
             switchTable(firstTable.id);
           }
         }
+      } else if (type === "demo") {
+        await apiDeleteDemo(id);
+        setDocumentDemos(prev => prev.filter(d => d.id !== id));
+        if (id === activeTableId) {
+          const firstTable = documentTables[0];
+          if (firstTable) {
+            setActiveTableId(firstTable.id);
+            setActiveItemType("table");
+            switchTable(firstTable.id);
+          }
+        }
       } else if (type === "idea") {
         // Ideas can be targets of @mentions from other ideas. Delete is
         // destructive (those mentions become dead links), so we open the
@@ -1483,6 +1514,8 @@ export default function App() {
       setDocumentDesigns(prev => prev.map(d => d.id === itemId ? { ...d, parentId: newParentId } : d));
     } else if (itemType === "idea") {
       setDocumentIdeas(prev => prev.map(i => i.id === itemId ? { ...i, parentId: newParentId } : i));
+    } else if (itemType === "demo") {
+      setDocumentDemos(prev => prev.map(d => d.id === itemId ? { ...d, parentId: newParentId } : d));
     }
     try {
       await apiMoveItem(itemId, itemType, newParentId);
@@ -1493,6 +1526,12 @@ export default function App() {
       setDocumentFolders(treeData.folders);
       setDocumentDesigns((treeData.designs || []).map(d => ({ ...d, parentId: d.parentId ?? null })));
       setDocumentIdeas((treeData.ideas || []).map(i => ({ ...i, parentId: i.parentId ?? null })));
+      listDemos(WORKSPACE_ID).then(demos =>
+        setDocumentDemos(demos.map(d => ({
+          id: d.id, name: d.name, order: d.order,
+          parentId: d.parentId, publishSlug: d.publishSlug,
+        })))
+      ).catch(() => { /* ignore */ });
       toast.error(t("toast.reorderFailed"));
     }
   }, [toast, t]);
@@ -1610,9 +1649,20 @@ export default function App() {
       }
       return;
     }
+    // Check if it's a demo
+    const isDemo = documentDemos.some(d => d.id === itemId);
+    if (isDemo) {
+      setDocumentDemos(prev => prev.map(d => d.id === itemId ? { ...d, name: newName } : d));
+      try {
+        await apiRenameDemo(itemId, newName);
+      } catch {
+        toast.error(t("toast.renameFailed"));
+      }
+      return;
+    }
     // Fall through to original handler (tables + statics)
     handleRenameSidebarItem(itemId, newName);
-  }, [documentFolders, documentDesigns, documentIdeas, handleRenameSidebarItem, toast, t]);
+  }, [documentFolders, documentDesigns, documentIdeas, documentDemos, handleRenameSidebarItem, toast, t]);
 
   // ── Persist active table to localStorage ──
   useEffect(() => {
@@ -1694,6 +1744,14 @@ export default function App() {
     }, []),
     onDemoRename: useCallback((demoId: string, name: string) => {
       setDocumentDemos((prev) => prev.map((d) => (d.id === demoId ? { ...d, name } : d)));
+    }, []),
+    onDemoReorder: useCallback((updates: Array<{ id: string; order: number }>) => {
+      setDocumentDemos((prev) => {
+        const orderMap = new Map(updates.map((u) => [u.id, u.order]));
+        return prev
+          .map((d) => (orderMap.has(d.id) ? { ...d, order: orderMap.get(d.id)! } : d))
+          .sort((a, b) => a.order - b.order);
+      });
     }, []),
     onDemoPublish: useCallback((demoId: string, slug: string) => {
       setDocumentDemos((prev) => prev.map((d) => (d.id === demoId ? { ...d, publishSlug: slug } : d)));

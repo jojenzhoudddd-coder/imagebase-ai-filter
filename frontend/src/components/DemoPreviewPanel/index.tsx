@@ -1,22 +1,24 @@
 /**
  * DemoPreviewPanel — main content surface for a Demo artifact.
  *
- * Layout:
- *   Toolbar: [name] [build status] [Build] [Publish / Unpublish] [⋮]
- *   Body:    <iframe src="/api/demos/:id/preview/" sandbox="allow-scripts">
+ * Visual structure deliberately mirrors IdeaEditor / SvgCanvas:
+ *   44px topbar (name left with inline-edit rename, status + text-buttons right)
+ *   + body (iframe or empty/error state) + optional file list aside.
  *
- * Minimal V1 scope — no file tree editor, no log viewer, no capability UI.
- * The Agent drives state via chat tools; this panel just reflects and lets
- * user manually Build / Publish / Export.
+ * Publish is called "workend" throughout the UI (product terminology). Same
+ * string across zh + en per product decision — see i18n keys demo.*.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import InlineEdit from "../InlineEdit";
+import { useTranslation } from "../../i18n/index";
 import {
   fetchDemo,
   buildDemo,
   publishDemo,
   unpublishDemo,
   exportDemoZip,
+  renameDemo,
   type DemoDetail,
 } from "../../api";
 import "./DemoPreviewPanel.css";
@@ -24,14 +26,17 @@ import "./DemoPreviewPanel.css";
 interface DemoPreviewPanelProps {
   demoId: string;
   workspaceId: string;
+  onRename?: (name: string) => void;
 }
 
-export default function DemoPreviewPanel({ demoId, workspaceId }: DemoPreviewPanelProps) {
+export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: DemoPreviewPanelProps) {
+  const { t } = useTranslation();
   const [demo, setDemo] = useState<DemoDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"build" | "publish" | "unpublish" | null>(null);
-  const [previewKey, setPreviewKey] = useState(0); // bump to force iframe reload
+  const [previewKey, setPreviewKey] = useState(0);
+  const [isEditingName, setIsEditingName] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const load = useCallback(async () => {
@@ -51,28 +56,39 @@ export default function DemoPreviewPanel({ demoId, workspaceId }: DemoPreviewPan
     load();
   }, [load]);
 
-  // Subscribe to workspace SSE for this demo's build/publish events so the
-  // panel updates live when the Agent triggers them via chat.
+  // SSE: refresh on build/publish and reload iframe after successful build.
   useEffect(() => {
-    const es = new EventSource(`/api/sync/workspace/${encodeURIComponent(workspaceId)}/events`);
+    const es = new EventSource(`/api/sync/workspaces/${encodeURIComponent(workspaceId)}/events`);
     const refetch = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data);
         if (data?.payload?.demoId === demoId) {
           load();
           if (data.type === "demo:build-status" && data.payload.status === "success") {
-            setPreviewKey((k) => k + 1); // reload iframe after successful build
+            setPreviewKey((k) => k + 1);
           }
         }
       } catch { /* ignore */ }
     };
-    es.addEventListener("demo:build-status", refetch as any);
-    es.addEventListener("demo:publish", refetch as any);
-    es.addEventListener("demo:unpublish", refetch as any);
-    es.addEventListener("demo:file-update", refetch as any);
-    es.addEventListener("demo:rename", refetch as any);
+    es.addEventListener("workspace-change", refetch as any);
     return () => { es.close(); };
   }, [demoId, workspaceId, load]);
+
+  // Rename — persists + propagates to sidebar via workspace SSE (demo:rename).
+  const handleRename = useCallback(
+    async (newName: string) => {
+      setIsEditingName(false);
+      if (!demo || !newName || newName === demo.name) return;
+      try {
+        await renameDemo(demo.id, newName);
+        setDemo({ ...demo, name: newName });
+        onRename?.(newName);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [demo, onRename],
+  );
 
   const handleBuild = useCallback(async () => {
     setBusy("build");
@@ -89,46 +105,36 @@ export default function DemoPreviewPanel({ demoId, workspaceId }: DemoPreviewPan
   }, [demoId, load]);
 
   const handlePublish = useCallback(async () => {
-    const confirmed = window.confirm(
-      [
-        `发布 Demo "${demo?.name}"？`,
-        "",
-        "访问公开 URL 的任何人（无需登录）将能：",
-        ...(demo?.dataTables?.length
-          ? demo.dataTables.map((t) => {
-              const caps = demo.capabilities?.[t] || [];
-              return `  • 表 ${t}：${caps.length ? caps.join(", ") : "（隐式读）"}`;
-            })
-          : []),
-        ...(demo?.dataIdeas?.length
-          ? demo.dataIdeas.map((i) => {
-              const caps = demo.capabilities?.[i] || [];
-              return `  • 文档 ${i}：${caps.length ? caps.join(", ") : "（隐式读）"}`;
-            })
-          : []),
-        "",
-        "⚠️ 该 URL 不需登录即可访问。",
-        "⚠️ 访问者无法修改表结构或其他资源。",
-      ].join("\n"),
-    );
-    if (!confirmed) return;
+    if (!demo) return;
+    const lines: string[] = [
+      t("demo.publishConfirmTitle").replace("{{name}}", demo.name),
+      "",
+      t("demo.publishConfirmBody"),
+    ];
+    for (const tid of demo.dataTables ?? []) {
+      const caps = demo.capabilities?.[tid] || [];
+      lines.push(`  • ${tid}: ${caps.length ? caps.join(", ") : "(read)"}`);
+    }
+    for (const iid of demo.dataIdeas ?? []) {
+      const caps = demo.capabilities?.[iid] || [];
+      lines.push(`  • ${iid}: ${caps.length ? caps.join(", ") : "(read)"}`);
+    }
+    lines.push("", t("demo.publishConfirmFooter"));
+    if (!window.confirm(lines.join("\n"))) return;
     setBusy("publish");
     try {
       const r = await publishDemo(demoId);
       await load();
-      if (r.url) {
-        window.prompt("已发布。公开 URL（复制分享）：", r.url);
-      }
+      if (r.url) window.prompt(t("demo.publishSuccessPrompt"), r.url);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(null);
     }
-  }, [demoId, demo, load]);
+  }, [demoId, demo, load, t]);
 
   const handleUnpublish = useCallback(async () => {
-    const ok = window.confirm("取消发布 Demo？公开 URL 立即失效（再次发布会生成新 slug）。");
-    if (!ok) return;
+    if (!window.confirm(t("demo.unpublishConfirm"))) return;
     setBusy("unpublish");
     try {
       await unpublishDemo(demoId);
@@ -138,7 +144,7 @@ export default function DemoPreviewPanel({ demoId, workspaceId }: DemoPreviewPan
     } finally {
       setBusy(null);
     }
-  }, [demoId, load]);
+  }, [demoId, load, t]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -158,80 +164,89 @@ export default function DemoPreviewPanel({ demoId, workspaceId }: DemoPreviewPan
     return `${window.location.origin}/share/${demo.publishSlug}`;
   }, [demo?.publishSlug]);
 
+  const statusLabel = useMemo(() => {
+    if (!demo?.lastBuildStatus) return null;
+    switch (demo.lastBuildStatus) {
+      case "success": return t("demo.status.success");
+      case "error":   return t("demo.status.error");
+      case "building": return t("demo.building");
+      case "idle":     return t("demo.status.idle");
+    }
+    return null;
+  }, [demo?.lastBuildStatus, t]);
+
   if (loading) {
-    return <div className="demo-panel-loading">加载 Demo...</div>;
+    return <div className="demo-panel-loading">{t("demo.loading")}</div>;
   }
   if (error && !demo) {
-    return <div className="demo-panel-error">加载失败：{error}</div>;
+    return <div className="demo-panel-error">{t("demo.loadFailed")}: {error}</div>;
   }
   if (!demo) return null;
 
   return (
     <div className="demo-panel">
-      <header className="demo-panel-toolbar">
-        <div className="demo-panel-toolbar-left">
-          <span className="demo-panel-title">{demo.name}</span>
-          <span className={`demo-panel-badge demo-panel-badge-${demo.template}`}>
-            {demo.template}
-          </span>
-          {demo.lastBuildStatus && (
+      {/* ─── Top Bar (mirrors IdeaEditor / SvgCanvas) ─── */}
+      <div className="demo-panel-topbar">
+        <span className="demo-panel-topbar-name">
+          <InlineEdit
+            value={demo.name}
+            isEditing={isEditingName}
+            onStartEdit={() => setIsEditingName(true)}
+            onSave={handleRename}
+            onCancelEdit={() => setIsEditingName(false)}
+          />
+        </span>
+        <div className="demo-panel-topbar-actions">
+          {statusLabel && (
             <span
-              className={`demo-panel-build-status demo-panel-build-${demo.lastBuildStatus}`}
-              title={demo.lastBuildError || ""}
+              className={`demo-panel-status demo-panel-status-${demo.lastBuildStatus}`}
+              title={demo.lastBuildError || undefined}
             >
-              {demo.lastBuildStatus === "success" && "✓ 已构建"}
-              {demo.lastBuildStatus === "error" && "✗ 构建失败"}
-              {demo.lastBuildStatus === "building" && "… 构建中"}
-              {demo.lastBuildStatus === "idle" && "未构建"}
+              {statusLabel}
             </span>
           )}
-        </div>
-        <div className="demo-panel-toolbar-right">
           <button
-            className="demo-panel-btn"
+            className="demo-panel-topbar-btn"
             onClick={handleBuild}
             disabled={busy !== null}
-            title="重新编译（esbuild）"
           >
-            {busy === "build" ? "构建中..." : "构建"}
+            {busy === "build" ? t("demo.building") : demo.lastBuildStatus === "success" ? t("demo.rebuild") : t("demo.build")}
           </button>
           {demo.publishSlug ? (
             <button
-              className="demo-panel-btn demo-panel-btn-unpublish"
+              className="demo-panel-topbar-btn"
               onClick={handleUnpublish}
               disabled={busy !== null}
             >
-              {busy === "unpublish" ? "…" : "取消发布"}
+              {busy === "unpublish" ? t("demo.unpublishing") : t("demo.unpublish")}
             </button>
           ) : (
             <button
-              className="demo-panel-btn demo-panel-btn-publish"
+              className="demo-panel-topbar-btn demo-panel-topbar-btn-primary"
               onClick={handlePublish}
               disabled={busy !== null || demo.lastBuildStatus !== "success"}
-              title={demo.lastBuildStatus !== "success" ? "先完成构建再发布" : ""}
+              title={demo.lastBuildStatus !== "success" ? t("demo.buildFirst") : undefined}
             >
-              {busy === "publish" ? "发布中..." : "发布"}
+              {busy === "publish" ? t("demo.publishing") : t("demo.publishAsWorkend")}
             </button>
           )}
-          <button className="demo-panel-btn" onClick={handleExport}>
-            导出 zip
+          <button className="demo-panel-topbar-btn" onClick={handleExport}>
+            {t("demo.exportWorkend")}
           </button>
         </div>
-      </header>
+      </div>
 
       {publicUrl && (
         <div className="demo-panel-public-url">
-          <span className="demo-panel-public-url-label">已发布：</span>
+          <span className="demo-panel-public-url-label">{t("demo.publicUrlLabel")}</span>
           <a href={publicUrl} target="_blank" rel="noreferrer">
             {publicUrl}
           </a>
           <button
             className="demo-panel-copy-btn"
-            onClick={() => {
-              navigator.clipboard?.writeText(publicUrl);
-            }}
+            onClick={() => { navigator.clipboard?.writeText(publicUrl); }}
           >
-            复制
+            {t("demo.copyUrl")}
           </button>
         </div>
       )}
@@ -255,21 +270,21 @@ export default function DemoPreviewPanel({ demoId, workspaceId }: DemoPreviewPan
           />
         ) : demo.lastBuildStatus === "error" ? (
           <div className="demo-panel-build-failed">
-            <h3>构建失败</h3>
+            <h3>{t("demo.buildFailed")}</h3>
             <pre className="demo-panel-build-error">{demo.lastBuildError}</pre>
-            <p className="demo-panel-hint">修改源码后点"构建"重试。</p>
+            <p className="demo-panel-hint">{t("demo.buildFailedHint")}</p>
           </div>
         ) : (
           <div className="demo-panel-empty">
-            <h3>还没有预览</h3>
-            <p>让 Agent 生成代码后会自动构建，或点上方"构建"按钮手动触发。</p>
+            <h3>{t("demo.noPreview")}</h3>
+            <p>{t("demo.noPreviewHint")}</p>
           </div>
         )}
       </div>
 
       {demo.files && demo.files.length > 0 && (
         <aside className="demo-panel-files">
-          <h4>源文件 · {demo.files.length}</h4>
+          <h4>{t("demo.filesHeader")} · {demo.files.length}</h4>
           <ul>
             {demo.files.map((f) => (
               <li key={f.path}>

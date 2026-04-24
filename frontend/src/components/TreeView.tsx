@@ -55,13 +55,17 @@ const ALBUM_ICON = (
   </svg>
 );
 
-/* Demo icon — a stylized "runnable artifact" playground glyph (bounded
- * canvas + play triangle), matching the Vibe Demo preview-panel chevron
- * at 16×16. Uses currentColor so hover/active inherits theme. */
+/* Demo icon — browser-window glyph, matching the design-system convention
+ * used for "runnable web artifact" (same pattern as DouyinSuite's
+ * `icon-code-browser` / Keystone's `BrowserWindow`). A rounded frame with
+ * a separated top bar + three traffic-light dots reads universally as
+ * "deployable app preview" — the conceptual identity of a Vibe Demo.
+ * Uses currentColor so hover/active inherits theme. Matches the 16×16
+ * viewBox + solid-fill rhythm of the sibling TABLE_ICON / IDEA_ICON. */
 const DEMO_ICON = (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <path d="M2 3.333C2 2.597 2.597 2 3.333 2h9.334C13.403 2 14 2.597 14 3.333v9.334c0 .736-.597 1.333-1.333 1.333H3.333A1.333 1.333 0 012 12.667V3.333zm1.333 0v9.334h9.334V3.333H3.333z" fill="currentColor"/>
-    <path d="M6.667 5.333v5.334l4-2.667-4-2.667z" fill="currentColor"/>
+    <path d="M2.667 2C1.747 2 1 2.747 1 3.667v8.666C1 13.253 1.747 14 2.667 14h10.666c.92 0 1.667-.747 1.667-1.667V3.667C15 2.747 14.253 2 13.333 2H2.667zm0 1.333h10.666a.333.333 0 01.334.334v1.666H2.333V3.667a.333.333 0 01.334-.334zM2.333 6.667h11.334v5.666a.333.333 0 01-.334.334H2.667a.333.333 0 01-.334-.334V6.667z" fill="currentColor"/>
+    <path d="M3.667 4.333a.5.5 0 100 1 .5.5 0 000-1zm1.666 0a.5.5 0 100 1 .5.5 0 000-1zm1.667 0a.5.5 0 100 1 .5.5 0 000-1z" fill="currentColor"/>
   </svg>
 );
 

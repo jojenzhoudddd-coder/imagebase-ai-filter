@@ -130,8 +130,13 @@ router.put("/move", async (req: Request, res: Response) => {
       where: { id: itemId },
       data: { parentId },
     });
+  } else if (itemType === "demo") {
+    await prisma.demo.update({
+      where: { id: itemId },
+      data: { parentId },
+    });
   } else {
-    res.status(400).json({ error: "itemType must be 'table', 'folder', 'design', or 'idea'" });
+    res.status(400).json({ error: "itemType must be 'table', 'folder', 'design', 'idea', or 'demo'" });
     return;
   }
 

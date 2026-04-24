@@ -13,6 +13,7 @@ export interface WorkspaceSyncHandlers {
   onDemoCreate?: (demo: { id: string; name: string; parentId: string | null; order: number }) => void;
   onDemoDelete?: (demoId: string) => void;
   onDemoRename?: (demoId: string, name: string) => void;
+  onDemoReorder?: (updates: Array<{ id: string; order: number }>) => void;
   onDemoPublish?: (demoId: string, slug: string) => void;
   onDemoUnpublish?: (demoId: string) => void;
 }
@@ -94,6 +95,9 @@ export function useWorkspaceSync(
             break;
           case "demo:rename":
             h.onDemoRename?.(p.demoId, p.name);
+            break;
+          case "demo:reorder":
+            h.onDemoReorder?.(p.updates);
             break;
           case "demo:publish":
             h.onDemoPublish?.(p.demoId, p.slug);

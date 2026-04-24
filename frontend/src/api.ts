@@ -1453,6 +1453,18 @@ export async function deleteDemo(demoId: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete demo");
 }
 
+export async function reorderDemos(
+  updates: Array<{ id: string; order: number }>,
+  workspaceId: string
+): Promise<void> {
+  const res = await mutationFetch(`${BASE}/demos/reorder`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates, workspaceId }),
+  });
+  if (!res.ok) throw new Error("Failed to reorder demos");
+}
+
 export async function buildDemo(demoId: string): Promise<{
   ok: boolean;
   durationMs: number;
