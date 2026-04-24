@@ -63,17 +63,7 @@ export default function RegisterPage() {
   return (
     <div className="auth-shell">
       <div className="auth-hero">
-        <div className="auth-hero-brand">
-          <span className="auth-hero-logo">IB</span>
-          <span>ImageBase · AI Work</span>
-        </div>
-
-        <div className="auth-hero-headline">
-          <h2 className="auth-hero-headline-title">Table · Taste · Idea · Demo</h2>
-          <p className="auth-hero-headline-sub">
-            四种产物，一个工作空间。Agent 会帮你把它们串起来——你输入时，它们也在看。
-          </p>
-        </div>
+        <div className="auth-hero-glass" aria-hidden="true" />
 
         <div className="auth-hero-stage">
           <AnimatedCharacters

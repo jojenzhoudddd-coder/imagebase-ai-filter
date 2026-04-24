@@ -29,102 +29,85 @@
   }
 }
 
-/* ─── Left pane: animated characters scene ────────────────────────── */
+/* ─── Left pane: animated characters on frosted-glass over colorful base ──
+ * Stack (bottom → top):
+ *   1. `.auth-hero` base: white + drifting colorful radial gradients
+ *      ("ripples"). The four artifact colors bleed through as soft
+ *      washes, animating slowly so it reads as a living surface.
+ *   2. `.auth-hero-glass` overlay: semi-transparent white + backdrop
+ *      blur + saturation — frosted-glass effect that sits ON the base
+ *      but BEHIND the characters, softening the ripples.
+ *   3. `.auth-hero-stage` with the AnimatedCharacters on top.
+ * No top-left brand row — that was removed per request.
+ */
 .auth-hero {
   position: relative;
   display: none;
   flex-direction: column;
-  justify-content: space-between;
-  padding: 32px 40px;
-  color: #FFFFFF;
-  /* Cool grayscale base + subtle primary-blue wash so the hero still feels
-   * on-brand without pulling attention from the characters. */
+  padding: 40px 40px 32px;
+  overflow: hidden;
+  /* White base with four drifting colorful washes (Table blue + Taste purple
+   * + Idea orange + Demo green). Each radial gradient is positioned off the
+   * edge to move during the subtle drift animation below. */
   background:
-    radial-gradient(circle at 25% 20%, rgba(20, 86, 240, 0.18), transparent 55%),
-    radial-gradient(circle at 80% 80%, rgba(123, 75, 220, 0.12), transparent 55%),
-    linear-gradient(135deg, #2B2F36 0%, #1F2329 100%);
+    radial-gradient(circle at 20% 20%, rgba(20, 86, 240, 0.35), transparent 45%),
+    radial-gradient(circle at 80% 30%, rgba(123, 75, 220, 0.30), transparent 45%),
+    radial-gradient(circle at 75% 85%, rgba(245, 166, 35, 0.28), transparent 45%),
+    radial-gradient(circle at 25% 80%, rgba(52, 168, 83, 0.28), transparent 45%),
+    #FFFFFF;
+  background-size: 200% 200%, 200% 200%, 200% 200%, 200% 200%, 100% 100%;
+  animation: auth-hero-ripple 18s ease-in-out infinite;
 }
 @media (min-width: 1024px) { .auth-hero { display: flex; } }
 
-/* Subtle dot grid overlay (matches our app's low-contrast overlay pattern) */
-.auth-hero::before {
-  content: "";
+@keyframes auth-hero-ripple {
+  0%, 100% {
+    background-position: 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0 0;
+  }
+  50% {
+    background-position: 20% 10%, 80% 20%, 80% 90%, 20% 80%, 0 0;
+  }
+}
+
+/* Frosted glass layer — sits above the colorful base but below the
+ * characters. backdrop-filter blurs the ripples underneath so they read
+ * as soft color bleed rather than crisp gradients. */
+.auth-hero-glass {
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-  background-size: 24px 24px;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(48px) saturate(1.6);
+  -webkit-backdrop-filter: blur(48px) saturate(1.6);
   pointer-events: none;
 }
 
-.auth-hero-brand {
-  position: relative;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: 0.3px;
-  color: rgba(255, 255, 255, 0.95);
-}
-.auth-hero-logo {
-  width: 28px; height: 28px; border-radius: 6px;
-  background: #1456F0;
-  display: inline-flex;
-  align-items: center; justify-content: center;
-  font-weight: 600;
-  font-size: 12px;
-  color: #FFFFFF;
-}
-
-/* Headline above the character scene — tiny tagline in design-language font */
-.auth-hero-headline {
-  position: relative;
-  z-index: 20;
-  max-width: 640px;
-}
-.auth-hero-headline-title {
-  font-size: 28px;
-  line-height: 40px;
-  font-weight: 600;
-  letter-spacing: -0.3px;
-  margin: 0 0 8px;
-  color: #FFFFFF;
-}
-.auth-hero-headline-sub {
-  font-size: 14px;
-  line-height: 22px;
-  color: rgba(255, 255, 255, 0.7);
-  margin: 0;
-}
-
-/* Characters container — flex bottom, room for the 550×400 scene */
+/* Characters are vertically centered. Legend + footer pinned to bottom
+ * via margin:auto on the stage. */
 .auth-hero-stage {
   position: relative;
-  z-index: 20;
+  z-index: 2;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   flex: 1;
-  min-height: 420px;
+  margin: auto 0;
 }
 
-/* Legend row under the characters: 4 labels for Table / Taste / Idea / Demo
- * with matching colored swatches so users understand what each character
- * represents. */
+/* Legend row — 4 labels for Table / Taste / Idea / Demo with matching
+ * colored swatches. Sits above the glass so it stays crisp. */
 .auth-hero-legend {
   position: relative;
-  z-index: 20;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 20px;
   font-size: 12px;
   line-height: 20px;
-  color: rgba(255, 255, 255, 0.7);
+  color: #1F2329;
   margin-top: 8px;
+  margin-bottom: 16px;
 }
 .auth-hero-legend-item {
   display: inline-flex;
@@ -137,20 +120,21 @@
 
 .auth-hero-footer {
   position: relative;
-  z-index: 20;
+  z-index: 2;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 20px;
   font-size: 12px;
   line-height: 20px;
-  color: rgba(255, 255, 255, 0.55);
+  color: #646A73;
 }
 .auth-hero-footer a {
   color: inherit;
   text-decoration: none;
   transition: color 0.15s;
 }
-.auth-hero-footer a:hover { color: rgba(255, 255, 255, 0.9); }
+.auth-hero-footer a:hover { color: #1F2329; }
 
 /* ─── Right pane: form ─────────────────────────────────────────────
  * Sits on the 1/3 column; max-width 380px so the form doesn't stretch on
