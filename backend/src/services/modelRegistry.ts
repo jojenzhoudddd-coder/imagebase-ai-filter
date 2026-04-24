@@ -212,15 +212,23 @@ export function listVisibleModels(): ModelEntry[] {
 
 /**
  * Find a fallback model when the currently-active one is mid-flight
- * overloaded — distinct from the start-of-turn resolveModelForCall. Used
+ * overloaded. Distinct from the start-of-turn resolveModelForCall — used
  * by the agent loop after the adapter retries have all exhausted with an
  * UpstreamOverloadError.
  *
- * Preference order: same-group sibling (different model, same provider
- * family, not the one we just failed on) → FALLBACK_MODEL_ID. Exclude any
- * model id the caller has already tried this turn to avoid ping-ponging.
+ * Preference order (prefer jumping to a fundamentally DIFFERENT upstream
+ * first — same-channel siblings usually share fate on proxy-level issues):
+ *   1. Different provider AND different group (e.g. GPT-5.5/oneapi →
+ *      doubao-2.0/ark, or claude-4.7/oneapi → doubao-2.0/ark)
+ *   2. Different group, same provider (e.g. GPT-5.5 → Claude via OneAPI).
+ *      Useful when the OpenAI channel of OneAPI is down but the Anthropic
+ *      channel is fine — they're separate upstream APIs.
+ *   3. Same group sibling (last resort, since same-group means same
+ *      channel = same proxy = same likely bottleneck)
+ *   4. Hard fallback FALLBACK_MODEL_ID if not already tried.
  *
- * Returns null when nothing safe remains; caller should surface the error.
+ * Exclude any id the caller has already tried to avoid ping-pong.
+ * Returns null when nothing safe remains; caller surfaces the error.
  */
 export function pickOverloadFallback(
   current: ModelEntry,
@@ -228,10 +236,22 @@ export function pickOverloadFallback(
 ): ModelEntry | null {
   const tried = new Set(alreadyTried);
   tried.add(current.id);
-  const sibling = MODELS.find(
-    (m) => !tried.has(m.id) && m.group === current.group && m.available !== false && m.visible,
-  );
-  if (sibling) return sibling;
+  const avail = (m: ModelEntry) =>
+    !tried.has(m.id) && m.available !== false && m.visible;
+
+  // 1. Different provider AND different group (escape the proxy entirely)
+  let pick = MODELS.find((m) => avail(m) && m.provider !== current.provider && m.group !== current.group);
+  if (pick) return pick;
+
+  // 2. Different group, same provider (different channel on the same proxy)
+  pick = MODELS.find((m) => avail(m) && m.group !== current.group);
+  if (pick) return pick;
+
+  // 3. Same group sibling
+  pick = MODELS.find((m) => avail(m) && m.group === current.group);
+  if (pick) return pick;
+
+  // 4. Hard fallback — covered by #1-3 unless it's been tried already
   const hardFallback = getModel(FALLBACK_MODEL_ID);
   if (hardFallback && !tried.has(hardFallback.id) && hardFallback.available !== false) {
     return hardFallback;

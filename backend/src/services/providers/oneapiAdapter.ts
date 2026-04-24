@@ -483,8 +483,10 @@ async function* streamAnthropic(
       }
       return r;
     },
-    { maxAttempts: 3, signal: params.signal, onRetry: (err, ms, i) => {
-      console.warn(`[oneapi:anthropic] upstream overload (status=${err.status}), retry ${i + 1}/3 in ${ms}ms`);
+    // 2 attempts ≈ 1 retry after 1s. Sufficient for brief blips; any longer
+    // and we're better off switching models anyway (the agent-loop fallback).
+    { maxAttempts: 2, signal: params.signal, onRetry: (err, ms, i) => {
+      console.warn(`[oneapi:anthropic] upstream overload (status=${err.status}), retry ${i + 1}/2 in ${ms}ms`);
     } },
   );
 
@@ -656,8 +658,8 @@ async function* streamOpenAI(
       }
       return r;
     },
-    { maxAttempts: 3, signal: params.signal, onRetry: (err, ms, i) => {
-      console.warn(`[oneapi:openai] upstream overload (status=${err.status}), retry ${i + 1}/3 in ${ms}ms`);
+    { maxAttempts: 2, signal: params.signal, onRetry: (err, ms, i) => {
+      console.warn(`[oneapi:openai] upstream overload (status=${err.status}), retry ${i + 1}/2 in ${ms}ms`);
     } },
   );
 

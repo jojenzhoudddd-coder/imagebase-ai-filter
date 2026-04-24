@@ -901,6 +901,12 @@ export async function* runAgent(
   // ping-pong between two overloaded upstreams.
   let model: ModelEntry = initialModel;
   const triedForOverload = new Set<string>();
+  // Names of models that hit overload this turn (display names, in order).
+  // Used to emit ONE consolidated "⚠️ tried A/B, now on C" banner after the
+  // first successful round, instead of one per-hop (which reads as noise
+  // especially when the cascade is 3 deep).
+  const overloadChain: string[] = [];
+  let overloadAnnouncementEmitted = false;
   if (usedFallback) {
     logAgent({
       event: "model_fallback",
@@ -1159,6 +1165,7 @@ export async function* runAgent(
       // and re-enter the round with the new model.
       if (err instanceof UpstreamOverloadError) {
         triedForOverload.add(model.id);
+        overloadChain.push(model.displayName);
         const next = pickOverloadFallback(model, triedForOverload);
         logAgent({
           event: "upstream_overload",
@@ -1167,22 +1174,15 @@ export async function* runAgent(
           provider: model.provider,
           status: err.status,
           fallback: next?.id ?? null,
+          chainLen: overloadChain.length,
         });
         if (next) {
-          yield {
-            event: "message",
-            data: {
-              text:
-                `\n\n> ⚠️ ${model.displayName} 上游过载，已自动切换到 ${next.displayName} 继续。\n\n`,
-              delta: true,
-            },
-          };
-          accumulatedText +=
-            `\n\n> ⚠️ ${model.displayName} 上游过载，已自动切换到 ${next.displayName} 继续。\n\n`;
+          // Silent swap during the cascade — the UI gets one consolidated
+          // banner after we actually land on a working model (see the
+          // post-stream block below). Per-hop banners stacked 3 deep read
+          // as spam when the cascade is common (proxy-level overload
+          // often fails multiple same-channel models in a row).
           model = next;
-          // `round` will advance; the turn continues with the new model.
-          // Input state hasn't been mutated (no tool calls yet this round),
-          // so it's safe to proceed.
           continue;
         }
         // No fallback available — surface the error.
@@ -1203,6 +1203,21 @@ export async function* runAgent(
       logAgent({ event: "provider_stream_error", round, model: model.id, provider: model.provider, error: streamErrored });
       yield { event: "error", data: { code: "PROVIDER_ERROR", message: streamErrored, model: model.id } };
       break;
+    }
+
+    // We reached here with no error — the current `model` actually worked.
+    // If an overload cascade preceded this success, emit ONE consolidated
+    // banner now rather than one-per-hop. Do it only once per turn so the
+    // user doesn't see a reminder on every subsequent round too.
+    if (overloadChain.length > 0 && !overloadAnnouncementEmitted) {
+      overloadAnnouncementEmitted = true;
+      const failedList =
+        overloadChain.length === 1
+          ? overloadChain[0]
+          : overloadChain.slice(0, -1).join("、") + " 和 " + overloadChain[overloadChain.length - 1];
+      const notice = `> ⚠️ ${failedList} 上游过载，已切换到 ${model.displayName} 继续。\n\n`;
+      yield { event: "message", data: { text: notice, delta: true } };
+      accumulatedText += notice;
     }
 
     // No tool calls → final answer; break out.
