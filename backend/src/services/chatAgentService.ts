@@ -964,6 +964,10 @@ export async function* runAgent(
       signalQueue();
     },
     onTimeout: (p) => {
+      // Emit an `error` event for telemetry. The `tool_result` for this
+      // call fires from the pump's force-settle path (5s grace after
+      // abort signal) — single authoritative emission point. Don't
+      // double-emit here.
       queuedEvents.push({
         event: "error",
         data: {
@@ -1259,13 +1263,57 @@ export async function* runAgent(
       // Pump: drain queue + wait for next signal (either a new queued event
       // or the tool finishing). Loop terminates when the tool has settled
       // AND the queue is empty.
+      //
+      // Safety net against misbehaving handlers: if long-task tracker
+      // triggers a timeout abort, we give the handler 5s to honor the
+      // abort signal and settle. If it doesn't (it ignored the signal,
+      // swallowed AbortError, or is stuck on a sync/native call), we
+      // force-settle so a `tool_result` is emitted downstream. Without
+      // this the FE tool card would spin forever — the 180s timeout
+      // previously only yielded an `error` event, not `tool_result`,
+      // and the pump waited on `toolSettled` indefinitely.
+      let forceAbortSettleDeadline: number | null = null;
       while (!toolSettled || queuedEvents.length > 0) {
         while (queuedEvents.length) yield queuedEvents.shift()!;
         if (toolSettled) break;
-        await waitForQueue();
+
+        // If abort has fired (either tracker timeout OR turn abort), start
+        // the grace clock. If grace elapses and the handler still hasn't
+        // settled, break out with a synthetic error result.
+        if (toolAbort.signal.aborted && forceAbortSettleDeadline === null) {
+          forceAbortSettleDeadline = Date.now() + 5_000;
+        }
+        if (forceAbortSettleDeadline !== null && Date.now() >= forceAbortSettleDeadline) {
+          logAgent({
+            event: "tool_force_settled",
+            tool: fc.name,
+            callId: fc.callId,
+            reason: "handler did not honor abort signal within 5s of timeout",
+          });
+          success = false;
+          toolOutput = JSON.stringify({
+            error: "TOOL_TIMEOUT_FORCED: handler did not respond to abort. " +
+              "Tool execution exceeded 180s and the handler ignored the abort signal.",
+          });
+          toolSettled = true;
+          break;
+        }
+
+        // Bounded wait so we can re-check the abort deadline periodically
+        // (waitForQueue might otherwise park us forever if nothing emits).
+        await Promise.race([
+          waitForQueue(),
+          new Promise((r) => setTimeout(r, 1000)),
+        ]);
       }
 
-      await toolPromise;
+      // Don't await toolPromise unconditionally — if we force-settled, the
+      // handler may still be running detached; letting it resolve in the
+      // background is fine (the generator has moved on). Only await when
+      // the handler really did settle itself so we don't leak on normal path.
+      if (!forceAbortSettleDeadline) {
+        await toolPromise;
+      }
       longTask.settleTool();
       toolCtx.callId = undefined;
       toolCtx.abortSignal = abortSignal;

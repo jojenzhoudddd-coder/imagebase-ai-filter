@@ -170,6 +170,13 @@ export default function ChatSidebar({
   const [messages, setMessages] = useState<UiMessage[]>(initialCache?.messages ?? []);
   const [inputValue, setInputValue] = useState("");
   const [streaming, setStreaming] = useState(false);
+  // Live ref to `streaming` so effects that run on prop-id changes (the
+  // [open, workspaceId] revalidation) can check the CURRENT value without
+  // being re-keyed into their deps. Used to guard against wiping the
+  // in-flight assistant message on sidebar re-open mid-turn — see the
+  // useEffect at line 236 below.
+  const streamingRef = useRef(streaming);
+  useEffect(() => { streamingRef.current = streaming; }, [streaming]);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Thin document summary shown on the welcome page after a refresh, so the
@@ -245,7 +252,20 @@ export default function ChatSidebar({
           try {
             const { conversation, messages: serverMsgs } = await getConversationMessages(activeConv.id);
             setActiveConv(conversation);
-            setMessages(serverMsgs.map(serverToUi));
+            // GUARD: Don't clobber in-flight optimistic state. The current
+            // assistant turn is only persisted server-side at end-of-turn
+            // (chatAgentService.appendMessage) — so during a live stream,
+            // serverMsgs is STALE and doesn't contain the accumulating
+            // toolCalls. If this effect re-fires mid-turn (open toggle,
+            // StrictMode double-invoke, prop churn) without the guard,
+            // the running message with its coding/build/query cards gets
+            // wiped and subsequent SSE events can't find it (they match
+            // role==="assistant"&&streaming, which nothing satisfies
+            // because serverToUi resets streaming:false). User-visible
+            // symptom: tool card disappears mid-flow.
+            if (!streamingRef.current) {
+              setMessages(serverMsgs.map(serverToUi));
+            }
             return;
           } catch {
             // Conversation no longer exists (server restart, etc.) — drop cache
@@ -258,7 +278,10 @@ export default function ChatSidebar({
           const conv = list[0];
           const { messages: msgs } = await getConversationMessages(conv.id);
           setActiveConv(conv);
-          setMessages(msgs.map(serverToUi));
+          // Same guard applies on the list-then-load path.
+          if (!streamingRef.current) {
+            setMessages(msgs.map(serverToUi));
+          }
         } else {
           const conv = await createConversation(workspaceId, agentId);
           setActiveConv(conv);
@@ -420,14 +443,25 @@ export default function ChatSidebar({
         const tid = extractTableIdFromCall(call.tool, call.args);
         if (tid) onActiveTableChange?.(tid);
         setMessages((prev) => {
+          // Prefer the last assistant message that's still marked streaming
+          // (normal case). Fallback: the last assistant message regardless
+          // of streaming flag — defense in depth against any path that
+          // accidentally flips streaming to false mid-turn (e.g. server
+          // revalidation race). Without the fallback, late tool_start
+          // events simply vanish and the FE silently loses cards.
+          let streamingIdx = -1;
+          let anyAssistantIdx = -1;
           for (let i = prev.length - 1; i >= 0; i--) {
-            if (prev[i].role === "assistant" && prev[i].streaming) {
-              return prev.map((m, idx) =>
-                idx === i ? { ...m, toolCalls: [...m.toolCalls, call] } : m
-              );
+            if (prev[i].role === "assistant") {
+              if (anyAssistantIdx < 0) anyAssistantIdx = i;
+              if (prev[i].streaming) { streamingIdx = i; break; }
             }
           }
-          return prev;
+          const targetIdx = streamingIdx >= 0 ? streamingIdx : anyAssistantIdx;
+          if (targetIdx < 0) return prev;
+          return prev.map((m, idx) =>
+            idx === targetIdx ? { ...m, toolCalls: [...m.toolCalls, call] } : m
+          );
         });
       },
       onToolProgress: (ev) => {
