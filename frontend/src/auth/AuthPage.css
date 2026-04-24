@@ -24,28 +24,14 @@
   font-size: 14px;
   line-height: 22px;
   box-sizing: border-box;
-  /* Deeper neutral gray from the design-token family — anchored on
-   * --color-bg-active #E8E9EB with a soft lighter highlight toward the
-   * top-left and a darker edge-shadow toward the bottom-right for quiet
-   * depth. No blue accents; the card should be the only colored element. */
-  background:
-    radial-gradient(ellipse at 25% 20%, #EEEFF1 0%, transparent 55%),
-    radial-gradient(ellipse at 80% 85%, #D4D6DA 0%, transparent 55%),
-    #E8E9EB;
+  /* 薰衣草底图 — /public/auth-bg.svg 承担底色 + 丝带 + 点阵 + 圈。
+   * 底色兜底用最深的紫，万一 SVG 加载失败也不会露白。 */
+  background: #BEBBE3 url("/auth-bg.svg") center / cover no-repeat;
   overflow: hidden;
 }
 
-/* Very subtle dot pattern on top of the gray — keeps the backdrop from
- * feeling like a flat wall without introducing color. */
-.auth-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(rgba(31, 35, 41, 0.06) 1px, transparent 1.4px);
-  background-size: 28px 28px;
-  background-position: 0 0;
-  pointer-events: none;
-}
+/* 底图本身已经携带点阵和丝带，不再需要额外的 ::before 装饰层。 */
+.auth-shell::before { content: none; }
 
 /* ─── Card: fixed size, centered ──────────────────────────────────── */
 /* Note: card background is TRANSPARENT. The right side (.auth-form-pane)

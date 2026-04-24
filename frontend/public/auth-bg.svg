@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Auth page backdrop — 柔和薰衣草色 + 流动波纹 + 点阵 + 细圈
+  设计：以淡紫渐变为底，白色半透明 S 曲线制造"流动丝带"感，
+  四角点阵 + 两个圆圈作为装饰节奏。SVG preserveAspectRatio=none
+  配合 background-size: cover，任意分辨率都能铺满。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1680 945" preserveAspectRatio="none">
+  <defs>
+    <!-- 主渐变：左上略亮 → 右下略深的薰衣草 -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"  stop-color="#E4E3F8"/>
+      <stop offset="45%" stop-color="#D6D4F0"/>
+      <stop offset="100%" stop-color="#BEBBE3"/>
+    </linearGradient>
+
+    <!-- 径向高光：左上偏白 -->
+    <radialGradient id="highlight" cx="18%" cy="12%" r="55%">
+      <stop offset="0%"   stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="60%"  stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 点阵 pattern（白色低透明） -->
+    <pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.4" fill="#FFFFFF" opacity="0.55"/>
+    </pattern>
+  </defs>
+
+  <!-- 1. 底色 -->
+  <rect width="1680" height="945" fill="url(#bg)"/>
+  <rect width="1680" height="945" fill="url(#highlight)"/>
+
+  <!-- 2. 流动 S 曲线丝带（白 / 低透明 / 多条错位） -->
+  <g stroke="#FFFFFF" fill="none" stroke-linecap="round">
+    <!-- 上半部长丝带束 -->
+    <g opacity="0.55">
+      <path d="M-40,180 C 280,60 520,320 820,210 C 1120,100 1340,280 1720,160" stroke-width="1"/>
+      <path d="M-40,200 C 280,80 520,340 820,230 C 1120,120 1340,300 1720,180" stroke-width="1"/>
+      <path d="M-40,220 C 280,100 520,360 820,250 C 1120,140 1340,320 1720,200" stroke-width="1"/>
+      <path d="M-40,240 C 280,120 520,380 820,270 C 1120,160 1340,340 1720,220" stroke-width="1"/>
+      <path d="M-40,260 C 280,140 520,400 820,290 C 1120,180 1340,360 1720,240" stroke-width="1"/>
+      <path d="M-40,280 C 280,160 520,420 820,310 C 1120,200 1340,380 1720,260" stroke-width="1"/>
+      <path d="M-40,300 C 280,180 520,440 820,330 C 1120,220 1340,400 1720,280" stroke-width="1"/>
+      <path d="M-40,320 C 280,200 520,460 820,350 C 1120,240 1340,420 1720,300" stroke-width="1"/>
+    </g>
+
+    <!-- 中段大波浪 -->
+    <g opacity="0.6">
+      <path d="M-40,500 C 360,400 780,620 1200,480 C 1440,420 1560,460 1720,440" stroke-width="1.1"/>
+      <path d="M-40,520 C 360,420 780,640 1200,500 C 1440,440 1560,480 1720,460" stroke-width="1.1"/>
+      <path d="M-40,540 C 360,440 780,660 1200,520 C 1440,460 1560,500 1720,480" stroke-width="1.1"/>
+      <path d="M-40,560 C 360,460 780,680 1200,540 C 1440,480 1560,520 1720,500" stroke-width="1.1"/>
+    </g>
+
+    <!-- 下半大弧 -->
+    <g opacity="0.45">
+      <path d="M-40,760 C 400,680 900,820 1720,720" stroke-width="1.2"/>
+      <path d="M-40,780 C 400,700 900,840 1720,740" stroke-width="1.2"/>
+      <path d="M-40,800 C 400,720 900,860 1720,760" stroke-width="1.2"/>
+      <path d="M-40,820 C 400,740 900,880 1720,780" stroke-width="1.2"/>
+    </g>
+  </g>
+
+  <!-- 3. 装饰圆圈（白色描边、无填充） -->
+  <g stroke="#FFFFFF" fill="none" stroke-width="2" opacity="0.85">
+    <circle cx="185" cy="270" r="14"/>
+    <circle cx="1490" cy="470" r="14"/>
+  </g>
+
+  <!-- 4. 点阵装饰（左下、右上、左上微量） -->
+  <g>
+    <!-- 右上 -->
+    <rect x="1280" y="30"  width="170" height="110" fill="url(#dots)"/>
+    <!-- 左上小点 -->
+    <rect x="110"  y="40"  width="100" height="26"  fill="url(#dots)"/>
+    <!-- 左下主点阵 -->
+    <rect x="30"   y="680" width="260" height="130" fill="url(#dots)"/>
+    <!-- 右下稀疏 -->
+    <rect x="1480" y="780" width="180" height="120" fill="url(#dots)" opacity="0.7"/>
+  </g>
+
+  <!-- 5. 右下角深紫色调（image 右下略深） -->
+  <path d="M1200,945 L 1680,945 L 1680,720 C 1500,820 1360,890 1200,945 Z"
+        fill="#B2AFDE" opacity="0.45"/>
+</svg>
