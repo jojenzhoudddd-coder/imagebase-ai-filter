@@ -262,9 +262,14 @@ export function AnimatedCharacters({
     const centerY = rect.top + rect.height / 3;
     const deltaX = mouseX - centerX;
     const deltaY = mouseY - centerY;
-    const faceX = Math.max(-15, Math.min(15, deltaX / 20));
-    const faceY = Math.max(-10, Math.min(10, deltaY / 30));
-    const bodySkew = Math.max(-6, Math.min(6, -deltaX / 120));
+    // Tuned for "exaggerated mouse follow": roughly 2× the upstream
+    // sensitivity + ~1.8× larger clamps. Faces swing with the cursor
+    // across most of their body width; bodies skew noticeably left/right
+    // instead of a subtle tilt. Eyes (see maxDistance on EyeBall / Pupil
+    // callsites below) also pull harder in their sockets.
+    const faceX = Math.max(-30, Math.min(30, deltaX / 12));
+    const faceY = Math.max(-20, Math.min(20, deltaY / 18));
+    const bodySkew = Math.max(-14, Math.min(14, -deltaX / 65));
     return { faceX, faceY, bodySkew };
   };
 
@@ -323,7 +328,7 @@ export function AnimatedCharacters({
           <EyeBall
             size={18}
             pupilSize={7}
-            maxDistance={5}
+            maxDistance={9}
             eyeColor="white"
             pupilColor="#2D2D2D"
             isBlinking={isPurpleBlinking}
@@ -341,7 +346,7 @@ export function AnimatedCharacters({
           <EyeBall
             size={18}
             pupilSize={7}
-            maxDistance={5}
+            maxDistance={9}
             eyeColor="white"
             pupilColor="#2D2D2D"
             isBlinking={isPurpleBlinking}
@@ -407,7 +412,7 @@ export function AnimatedCharacters({
           <EyeBall
             size={16}
             pupilSize={6}
-            maxDistance={4}
+            maxDistance={7}
             eyeColor="white"
             pupilColor="#2D2D2D"
             isBlinking={isBlackBlinking}
@@ -421,7 +426,7 @@ export function AnimatedCharacters({
           <EyeBall
             size={16}
             pupilSize={6}
-            maxDistance={4}
+            maxDistance={7}
             eyeColor="white"
             pupilColor="#2D2D2D"
             isBlinking={isBlackBlinking}
@@ -474,14 +479,14 @@ export function AnimatedCharacters({
         >
           <Pupil
             size={12}
-            maxDistance={5}
+            maxDistance={9}
             pupilColor="#2D2D2D"
             forceLookX={passwordLength > 0 && showPassword ? -5 : undefined}
             forceLookY={passwordLength > 0 && showPassword ? -4 : undefined}
           />
           <Pupil
             size={12}
-            maxDistance={5}
+            maxDistance={9}
             pupilColor="#2D2D2D"
             forceLookX={passwordLength > 0 && showPassword ? -5 : undefined}
             forceLookY={passwordLength > 0 && showPassword ? -4 : undefined}
@@ -528,14 +533,14 @@ export function AnimatedCharacters({
         >
           <Pupil
             size={12}
-            maxDistance={5}
+            maxDistance={9}
             pupilColor="#2D2D2D"
             forceLookX={passwordLength > 0 && showPassword ? -5 : undefined}
             forceLookY={passwordLength > 0 && showPassword ? -4 : undefined}
           />
           <Pupil
             size={12}
-            maxDistance={5}
+            maxDistance={9}
             pupilColor="#2D2D2D"
             forceLookX={passwordLength > 0 && showPassword ? -5 : undefined}
             forceLookY={passwordLength > 0 && showPassword ? -4 : undefined}
