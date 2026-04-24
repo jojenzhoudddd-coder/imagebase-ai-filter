@@ -15,6 +15,12 @@ import { Router, type Request, type Response } from "express";
 import path from "path";
 import fsp from "fs/promises";
 import crypto from "crypto";
+import { fileURLToPath } from "url";
+
+// ESM shim —— 此文件 package.json type=module，没有内置 __dirname。
+// 必须手动从 import.meta.url 推出来。之前直接用 __dirname 会触发
+// ReferenceError / 让头像写盘路径失效。
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import {
   COOKIE_NAME,
   clearAuthCookie,
