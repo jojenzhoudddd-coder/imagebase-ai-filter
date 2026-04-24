@@ -445,6 +445,40 @@ function buildRuntimeLayer(
 
 const ANALYST_HANDLES_LIMIT = 10;
 
+// ─── Tool-output truncation guard ───────────────────────────────────────
+//
+// Prevents one runaway tool result from blowing out the context window.
+// Within a turn, every function_call_output is appended to the ARK `input`
+// array and replayed on every subsequent round. A single 500KB result ×
+// 10 rounds = 5MB of wire payload; a few of those and we hit Claude's 1M
+// token limit (observed user-reported crash: "prompt is too long: 2018389
+// tokens"). Tools that return bulk data (describeTable on a 500-field
+// schema, analyst query on a 10k-row table, idea with a huge markdown
+// body) are the usual suspects.
+//
+// Policy: if the UTF-8 length of the tool output exceeds the threshold,
+// keep a head + tail slice and insert a visible truncation notice so the
+// model knows content was dropped. For analyst results the handle-based
+// pattern already keeps inline payloads small, so this rarely triggers
+// on analyst-skill — it's the safety net for everything else.
+const TOOL_OUTPUT_MAX_CHARS = 60_000; // ≈ 15K tokens, one result-worst-case
+const TOOL_OUTPUT_HEAD_CHARS = 48_000;
+const TOOL_OUTPUT_TAIL_CHARS = 8_000;
+
+function truncateToolOutput(output: string, toolName: string): string {
+  if (output.length <= TOOL_OUTPUT_MAX_CHARS) return output;
+  const head = output.slice(0, TOOL_OUTPUT_HEAD_CHARS);
+  const tail = output.slice(-TOOL_OUTPUT_TAIL_CHARS);
+  const dropped = output.length - TOOL_OUTPUT_HEAD_CHARS - TOOL_OUTPUT_TAIL_CHARS;
+  const notice =
+    `\n\n[…${dropped.toLocaleString()} chars truncated from tool "${toolName}" ` +
+    `(total ${output.length.toLocaleString()} chars). ` +
+    `If you need the missing middle, call the tool again with tighter filters / ` +
+    `limit / pagination. For analyst results, use the returned _resultHandle + ` +
+    `filter_result / preview_result / top_n to scope the view.]\n\n`;
+  return head + notice + tail;
+}
+
 async function buildAnalystHandlesSection(conversationId: string): Promise<string> {
   try {
     const handles = await listHandlesIfExists(conversationId);
@@ -1266,9 +1300,22 @@ export async function* runAgent(
         error: success ? undefined : toolOutput,
       });
 
-      // Feed back to model
+      // Feed back to model — truncate oversized tool outputs so one giant
+      // result doesn't blow the context window when replayed across rounds.
+      // Note the truncation is ONLY applied to the prompt-bound copy; the
+      // SSE tool_result event above carries the full string to the UI so
+      // the user still sees everything.
+      const promptBoundOutput = truncateToolOutput(toolOutput, fc.name);
+      if (promptBoundOutput.length !== toolOutput.length) {
+        logAgent({
+          event: "tool_output_truncated",
+          tool: fc.name,
+          originalChars: toolOutput.length,
+          truncatedChars: promptBoundOutput.length,
+        });
+      }
       input.push({ type: "function_call", call_id: fc.callId, name: fc.name, arguments: fc.arguments });
-      input.push({ type: "function_call_output", call_id: fc.callId, output: toolOutput });
+      input.push({ type: "function_call_output", call_id: fc.callId, output: promptBoundOutput });
     }
 
     if (hitConfirmation) {
