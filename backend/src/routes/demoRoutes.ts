@@ -435,6 +435,43 @@ router.post("/:demoId/build", asyncHandler(async (req, res) => {
   res.json(result);
 }));
 
+// POST /api/demos/:demoId/screenshot — headless-browser screenshot of the
+// current preview. Used by the `screenshot_demo` MCP tool so the Agent can
+// visually verify its 1:1 reproduction against the original design. Returns
+// { mediaType, base64, meta } as JSON (not a raw PNG response) so the MCP
+// tool can wrap it into the IBASE_IMAGE marker for vision models.
+router.post("/:demoId/screenshot", asyncHandler(async (req, res) => {
+  const d = await prisma.demo.findUnique({ where: { id: req.params.demoId } });
+  if (!d) { res.status(404).json({ error: "Demo not found" }); return; }
+  if (d.lastBuildStatus !== "success") {
+    res.status(400).json({
+      error: "Demo must be successfully built before screenshotting.",
+      lastBuildStatus: d.lastBuildStatus,
+    });
+    return;
+  }
+  const { screenshotDemoPreview, demoInternalPreviewUrl } =
+    await import("../services/demo/demoScreenshotService.js");
+  try {
+    const width = Number(req.body?.width);
+    const height = Number(req.body?.height);
+    const fullPage = req.body?.fullPage !== false;
+    const shot = await screenshotDemoPreview(demoInternalPreviewUrl(d.id), {
+      width: Number.isFinite(width) ? width : undefined,
+      height: Number.isFinite(height) ? height : undefined,
+      fullPage,
+    });
+    res.json({
+      mediaType: shot.mediaType,
+      base64: shot.bytes.toString("base64"),
+      meta: shot.meta,
+    });
+  } catch (err: any) {
+    const code = err?.code || "SCREENSHOT_FAILED";
+    res.status(503).json({ error: err?.message || String(err), code });
+  }
+}));
+
 router.get("/:demoId/build-log", asyncHandler(async (req, res) => {
   const log = await store.readBuildLog(req.params.demoId);
   res.json({ log: log ?? "" });

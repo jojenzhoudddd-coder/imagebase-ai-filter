@@ -74,10 +74,52 @@ function toOpenAITools(tools: ToolDefinition[] = []) {
 
 // ─── Input conversion helpers ────────────────────────────────────────────
 
+type AnthropicImageSource =
+  | { type: "base64"; media_type: string; data: string }
+  | { type: "url"; url: string };
+
+type AnthropicInnerBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; source: AnthropicImageSource };
+
 type AnthropicContentBlock =
   | { type: "text"; text: string }
+  | { type: "image"; source: AnthropicImageSource }
   | { type: "tool_use"; id: string; name: string; input: unknown }
-  | { type: "tool_result"; tool_use_id: string; content: string };
+  | {
+      type: "tool_result";
+      tool_use_id: string;
+      content: string | AnthropicInnerBlock[];
+    };
+
+/**
+ * Magic marker prefix a tool handler uses to smuggle image payloads through
+ * the string-based tool_result channel. When detected here we expand the
+ * string into a proper Anthropic `tool_result.content` array with an
+ * `{type:"image"}` block — giving Claude real vision over the payload.
+ *
+ * Shape after the marker: JSON of
+ *   { mediaType, base64, caption?, text? }
+ * Tools that don't need vision (most of them) just return plain strings
+ * and this code path is a no-op.
+ */
+const IBASE_IMAGE_MARKER = "__IBASE_IMAGE_v1__";
+interface ImagePayload {
+  mediaType: string;
+  base64: string;
+  caption?: string;
+  /** Optional structured text to render alongside the image block. */
+  text?: string;
+}
+
+function decodeImageToolResult(raw: string): ImagePayload | null {
+  if (!raw.startsWith(IBASE_IMAGE_MARKER)) return null;
+  try {
+    return JSON.parse(raw.slice(IBASE_IMAGE_MARKER.length)) as ImagePayload;
+  } catch {
+    return null;
+  }
+}
 
 interface AnthropicMessage {
   role: "user" | "assistant";
@@ -142,10 +184,36 @@ function toAnthropicShape(input: ProviderInputItem[]): {
       continue;
     }
     if ("type" in it && it.type === "function_call_output") {
+      const rawOutput = typeof it.output === "string" ? it.output : JSON.stringify(it.output);
+      const imagePayload = decodeImageToolResult(rawOutput);
+      if (imagePayload) {
+        // Expand the marker into a proper tool_result with an image inner
+        // block so Claude can actually see the pixels. Text block (caption
+        // + optional extra text) gives Claude structured metadata alongside.
+        const inner: AnthropicInnerBlock[] = [];
+        const textPieces: string[] = [];
+        if (imagePayload.caption) textPieces.push(imagePayload.caption);
+        if (imagePayload.text) textPieces.push(imagePayload.text);
+        if (textPieces.length) inner.push({ type: "text", text: textPieces.join("\n\n") });
+        inner.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: imagePayload.mediaType,
+            data: imagePayload.base64,
+          },
+        });
+        pushBlock("user", {
+          type: "tool_result",
+          tool_use_id: it.call_id,
+          content: inner,
+        });
+        continue;
+      }
       pushBlock("user", {
         type: "tool_result",
         tool_use_id: it.call_id,
-        content: typeof it.output === "string" ? it.output : JSON.stringify(it.output),
+        content: rawOutput,
       });
       continue;
     }
@@ -206,12 +274,24 @@ function toOpenAIShape(input: ProviderInputItem[]): OpenAIMessage[] {
       continue;
     }
     if ("type" in it && it.type === "function_call_output") {
-      out.push({
-        role: "tool",
-        tool_call_id: it.call_id,
-        content:
-          typeof it.output === "string" ? it.output : JSON.stringify(it.output),
-      });
+      const rawOutput =
+        typeof it.output === "string" ? it.output : JSON.stringify(it.output);
+      // OpenAI chat.completions `role: tool` content is string-only. If an
+      // image tool_result leaks through on this branch, strip the image and
+      // keep the caption/text so at least the model sees something useful.
+      // Full vision support on GPT-5 would need the newer Responses API
+      // content-part format; left as future work.
+      const imagePayload = decodeImageToolResult(rawOutput);
+      if (imagePayload) {
+        const fallbackText =
+          (imagePayload.caption ? imagePayload.caption + "\n\n" : "") +
+          (imagePayload.text ?? "") +
+          `\n\n[image omitted — current OpenAI tool channel accepts text only. ` +
+          `Switch to an Anthropic model to see the actual pixels.]`;
+        out.push({ role: "tool", tool_call_id: it.call_id, content: fallbackText });
+        continue;
+      }
+      out.push({ role: "tool", tool_call_id: it.call_id, content: rawOutput });
       continue;
     }
   }

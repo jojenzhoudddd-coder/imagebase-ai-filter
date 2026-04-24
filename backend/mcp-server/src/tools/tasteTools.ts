@@ -36,6 +36,37 @@ async function readSvgContent(filePath: string | null | undefined): Promise<stri
   }
 }
 
+/** Fetch raw bytes (works for SVG/PNG/JPG alike). */
+async function readFileBytes(filePath: string | null | undefined): Promise<{
+  bytes: Buffer;
+  mediaType: string;
+} | null> {
+  if (!filePath) return null;
+  try {
+    const url = `${BACKEND_BASE_URL}/${filePath.replace(/^\/+/, "")}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const ab = await res.arrayBuffer();
+    const ct = res.headers.get("content-type") || "application/octet-stream";
+    const mediaType = ct.split(";")[0].trim();
+    return { bytes: Buffer.from(ab), mediaType };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Magic prefix the chat agent's provider adapter looks for to expand a
+ * tool_result into a real image content block. See
+ * backend/src/services/providers/oneapiAdapter.ts IBASE_IMAGE_MARKER.
+ */
+const IBASE_IMAGE_MARKER = "__IBASE_IMAGE_v1__";
+function packImageToolResult(
+  payload: { mediaType: string; base64: string; caption?: string; text?: string }
+): string {
+  return IBASE_IMAGE_MARKER + JSON.stringify(payload);
+}
+
 /** Shape the DB taste row into a summary (no SVG, no meta). */
 function summarize(t: any) {
   return {
@@ -143,6 +174,141 @@ export const tasteNavTools: ToolDefinition[] = [
       }
 
       return toolResult(detail);
+    },
+  },
+
+  {
+    name: "view_taste_image",
+    description:
+      "以**图像**方式读取一个 Taste（设计稿 / SVG / PNG），返回给 Claude 的 vision 模态。" +
+      "Agent 能真正看见设计的视觉效果（像素级），用于 1:1 还原设计稿。" +
+      "SVG 会在 server 端自动 rasterize 成 PNG（1.5× 分辨率）；PNG/JPG 原样返回。" +
+      "当设计稿源是位图（PNG）或你需要视觉对比像素/颜色/字号时用这个；" +
+      "当你需要文本级 SVG 结构（路径、节点树）时用 `get_taste(includeSvg:true)`；" +
+      "当你需要结构化设计 token（颜色直方图、字体、区域盒）时用 `analyze_taste`。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        designId: { type: "string" },
+        tasteId: { type: "string" },
+        // Larger scale = crisper image but more tokens. Default 1.5x is a
+        // reasonable balance for design mocks (Claude handles up to ~1568px).
+        scale: {
+          type: "number",
+          description: "SVG 栅格化倍数（默认 1.5），过大会消耗更多 token",
+        },
+      },
+      required: ["designId", "tasteId"],
+    },
+    handler: async (args) => {
+      const designId = String(args.designId);
+      const tasteId = String(args.tasteId);
+      const scale = Math.max(0.5, Math.min(3, Number(args.scale) || 1.5));
+
+      const tastes = await apiRequest<any[]>(`/api/designs/${designId}/tastes`);
+      const t = tastes.find((x) => x.id === tasteId);
+      if (!t) return toolResult({ error: "Taste not found", designId, tasteId });
+
+      const fetched = await readFileBytes(t.filePath);
+      if (!fetched) {
+        return toolResult({ error: "Could not read taste file", filePath: t.filePath });
+      }
+
+      const caption =
+        `Taste "${t.name}" (${t.id}) · ${t.width}×${t.height}` +
+        (t.source ? ` · source=${t.source}` : "");
+
+      // PNG / JPG / GIF / WebP — Claude vision accepts directly
+      const supported = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+      if (supported.includes(fetched.mediaType)) {
+        return packImageToolResult({
+          mediaType: fetched.mediaType,
+          base64: fetched.bytes.toString("base64"),
+          caption,
+          text: `This is the visual reference. Reproduce its layout / colors / typography 1:1 in the Demo you're building.`,
+        });
+      }
+
+      // SVG → rasterize via sharp. Lazy-import so the MCP tool loads even on
+      // hosts that skipped native deps install.
+      const looksLikeSvg =
+        fetched.mediaType.includes("svg") ||
+        fetched.bytes.slice(0, 100).toString("utf8").toLowerCase().includes("<svg");
+      if (looksLikeSvg) {
+        try {
+          const { default: sharp } = await import("sharp");
+          const png = await sharp(fetched.bytes, { density: Math.round(72 * scale) })
+            .png()
+            .toBuffer();
+          return packImageToolResult({
+            mediaType: "image/png",
+            base64: png.toString("base64"),
+            caption,
+            text:
+              `SVG source was rasterized to PNG at ${scale}× for Claude vision. ` +
+              `If you need the SVG markup to embed 1:1 into the Demo, call ` +
+              `get_taste(includeSvg:true) instead.`,
+          });
+        } catch (err: any) {
+          return toolResult({
+            error: "SVG rasterization failed; fall back to get_taste(includeSvg:true).",
+            detail: err?.message ?? String(err),
+          });
+        }
+      }
+
+      return toolResult({
+        error: `Unsupported media type: ${fetched.mediaType}`,
+        hint: "Only image/png, image/jpeg, image/gif, image/webp, image/svg+xml are supported.",
+      });
+    },
+  },
+
+  {
+    name: "analyze_taste",
+    description:
+      "结构化解析 SVG Taste：扫描所有 `<rect>` / `<text>` / `<image>` / `<path>` 节点，" +
+      "聚合出颜色直方图、字体字号用量、区域盒（按大矩形聚类）、文本清单、SVG 根 viewBox。" +
+      "返回 token 量远小于 get_taste(includeSvg) 但信息密度高，适合 1:1 还原设计 token " +
+      "（primary/bg/border 颜色、typography、栅格）。" +
+      "只对 SVG 类型的 taste 有意义；PNG 走 `view_taste_image`。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        designId: { type: "string" },
+        tasteId: { type: "string" },
+      },
+      required: ["designId", "tasteId"],
+    },
+    handler: async (args) => {
+      const designId = String(args.designId);
+      const tasteId = String(args.tasteId);
+
+      const tastes = await apiRequest<any[]>(`/api/designs/${designId}/tastes`);
+      const t = tastes.find((x) => x.id === tasteId);
+      if (!t) return toolResult({ error: "Taste not found", designId, tasteId });
+      if (!t.filePath || !/\.svg$/i.test(String(t.fileName || ""))) {
+        return toolResult({
+          error: "analyze_taste only supports SVG tastes. Call view_taste_image for PNG/raster.",
+          fileName: t.fileName,
+        });
+      }
+
+      try {
+        const report = await apiRequest<any>(
+          `/api/designs/${designId}/tastes/${tasteId}/analyze`,
+        );
+        return toolResult({
+          tasteId: t.id,
+          tasteName: t.name,
+          ...report,
+        });
+      } catch (err: any) {
+        return toolResult({
+          error: "SVG analysis failed",
+          detail: err?.message ?? String(err),
+        });
+      }
     },
   },
 ];

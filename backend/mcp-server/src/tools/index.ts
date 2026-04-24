@@ -62,6 +62,11 @@ const TIER1_NAMES = new Set([
   "list_designs",
   "list_tastes",
   "get_taste",
+  // Vision + SVG structural inspection — always available so the Agent can
+  // reach for them the moment a user mentions a design / taste, without
+  // having to activate taste-skill first.
+  "view_taste_image",
+  "analyze_taste",
   "find_mentionable",
   "list_incoming_mentions",
   // Analyst P1 additions (always-on — semantic map + snapshot awareness)

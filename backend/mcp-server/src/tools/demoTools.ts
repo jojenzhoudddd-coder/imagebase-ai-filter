@@ -274,6 +274,66 @@ export const demoWriteTools: ToolDefinition[] = [
   },
 
   {
+    name: "screenshot_demo",
+    description:
+      "对已构建的 Demo 页面 headless Chromium 截图，**以 image 形式**回传给你（vision），" +
+      "用于 1:1 视觉对比：把你刚写的 Demo 和原设计稿（view_taste_image）放在一起肉眼 diff，" +
+      "发现布局偏差 / 颜色差 / 组件缺失 → 改代码 → rebuild → 再截图，直到视觉收敛。" +
+      "要求 lastBuildStatus=success；宿主机需装 Chrome/Chromium（未装返回 BROWSER_UNAVAILABLE）。" +
+      "默认 1440×900 + fullPage；常用调整：mobile 用 width=390 height=844。",
+    inputSchema: {
+      type: "object",
+      required: ["demoId"],
+      properties: {
+        demoId: { type: "string" },
+        width: { type: "number", description: "viewport 宽，默认 1440" },
+        height: { type: "number", description: "viewport 高，默认 900" },
+        fullPage: { type: "boolean", description: "是否截整个滚动页（默认 true）" },
+      },
+    },
+    handler: async (args) => {
+      try {
+        const data = await apiRequest<{
+          mediaType: string;
+          base64: string;
+          meta: { viewport: { width: number; height: number }; capturedWidth: number; capturedHeight: number; durationMs: number };
+        }>(
+          `/api/demos/${encodeURIComponent(String(args.demoId))}/screenshot`,
+          {
+            method: "POST",
+            body: {
+              width: args.width,
+              height: args.height,
+              fullPage: args.fullPage,
+            },
+          },
+        );
+        // Pack into IBASE_IMAGE marker so the adapter expands it into an
+        // Anthropic image block. Caption tells Claude what it's looking at.
+        const IBASE_IMAGE_MARKER = "__IBASE_IMAGE_v1__";
+        return IBASE_IMAGE_MARKER + JSON.stringify({
+          mediaType: data.mediaType,
+          base64: data.base64,
+          caption:
+            `Demo ${args.demoId} preview @ ${data.meta.viewport.width}×${data.meta.viewport.height}` +
+            ` (captured ${data.meta.capturedWidth}×${data.meta.capturedHeight}, ${data.meta.durationMs}ms)`,
+          text:
+            `This is what your Demo currently renders. Compare side-by-side with the ` +
+            `original design (view_taste_image). Call out pixel/layout/color differences ` +
+            `and edit the source to close them; then build + screenshot again to verify.`,
+        });
+      } catch (err: any) {
+        return toolResult({
+          error: err?.message || String(err),
+          hint:
+            "If BROWSER_UNAVAILABLE: ask the user to install google-chrome on the host; " +
+            "meanwhile, approximate the design by reading view_taste_image + analyze_taste output.",
+        });
+      }
+    },
+  },
+
+  {
     name: "publish_demo",
     description:
       "⚠️ 将当前 dist/ 快照发布为公开 URL（/share/:slug）。**需要先 build_demo 成功**。" +

@@ -522,6 +522,38 @@ router.get("/:designId/tastes/:tasteId/meta", async (req: Request, res: Response
   }
 });
 
+// GET /api/designs/:designId/tastes/:tasteId/analyze
+// Returns a structured breakdown of an SVG taste (colors / typography /
+// regions / texts / images). Used by MCP `analyze_taste` — a compact
+// alternative to get_taste(includeSvg) for Agent-driven 1:1 reproduction.
+router.get("/:designId/tastes/:tasteId/analyze", async (req: Request, res: Response) => {
+  const { tasteId } = req.params;
+  try {
+    const taste = await prisma.taste.findUnique({
+      where: { id: tasteId },
+      select: { id: true, name: true, fileName: true, filePath: true, width: true, height: true },
+    });
+    if (!taste) { res.status(404).json({ error: "Taste not found" }); return; }
+    if (!taste.filePath || !/\.svg$/i.test(taste.fileName)) {
+      res.status(400).json({
+        error: "analyze_taste only supports SVG tastes",
+        fileName: taste.fileName,
+      });
+      return;
+    }
+    // filePath is relative (e.g. "uploads/svgs/<designId>/<name>.svg");
+    // resolve against cwd (backend process root).
+    const abs = path.resolve(process.cwd(), taste.filePath);
+    const svgContent = await fs.readFile(abs, "utf-8");
+    const { analyzeSvg } = await import("../services/design/svgAnalyzer.js");
+    const report = analyzeSvg(svgContent, { w: taste.width, h: taste.height });
+    res.json(report);
+  } catch (err: any) {
+    console.error("[taste-analyze]", err);
+    res.status(500).json({ error: "Failed to analyze SVG", detail: err.message });
+  }
+});
+
 // POST /api/designs/:designId/tastes/:tasteId/meta/regenerate
 // Force regeneration regardless of svgHash. Broadcasts taste:meta-updated on success.
 router.post("/:designId/tastes/:tasteId/meta/regenerate", async (req: Request, res: Response) => {

@@ -466,15 +466,16 @@ const ANALYST_HANDLES_LIMIT = 10;
 // model knows content was dropped. For analyst results the handle-based
 // pattern already keeps inline payloads small, so this rarely triggers
 // on analyst-skill — it's the safety net for everything else.
-// 200KB ≈ 50K tokens per single result. A Demo-generation turn commonly
-// does 5-8 tool calls in one round — 200KB × 8 = 1.6MB ≈ 400K tokens,
-// × 10 loop rounds worst case = ~1MB sustained context, which fits under
-// Claude's 1M limit. Was 60KB originally but design-SVG / idea-markdown
-// / demo-file reads routinely exceed that, leading to the Agent "not
-// seeing" the file it just read.
-const TOOL_OUTPUT_MAX_CHARS = 200_000;
-const TOOL_OUTPUT_HEAD_CHARS = 180_000;
-const TOOL_OUTPUT_TAIL_CHARS = 15_000;
+// 500KB ≈ 125K tokens per single result. High cap is needed for the "embed
+// SVG source into Demo as-is" pattern — Figma exports of full-page mocks
+// routinely hit 300–400KB. Worst case: 500KB × 3 calls/round × 10 rounds =
+// ~1.5MB, at ~0.25 tokens/char = 375K tokens from tool outputs alone. Plus
+// system prompt (~30K) + history (~50K). Leaves ~500K headroom under the
+// Claude 1M hard limit. If a turn hits this, the force-truncate below still
+// keeps each individual payload cleanly summarized rather than dropping.
+const TOOL_OUTPUT_MAX_CHARS = 500_000;
+const TOOL_OUTPUT_HEAD_CHARS = 460_000;
+const TOOL_OUTPUT_TAIL_CHARS = 30_000;
 
 function truncateToolOutput(output: string, toolName: string): string {
   if (output.length <= TOOL_OUTPUT_MAX_CHARS) return output;

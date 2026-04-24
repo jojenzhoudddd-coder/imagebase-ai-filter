@@ -154,6 +154,39 @@ const label = (fid: string, v: any) => {
 5. 定位 → 改代码 → 重新 build → 重新自检。**自检 retry 上限 3 次**，仍失败停下告诉用户具体报错
 6. 全通过才可以说 "Demo 完成了"
 
+## 设计稿 1:1 还原策略（当用户贴了 design / taste 时必读）
+
+这套工具链专门为"按设计稿一比一还原"设计。按场景选工具：
+
+### 场景 A — 设计稿就是 SVG（或 SVG 里没有嵌入大 PNG 位图）
+**优先走"直接嵌入"路径 —— 这是零损耗 1:1**：
+1. \`get_taste(includeSvg: true)\` 拿到完整 SVG 源码（当前最大 500KB）
+2. 在 Demo 的 tsx 里用 \`dangerouslySetInnerHTML\` 直接嵌入原 SVG 作为底图：
+   \`\`\`tsx
+   <div className="relative w-full" dangerouslySetInnerHTML={{ __html: RAW_SVG }} />
+   \`\`\`
+3. 交互层（按钮、链接、输入框）用绝对定位的 React 节点**覆盖在 SVG 上**
+4. 最终视觉 100% 还原（SVG 的矢量 / 颜色 / 字体 / 排版一字不动）
+
+不要看着 SVG "照着重画"—— 那是方案 B 的做法，会偏差。
+
+### 场景 B — 设计稿是 PNG 位图 / SVG 里嵌了 PNG
+这类稿 SVG 源码不可用，必须走"视觉理解"路径：
+1. \`view_taste_image(designId, tasteId)\` 把设计稿作为 **image content block** 送进你（真正看见像素）
+2. \`analyze_taste(designId, tasteId)\`（仅对 SVG 有用）拿颜色直方图 / 字体 / 区域盒的结构化 token
+3. 写代码时按 analyze 出的 token 系统（color / typography / region）逐块还原
+4. \`build_demo\` 后马上 \`screenshot_demo\` —— 把你产出的 Demo 页面截图
+5. 对比 view_taste_image 的原图 和 screenshot_demo 的产出图，找差异：
+   - 顶栏高度 / 侧栏宽度对不对？
+   - 主色 / 边框色是不是正确 hex？
+   - 卡片间距、圆角、字号？
+6. 根据差异改代码 → rebuild → 再 screenshot → 直到视觉收敛。**最多自检 retry 3 次**。
+
+这个"看稿 → 写 → 截图 → 对比"循环是 1:1 的核心——不做这步你的 Demo 一定不像。
+
+### 场景 C — 用户没贴具体设计稿，只说"做个 XX 系统"
+不做 1:1 还原，走常规设计流程（Vibe Design skill 如果激活，先提 3-4 个视觉方向让用户选）。
+
 ## 硬规则
 
 - 生成 Demo 前调 get_data_dictionary / describe_table / readIdea 了解字段和内容
