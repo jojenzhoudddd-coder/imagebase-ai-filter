@@ -7,7 +7,6 @@
  *   claude-opus-4.7  (via OneAPI, default-preferred)
  *   claude-opus-4.6  (via OneAPI, currently available)
  *   gpt-5.5          (via OneAPI)
- *   gpt-5.5-mini     (via OneAPI)
  *   gpt-5.4          (via OneAPI)
  *   gpt-5.4-mini     (via OneAPI)
  *
@@ -129,16 +128,6 @@ export const MODELS: ModelEntry[] = [
     providerModelId: "gpt-5.5",
     capabilities: { thinking: false, toolUse: true, contextWindow: 200000 },
     defaults: { temperature: 0.1, maxOutputTokens: 8000 },
-    group: "openai",
-    visible: true,
-  },
-  {
-    id: "gpt-5.5-mini",
-    displayName: "GPT-5.5 mini",
-    provider: "oneapi",
-    providerModelId: "gpt-5.5-mini",
-    capabilities: { thinking: false, toolUse: true, contextWindow: 128000 },
-    defaults: { temperature: 0.1, maxOutputTokens: 4000 },
     group: "openai",
     visible: true,
   },
