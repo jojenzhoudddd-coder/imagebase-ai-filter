@@ -1,19 +1,61 @@
 /**
- * LoginPage — split layout, animated gradient + orbs on the left,
- * credential form on the right. Mirrors careercompass's auth design.
+ * LoginPage — port of arsh342/careercompass login/page.tsx.
+ *
+ * Visual 1:1 faithful to upstream:
+ *   - Split grid (lg:grid-cols-2)
+ *   - Left: grayscale gradient + grid overlay + blurred orbs +
+ *     AnimatedCharacters (eyes track cursor, blink, peek at password)
+ *   - Right: "Welcome back!" header + 420px max-width form with
+ *     email/password fields, eye-toggle, remember-30-days checkbox,
+ *     InteractiveHoverButton submit + switch-to-register link
+ *
+ * Differences from upstream:
+ *   - Our backend accepts login by EMAIL or USERNAME (single field),
+ *     so the email input is relabeled "用户名或邮箱". Seed user quan
+ *     logs in with that handle; regular email users type their address.
+ *   - Firebase + Google OAuth stripped — our backend is bcrypt + JWT,
+ *     single provider. Sign-up link still present.
  */
 
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
+import { AnimatedCharacters } from "./AnimatedCharacters";
+import { InteractiveHoverButton } from "./InteractiveHoverButton";
 import "./AuthPage.css";
+
+function EyeIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path
+        d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6S1.5 10 1.5 10z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="10" cy="10" r="3" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  ) : (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path
+        d="M2 2l16 16M7.5 7.5a3 3 0 004.24 4.24M4.2 4.2C2.67 5.5 1.5 7.5 1.5 10s3 6 8.5 6c1.62 0 3.05-.37 4.24-.98M8.2 4.2A8.6 8.6 0 0110 4c5.5 0 8.5 6 8.5 6-.46.92-1.1 1.82-1.9 2.6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [handle, setHandle] = useState("");
   const [password, setPassword] = useState("");
-  const [showPwd, setShowPwd] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -33,81 +75,108 @@ export default function LoginPage() {
 
   return (
     <div className="auth-shell">
+      {/* ─── Left: animated characters + brand + footer links ─── */}
       <div className="auth-hero">
         <div className="auth-hero-orb auth-hero-orb-a" aria-hidden="true" />
         <div className="auth-hero-orb auth-hero-orb-b" aria-hidden="true" />
-        <div className="auth-hero-orb auth-hero-orb-c" aria-hidden="true" />
 
         <div className="auth-hero-brand">
           <span className="auth-hero-logo">IB</span>
-          <span>ImageBase · AI Work</span>
+          <span>ImageBase</span>
         </div>
-        <div className="auth-hero-body">
-          <h1 className="auth-hero-title">欢迎回来。</h1>
-          <p className="auth-hero-subtitle">
-            登录进入你的工作空间 —— 多维表格、灵感文档、可视化画布、Vibe Demo，
-            以及在这一切之上长期协作的 Agent Claw。
-          </p>
+
+        <div className="auth-hero-stage">
+          <AnimatedCharacters
+            isTyping={isTyping}
+            showPassword={showPassword}
+            passwordLength={password.length}
+          />
         </div>
+
         <div className="auth-hero-footer">
-          <span>© ImageBase</span>
-          <span>·</span>
-          <span>v1</span>
+          <a href="#" onClick={(e) => e.preventDefault()}>隐私政策</a>
+          <a href="#" onClick={(e) => e.preventDefault()}>服务条款</a>
         </div>
       </div>
 
+      {/* ─── Right: form ─── */}
       <div className="auth-form-pane">
-        <div className="auth-form-header">
-          <h2 className="auth-form-title">登录</h2>
-          <p className="auth-form-subtitle">输入用户名或邮箱继续</p>
-        </div>
-        <form className="auth-form" onSubmit={onSubmit}>
-          <div className="auth-field">
-            <label htmlFor="handle">用户名或邮箱</label>
-            <input
-              id="handle"
-              className="auth-input"
-              type="text"
-              autoComplete="username"
-              autoFocus
-              value={handle}
-              onChange={(e) => setHandle(e.target.value)}
-              placeholder="quan 或 you@example.com"
-              disabled={submitting}
-              required
-            />
+        <div className="auth-form-inner">
+          <div className="auth-mobile-brand">
+            <span className="auth-mobile-logo">IB</span>
+            <span>ImageBase</span>
           </div>
-          <div className="auth-field">
-            <label htmlFor="password">密码</label>
-            <div className="auth-input-wrap">
+
+          <div className="auth-form-header">
+            <h1 className="auth-form-title">Welcome back!</h1>
+            <p className="auth-form-subtitle">请输入您的账号信息</p>
+          </div>
+
+          <form className="auth-form" onSubmit={onSubmit}>
+            <div className="auth-field">
+              <label htmlFor="handle">用户名或邮箱</label>
               <input
-                id="password"
+                id="handle"
                 className="auth-input"
-                type={showPwd ? "text" : "password"}
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                type="text"
+                autoComplete="username"
+                autoFocus
+                value={handle}
+                onChange={(e) => setHandle(e.target.value)}
+                onFocus={() => setIsTyping(true)}
+                onBlur={() => setIsTyping(false)}
+                placeholder="quan 或 you@example.com"
                 disabled={submitting}
                 required
               />
-              <button
-                type="button"
-                className="auth-toggle"
-                onClick={() => setShowPwd((v) => !v)}
-                aria-label={showPwd ? "隐藏密码" : "显示密码"}
-              >
-                {showPwd ? "隐藏" : "显示"}
-              </button>
             </div>
+            <div className="auth-field">
+              <label htmlFor="password">密码</label>
+              <div className="auth-input-wrap">
+                <input
+                  id="password"
+                  className="auth-input"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  disabled={submitting}
+                  required
+                />
+                <button
+                  type="button"
+                  className="auth-password-toggle"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                >
+                  <EyeIcon open={!showPassword} />
+                </button>
+              </div>
+            </div>
+
+            <div className="auth-field-row">
+              <label className="auth-remember">
+                <input type="checkbox" />
+                <span>30 天内免登录</span>
+              </label>
+              <a className="auth-form-link" href="#" onClick={(e) => e.preventDefault()}>
+                忘记密码?
+              </a>
+            </div>
+
+            {error && <div className="auth-form-error">{error}</div>}
+
+            <InteractiveHoverButton
+              type="submit"
+              text={submitting ? "登录中…" : "登录"}
+              disabled={submitting}
+            />
+          </form>
+
+          <div className="auth-form-switch">
+            还没有账号?<Link to="/register">立即注册</Link>
           </div>
-          {error && <div className="auth-form-error">{error}</div>}
-          <button className="auth-submit" type="submit" disabled={submitting}>
-            {submitting ? "登录中…" : "登录"}
-          </button>
-        </form>
-        <div className="auth-form-switch">
-          没有账号？<Link to="/register">去注册</Link>
         </div>
       </div>
     </div>
