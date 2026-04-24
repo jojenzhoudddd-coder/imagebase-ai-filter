@@ -540,7 +540,7 @@ export default function ChatSidebar({
         setPendingConfirm(pending);
       },
       onError: (code, message) => {
-        setError(`${code}: ${message}`);
+        setError(friendlyError(code, message));
       },
       onDone: () => {
         setStreaming(false);
@@ -635,7 +635,7 @@ export default function ChatSidebar({
             return next;
           });
         },
-        onError: (code, message) => setError(`${code}: ${message}`),
+        onError: (code, message) => setError(friendlyError(code, message)),
         onDone: () => setStreaming(false),
       });
     },
@@ -805,6 +805,33 @@ export default function ChatSidebar({
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Translate a backend SSE `error` event into a user-facing message. The raw
+ * payload (e.g. `OneAPI(anthropic) 500: {"error":...}`) is technically
+ * accurate but impenetrable; map the known codes to something actionable.
+ * Falls back to the raw message for unknown codes so we don't hide real bugs.
+ */
+function friendlyError(code: string, message: string): string {
+  switch (code) {
+    case "UPSTREAM_OVERLOAD":
+      return (
+        "上游模型服务暂时过载，且所有可用的同族回退模型也满了。" +
+        "一般 30 秒到几分钟内就会恢复，请稍后重试。"
+      );
+    case "TOOL_TIMEOUT":
+      return "某个工具超过 180 秒未返回，已中止。通常是单次调用数据量过大 — 试着缩小范围重试。";
+    case "ABORTED":
+      return "已中止生成。";
+    case "PROVIDER_ERROR":
+      // Show a cleaner prefix but keep the original detail so engineering
+      // debugging info isn't lost.
+      return `模型调用失败：${message}`;
+    default:
+      return `${code}: ${message}`;
+  }
+}
+
 function serverToUi(m: ChatMessage): UiMessage {
   return {
     id: m.id,

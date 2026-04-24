@@ -51,6 +51,88 @@ import type { ToolDefinition } from "../../../mcp-server/src/tools/tableTools.js
 const ONEAPI_BASE_URL =
   (process.env.ONEAPI_BASE_URL || "https://oneapi.example.com/v1").replace(/\/$/, "");
 
+// ─── Typed upstream errors ──────────────────────────────────────────────
+//
+// Distinguishing *transient upstream overload* (retryable) from *hard
+// failure* (caller should fall back or bubble) makes the agent loop's
+// recovery policy straightforward: catch UpstreamOverloadError → reroute
+// to a different model; catch anything else → surface to user.
+
+export class UpstreamOverloadError extends Error {
+  readonly provider: "anthropic" | "openai";
+  readonly status: number;
+  readonly retryableAfterMs: number;
+  constructor(provider: "anthropic" | "openai", status: number, message: string, retryableAfterMs = 0) {
+    super(message);
+    this.name = "UpstreamOverloadError";
+    this.provider = provider;
+    this.status = status;
+    this.retryableAfterMs = retryableAfterMs;
+  }
+}
+
+/**
+ * Inspect a non-OK Response to decide whether this is a transient overload
+ * (`overloaded_error` per Anthropic, 429/503/5xx in general) vs a hard
+ * protocol-level failure. We parse the body lazily — bodies over a few KB
+ * get trimmed so we don't buffer huge HTML error pages.
+ */
+async function classifyError(
+  res: Response,
+  provider: "anthropic" | "openai",
+): Promise<{ overloaded: boolean; message: string; retryAfterMs: number }> {
+  const retryAfter = res.headers.get("retry-after");
+  // Retry-After may be seconds OR an HTTP-date; we only support the seconds form.
+  const retryAfterMs = retryAfter ? (Number.isFinite(+retryAfter) ? Math.max(0, +retryAfter * 1000) : 0) : 0;
+  const txt = await res.text().catch(() => "");
+  const trimmed = txt.slice(0, 600);
+  let overloaded = false;
+
+  // Anthropic surfaces `{"error":{"type":"overloaded_error"}}` — case matters.
+  // 429 (rate-limited) and 503 (service unavailable) are also retryable.
+  // 5xx without a structured body is usually also transient (proxy blips).
+  if (res.status === 429 || res.status === 503) overloaded = true;
+  if (res.status >= 500 && res.status < 600) overloaded = true;
+  if (/\boverloaded_error\b|\bOverloaded\b/i.test(trimmed)) overloaded = true;
+
+  const message = `OneAPI(${provider}) ${res.status}: ${trimmed}`;
+  return { overloaded, message, retryAfterMs };
+}
+
+/**
+ * Execute `attempt` up to `maxAttempts` times, treating UpstreamOverloadError
+ * as retryable. Delays grow exponentially (base 1s, max 6s) unless the
+ * server's Retry-After header specifies longer. Aborted signals short-circuit.
+ */
+async function withOverloadRetry<T>(
+  attempt: () => Promise<T>,
+  opts: { maxAttempts: number; signal?: AbortSignal; onRetry?: (err: UpstreamOverloadError, nextDelayMs: number, attemptIndex: number) => void },
+): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < opts.maxAttempts; i++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      lastErr = err;
+      if (opts.signal?.aborted) throw err;
+      if (!(err instanceof UpstreamOverloadError)) throw err;
+      if (i === opts.maxAttempts - 1) break;
+      // Exponential backoff 1s → 2s → 4s, capped at 6s. Retry-After wins when set.
+      const expDelay = Math.min(6_000, 1_000 * 2 ** i);
+      const delay = Math.max(expDelay, err.retryableAfterMs);
+      opts.onRetry?.(err, delay, i);
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(resolve, delay);
+        if (opts.signal) {
+          const onAbort = () => { clearTimeout(t); reject(new Error("aborted during retry delay")); };
+          opts.signal.addEventListener("abort", onAbort, { once: true });
+        }
+      });
+    }
+  }
+  throw lastErr;
+}
+
 // ─── Tool-schema conversion ─────────────────────────────────────────────
 
 function toAnthropicTools(tools: ToolDefinition[] = []) {
@@ -376,23 +458,38 @@ async function* streamAnthropic(
   }
 
   const url = `${ONEAPI_BASE_URL.replace(/\/v1$/, "")}/v1/messages`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
+  // Retry the initial POST up to 3× on upstream overload (Anthropic's
+  // `overloaded_error` / HTTP 503 / 429). Only the HEADERS/handshake phase
+  // is retryable — once we have a body stream, errors mid-stream go to the
+  // caller unchanged (the partial tokens have already been delivered and
+  // retrying would double-speak).
+  const res = await withOverloadRetry(
+    async () => {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify(body),
+        signal: params.signal,
+      });
+      if (!r.ok || !r.body) {
+        const cls = await classifyError(r, "anthropic");
+        if (cls.overloaded) throw new UpstreamOverloadError("anthropic", r.status, cls.message, cls.retryAfterMs);
+        throw new Error(cls.message);
+      }
+      return r;
     },
-    body: JSON.stringify(body),
-    signal: params.signal,
-  });
-  if (!res.ok || !res.body) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`OneAPI(anthropic) ${res.status}: ${txt.slice(0, 400)}`);
-  }
+    { maxAttempts: 3, signal: params.signal, onRetry: (err, ms, i) => {
+      console.warn(`[oneapi:anthropic] upstream overload (status=${err.status}), retry ${i + 1}/3 in ${ms}ms`);
+    } },
+  );
 
-  const reader = res.body.getReader();
+  // withOverloadRetry throws if body was null, so this is safe.
+  const reader = res.body!.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
 
@@ -540,22 +637,31 @@ async function* streamOpenAI(
   }
 
   const url = `${ONEAPI_BASE_URL}/chat/completions`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
+  const res = await withOverloadRetry(
+    async () => {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify(body),
+        signal: params.signal,
+      });
+      if (!r.ok || !r.body) {
+        const cls = await classifyError(r, "openai");
+        if (cls.overloaded) throw new UpstreamOverloadError("openai", r.status, cls.message, cls.retryAfterMs);
+        throw new Error(cls.message);
+      }
+      return r;
     },
-    body: JSON.stringify(body),
-    signal: params.signal,
-  });
-  if (!res.ok || !res.body) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`OneAPI(openai) ${res.status}: ${txt.slice(0, 400)}`);
-  }
+    { maxAttempts: 3, signal: params.signal, onRetry: (err, ms, i) => {
+      console.warn(`[oneapi:openai] upstream overload (status=${err.status}), retry ${i + 1}/3 in ${ms}ms`);
+    } },
+  );
 
-  const reader = res.body.getReader();
+  const reader = res.body!.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
 

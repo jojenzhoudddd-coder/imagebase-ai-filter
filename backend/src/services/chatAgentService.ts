@@ -32,7 +32,13 @@ import type { Message, ToolCall } from "./conversationStore.js";
 import * as store from "./dbStore.js";
 import { readSoul, readProfile, getAgent } from "./agentService.js";
 import * as agentSvc from "./agentService.js";
-import { resolveModelForCall, resolveAdapter, type ModelEntry } from "./modelRegistry.js";
+import {
+  resolveModelForCall,
+  resolveAdapter,
+  pickOverloadFallback,
+  type ModelEntry,
+} from "./modelRegistry.js";
+import { UpstreamOverloadError } from "./providers/oneapiAdapter.js";
 import * as ideaStream from "./ideaStreamSessionService.js";
 import { LongTaskTracker } from "./longTaskService.js";
 import { listHandlesIfExists } from "./analyst/duckdbRuntime.js";
@@ -889,7 +895,12 @@ export async function* runAgent(
   // in config.json — the very next turn auto-recovers when availability
   // flips back.
   const storedModelId = await agentSvc.getSelectedModel(agentId);
-  const { resolved: model, requested, usedFallback } = resolveModelForCall(storedModelId);
+  const { resolved: initialModel, requested, usedFallback } = resolveModelForCall(storedModelId);
+  // `model` may be swapped mid-turn on upstream-overload (see fallback path
+  // in the loop below). Tracked alongside `triedForOverload` so we don't
+  // ping-pong between two overloaded upstreams.
+  let model: ModelEntry = initialModel;
+  const triedForOverload = new Set<string>();
   if (usedFallback) {
     logAgent({
       event: "model_fallback",
@@ -1136,8 +1147,56 @@ export async function* runAgent(
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+
+      // ── Upstream overload → same-group fallback, continue turn ──────
+      // UpstreamOverloadError is only thrown from the adapter's handshake
+      // phase (pre-stream). That means no bytes have been forwarded to
+      // the user yet — we can safely swap models and retry this round
+      // without producing garbled output. The adapter already retried
+      // 3× with exponential backoff before throwing; reaching here means
+      // the upstream really is down for us. Try one same-group sibling
+      // (Claude 4.7 → 4.6 → doubao-2.0), emit a user-visible notice,
+      // and re-enter the round with the new model.
+      if (err instanceof UpstreamOverloadError) {
+        triedForOverload.add(model.id);
+        const next = pickOverloadFallback(model, triedForOverload);
+        logAgent({
+          event: "upstream_overload",
+          round,
+          model: model.id,
+          provider: model.provider,
+          status: err.status,
+          fallback: next?.id ?? null,
+        });
+        if (next) {
+          yield {
+            event: "message",
+            data: {
+              text:
+                `\n\n> ⚠️ ${model.displayName} 上游过载，已自动切换到 ${next.displayName} 继续。\n\n`,
+              delta: true,
+            },
+          };
+          accumulatedText +=
+            `\n\n> ⚠️ ${model.displayName} 上游过载，已自动切换到 ${next.displayName} 继续。\n\n`;
+          model = next;
+          // `round` will advance; the turn continues with the new model.
+          // Input state hasn't been mutated (no tool calls yet this round),
+          // so it's safe to proceed.
+          continue;
+        }
+        // No fallback available — surface the error.
+      }
+
       logAgent({ event: "provider_error", round, model: model.id, provider: model.provider, error: msg });
-      yield { event: "error", data: { code: "PROVIDER_ERROR", message: msg, model: model.id } };
+      yield {
+        event: "error",
+        data: {
+          code: err instanceof UpstreamOverloadError ? "UPSTREAM_OVERLOAD" : "PROVIDER_ERROR",
+          message: msg,
+          model: model.id,
+        },
+      };
       break;
     }
     if (streamErrored) {

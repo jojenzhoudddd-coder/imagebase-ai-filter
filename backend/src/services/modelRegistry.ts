@@ -195,6 +195,35 @@ export function listVisibleModels(): ModelEntry[] {
   return MODELS.filter((m) => m.visible);
 }
 
+/**
+ * Find a fallback model when the currently-active one is mid-flight
+ * overloaded — distinct from the start-of-turn resolveModelForCall. Used
+ * by the agent loop after the adapter retries have all exhausted with an
+ * UpstreamOverloadError.
+ *
+ * Preference order: same-group sibling (different model, same provider
+ * family, not the one we just failed on) → FALLBACK_MODEL_ID. Exclude any
+ * model id the caller has already tried this turn to avoid ping-ponging.
+ *
+ * Returns null when nothing safe remains; caller should surface the error.
+ */
+export function pickOverloadFallback(
+  current: ModelEntry,
+  alreadyTried: Set<string> = new Set(),
+): ModelEntry | null {
+  const tried = new Set(alreadyTried);
+  tried.add(current.id);
+  const sibling = MODELS.find(
+    (m) => !tried.has(m.id) && m.group === current.group && m.available !== false && m.visible,
+  );
+  if (sibling) return sibling;
+  const hardFallback = getModel(FALLBACK_MODEL_ID);
+  if (hardFallback && !tried.has(hardFallback.id) && hardFallback.available !== false) {
+    return hardFallback;
+  }
+  return null;
+}
+
 // ─── Provider dispatch (populated by providers/index.ts) ─────────────────
 //
 // Kept in this file so resolveAdapter() stays a pure lookup and there's no
