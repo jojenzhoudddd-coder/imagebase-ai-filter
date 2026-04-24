@@ -60,6 +60,7 @@ export default function RegisterPage() {
     <div className="auth-shell">
       <LanguageSwitcher />
 
+      <div className="auth-card">
       <div className="auth-hero">
         <div className="auth-hero-glass" aria-hidden="true" />
 
@@ -178,6 +179,7 @@ export default function RegisterPage() {
             {t("auth.register.haveAccount")}<Link to="/login">{t("auth.register.toLogin")}</Link>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

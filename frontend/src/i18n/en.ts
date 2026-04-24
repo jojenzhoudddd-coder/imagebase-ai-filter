@@ -31,7 +31,7 @@ export const en = {
 
   // Auth pages (login / register)
   "auth.heroTitle": "Table · Taste · Idea · Demo",
-  "auth.heroSubtitle": "One Agent · one workspace — four artifacts that talk to each other.",
+  "auth.heroSubtitle": "Four artifacts × AI → any workend you can imagine.",
   "auth.login.title": "Welcome back",
   "auth.login.subtitle": "Sign in to your workspace",
   "auth.login.handleLabel": "Username or email",

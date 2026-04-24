@@ -1,58 +1,81 @@
 /**
- * Auth page — careercompass layout adapted to AI Filter design language.
+ * Auth page layout — centered fixed-size card on a stretching backdrop.
  *
- * Delta from upstream:
- *   1. lg grid 2:1 (not 1:1) — more room for the 4-character scene
- *   2. Typography / input / button / spacing all via project tokens
- *      (PingFang SC 14px/22px, #1F2329 text, #1456F0 primary, 4/6/8/12px
- *      radius scale, 32px input height, --color-border).
- *   3. Characters recolored to represent Table/Taste/Idea/Demo artifacts
- *      (colors live in AnimatedCharacters.tsx).
+ * Outer (.auth-shell)  : full viewport. Decorative blue gradient +
+ *   pattern. Centers the card via flex; when the viewport resizes, the
+ *   backdrop stretches and the card stays in the middle.
+ * Card   (.auth-card)  : fixed 920×600, radius-xl, shadow-dropdown.
+ *   Internally a 3:2 grid — hero on the left, form on the right.
+ * Hero   (.auth-hero)  : gray base + drifting colorful ripples + frosted
+ *   glass + headline + animated-characters scene.
+ * Form   (.auth-form-pane) : clean right column with the credential form.
  */
 
+/* ─── Shell: full viewport backdrop ────────────────────────────────── */
 .auth-shell {
-  position: relative;     /* anchors top-right language switcher */
+  position: relative;
   min-height: 100vh;
-  max-height: 100vh;
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
   font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #FFFFFF;
   color: #1F2329;
   font-size: 14px;
   line-height: 22px;
+  box-sizing: border-box;
+  /* Primary-blue ambient wash + a second deeper accent at the opposite
+   * corner, over a very light blue-tinted gray base. Reads as "branded
+   * landing" without burying the card. */
+  background:
+    radial-gradient(ellipse at 15% 25%, rgba(20, 86, 240, 0.22), transparent 55%),
+    radial-gradient(ellipse at 85% 75%, rgba(20, 86, 240, 0.14), transparent 55%),
+    linear-gradient(135deg, #E6EEFF 0%, #F2F4F8 50%, #E8EEF8 100%);
+  overflow: hidden;
 }
-@media (min-width: 1024px) {
-  .auth-shell {
-    /* 3:2 left:right — character scene stays the hero but form gets
-     * more breathing room than 2:1. */
+
+/* Subtle dot pattern on top of the gradient — breaks up the flat wash,
+ * mirrors the screenshot reference while staying quieter than it. */
+.auth-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(20, 86, 240, 0.10) 1.2px, transparent 1.6px);
+  background-size: 28px 28px;
+  background-position: 0 0;
+  pointer-events: none;
+}
+
+/* ─── Card: fixed size, centered ──────────────────────────────────── */
+.auth-card {
+  position: relative;
+  z-index: 1;
+  width: 920px;
+  height: 600px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  display: grid;
+  grid-template-columns: 1fr;
+  background: #FFFFFF;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.12),
+              0 2px 6px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+@media (min-width: 960px) {
+  .auth-card {
+    /* 3:2 split once there's room — hero left, form right. */
     grid-template-columns: 3fr 2fr;
   }
 }
 
-/* ─── Left pane: animated characters on frosted-glass over colorful base ──
- * Stack (bottom → top):
- *   1. `.auth-hero` base: white + drifting colorful radial gradients
- *      ("ripples"). The four artifact colors bleed through as soft
- *      washes, animating slowly so it reads as a living surface.
- *   2. `.auth-hero-glass` overlay: semi-transparent white + backdrop
- *      blur + saturation — frosted-glass effect that sits ON the base
- *      but BEHIND the characters, softening the ripples.
- *   3. `.auth-hero-stage` with the AnimatedCharacters on top.
- * No top-left brand row — that was removed per request.
- */
+/* ─── Left side of card: animated-characters scene ───────────────── */
 .auth-hero {
   position: relative;
   display: none;
   flex-direction: column;
-  padding: 40px 40px 32px;
+  padding: 32px 36px 24px;
   overflow: hidden;
-  /* Gray base — matches --color-bg #F5F6F7 exactly so the auth page
-   * reads as part of the same shell. The "炫彩涟漪" effect is delivered
-   * by four artifact-colored radial washes drifting very gently (low
-   * alpha so gray remains the dominant tone, not color). The glass
-   * layer above softens what little color breaks through. */
   background:
     radial-gradient(circle at 20% 20%, rgba(20, 86, 240, 0.16), transparent 50%),
     radial-gradient(circle at 80% 30%, rgba(123, 75, 220, 0.14), transparent 50%),
@@ -62,22 +85,13 @@
   background-size: 200% 200%, 200% 200%, 200% 200%, 200% 200%, 100% 100%;
   animation: auth-hero-ripple 18s ease-in-out infinite;
 }
-@media (min-width: 1024px) { .auth-hero { display: flex; } }
+@media (min-width: 960px) { .auth-hero { display: flex; } }
 
 @keyframes auth-hero-ripple {
-  0%, 100% {
-    background-position: 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0 0;
-  }
-  50% {
-    background-position: 20% 10%, 80% 20%, 80% 90%, 20% 80%, 0 0;
-  }
+  0%, 100% { background-position: 0% 0%, 100% 0%, 100% 100%, 0% 100%, 0 0; }
+  50%      { background-position: 20% 10%, 80% 20%, 80% 90%, 20% 80%, 0 0; }
 }
 
-/* Frosted glass layer — mostly-opaque gray that matches --color-bg, with
- * a backdrop blur so the low-alpha color washes beneath drift through
- * as very subtle "breathing" rather than showing as obvious orbs. The
- * pane should read as solid gray with a barely-there tint shift over
- * time, not as a colorful gradient. */
 .auth-hero-glass {
   position: absolute;
   inset: 0;
@@ -88,18 +102,11 @@
   pointer-events: none;
 }
 
-/* Top-left headline — four artifact nouns as the hero tagline. Big
- * weight-500 sans so it reads as a statement, not a label. Uses
- * text-primary on the soft gray-ripple base for quiet authority. */
 .auth-hero-headline {
   position: relative;
   z-index: 2;
-  margin-bottom: 0;
-  pointer-events: none; /* don't block mouse events to characters below */
+  pointer-events: none;
 }
-/* Match .auth-form-title ("欢迎回来") exactly — same visual weight as
- * the form header so the two sides read as balanced labels rather than
- * hero-vs-form. */
 .auth-hero-headline-title {
   margin: 0;
   font-size: 20px;
@@ -107,9 +114,6 @@
   font-weight: 600;
   color: #1F2329;
 }
-
-/* Subtitle under the artifact headline. Tracks .auth-form-subtitle
- * styling so the two halves stay visually symmetric. */
 .auth-hero-headline-sub {
   margin: 4px 0 0;
   font-size: 13px;
@@ -118,37 +122,6 @@
   color: #646A73;
 }
 
-/* Top-right language switcher — pinned absolute to the whole shell so
- * it sits regardless of 3:2 split. Minimal pill, matches topbar hover
- * text-button pattern used elsewhere in the app. */
-.auth-lang-switch {
-  position: absolute;
-  top: 20px;
-  right: 24px;
-  z-index: 10;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  color: #646A73;
-  font-size: 13px;
-  line-height: 20px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.auth-lang-switch:hover {
-  background: #F0F1F3;
-  color: #1F2329;
-}
-.auth-lang-switch svg { flex-shrink: 0; }
-
-/* Characters — vertically centered in the remaining space, then nudged
- * 60px down from center to sit lower in the pane (per design preference). */
 .auth-hero-stage {
   position: relative;
   z-index: 2;
@@ -157,7 +130,10 @@
   justify-content: center;
   flex: 1;
   margin: auto 0;
-  transform: translateY(60px);
+  /* Scale the character scene slightly so the 550×400 original fits
+   * comfortably inside the smaller card hero area. */
+  transform: translateY(20px) scale(0.82);
+  transform-origin: center center;
 }
 
 .auth-hero-footer {
@@ -166,7 +142,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: 16px;
   font-size: 12px;
   line-height: 20px;
   color: #646A73;
@@ -178,22 +154,20 @@
 }
 .auth-hero-footer a:hover { color: #1F2329; }
 
-/* ─── Right pane: form ─────────────────────────────────────────────
- * Sits on the 1/3 column; max-width 380px so the form doesn't stretch on
- * ultra-wide monitors. Centered vertically. */
+/* ─── Right side of card: form ────────────────────────────────────── */
 .auth-form-pane {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px;
+  padding: 32px 36px;
   background: #FFFFFF;
 }
 .auth-form-inner {
   width: 100%;
-  max-width: 380px;
+  max-width: 340px;
 }
 
-/* Mobile-only logo — hidden on lg */
+/* Mobile-only brand — shown when the card collapses to a single column. */
 .auth-mobile-brand {
   display: flex;
   align-items: center;
@@ -201,7 +175,7 @@
   gap: 8px;
   font-size: 14px;
   font-weight: 500;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
   color: #1F2329;
 }
 .auth-mobile-brand .auth-mobile-logo {
@@ -211,10 +185,9 @@
   font-weight: 600;
   font-size: 12px;
 }
-@media (min-width: 1024px) { .auth-mobile-brand { display: none; } }
+@media (min-width: 960px) { .auth-mobile-brand { display: none; } }
 
-/* Form header — title uses panel-title scale (500 weight, 20px) */
-.auth-form-header { margin-bottom: 24px; }
+.auth-form-header { margin-bottom: 20px; }
 .auth-form-title {
   font-size: 20px;
   line-height: 28px;
@@ -232,7 +205,7 @@
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 .auth-field { display: flex; flex-direction: column; gap: 6px; }
 .auth-field label {
@@ -250,8 +223,6 @@
 }
 .auth-input-wrap { position: relative; }
 
-/* Input: design-token spec — 32px height, 1px border, 4px radius, focus
- * primary. Font inherits the app-wide 14px PingFang SC. */
 .auth-input {
   width: 100%;
   height: 32px;
@@ -273,6 +244,7 @@
 }
 .auth-input::placeholder { color: #B0B5BD; }
 .auth-input-wrap .auth-input { padding-right: 36px; }
+
 .auth-password-toggle {
   position: absolute;
   right: 8px;
@@ -296,14 +268,13 @@
   background: #F0F1F3;
 }
 
-/* Remember-me + forgot-password row */
 .auth-field-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-size: 13px;
   line-height: 20px;
-  margin-top: -4px;
+  margin-top: -2px;
 }
 .auth-remember {
   display: inline-flex;
@@ -337,7 +308,7 @@
 }
 
 .auth-form-switch {
-  margin-top: 24px;
+  margin-top: 18px;
   text-align: center;
   font-size: 13px;
   line-height: 20px;
@@ -351,8 +322,6 @@
 }
 .auth-form-switch a:hover { text-decoration: underline; }
 
-/* Primary button — design-language spec (32px, #1456F0, 4px radius, 14px,
- * 500 weight). Full-width in form context. */
 .auth-submit {
   width: 100%;
   height: 32px;
@@ -374,6 +343,35 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ─── Language switcher (top-right of shell) ──────────────────────── */
+.auth-lang-switch {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #1F2329;
+  font-size: 13px;
+  line-height: 20px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.auth-lang-switch:hover {
+  background: #FFFFFF;
+  color: #1456F0;
+}
+.auth-lang-switch svg { flex-shrink: 0; }
 
 /* ─── Loading state for /me check ─────────────────────────────────── */
 .auth-loading {

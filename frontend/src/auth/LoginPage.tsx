@@ -62,6 +62,10 @@ export default function LoginPage() {
       {/* Top-right language toggle — floats over the whole shell */}
       <LanguageSwitcher />
 
+      {/* Centered fixed-size card containing both the hero (illustration)
+          and the credential form. When the viewport resizes, the backdrop
+          stretches and the card stays centered via flex on .auth-shell. */}
+      <div className="auth-card">
       {/* ─── Left (3/5): hero with animated-character scene ─── */}
       <div className="auth-hero">
         {/* Frosted glass layer — sits on top of the colorful ripple base
@@ -167,6 +171,7 @@ export default function LoginPage() {
             {t("auth.login.noAccount")}<Link to="/register">{t("auth.login.toRegister")}</Link>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

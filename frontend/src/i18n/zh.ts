@@ -33,7 +33,7 @@ export const zh: TranslationKeys = {
 
   // Auth pages (login / register)
   "auth.heroTitle": "Table · Taste · Idea · Demo",
-  "auth.heroSubtitle": "一个 Agent · 一个工作空间——四种产物彼此对话。",
+  "auth.heroSubtitle": "四种 artifact × AI → 千变万化的 workend。",
   "auth.login.title": "欢迎回来",
   "auth.login.subtitle": "登录进入你的工作空间",
   "auth.login.handleLabel": "用户名或邮箱",
