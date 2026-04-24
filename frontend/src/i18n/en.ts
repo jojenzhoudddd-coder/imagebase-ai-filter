@@ -508,6 +508,7 @@ export const en = {
   "demo.unpublish": "Unpublish workend",
   "demo.unpublishing": "Unpublishing",
   "demo.exportWorkend": "Export workend",
+  "demo.source": "Source",
   "demo.status.success": "Built",
   "demo.status.error": "Build failed",
   "demo.status.idle": "Not built",
