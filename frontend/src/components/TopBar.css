@@ -115,6 +115,13 @@
   gap: 4px;
 }
 
+/* sidebar 收起时出现在 breadcrumb 左边的展开按钮 —— 完全继承 .topbar-icon-btn
+   的尺寸/颜色/hover 视觉规格,只额外加 -2px 左 margin 让它和 breadcrumb 之间
+   留 6px 视觉间距。 */
+.topbar-sidebar-expand-btn {
+  margin-right: 2px;
+}
+
 .topbar-crumb {
   font-size: 14px;
   color: var(--color-text-secondary);

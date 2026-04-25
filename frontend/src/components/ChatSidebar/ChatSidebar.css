@@ -197,12 +197,11 @@
   flex-direction: column;
   align-items: center;
   gap: 40px;
-  /* Hero must sit 80px from the top of .chat-part (which contains the 36px
-   * header + the .chat-messages area). .chat-messages already adds 16px of
-   * padding-top, so chat-empty adds 28px margin-top to land at exactly
-   * 36 + 16 + 28 = 80px from the chat-part outer edge. */
+  /* Hero 距离 .chat-part 顶部 160px。计算式：
+   *   .chat-part 内已经有 36px header + .chat-messages 16px padding-top,
+   *   所以 chat-empty 需要再补 160 - 36 - 16 = 108px margin-top。 */
   padding: 0 20px;
-  margin-top: 28px;
+  margin-top: 108px;
   color: var(--text-primary);
   text-align: left;
 }

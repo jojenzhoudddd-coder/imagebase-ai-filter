@@ -276,13 +276,10 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
       {/* Left: nav icons + divider + stacked basic info */}
       <div className="topbar-left">
         <div className="topbar-nav">
-          <button
-            className="topbar-icon-btn"
-            title={sidebarCollapsed ? t("sidebar.expand") : t("sidebar.collapse")}
-            onClick={onToggleSidebar}
-          >
-            {/* Figma: Sidebar toggle —— 即开即合,sidebar 关闭时这个 icon 就是
-                 "展开侧边栏"的入口（位于顶栏最左,在标题文字之前）。 */}
+          <button className="topbar-icon-btn" title={t("topbar.menu")}>
+            {/* Figma: Sidebar layout indicator —— 装饰图标。真正的展开按钮在
+                 sidebar 收起时会出现在 breadcrumb 左边（见下方 .topbar-info 内
+                 的条件渲染）；收起按钮在 Sidebar 自己的 header 里。 */}
             <svg width="16" height="16" viewBox="24 24 16 16" fill="none">
               <path d="M38.6669 26.6667C38.6669 26.2985 38.3684 26 38.0002 26H26.0002C25.632 26 25.3335 26.2985 25.3335 26.6667C25.3335 27.0349 25.632 27.3333 26.0002 27.3333H38.0002C38.3684 27.3333 38.6669 27.0349 38.6669 26.6667Z" fill="#646A73"/>
               <path d="M37.926 31.3333C38.3351 31.3333 38.6667 31.6318 38.6667 32C38.6667 32.3682 38.3351 32.6667 37.926 32.6667H32.7408C32.3317 32.6667 32 32.3682 32 32C32 31.6318 32.3317 31.3333 32.7408 31.3333H37.926Z" fill="#646A73"/>
@@ -299,8 +296,23 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
         </div>
         <span className="topbar-divider" />
         <div className="topbar-info">
-          {/* Row 1: breadcrumb */}
+          {/* Row 1: breadcrumb —— sidebar 收起时,在 breadcrumb 左边显示展开按钮；
+                              sidebar 展开时,breadcrumb 归位（无 prefix 按钮）。 */}
           <div className="topbar-breadcrumb">
+            {sidebarCollapsed && (
+              <button
+                className="topbar-icon-btn topbar-sidebar-expand-btn"
+                onClick={onToggleSidebar}
+                title={t("sidebar.expand")}
+                aria-label={t("sidebar.expand")}
+              >
+                {/* 与 Sidebar 的收起按钮共用同一组双 chevron 图,水平翻转后变 ">>" */}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ transform: "scaleX(-1)" }}>
+                  <path d="M11.2126 15.2884L7.92466 12.0005L11.3915 8.53368C11.4481 8.47708 11.6699 8.25401 11.8788 8.04388C12.1054 7.81597 12.1048 7.44773 11.8776 7.2205C11.6492 6.99219 11.2789 6.99284 11.0513 7.22187C10.883 7.39125 10.7158 7.55943 10.6645 7.61073L6.68721 11.588C6.45941 11.8158 6.45941 12.1852 6.68721 12.413L10.4628 16.1885C10.5235 16.2492 10.804 16.5304 11.0528 16.7799C11.2803 17.008 11.6498 17.0083 11.8776 16.7804C12.1048 16.5532 12.1053 16.1851 11.8787 15.9574C11.6019 15.6793 11.276 15.3518 11.2126 15.2884Z" fill="#646A73"/>
+                  <path d="M16.4088 15.2884L13.1208 12.0005L16.5876 8.53368C16.6442 8.47708 16.8661 8.25401 17.075 8.04388C17.3016 7.81597 17.301 7.44773 17.0737 7.2205C16.8454 6.99219 16.4751 6.99284 16.2475 7.22187C16.0792 7.39125 15.912 7.55943 15.8607 7.61073L11.8834 11.588C11.6556 11.8158 11.6556 12.1852 11.8834 12.413L15.659 16.1885C15.7197 16.2492 16.0001 16.5304 16.249 16.7799C16.4765 17.008 16.8459 17.0083 17.0738 16.7804C17.3009 16.5532 17.3015 16.1851 17.0749 15.9574C16.7981 15.6793 16.4721 15.3518 16.4088 15.2884Z" fill="#646A73"/>
+                </svg>
+              </button>
+            )}
             {/* 面包屑首项 = 当前登录用户的 username（name 同步为 username） */}
             <span className="topbar-crumb">{user?.name || user?.username || ""}</span>
             {/* Figma: Chevron right — line 716 */}
