@@ -52,12 +52,15 @@ export default function FieldConfigPanel({
     return fields.filter(f => pinyinMatch(f.name, q));
   }, [fields, searchQuery, isSearching]);
 
-  // Position the panel below the anchor button
+  // Position the panel below the anchor button —— 右对齐 trigger 的 hover 区域
+  // panel.right === btn.right → left = btn.right - panelWidth (280)
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   useEffect(() => {
     if (anchorRef.current) {
       const rect = anchorRef.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.left });
+      const PANEL_WIDTH = 280;
+      const left = Math.max(8, rect.right - PANEL_WIDTH);
+      setPos({ top: rect.bottom + 4, left });
     }
   }, [anchorRef]);
 

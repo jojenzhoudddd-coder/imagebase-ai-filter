@@ -550,6 +550,9 @@ export default function ChatSidebar({
         // Turn just ended — the model may have called update_agent_name. Poke
         // the pill to re-fetch so the header label catches up.
         setAgentRefreshToken((n) => n + 1);
+        // 通知 TopBar 刷新 token / artifacts 统计（chat 刚消耗 token，artifact
+        // 也可能被改了；TopBar 监听这个 window 事件做即时 refetch）
+        try { window.dispatchEvent(new CustomEvent("workspace-stats-changed")); } catch { /* noop */ }
       },
     });
   }, [activeConv, inputValue, streaming, onActiveTableChange]);
@@ -636,7 +639,10 @@ export default function ChatSidebar({
           });
         },
         onError: (code, message) => setError(friendlyError(code, message)),
-        onDone: () => setStreaming(false),
+        onDone: () => {
+          setStreaming(false);
+          try { window.dispatchEvent(new CustomEvent("workspace-stats-changed")); } catch { /* noop */ }
+        },
       });
     },
     [activeConv, pendingConfirm, onActiveTableChange]

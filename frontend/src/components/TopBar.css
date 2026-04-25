@@ -46,7 +46,9 @@
    * 上下居中。 */
 }
 
-/* 新 info row（替代原 .topbar-badges：L2/lastModified/warning） */
+/* 新 info row（替代原 .topbar-badges：L2/lastModified/warning）
+   左对齐到上方 .topbar-crumb 起点 —— crumb 有 horizontal padding 4px，
+   所以 info-row 也加 4px left-padding。 */
 .topbar-info-row {
   display: flex;
   align-items: center;
@@ -57,6 +59,7 @@
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
+  padding-left: 4px;
 }
 
 .topbar-stat {
@@ -64,6 +67,11 @@
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+.topbar-stat-icon {
+  color: var(--text-placeholder);
+  flex-shrink: 0;
+  margin-right: 1px;
 }
 .topbar-stat-num {
   font-weight: 500;

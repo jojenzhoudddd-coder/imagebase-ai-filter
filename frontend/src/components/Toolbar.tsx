@@ -1,21 +1,15 @@
 /**
- * Toolbar —— 实际是 Table artifact 的"顶部条"，对齐 IdeaEditor 和 SvgCanvas
- * 的 topbar 结构（44px 高，左 name 右 actions），不再是底部一长排功能键。
+ * Toolbar —— Table artifact 的"顶部条"，对齐 IdeaEditor 和 SvgCanvas 的 topbar
+ * 结构（44px 高，左 name + filter pill / 右多个动作按钮）。
  *
- * 左侧：
- *   · 表名（InlineEdit，可双击改名）
- *   · 当 filter 有未保存修改时（isFilterDirty）紧跟一个 apply pill：
- *     筛选条件描述 + Clear / Save 按钮（之前在 ViewTabs 里，移过来了）
- *
- * 右侧只保留 5 个动作：
- *   · Add record（带下拉箭头）
- *   · Customize field
- *   · Filter
- *   · Sort
- *   · Undo
- *
- * 已移除：ViewSettings / GroupBy / RowHeight / ConditionalColoring（保留组件
- * 内的 icon 函数留给后续再启用）。
+ * V2 设计要点（2026-04-25 用户反馈后回调）：
+ *   · 左侧：表名（InlineEdit）+ filter dirty 时的 apply pill —— pill 用 ViewTabs
+ *     时代的蓝底设计（primary-light 背景、28px 高、圆角 14px），不用之前 V1 的
+ *     gray border 风格
+ *   · 右侧：保留之前 toolbar 的「带文字标签」的多个视图相关按钮（不简化为 icon）：
+ *     Customize field / View settings / Filter / Group by / Sort / Row height /
+ *     Conditional color；末尾的 Undo 用 26px icon-only（与之前一致）
+ *   · Add record 主按钮带文字 + 下拉箭头，紧贴左侧
  */
 
 import { RefObject, useState } from "react";
@@ -71,7 +65,7 @@ export default function Toolbar({
 
   return (
     <div className="table-topbar">
-      {/* Left: 表名 + filter apply pill */}
+      {/* Left: 表名 + filter apply pill + Add record */}
       <div className="table-topbar-left">
         <span className="table-topbar-name">
           <InlineEdit
@@ -86,17 +80,17 @@ export default function Toolbar({
           />
         </span>
         {isFilterDirty && (
-          <span className="table-topbar-apply-pill" onClick={(e) => e.stopPropagation()}>
+          <span className="view-tab-apply-pill" onClick={(e) => e.stopPropagation()}>
             <FilterConfigIcon />
-            <span className="table-topbar-apply-text">{t("viewTabs.filterConfigured")}</span>
+            <span className="view-tab-apply-text">{t("viewTabs.filterConfigured")}</span>
             <button
-              className="table-topbar-apply-btn"
+              className="view-tab-apply-btn"
               onClick={(e) => { e.stopPropagation(); onClearFilter?.(); }}
             >
               {t("viewTabs.clear")}
             </button>
             <button
-              className="table-topbar-apply-btn primary"
+              className="view-tab-apply-btn"
               onClick={(e) => { e.stopPropagation(); onSaveView?.(); }}
             >
               {t("viewTabs.save")}
@@ -105,7 +99,7 @@ export default function Toolbar({
         )}
       </div>
 
-      {/* Right: 5 个核心动作 */}
+      {/* Right: 视图相关多按钮（带文字标签）+ 末尾 Undo */}
       <div className="table-topbar-actions">
         <button className="table-topbar-add-record" onClick={onAddRecord} title={t("toolbar.addRecord")}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -117,59 +111,63 @@ export default function Toolbar({
           </svg>
         </button>
         <span className="table-topbar-sep" />
-        <ToolbarIconBtn
+        <ToolbarBtn
           icon={<CustomizeFieldIcon />}
-          title={t("toolbar.customizeField")}
+          label={t("toolbar.customizeField")}
           active={fieldConfigOpen}
           onClick={onCustomizeFieldClick}
           btnRef={customizeFieldBtnRef}
         />
-        <ToolbarIconBtn
+        <ToolbarBtn icon={<ViewSettingsIcon />} label={t("toolbar.viewSettings")} />
+        <ToolbarBtn
           icon={<FilterIcon />}
-          title={filterConditionCount > 0 ? t("toolbar.filterCount", { count: filterConditionCount }) : t("toolbar.filter")}
+          label={filterConditionCount > 0 ? t("toolbar.filterCount", { count: filterConditionCount }) : t("toolbar.filter")}
           active={isFiltered || filterPanelOpen}
           onClick={onFilterClick}
           btnRef={filterBtnRef}
-          badge={filterConditionCount > 0 ? filterConditionCount : undefined}
         />
-        <ToolbarIconBtn icon={<SortIcon />} title={t("toolbar.sort")} />
-        <ToolbarIconBtn
-          icon={<UndoIcon />}
+        <ToolbarBtn icon={<GroupByIcon />} label={t("toolbar.groupBy")} />
+        <ToolbarBtn icon={<SortIcon />} label={t("toolbar.sort")} />
+        <ToolbarBtn icon={<RowHeightIcon />} label={t("toolbar.rowHeight")} />
+        <ToolbarBtn icon={<ConditionalColorIcon />} label={t("toolbar.conditionalColoring")} />
+        <span className="table-topbar-sep" />
+        <button
+          className={`table-topbar-undo${canUndo ? "" : " disabled"}`}
           title={t("toolbar.undo")}
-          disabled={!canUndo}
           onClick={() => canUndo && onUndo?.()}
-        />
+          disabled={!canUndo}
+        >
+          <svg width="20" height="20" viewBox="0 0 26 26" fill="none">
+            <path d="M10.8047 6.52876C11.065 6.78911 11.065 7.21122 10.8047 7.47157L8.60939 9.66683H14.6666C17.428 9.66683 19.6666 11.9054 19.6666 14.6668C19.6666 17.4283 17.428 19.6668 14.6666 19.6668H12.3333C11.9651 19.6668 11.6666 19.3684 11.6666 19.0002C11.6666 18.632 11.9651 18.3335 12.3333 18.3335H14.6666C16.6916 18.3335 18.3333 16.6919 18.3333 14.6668C18.3333 12.6418 16.6916 11.0002 14.6666 11.0002H8.60939L10.8047 13.1954C11.065 13.4558 11.065 13.8779 10.8047 14.1382C10.5443 14.3986 10.1222 14.3986 9.86185 14.1382L6.52851 10.8049C6.26816 10.5446 6.26816 10.1224 6.52851 9.86209L9.86185 6.52876C10.1222 6.26841 10.5443 6.26841 10.8047 6.52876Z" fill="currentColor"/>
+          </svg>
+        </button>
       </div>
     </div>
   );
 }
 
-interface ToolbarIconBtnProps {
+interface ToolbarBtnProps {
   icon: React.ReactNode;
-  title: string;
+  label: string;
   active?: boolean;
-  disabled?: boolean;
-  badge?: number;
   onClick?: () => void;
   btnRef?: RefObject<HTMLButtonElement | null>;
 }
 
-function ToolbarIconBtn({ icon, title, active, disabled, badge, onClick, btnRef }: ToolbarIconBtnProps) {
+function ToolbarBtn({ icon, label, active, onClick, btnRef }: ToolbarBtnProps) {
   return (
     <button
       ref={btnRef as RefObject<HTMLButtonElement>}
-      className={`table-topbar-icon-btn${active ? " active" : ""}${disabled ? " disabled" : ""}`}
-      onClick={disabled ? undefined : onClick}
-      title={title}
-      disabled={disabled}
+      className={`table-topbar-btn${active ? " active" : ""}`}
+      onClick={onClick}
     >
       {icon}
-      {badge !== undefined && <span className="table-topbar-badge">{badge}</span>}
+      <span className="table-topbar-btn-label">{label}</span>
     </button>
   );
 }
 
-/* ─── Icons (保留实际用到的，未用的 export 保留供未来启用) ─────────── */
+/* ─── Icons ─────────────────────────────────────────────────────────── */
 
 function CustomizeFieldIcon() {
   return (
@@ -180,10 +178,32 @@ function CustomizeFieldIcon() {
   );
 }
 
+function ViewSettingsIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <rect x="1.5" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+      <rect x="9.5" y="2" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+      <rect x="1.5" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+      <circle cx="12" cy="11.5" r="2.5" stroke="currentColor" strokeWidth="1.1"/>
+      <path d="M12 9.5v.5m0 3v.5m-2-2.5h.5m3.5 0h.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
 function FilterIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
       <path d="M2 3h12L9.5 8.5V12l-3 1.5V8.5L2 3z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function GroupByIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <rect x="2" y="2.5" width="12" height="3" rx="0.8" stroke="currentColor" strokeWidth="1.1"/>
+      <rect x="4" y="7.5" width="10" height="3" rx="0.8" stroke="currentColor" strokeWidth="1.1"/>
+      <rect x="4" y="12.5" width="10" height="1" rx="0.5" fill="currentColor" opacity="0.4"/>
     </svg>
   );
 }
@@ -197,12 +217,21 @@ function SortIcon() {
   );
 }
 
-function UndoIcon() {
-  /* 之前在 right cluster 用的圆形箭头大图标，这里换成与其它 icon 一致的尺寸 */
+function RowHeightIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <path d="M5.5 4l-2.5 2.5 2.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M3 6.5h7a3 3 0 010 6h-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M5 3h9M5 6.5h9M5 10h9M5 13.5h9" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <path d="M2 5l-1-1.5h2L2 5zm0 6l-1 1.5h2L2 12.5z" fill="currentColor"/>
+      <path d="M2 4.5v7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function ConditionalColorIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <path d="M9.66 1.29a1 1 0 011.41 0l8.13 8.13a2.5 2.5 0 010 3.54l-7.42 7.42a2.5 2.5 0 01-3.54 0l-5.66-5.65a2.5 2.5 0 010-3.54l8.13-8.13-.35-.35a1 1 0 010-1.42zm8.13 9.55l-6.36-6.36-7.49 7.49 14.06-.01c.17-.37.1-.82-.21-1.12zM3.29 14.02l5.66 5.66a1 1 0 001.41 0l5.72-5.72H3.24l.05.06z" fill="currentColor"/>
+      <path d="M22.36 20.75a2.67 2.67 0 11-5.33 0c0-1.32.87-2.35 1.65-3.27.4-.48.79-.94 1.02-1.4.23.46.61.92 1.02 1.4.78.92 1.64 1.95 1.64 3.27z" fill="currentColor"/>
     </svg>
   );
 }

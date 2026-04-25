@@ -1,9 +1,9 @@
 /* ─── Table topbar ──────────────────────────────────────────────────
- * 对齐 .idea-editor-topbar / .svg-canvas-topbar：44px 高、左右两栏，
- * 左 = 表名 + filter apply pill，右 = 5 个核心动作。
+ * 对齐 .idea-editor-topbar / .svg-canvas-topbar：44px 高、左右两栏。
+ *   左 = 表名（InlineEdit）+ filter dirty 时的 apply pill
+ *   右 = Add record + 视图相关多按钮（带文字标签）+ Undo（icon-only）
  *
- * 旧的 .toolbar 一长排功能键（ViewSettings/GroupBy/RowHeight 等）已废弃，
- * 不再渲染；保留 .toolbar { display:none } 以防外部样式残留。
+ * 旧的底部 .toolbar 一长排功能键已废弃；保留 .toolbar { display:none } 兜底。
  * ────────────────────────────────────────────────────────────────── */
 
 .table-topbar {
@@ -42,7 +42,7 @@
 .table-topbar-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   flex-shrink: 0;
 }
 
@@ -66,7 +66,7 @@
 .table-topbar-add-record:hover { background: var(--primary-bg); }
 .table-topbar-chevron { margin-left: 2px; opacity: 0.6; }
 
-/* 分隔条（add-record 与 icon 群组之间） */
+/* 分隔条 */
 .table-topbar-sep {
   width: 1px;
   height: 16px;
@@ -75,7 +75,64 @@
   flex-shrink: 0;
 }
 
-/* Icon 按钮 —— 跟 IdeaEditor / SvgCanvas 的 topbar btn 视觉一致 */
+/* 视图相关按钮 —— 带文字标签（与原 .toolbar-btn 一致） */
+.table-topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.table-topbar-btn:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.table-topbar-btn.active {
+  background: var(--primary-bg);
+  color: var(--primary);
+}
+.table-topbar-btn-label { line-height: 28px; }
+
+/* Undo 按钮 —— icon-only，末尾 */
+.table-topbar-undo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.table-topbar-undo:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.table-topbar-undo.disabled,
+.table-topbar-undo:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: transparent;
+}
+.table-topbar-undo.disabled:hover,
+.table-topbar-undo:disabled:hover {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+/* Icon 按钮（保留以防旧调用） */
 .table-topbar-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -102,15 +159,8 @@
 .table-topbar-icon-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-  background: transparent;
-}
-.table-topbar-icon-btn.disabled:hover,
-.table-topbar-icon-btn:disabled:hover {
-  background: transparent;
-  color: var(--text-secondary);
 }
 
-/* Filter 角标 —— 显示生效条件数 */
 .table-topbar-badge {
   position: absolute;
   top: -2px;
@@ -127,38 +177,41 @@
   text-align: center;
 }
 
-/* Filter dirty 时挂在表名右边的 apply pill —— 从 ViewTabs 迁移而来 */
-.table-topbar-apply-pill {
+/* ─── Filter dirty apply pill（恢复 ViewTabs 旧蓝底设计） ─────────── */
+.view-tab-apply-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 4px 0 8px;
-  border: 1px solid var(--border-default);
-  border-radius: 12px;
-  background: var(--surface-1);
-  color: var(--text-secondary);
-  font-size: 12px;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 14px;
+  background: var(--primary-light);
+  margin-left: 8px;
+  align-self: center;
   white-space: nowrap;
+  color: var(--primary);
   flex-shrink: 0;
 }
-.table-topbar-apply-text { color: var(--text-secondary); }
-.table-topbar-apply-btn {
-  height: 18px;
-  padding: 0 8px;
-  border: none;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--text-secondary);
+.view-tab-apply-text {
   font-size: 12px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  color: var(--text-secondary);
+  line-height: 28px;
 }
-.table-topbar-apply-btn:hover { background: var(--surface-3); color: var(--text-primary); }
-.table-topbar-apply-btn.primary { color: var(--primary); }
-.table-topbar-apply-btn.primary:hover { background: var(--primary-bg); }
-
+.view-tab-apply-btn {
+  font-size: 12px;
+  color: var(--primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 6px;
+  font-family: var(--font-family);
+  font-weight: 500;
+  line-height: 20px;
+  border-radius: var(--radius-s);
+}
+.view-tab-apply-btn:hover {
+  background: rgba(20, 86, 240, 0.10);
+}
 
 /* ─── Legacy .toolbar styles (废弃，保留 display:none 兜底) ────── */
 .toolbar { display: none !important; }

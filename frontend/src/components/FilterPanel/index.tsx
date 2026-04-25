@@ -88,7 +88,9 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
     }
   };
 
-  // Center panel horizontally relative to anchor button
+  // Right-align panel to anchor button：panel.right === btn.right。
+  // 之前是居中对齐，但因为 trigger 在 topbar 右侧，居中会让面板左侧贴边或溢出
+  // 视口；右对齐 trigger 的 hover 区域更符合视觉预期。
   useEffect(() => {
     if (!anchorRef?.current) return;
     const btn = anchorRef.current;
@@ -97,9 +99,10 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
     if (!parent) return;
     const btnRect = btn.getBoundingClientRect();
     const parentRect = parent.getBoundingClientRect();
-    const btnCenterX = btnRect.left + btnRect.width / 2 - parentRect.left;
     const panelW = 520;
-    const left = Math.max(0, Math.min(btnCenterX - panelW / 2, parentRect.width - panelW));
+    // panel 右边缘 = trigger 右边缘 → left = btn.right - panelW
+    const btnRightInParent = btnRect.right - parentRect.left;
+    const left = Math.max(0, Math.min(btnRightInParent - panelW, parentRect.width - panelW));
     setPanelLeft(left);
   }, [anchorRef, ref]);
 

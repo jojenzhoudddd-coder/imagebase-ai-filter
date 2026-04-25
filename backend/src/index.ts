@@ -180,12 +180,15 @@ app.get("/api/workspaces/:workspaceId/tables", async (req, res) => {
 app.get("/api/workspaces/:workspaceId/stats", async (req, res) => {
   const { workspaceId } = req.params;
   try {
-    const [ws, tables, ideas, designs, demos, tokenAgg] = await Promise.all([
+    const [ws, tables, ideas, designs, demos, published, tokenAgg] = await Promise.all([
       getWorkspace(workspaceId),
       prismaForStats.table.count({ where: { workspaceId } }),
       prismaForStats.idea.count({ where: { workspaceId } }),
       prismaForStats.design.count({ where: { workspaceId } }),
       prismaForStats.demo.count({ where: { workspaceId } }),
+      // workend = 已发布作品数量（V1 仅 demo 有 publishSlug 概念；后续多种 artifact
+      // 都能 publish 时这里改成跨类型聚合）
+      prismaForStats.demo.count({ where: { workspaceId, publishSlug: { not: null } } }),
       prismaForStats.tokenUsage
         .aggregate({
           _sum: { totalTokens: true },
@@ -197,8 +200,13 @@ app.get("/api/workspaces/:workspaceId/stats", async (req, res) => {
       res.status(404).json({ error: "Workspace not found" });
       return;
     }
+    const artifacts = tables + ideas + designs + demos;
     res.json({
       workspaceId,
+      // 合并后的两个核心数字
+      artifacts,
+      published,
+      // 细分明细保留 —— 内部接口可能要看
       tables,
       ideas,
       designs,

@@ -26,6 +26,11 @@ interface Props {
 }
 
 interface WorkspaceStats {
+  /** tables + ideas + designs + demos */
+  artifacts: number;
+  /** 已发布作品数（V1 = 已发布 demo 数量） */
+  published: number;
+  /** 兼容字段（细分明细） */
   tables: number;
   ideas: number;
   designs: number;
@@ -54,14 +59,23 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
   const { preference: themePreference, setTheme } = useTheme();
 
   // ── Workspace stats ──
-  // /me 完成后或 workspaceId 切换时拉 stats，用于顶栏右栏显示
-  // artifact 数 / token 总量 / AI 摘要 + slogan。
-  // SSE 同步事件能让本地 ±1，但简单起见这里暂不接 SSE，5 分钟自动 refetch。
+  // 三种刷新触发：
+  //   1. 初始挂载 / workspaceId 切换 → 立刻拉
+  //   2. 工作区 SSE 收到任何 artifact CRUD 事件（订阅同 channel；忽略来源自身的回声）
+  //   3. window 自定义事件 "workspace-stats-changed"（chat done / token 写入后等显式
+  //      触发的场景由其它组件 dispatch 给我们）
+  // 还保留一个 60s 兜底轮询，防止 SSE 断了或漏掉的事件。
   const [stats, setStats] = useState<WorkspaceStats | null>(null);
+  const lastFetchRef = useRef<number>(0);
   useEffect(() => {
     if (!workspaceId) return;
     let alive = true;
+
     const fetchStats = async () => {
+      // 200ms 防抖：多个事件挤在一起时合并为一次请求
+      const now = Date.now();
+      if (now - lastFetchRef.current < 200) return;
+      lastFetchRef.current = now;
       try {
         const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/stats`, {
           credentials: "same-origin",
@@ -71,9 +85,41 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
         if (alive) setStats(data);
       } catch { /* ignore */ }
     };
+
+    // 初次拉
     fetchStats();
-    const id = window.setInterval(fetchStats, 5 * 60 * 1000);
-    return () => { alive = false; window.clearInterval(id); };
+    // 兜底定时（60s —— 比之前 5min 更短，是因为它只是兜底；正常情况下 SSE/事件已实时更新）
+    const intervalId = window.setInterval(fetchStats, 60 * 1000);
+
+    // SSE: 工作区事件（artifact CRUD / publish / unpublish 等都触发刷新）
+    const sseUrl = `/api/sync/workspaces/${encodeURIComponent(workspaceId)}/events?clientId=topbar-stats`;
+    const es = new EventSource(sseUrl);
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedFetch = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        // 跳过自身防抖（因为我们也用 lastFetchRef 防抖）
+        lastFetchRef.current = 0;
+        fetchStats();
+      }, 250);
+    };
+    es.addEventListener("workspace-change", debouncedFetch);
+
+    // 自定义事件：chat done / 其它会改 token 的场景
+    const onCustom = () => {
+      lastFetchRef.current = 0;
+      fetchStats();
+    };
+    window.addEventListener("workspace-stats-changed", onCustom);
+
+    return () => {
+      alive = false;
+      window.clearInterval(intervalId);
+      try { es.close(); } catch { /* noop */ }
+      if (debounceTimer) clearTimeout(debounceTimer);
+      window.removeEventListener("workspace-stats-changed", onCustom);
+    };
   }, [workspaceId]);
 
   // 主题切换：先调本地 setTheme（更新 localStorage / data-theme / 广播），
@@ -286,23 +332,24 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
             </span>
             {/* pin 按钮已删除 */}
           </div>
-          {/* Row 2 —— 工作区指标 + AI 摘要（替换原 L2 / lastModified / public-warning） */}
+          {/* Row 2 —— 工作区指标 + AI 摘要（替换原 L2 / lastModified / public-warning）
+              小 icon 加在每个 stat 前，左对齐到上方 username 起点 —— info-row 的
+              padding-left 与 .topbar-crumb 的 horizontal padding 对齐（4px） */}
           <div className="topbar-info-row">
-            <span className="topbar-stat" title={t("topbar.statsTitle")}>
-              <span className="topbar-stat-num">{stats?.tables ?? 0}</span>
-              <span className="topbar-stat-label">{t("topbar.statTable")}</span>
-              <span className="topbar-stat-dot">·</span>
-              <span className="topbar-stat-num">{stats?.ideas ?? 0}</span>
-              <span className="topbar-stat-label">{t("topbar.statIdea")}</span>
-              <span className="topbar-stat-dot">·</span>
-              <span className="topbar-stat-num">{stats?.designs ?? 0}</span>
-              <span className="topbar-stat-label">{t("topbar.statTaste")}</span>
-              <span className="topbar-stat-dot">·</span>
-              <span className="topbar-stat-num">{stats?.demos ?? 0}</span>
-              <span className="topbar-stat-label">{t("topbar.statDemo")}</span>
+            <span className="topbar-stat" title={t("topbar.statArtifactsTitle")}>
+              <StackIcon />
+              <span className="topbar-stat-num">{stats?.artifacts ?? 0}</span>
+              <span className="topbar-stat-label">{t("topbar.statArtifacts")}</span>
+            </span>
+            <span className="topbar-info-sep" />
+            <span className="topbar-stat" title={t("topbar.statWorkendTitle")}>
+              <GlobeIcon />
+              <span className="topbar-stat-num">{stats?.published ?? 0}</span>
+              <span className="topbar-stat-label">{t("topbar.statWorkend")}</span>
             </span>
             <span className="topbar-info-sep" />
             <span className="topbar-stat" title={t("topbar.tokenTitle")}>
+              <SparkIcon />
               <span className="topbar-stat-num">{formatTokenCount(stats?.totalTokens ?? 0)}</span>
               <span className="topbar-stat-label">tokens</span>
             </span>
@@ -620,5 +667,39 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
         />
       )}
     </div>
+  );
+}
+
+/* ─── Stat icons ─────────────────────────────────────────────────────────
+   12px 线性 icon，跟随父级 color。三个 stat 各一个语义对应的图标。 */
+
+function StackIcon() {
+  // 三层叠放矩形 —— 表达"全部资产/集合"
+  return (
+    <svg className="topbar-stat-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M6 1.2L1.5 3.4 6 5.6l4.5-2.2L6 1.2z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+      <path d="M1.5 6L6 8.2 10.5 6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M1.5 8.6L6 10.8 10.5 8.6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function GlobeIcon() {
+  // 地球 —— 表达"已发布 / 公开作品"
+  return (
+    <svg className="topbar-stat-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.1"/>
+      <ellipse cx="6" cy="6" rx="2" ry="4.5" stroke="currentColor" strokeWidth="1.0"/>
+      <path d="M1.5 6h9" stroke="currentColor" strokeWidth="1.0" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function SparkIcon() {
+  // 闪电/火花 —— 表达 token 消耗量
+  return (
+    <svg className="topbar-stat-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M6.5 1L3 7h2.5L5 11l3.5-6H6L6.5 1z" stroke="currentColor" strokeWidth="1.0" strokeLinejoin="round"/>
+    </svg>
   );
 }
