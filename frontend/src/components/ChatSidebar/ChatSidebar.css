@@ -82,8 +82,11 @@
   transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
 }
 .chat-model-picker-btn:hover {
-  background: var(--surface-inset);
-  border-color: var(--border-default);
+  /* 对齐 artifact topbar 的 icon 按钮 hover 视觉(.table-topbar-btn /
+     .idea-editor-topbar-btn 等):surface-3 背景 + text-primary 文字,不加 border. */
+  background: var(--surface-3);
+  color: var(--text-primary);
+  border-color: transparent;
 }
 .chat-model-picker-btn:disabled {
   color: var(--text-muted);
@@ -133,8 +136,9 @@
   transition: background 100ms ease, color 100ms ease;
 }
 .chat-header-btn:hover {
-  background: var(--surface-inset);
-  color: var(--icon-primary);
+  /* 对齐 artifact topbar 的 icon 按钮 hover 视觉 */
+  background: var(--surface-3);
+  color: var(--text-primary);
 }
 .chat-header-btn:disabled {
   /* Grey-out state — used on the welcome page to signal "nothing to reset" */
