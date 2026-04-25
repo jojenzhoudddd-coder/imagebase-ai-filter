@@ -73,22 +73,50 @@ function ChatChartBlockInner({ spec, height = 280, caption }: ChatChartBlockProp
         const mod = await import("vega-embed");
         if (cancelled || !hostRef.current) return;
         const embed = (mod as { default?: any }).default ?? mod;
-        // DM 适配:
-        //  - vega-embed 内置 "dark" 主题(深底浅字),light 用默认无主题
-        //  - 透明背景让图表自然吃宿主容器的 dm/lm 背景色
-        //  - tooltip theme 也跟随
+        // DM 适配:不依赖 vega-themes 的命名主题(注册时机 / tree-shake 不可靠),
+        // 直接 merge 一份 config 把轴/网格/图例/标题文字色全切到浅色;background
+        // 透明让图表吃宿主卡片的 surface 颜色。
         const isDark = resolvedTheme === "dark";
+        const dmConfig = isDark ? {
+          background: "transparent",
+          view: { stroke: "transparent" },
+          axis: {
+            domainColor: "#646A73",
+            tickColor: "#646A73",
+            gridColor: "rgba(229, 230, 235, 0.08)",
+            labelColor: "#C7C9CC",
+            titleColor: "#E5E6EB",
+          },
+          legend: {
+            labelColor: "#C7C9CC",
+            titleColor: "#E5E6EB",
+          },
+          title: { color: "#E5E6EB" },
+          header: { labelColor: "#C7C9CC", titleColor: "#E5E6EB" },
+          text: { color: "#C7C9CC" },
+        } : undefined;
+        // 深合并 config —— 用户(spec.config)优先于 DM 默认,但仅覆盖具体字段,
+        // 不要让用户的 axis.titleFontSize 把我们整个 axis.{labelColor,gridColor,...}
+        // 清空。
+        const userConfig = ((spec as any).config ?? {}) as Record<string, any>;
+        const mergedConfig: Record<string, any> = { ...(dmConfig ?? {}) };
+        for (const [k, v] of Object.entries(userConfig)) {
+          if (v && typeof v === "object" && !Array.isArray(v) && mergedConfig[k] && typeof mergedConfig[k] === "object") {
+            mergedConfig[k] = { ...mergedConfig[k], ...v };
+          } else {
+            mergedConfig[k] = v;
+          }
+        }
         const enriched = {
           ...spec,
           width: (spec as any).width ?? "container",
           height: (spec as any).height ?? height,
-          // 强制透明背景,这样 dm 下不会出现"白色矩形浮在深色容器上"的视觉断层
-          background: (spec as any).background ?? "transparent",
+          background: "transparent",
+          config: mergedConfig,
         };
         await embed(hostRef.current, enriched as any, {
           actions: false,
           renderer: "svg",
-          theme: isDark ? "dark" : undefined,
           tooltip: { theme: isDark ? "dark" : "light" },
         });
         if (!cancelled) setRendering(false);
