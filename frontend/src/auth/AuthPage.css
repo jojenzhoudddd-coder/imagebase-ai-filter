@@ -24,9 +24,13 @@
   font-size: 14px;
   line-height: 22px;
   box-sizing: border-box;
-  /* LM 底图 —— public/auth-bg-lm.png。DM 用 [data-theme="dark"] override
-   * 切到 auth-bg-dm.png（见文件末尾）。兜底色取自 LM 图主色。 */
-  background: #BEBBE3 url("/auth-bg-lm.png") center / cover no-repeat;
+  /* LM 底图 —— public/auth-bg-lm.png + 20% 白色 veil（让底图整体淡 20%
+   * 不抢视觉）。DM 在 [data-theme="dark"] override 里用对应暗色 veil。
+   * background-color 走 --surface-base token，加载途中颜色与最终一致。 */
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.2)),
+    url("/auth-bg-lm.png") center / cover no-repeat;
+  background-color: var(--surface-base);
   overflow: hidden;
 }
 
@@ -380,8 +384,13 @@
  * 紫色主调。Form pane 已经走 --surface-2 token 自动翻色。
  * ────────────────────────────────────────────────────────────────────── */
 [data-theme="dark"] .auth-shell {
-  /* DM 专用底图 —— public/auth-bg-dm.png。兜底色取暗中性。 */
-  background: #18181C url("/auth-bg-dm.png") center / cover no-repeat;
+  /* DM 专用底图 —— public/auth-bg-dm.png + 20% 暗色 veil。
+   * background-color 走 --surface-base token = #1C1C1E，加载途中
+   * 颜色与最终图色一致，无闪烁。 */
+  background:
+    linear-gradient(rgba(28, 28, 30, 0.2), rgba(28, 28, 30, 0.2)),
+    url("/auth-bg-dm.png") center / cover no-repeat;
+  background-color: var(--surface-base);
 }
 
 [data-theme="dark"] .auth-hero {
