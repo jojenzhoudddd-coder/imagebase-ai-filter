@@ -492,41 +492,46 @@
  * padding 14 四周；avatar 与 info 之间 12 间距；info 内 name/email 上下
  * 对齐 avatar 顶/底（align-items stretch + space-between）。 */
 .topbar-profile-header {
-  padding: 14px;
+  padding: 16px;
   display: flex;
   flex-direction: row;
   /* Lark _pp-panel-header 模式：avatar 与文字块整体竖直居中（不是 stretch
-   * 上下撑开）。avatar 居中在 header 高度内、文字块紧凑两行也居中，整体
-   * 视觉一致。 */
+   * 上下撑开）。avatar 48px、文字 24+24=48px,两侧高度对齐自然居中。 */
   align-items: center;
   gap: 12px;
 }
 
-/* info 紧凑两行，自然堆叠 + 小 gap，整体竖直居中由父级处理 */
+/* info 两行: name(24px line-height) + email(24px line-height),无额外 gap,
+   整体高度 48px 与 avatar 48px 一致,父级 align-items:center 自然两侧居中. */
 .topbar-profile-info {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
 }
 
-/* name 行包一层 wrapper 处理过长省略 */
+/* name 行包一层 wrapper 处理过长省略；行高 24px,字号在 .topbar-profile-username 设 */
 .topbar-profile-name-wrap {
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
   vertical-align: top;
   cursor: inherit;
-  line-height: 22px;
+  line-height: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
 }
 
-/* tenant 行（容纳 email + 未来的 tag chip） */
+/* tenant 行（容纳 email + 未来的 tag chip）；行高 24px,文字上下居中 */
 .topbar-profile-tenant {
   display: flex;
   align-items: center;
   gap: 4px;
   min-width: 0;
+  height: 24px;
+  line-height: 24px;
 }
 
 /* 第一根分割线（header 与菜单项之间）拉近距离 —— 默认 flex gap 4 +
@@ -582,26 +587,26 @@
 /* username 现在是 .topbar-profile-name-wrap 内的 <span>；overflow 由
  * wrapper 处理，username 自身只管字号 / 字重 / 颜色。 */
 .topbar-profile-username {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
-  line-height: 22px;
+  line-height: 24px;
 }
 /* InlineEdit 组件内部的 text span / input 继承容器字号 */
 .topbar-profile-username .inline-edit-text,
 .topbar-profile-username .inline-edit-input {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
 }
 .topbar-profile-username .inline-edit-text { cursor: text; padding: 0; }
 .topbar-profile-username .inline-edit-input { padding: 2px 6px; }
 
 .topbar-profile-email {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-muted);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 16px;
+  line-height: 24px;
 }
