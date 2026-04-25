@@ -78,21 +78,130 @@
 }
 [data-theme="dark"] body { background: #16181D; color: var(--color-text-primary); }
 
-/* 通用组件的 dark 适配（只覆盖我们已有代码里高频出现的硬编码色）。 */
+/* ─── Dark mode broad coverage ─────────────────────────────────────────
+ * 参考 macOS / Linear / Notion 的 DM 处理：primary text 用 #E6E8EB（不用
+ * 纯白，否则对比过强刺眼），secondary #A6ADB6，各层表面用 #16181D /
+ * #1B1E24 / #22262D。下面把 codebase 里高频出现的硬编码白/浅灰通过
+ * class 选择器和 attribute 选择器批量改色。 */
+
+/* 1. 通用表面 —— 所有指向 #FFFFFF / #fff 的 inline style 没法抓，但用
+ *    var(--color-white) 的已自动走 token；这里补一批常见的 class 白底。 */
+[data-theme="dark"] .sidebar,
+[data-theme="dark"] .topbar,
+[data-theme="dark"] .table-view,
+[data-theme="dark"] .table-container,
+[data-theme="dark"] .chat-sidebar,
+[data-theme="dark"] .chat-messages,
+[data-theme="dark"] .chat-input-wrap,
+[data-theme="dark"] .idea-editor,
+[data-theme="dark"] .svg-canvas,
+[data-theme="dark"] .demo-preview-panel,
+[data-theme="dark"] .field-config-panel,
+[data-theme="dark"] .filter-panel,
+[data-theme="dark"] .auth-form-pane {
+  background: #1B1E24;
+  color: #E6E8EB;
+}
+
+[data-theme="dark"] body,
+[data-theme="dark"] .workspace,
+[data-theme="dark"] .artifact-part,
+[data-theme="dark"] .chat-part {
+  background: #16181D;
+  color: #E6E8EB;
+}
+
+/* 2. Topbar / menu —— 单独覆盖（这一块是 popover 所在，视觉高优先级） */
+[data-theme="dark"] .topbar { border-bottom-color: #2A2F37; }
+[data-theme="dark"] .topbar-breadcrumb,
+[data-theme="dark"] .topbar-crumb,
+[data-theme="dark"] .topbar-crumb-current { color: #E6E8EB; }
+[data-theme="dark"] .topbar-divider,
+[data-theme="dark"] .topbar-badge-divider { background: #2A2F37; }
+[data-theme="dark"] .topbar-icon-btn { color: #E6E8EB; }
+[data-theme="dark"] .topbar-icon-btn:hover { background: #2C313A; }
 [data-theme="dark"] .topbar-menu,
 [data-theme="dark"] .topbar-submenu {
   background: #22262D;
   border-color: #353B45;
-  color: var(--color-text-primary);
+  color: #E6E8EB;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
+[data-theme="dark"] .topbar-menu-item,
+[data-theme="dark"] .topbar-menu-label,
+[data-theme="dark"] .topbar-menu-icon { color: #E6E8EB; }
 [data-theme="dark"] .topbar-menu-item:hover,
 [data-theme="dark"] .topbar-submenu .topbar-menu-item:hover { background: #2C313A; }
 [data-theme="dark"] .topbar-menu-divider { background: #2A2F37; }
-[data-theme="dark"] .topbar-profile-username { color: #F3F4F6; }
-[data-theme="dark"] .topbar-profile-username:hover { background: #2C313A; }
-[data-theme="dark"] .topbar-profile-email { color: #7A828E; }
-[data-theme="dark"] .inline-edit-input { background: #16181D; color: #F3F4F6; border-color: #1456F0; }
+[data-theme="dark"] .topbar-profile-username,
+[data-theme="dark"] .topbar-profile-username .inline-edit-text { color: #E6E8EB; }
+[data-theme="dark"] .topbar-profile-email { color: #A6ADB6; }
+[data-theme="dark"] .inline-edit-input { background: #16181D; color: #E6E8EB; border-color: #1456F0; }
+
+/* 3. Sidebar */
+[data-theme="dark"] .sidebar { border-right-color: #2A2F37; }
+[data-theme="dark"] .sidebar-item { color: #E6E8EB; }
+[data-theme="dark"] .sidebar-item:hover { background: #22262D; }
+[data-theme="dark"] .sidebar-item.active { background: #2F3440; color: #E6E8EB; }
+[data-theme="dark"] .sidebar-icon,
+[data-theme="dark"] .sidebar-label,
+[data-theme="dark"] .sidebar-icon-btn { color: #E6E8EB; }
+[data-theme="dark"] .sidebar-search-trigger {
+  background: #22262D;
+  color: #A6ADB6;
+  border-color: #353B45;
+}
+
+/* 4. 批量抓所有内联 SVG 上常见的硬编码浅色 fill —— 改成软白 E6E8EB。
+ *    这是针对顶栏 / 侧栏 / 面板里大量 hardcoded 图标最省事的办法。 */
+[data-theme="dark"] svg path[fill="#2B2F36"],
+[data-theme="dark"] svg path[fill="#1F2329"],
+[data-theme="dark"] svg path[fill="#646A73"],
+[data-theme="dark"] svg path[fill="#8F959E"],
+[data-theme="dark"] svg path[fill="#333333"],
+[data-theme="dark"] svg rect[fill="#2B2F36"] { fill: #E6E8EB; }
+[data-theme="dark"] svg path[stroke="#2B2F36"],
+[data-theme="dark"] svg path[stroke="#1F2329"],
+[data-theme="dark"] svg path[stroke="#646A73"] { stroke: #E6E8EB; }
+
+/* 5. 输入框 / 按钮通用 */
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  background: #16181D;
+  color: #E6E8EB;
+  border-color: #353B45;
+}
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder { color: #5A6270; }
+
+/* 6. 弹窗 / modal 通用（非 auth） */
+[data-theme="dark"] .confirm-dialog,
+[data-theme="dark"] .avatar-crop-card,
+[data-theme="dark"] .dropdown-menu {
+  background: #22262D;
+  color: #E6E8EB;
+  border-color: #353B45;
+}
+
+/* 7. Chat sidebar 的关键色（高频可见） */
+[data-theme="dark"] .chat-header,
+[data-theme="dark"] .chat-title,
+[data-theme="dark"] .chat-message { color: #E6E8EB; }
+[data-theme="dark"] .chat-user-bubble { background: #1F3A66; color: #E6E8EB; }
+[data-theme="dark"] .chat-tool-card {
+  background: #1B1E24;
+  border-color: #353B45;
+  color: #E6E8EB;
+}
+
+/* 8. Table 视图最基础的色 —— 深色 bg + 可读文字；精细样式（单元格边框、
+ *    行 hover、列 resize 条等）留给后续针对性补全。 */
+[data-theme="dark"] .table-row { border-bottom-color: #2A2F37; }
+[data-theme="dark"] .table-row:hover { background: #22262D; }
+[data-theme="dark"] .table-cell { color: #E6E8EB; }
+[data-theme="dark"] .table-header,
+[data-theme="dark"] .table-header-cell { background: #16181D; color: #E6E8EB; }
 
 html, body {
   height: 100%;

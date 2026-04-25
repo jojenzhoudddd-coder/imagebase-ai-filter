@@ -234,15 +234,20 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-m);
   box-shadow: var(--shadow-dropdown);
-  padding: 4px;
+  padding: 6px;
   width: 220px;
+  /* 各 option 之间 4px 间距，用 flex gap（头部 / divider 也会承接这个 gap，
+   * 视觉更规整）。 */
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .topbar-menu-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 32px;
+  height: 40px;
   padding: 0 12px;
   border-radius: var(--radius-s);
   cursor: pointer;
@@ -408,8 +413,8 @@
   }
 }
 
-/* ─── Profile popover (merged avatar menu) —— 水平布局 ─── */
-.topbar-profile-popover { min-width: 260px; padding-top: 0; }
+/* ─── Profile popover (merged avatar menu) —— 水平布局 + 固定 280px ─── */
+.topbar-profile-popover { width: 280px; padding-top: 0; }
 
 /* Header 从垂直改为水平：左 avatar（48px）+ 右 name/email 块。 */
 .topbar-profile-header {
