@@ -32,7 +32,7 @@
 .topbar-divider {
   width: 1px;
   height: 32px;
-  background: rgba(31, 35, 41, 0.15);
+  background: var(--border-default);
   flex-shrink: 0;
 }
 
@@ -127,7 +127,7 @@
 .topbar-badge-divider {
   width: 1px;
   height: 12px;
-  background: rgba(31, 35, 41, 0.15);
+  background: var(--border-default);
   flex-shrink: 0;
 }
 

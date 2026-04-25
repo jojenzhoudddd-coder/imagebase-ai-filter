@@ -132,9 +132,10 @@
   --text-disabled:       #545458;
   --text-link:           #6B9AFF;
 
-  /* ── Border ─── 中性灰，对比 surface-base #1C1C1E 可见但不抢视觉 */
+  /* ── Border ─── 三档：light < default < strong；DM 下都对中性灰 #1C1C1E
+   * 底可见，但 light 比 default 略弱用于单元格 / 内部分隔。 */
   --border-default:      #444446;
-  --border-light:        #2E2E30;
+  --border-light:        #38383A;
   --border-strong:       #5C5C5E;
   --border-focus:        #6B9AFF;
 

@@ -49,6 +49,31 @@ function applyToDocument(resolved: ResolvedTheme) {
  */
 applyToDocument(resolveEffective(readStoredPreference()));
 
+/**
+ * useResolvedTheme —— 任何组件都可以订阅当前 resolved theme（"light" | "dark"），
+ * 当用户切换主题或系统主题改变时会自动 re-render。原理：MutationObserver
+ * 监听 `<html data-theme>` 属性变化，比让 useTheme 全局共享 state 简单。
+ */
+export function useResolvedTheme(): ResolvedTheme {
+  const [theme, setThemeState] = useState<ResolvedTheme>(() =>
+    typeof document !== "undefined" && document.documentElement.dataset.theme === "dark"
+      ? "dark"
+      : "light"
+  );
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const html = document.documentElement;
+    const update = () => {
+      setThemeState(html.dataset.theme === "dark" ? "dark" : "light");
+    };
+    const observer = new MutationObserver(update);
+    observer.observe(html, { attributes: true, attributeFilter: ["data-theme"] });
+    update(); // 同步首次值
+    return () => observer.disconnect();
+  }, []);
+  return theme;
+}
+
 export function useTheme(): {
   preference: ThemePreference;
   resolved: ResolvedTheme;
