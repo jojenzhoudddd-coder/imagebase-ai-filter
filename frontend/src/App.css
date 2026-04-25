@@ -46,12 +46,13 @@
   background: var(--surface-2);
   position: relative;
   order: 3;
-  /* Symmetric 20px padding on left / right / bottom so the chat UI insets
-   * uniformly from its card. The move-bar still sits absolutely positioned
-   * at bottom:4px regardless of the inner padding.
-   * Mirror rule of artifact-part: only the top corner facing artifact is
-   * rounded. Default layout places chat on the right, so round top-left. */
-  padding: 0 20px 20px 20px;
+  /* 仅保留 20px 底部内缩 —— 左右 padding 由各内容块自管。这样 .chat-header
+     可以贯穿左右两侧（full-bleed），内部自己设 padding-left:20px / padding-right:8px,
+     与 artifact topbar 的视觉一致;.chat-messages / .chat-input-wrap 自己加
+     左右 20px padding 维持原对齐。
+     Mirror rule of artifact-part: only the top corner facing artifact is
+     rounded. Default layout places chat on the right, so round top-left. */
+  padding: 0 0 20px 0;
   border: 1px solid var(--border-default);
   border-radius: 8px 0 0 0;
 }
