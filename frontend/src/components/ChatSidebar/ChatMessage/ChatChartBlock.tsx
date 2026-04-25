@@ -77,23 +77,43 @@ function ChatChartBlockInner({ spec, height = 280, caption }: ChatChartBlockProp
         // 直接 merge 一份 config 把轴/网格/图例/标题文字色全切到浅色;background
         // 透明让图表吃宿主卡片的 surface 颜色。
         const isDark = resolvedTheme === "dark";
+        // DM 调色盘
+        const DM_SURFACE = "#2C2C2E";   // 卡片背景色 / 数据缺失格的填充
+        const DM_BORDER  = "#646A73";   // 轴线 / tick
+        const DM_LABEL   = "#C7C9CC";   // 文字
+        const DM_TITLE   = "#E5E6EB";
+        // DM 下用一组深→浅蓝渐变作为热力图默认 scheme(覆盖 vega-lite 默认的
+        // "blues",原 scheme 0 端是纯白,DM 下最刺眼)
+        const DM_HEATMAP_RANGE = ["#1E3A8A", "#3B5BDB", "#7A99FF", "#B0C4FF"];
         const dmConfig = isDark ? {
           background: "transparent",
-          view: { stroke: "transparent" },
+          // view.fill 设成卡片色 → 数据缺失格透出来也是和外层卡片一致的灰,
+          // 不再是"纯黑空洞"; view.stroke 透明去掉外框
+          view: { fill: DM_SURFACE, stroke: "transparent" },
           axis: {
-            domainColor: "#646A73",
-            tickColor: "#646A73",
+            domainColor: DM_BORDER,
+            tickColor: DM_BORDER,
             gridColor: "rgba(229, 230, 235, 0.08)",
-            labelColor: "#C7C9CC",
-            titleColor: "#E5E6EB",
+            labelColor: DM_LABEL,
+            titleColor: DM_TITLE,
           },
           legend: {
-            labelColor: "#C7C9CC",
-            titleColor: "#E5E6EB",
+            labelColor: DM_LABEL,
+            titleColor: DM_TITLE,
+            gradientStrokeColor: "transparent",
           },
-          title: { color: "#E5E6EB" },
-          header: { labelColor: "#C7C9CC", titleColor: "#E5E6EB" },
-          text: { color: "#C7C9CC" },
+          title: { color: DM_TITLE },
+          header: { labelColor: DM_LABEL, titleColor: DM_TITLE },
+          text: { color: DM_LABEL },
+          // 关键: rect / cell mark 的默认 stroke 改成 surface 色 —— 等同于
+          // LM 默认 white-on-white 的"无形分隔":DM 下 dark-on-dark,heatmap /
+          // gantt 单元格之间的白色细线消失。
+          rect: { stroke: DM_SURFACE },
+          cell: { stroke: DM_SURFACE },
+          mark: { stroke: DM_SURFACE },
+          // 默认色阶替换 —— 让连续 quantitative 色阶低端从 surface 色起,
+          // 不再有刺眼白色低端。用户自定义 scheme 不受影响(spec.config.range 优先)
+          range: { heatmap: DM_HEATMAP_RANGE, ramp: DM_HEATMAP_RANGE },
         } : undefined;
         // 深合并 config —— 用户(spec.config)优先于 DM 默认,但仅覆盖具体字段,
         // 不要让用户的 axis.titleFontSize 把我们整个 axis.{labelColor,gridColor,...}
