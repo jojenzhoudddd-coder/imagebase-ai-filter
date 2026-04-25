@@ -255,7 +255,7 @@ export default function ChatSidebar({
         if (activeConv?.id) {
           try {
             // 初次只拉最新 30 条; 用户向上滚到顶时再分页加载更老消息(loadOlderMessages).
-            const { conversation, messages: serverMsgs, hasMore } = await getConversationMessages(activeConv.id, { limit: 30 });
+            const { conversation, messages: serverMsgs, hasMore } = await getConversationMessages(activeConv.id, { limit: 20 });
             setActiveConv(conversation);
             setHasMoreHistory(hasMore);
             if (!streamingRef.current) {
@@ -269,7 +269,7 @@ export default function ChatSidebar({
         const list = await listConversations(workspaceId);
         if (list.length > 0) {
           const conv = list[0];
-          const { messages: msgs, hasMore } = await getConversationMessages(conv.id, { limit: 30 });
+          const { messages: msgs, hasMore } = await getConversationMessages(conv.id, { limit: 20 });
           setActiveConv(conv);
           setHasMoreHistory(hasMore);
           if (!streamingRef.current) {
@@ -329,7 +329,7 @@ export default function ChatSidebar({
     const prevHeight = el?.scrollHeight ?? 0;
     try {
       const { messages: older, hasMore } = await getConversationMessages(activeConv.id, {
-        limit: 30,
+        limit: 20,
         before: oldest.id,
       });
       if (older.length > 0) {
@@ -805,6 +805,14 @@ export default function ChatSidebar({
         onCancel={() => setRefreshConfirmOpen(false)}
       />
       <div className="chat-messages" ref={scrollRef}>
+        {/* 历史分页 loading 指示 —— 滚到顶时 fetch 老消息,在最上方显示 spinner */}
+        {loadingOlder && (
+          <div className="chat-history-loading" role="status" aria-live="polite">
+            <span className="chat-history-loading-dot" />
+            <span className="chat-history-loading-dot" />
+            <span className="chat-history-loading-dot" />
+          </div>
+        )}
         {messages.length === 0 && !error && (
           <EmptyState
             contextHint={contextHint}

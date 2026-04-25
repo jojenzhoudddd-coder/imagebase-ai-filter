@@ -35,6 +35,10 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  /* topbar 用 justify-content: space-between,但当 sidebar 收起时左边多了
+     <SidebarExpandButton/>,space-between 会把中间的 title 顶到正中。
+     用 margin-left: auto 把 actions 固定靠右,标题永远靠左。 */
+  margin-left: auto;
 }
 
 .idea-editor-status {

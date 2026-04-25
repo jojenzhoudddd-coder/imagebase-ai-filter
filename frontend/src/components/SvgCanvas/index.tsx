@@ -1136,7 +1136,14 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
           />
         </span>
         <div className="svg-canvas-topbar-actions">
-          {/* ── Add content ── */}
+          {/* Zoom indicator —— 移到 Upload 左侧（用户偏好) */}
+          <span className="svg-canvas-zoom-label">{zoomPercent}%</span>
+
+          <span className="svg-canvas-topbar-sep" />
+
+          {/* Upload —— Figma / Paste SVG 入口按钮已下线（功能保留: handler
+              函数 + figmaPopover 仍在,Agent / 编程调用入口可继续触发；
+              UI 上只保留 Upload + Layout 两个高频动作） */}
           <button
             className="svg-canvas-topbar-btn"
             onClick={() => fileInputRef.current?.click()}
@@ -1152,42 +1159,10 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
             style={{ display: "none" }}
             onChange={handleFileInput}
           />
-          <button
-            className="svg-canvas-topbar-btn"
-            onClick={() => {
-              setFigmaPopoverOpen(!figmaPopoverOpen);
-              setFigmaError("");
-            }}
-          >
-            {FIGMA_ICON}
-            {t("design.importFigma")}
-          </button>
-          <button
-            className="svg-canvas-topbar-btn"
-            title={t("design.pasteSvgHint")}
-            onClick={async () => {
-              try {
-                const text = await navigator.clipboard.readText();
-                if (!text) {
-                  toast.error(t("design.pasteSvgEmpty"));
-                  return;
-                }
-                const ok = await handleSvgPaste(text);
-                if (!ok) toast.error(t("design.pasteSvgInvalid"));
-              } catch {
-                // Clipboard API blocked (Safari / insecure context / no permission) —
-                // fall back to hinting the user to use ⌘V / Ctrl+V directly.
-                toast.error(t("design.pasteSvgClipboardBlocked"));
-              }
-            }}
-          >
-            {PASTE_ICON}
-            {t("design.pasteSvg")}
-          </button>
 
           <span className="svg-canvas-topbar-sep" />
 
-          {/* ── Canvas actions ── */}
+          {/* Layout —— 之前 "Auto Layout",简化命名 */}
           <button
             className="svg-canvas-topbar-btn"
             onClick={handleAutoLayout}
@@ -1196,11 +1171,6 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
             {LAYOUT_ICON}
             {t("design.autoLayout")}
           </button>
-
-          <span className="svg-canvas-topbar-sep" />
-
-          {/* ── Zoom indicator ── */}
-          <span className="svg-canvas-zoom-label">{zoomPercent}%</span>
         </div>
       </div>
 

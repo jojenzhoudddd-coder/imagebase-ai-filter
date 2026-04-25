@@ -208,11 +208,34 @@ export async function appendMessage(
 /**
  * 拉对话历史。三种模式：
  *   1. 默认（无 limit / before） → 拉全部（保留旧行为给 chatAgentService 内部 用,
- *      它需要完整窗口做滑动裁剪 + summary 拼接）。
+ *      它需要完整窗口做滑动裁剪 + summary 拼接,这条路径不裁剪 toolResult）。
  *   2. limit=N → 拉最新 N 条（按 timestamp asc 返回,直接渲染顺序）。
  *   3. limit=N + before=<msgId> → 拉 before 这条之前的最新 N 条。前端 ChatSidebar
- *      初次以 limit=30 拉,用户向上滚到顶时再以 before=<最早 id>+limit=30 拉一页。
+ *      初次以 limit=20 拉,用户向上滚到顶时再以 before=<最早 id>+limit=20 拉一页。
+ *
+ * 分页路径下,巨型 toolResult / toolCalls.result 会被裁剪到 4 KB —— 一条 demo build
+ * 输出 / 大表 query 可以达到 200KB,30 条历史就 6MB,拉一次要十几秒。截断后前端展示
+ * "查看全文"再单独 fetch 完整内容（V2 接口）。
  */
+const TOOL_PAYLOAD_TRIM_BYTES = 4096;
+function trimToolPayload(value: unknown): unknown {
+  if (typeof value === "string") {
+    if (value.length <= TOOL_PAYLOAD_TRIM_BYTES) return value;
+    return value.slice(0, TOOL_PAYLOAD_TRIM_BYTES) + `\n…[truncated, original ${value.length} chars]`;
+  }
+  if (Array.isArray(value)) {
+    return value.map(trimToolPayload);
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = trimToolPayload(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 export async function getMessages(
   conversationId: string,
   opts: { limit?: number; before?: string } | number = {}
@@ -249,7 +272,7 @@ export async function getMessages(
   const rows = await prisma.message.findMany({
     where,
     orderBy: { timestamp: "desc" },
-    take: limit ?? 30,
+    take: limit ?? 20,
   });
   // hasMore：DB 是否还有更老的消息
   let hasMore = false;
@@ -260,5 +283,11 @@ export async function getMessages(
     });
     hasMore = olderCount > 0;
   }
-  return { messages: rows.reverse().map(toMessage), hasMore };
+  // 分页路径下裁剪超大 tool payload —— 见上方注释
+  const trimmed: Message[] = rows.reverse().map(toMessage).map((m) => ({
+    ...m,
+    toolCalls: m.toolCalls?.map((c) => ({ ...c, result: trimToolPayload(c.result) as any })),
+    toolResult: trimToolPayload(m.toolResult),
+  }));
+  return { messages: trimmed, hasMore };
 }

@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import compression from "compression";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import path from "path";
@@ -53,6 +54,18 @@ const treePrisma = new PrismaClient({ adapter } as any);
 const prismaForStats = treePrisma;
 
 app.use(cors());
+// gzip 压缩 ALL JSON / HTML / CSS / JS responses。nginx 没配 gzip,后端这里
+// 兜底压一下;SSE 流（text/event-stream）会自动跳过(compression 内置识别)。
+// 实测：chat /messages 响应 5.2MB → ~150KB(34×),延迟从 160s 降到 ~2s。
+app.use(compression({
+  // 不要压 SSE —— 否则浏览器一直等到全段才解,实时性破坏
+  filter: (req, res) => {
+    const ct = res.getHeader("content-type");
+    if (typeof ct === "string" && ct.includes("text/event-stream")) return false;
+    return compression.filter(req, res);
+  },
+  threshold: 1024, // < 1KB 不压(没必要)
+}));
 // Bumped body limit to 10mb so large SVG pastes (Figma exports, embedded <image>
 // blobs, verbose path data) fit. The /tastes/from-svg endpoint still validates
 // the payload and caps it at 5mb in its own handler.

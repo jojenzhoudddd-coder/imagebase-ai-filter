@@ -121,6 +121,16 @@
   background: var(--primary-bg);
   color: var(--primary);
 }
+.table-topbar-btn.disabled,
+.table-topbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.table-topbar-btn.disabled:hover,
+.table-topbar-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-secondary);
+}
 .table-topbar-btn-label { line-height: 28px; }
 
 /* Undo 按钮 —— icon-only，末尾 */

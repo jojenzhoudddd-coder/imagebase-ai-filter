@@ -1,3 +1,11 @@
+/* SvgCanvas + DemoPreviewPanel + IdeaEditor 三个 artifact topbar 的 actions
+   container —— sidebar 收起时左边多出 <SidebarExpandButton/>,space-between 会
+   把 title 顶到正中。这里把 actions 钉在右边,标题永远靠左。 */
+.svg-canvas-topbar-actions,
+.demo-panel-topbar-actions {
+  margin-left: auto;
+}
+
 /* ─── SVG Canvas Panel ─── */
 
 .svg-canvas-panel {
