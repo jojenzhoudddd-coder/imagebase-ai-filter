@@ -59,6 +59,11 @@ export function useWorkspaceSync(
         const event = JSON.parse(e.data);
         if (event.clientId === clientId) return;
 
+        // 通知顶栏 stats 刷新 —— 任何 artifact CRUD / publish / unpublish 都会
+        // 改 artifacts/workend 数。TopBar 监听这个 window 事件做即时 refetch，
+        // 避免它再独立开一条 SSE。
+        try { window.dispatchEvent(new CustomEvent("workspace-stats-changed")); } catch { /* noop */ }
+
         const h = handlersRef.current;
         const p = event.payload;
 

@@ -59,12 +59,14 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
   const { preference: themePreference, setTheme } = useTheme();
 
   // ── Workspace stats ──
-  // 三种刷新触发：
+  // 触发刷新的方式（绝对不在这里再开 EventSource —— HTTP/1.1 每域名 ~6 个长
+  // 连接的限制下,多开一条 SSE 会饿死 chat 的 SSE，导致对话加载慢/卡死）：
   //   1. 初始挂载 / workspaceId 切换 → 立刻拉
-  //   2. 工作区 SSE 收到任何 artifact CRUD 事件（订阅同 channel；忽略来源自身的回声）
-  //   3. window 自定义事件 "workspace-stats-changed"（chat done / token 写入后等显式
-  //      触发的场景由其它组件 dispatch 给我们）
-  // 还保留一个 60s 兜底轮询，防止 SSE 断了或漏掉的事件。
+  //   2. window "workspace-stats-changed" 自定义事件 —— App 的 useWorkspaceSync
+  //      在每个 workspace-change 事件回调里 dispatch；ChatSidebar 在 chat done
+  //      时 dispatch；后续任何 artifact CRUD / token 写入都可以 dispatch 这个
+  //      事件让顶栏即时刷新
+  //   3. 60s 兜底轮询。
   const [stats, setStats] = useState<WorkspaceStats | null>(null);
   const lastFetchRef = useRef<number>(0);
   useEffect(() => {
@@ -72,7 +74,6 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
     let alive = true;
 
     const fetchStats = async () => {
-      // 200ms 防抖：多个事件挤在一起时合并为一次请求
       const now = Date.now();
       if (now - lastFetchRef.current < 200) return;
       lastFetchRef.current = now;
@@ -86,27 +87,9 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
       } catch { /* ignore */ }
     };
 
-    // 初次拉
     fetchStats();
-    // 兜底定时（60s —— 比之前 5min 更短，是因为它只是兜底；正常情况下 SSE/事件已实时更新）
     const intervalId = window.setInterval(fetchStats, 60 * 1000);
 
-    // SSE: 工作区事件（artifact CRUD / publish / unpublish 等都触发刷新）
-    const sseUrl = `/api/sync/workspaces/${encodeURIComponent(workspaceId)}/events?clientId=topbar-stats`;
-    const es = new EventSource(sseUrl);
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const debouncedFetch = () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        debounceTimer = null;
-        // 跳过自身防抖（因为我们也用 lastFetchRef 防抖）
-        lastFetchRef.current = 0;
-        fetchStats();
-      }, 250);
-    };
-    es.addEventListener("workspace-change", debouncedFetch);
-
-    // 自定义事件：chat done / 其它会改 token 的场景
     const onCustom = () => {
       lastFetchRef.current = 0;
       fetchStats();
@@ -116,8 +99,6 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
     return () => {
       alive = false;
       window.clearInterval(intervalId);
-      try { es.close(); } catch { /* noop */ }
-      if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener("workspace-stats-changed", onCustom);
     };
   }, [workspaceId]);

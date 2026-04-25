@@ -118,7 +118,6 @@ export default function Toolbar({
           onClick={onCustomizeFieldClick}
           btnRef={customizeFieldBtnRef}
         />
-        <ToolbarBtn icon={<ViewSettingsIcon />} label={t("toolbar.viewSettings")} />
         <ToolbarBtn
           icon={<FilterIcon />}
           label={filterConditionCount > 0 ? t("toolbar.filterCount", { count: filterConditionCount }) : t("toolbar.filter")}
@@ -126,10 +125,7 @@ export default function Toolbar({
           onClick={onFilterClick}
           btnRef={filterBtnRef}
         />
-        <ToolbarBtn icon={<GroupByIcon />} label={t("toolbar.groupBy")} />
         <ToolbarBtn icon={<SortIcon />} label={t("toolbar.sort")} />
-        <ToolbarBtn icon={<RowHeightIcon />} label={t("toolbar.rowHeight")} />
-        <ToolbarBtn icon={<ConditionalColorIcon />} label={t("toolbar.conditionalColoring")} />
         <span className="table-topbar-sep" />
         <button
           className={`table-topbar-undo${canUndo ? "" : " disabled"}`}
@@ -178,32 +174,10 @@ function CustomizeFieldIcon() {
   );
 }
 
-function ViewSettingsIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <rect x="1.5" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
-      <rect x="9.5" y="2" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
-      <rect x="1.5" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
-      <circle cx="12" cy="11.5" r="2.5" stroke="currentColor" strokeWidth="1.1"/>
-      <path d="M12 9.5v.5m0 3v.5m-2-2.5h.5m3.5 0h.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-    </svg>
-  );
-}
-
 function FilterIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
       <path d="M2 3h12L9.5 8.5V12l-3 1.5V8.5L2 3z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-function GroupByIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <rect x="2" y="2.5" width="12" height="3" rx="0.8" stroke="currentColor" strokeWidth="1.1"/>
-      <rect x="4" y="7.5" width="10" height="3" rx="0.8" stroke="currentColor" strokeWidth="1.1"/>
-      <rect x="4" y="12.5" width="10" height="1" rx="0.5" fill="currentColor" opacity="0.4"/>
     </svg>
   );
 }
@@ -213,25 +187,6 @@ function SortIcon() {
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
       <path d="M3 4h4.5M3 8h3M3 12h2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
       <path d="M11.5 3v10m0 0l2-2.5m-2 2.5l-2-2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-function RowHeightIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <path d="M5 3h9M5 6.5h9M5 10h9M5 13.5h9" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-      <path d="M2 5l-1-1.5h2L2 5zm0 6l-1 1.5h2L2 12.5z" fill="currentColor"/>
-      <path d="M2 4.5v7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-    </svg>
-  );
-}
-
-function ConditionalColorIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <path d="M9.66 1.29a1 1 0 011.41 0l8.13 8.13a2.5 2.5 0 010 3.54l-7.42 7.42a2.5 2.5 0 01-3.54 0l-5.66-5.65a2.5 2.5 0 010-3.54l8.13-8.13-.35-.35a1 1 0 010-1.42zm8.13 9.55l-6.36-6.36-7.49 7.49 14.06-.01c.17-.37.1-.82-.21-1.12zM3.29 14.02l5.66 5.66a1 1 0 001.41 0l5.72-5.72H3.24l.05.06z" fill="currentColor"/>
-      <path d="M22.36 20.75a2.67 2.67 0 11-5.33 0c0-1.32.87-2.35 1.65-3.27.4-.48.79-.94 1.02-1.4.23.46.61.92 1.02 1.4.78.92 1.64 1.95 1.64 3.27z" fill="currentColor"/>
     </svg>
   );
 }
