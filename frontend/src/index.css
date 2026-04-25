@@ -105,12 +105,14 @@ input[type="radio"] {
 }
 
 /* ── DM 滚动条（webkit） ──────────────────────────────────────────
- * 默认滚动条在 DM 下太亮太突兀。 */
+ * 默认滚动条 + 横纵交汇处的 corner 在 DM 下太亮（默认是白色块）。
+ * track / corner 都设为透明，让父级深底色透上来。 */
 [data-theme="dark"] ::-webkit-scrollbar {
   width: 12px;
   height: 12px;
 }
 [data-theme="dark"] ::-webkit-scrollbar-track { background: transparent; }
+[data-theme="dark"] ::-webkit-scrollbar-corner { background: transparent; }
 [data-theme="dark"] ::-webkit-scrollbar-thumb {
   background: var(--surface-3);
   border-radius: 6px;
