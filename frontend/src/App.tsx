@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import Toolbar from "./components/Toolbar";
+import { SidebarToggleProvider } from "./contexts/sidebarToggleContext";
 import TableView, { TableViewHandle } from "./components/TableView/index";
 import FilterPanel from "./components/FilterPanel/index";
 import FieldConfigPanel from "./components/FieldConfigPanel/index";
@@ -1913,6 +1914,11 @@ export default function App() {
   });
 
   return (
+    <SidebarToggleProvider value={{
+      collapsed: sidebarCollapsed,
+      onToggle: () => setSidebarCollapsed((v) => !v),
+      expandTitle: t("sidebar.expand"),
+    }}>
     <div className="app">
       <TopBar
         tableName={tableName}
@@ -1925,8 +1931,6 @@ export default function App() {
         onOpenChatAgent={() => setChatAgentOpen((v) => !v)}
         chatAgentOpen={chatAgentOpen}
         agentUnreadCount={agentUnread}
-        sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
       />
       <div className={`workspace${chatAgentOpen ? " chat-open" : ""}${chatAgentOpen && chatSide === "left" ? " chat-left" : ""}${movingPart ? " moving" : ""}`} ref={workspaceRef}>
         <div
@@ -2187,5 +2191,6 @@ export default function App() {
         onCancel={() => setIdeaDeleteConfirm({ open: false, ideaId: null, refs: [], total: 0, loading: false })}
       />
     </div>
+    </SidebarToggleProvider>
   );
 }

@@ -15,6 +15,7 @@
 import { RefObject, useState } from "react";
 import { useTranslation } from "../i18n/index";
 import InlineEdit from "./InlineEdit";
+import SidebarExpandButton from "./SidebarExpandButton";
 import "./Toolbar.css";
 
 interface Props {
@@ -65,8 +66,9 @@ export default function Toolbar({
 
   return (
     <div className="table-topbar">
-      {/* Left: 表名 + filter apply pill + Add record */}
+      {/* Left: sidebar 展开按钮（仅 collapsed 时）+ 表名 + filter apply pill */}
       <div className="table-topbar-left">
+        <SidebarExpandButton />
         <span className="table-topbar-name">
           <InlineEdit
             value={tableName}

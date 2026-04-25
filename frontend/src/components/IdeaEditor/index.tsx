@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "../../i18n/index";
 import { useToast } from "../Toast/index";
 import InlineEdit from "../InlineEdit";
+import SidebarExpandButton from "../SidebarExpandButton";
 import { fetchIdea, saveIdeaContent } from "../../api";
 import { useIdeaSync } from "../../hooks/useIdeaSync";
 import MentionPicker from "./MentionPicker";
@@ -1087,6 +1088,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     <div className="idea-editor-panel">
       {/* ─── Top Bar (mirrors SvgCanvas: name left, actions right) ─── */}
       <div className="idea-editor-topbar">
+        <SidebarExpandButton />
         <span className="idea-editor-topbar-name">
           <InlineEdit
             value={ideaName}

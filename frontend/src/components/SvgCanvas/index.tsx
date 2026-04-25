@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "../../i18n/index";
 import { useToast } from "../Toast/index";
 import InlineEdit from "../InlineEdit";
+import SidebarExpandButton from "../SidebarExpandButton";
 import ConfirmDialog from "../ConfirmDialog/index";
 import {
   fetchTastes,
@@ -1121,6 +1122,7 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
     >
       {/* ─── Top Bar ─── */}
       <div className="svg-canvas-topbar">
+        <SidebarExpandButton />
         <span className="svg-canvas-topbar-name">
           <InlineEdit
             value={designName}

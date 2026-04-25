@@ -46,7 +46,8 @@
 }
 .sidebar-header-with-actions .sidebar-search-trigger {
   flex: 1;
-  margin-bottom: 0;
+  /* 不要覆盖 .sidebar-search-trigger 自带的 margin-bottom: 8px —— 它就是
+     "search 下面的 4px gap"那段空间（与首个 tree-item margin-bottom:4 配合）。 */
 }
 /* Sidebar 收起按钮 —— 完全对齐 .topbar-icon-btn 的视觉规格：26×26 hover 热区,
    color #646A73,圆角 var(--radius-m),hover 背景 var(--surface-3)。 */

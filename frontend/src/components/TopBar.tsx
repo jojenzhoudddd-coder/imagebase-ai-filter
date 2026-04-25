@@ -23,10 +23,6 @@ interface Props {
   chatAgentOpen?: boolean;
   /** Phase 4 Day 3 — unread count from /api/agents/:id/inbox?unread=1. 0 or undefined hides the dot. */
   agentUnreadCount?: number;
-  /** Sidebar 是否当前已收起；为 true 时左上角显示一个"展开" icon。 */
-  sidebarCollapsed?: boolean;
-  /** 切换 sidebar 收起/展开。绑定到顶栏最左侧的 sidebar-toggle 按钮。 */
-  onToggleSidebar?: () => void;
 }
 
 interface WorkspaceStats {
@@ -55,7 +51,7 @@ function formatTokenCount(n: number): string {
   return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0).replace(/\.0$/, "")}M`;
 }
 
-export default function TopBar({ tableName, documentName, workspaceId, deleteProtection = true, onDeleteProtectionChange, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount, sidebarCollapsed, onToggleSidebar }: Props) {
+export default function TopBar({ tableName, documentName, workspaceId, deleteProtection = true, onDeleteProtectionChange, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount }: Props) {
   const { t, locale } = useTranslation();
   const { user, patchUser, logout, patchPreferences } = useAuth();
   const toast = useToast();
@@ -296,23 +292,10 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
         </div>
         <span className="topbar-divider" />
         <div className="topbar-info">
-          {/* Row 1: breadcrumb —— sidebar 收起时,在 breadcrumb 左边显示展开按钮；
-                              sidebar 展开时,breadcrumb 归位（无 prefix 按钮）。 */}
+          {/* Row 1: breadcrumb. 注意：sidebar 展开按钮 NOT 在这里 —— 它放在
+              当前 artifact 自己的 topbar（table/idea/design/demo）的 title 左边,
+              详见 SidebarExpandButton 组件. */}
           <div className="topbar-breadcrumb">
-            {sidebarCollapsed && (
-              <button
-                className="topbar-icon-btn topbar-sidebar-expand-btn"
-                onClick={onToggleSidebar}
-                title={t("sidebar.expand")}
-                aria-label={t("sidebar.expand")}
-              >
-                {/* 与 Sidebar 的收起按钮共用同一组双 chevron 图,水平翻转后变 ">>" */}
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ transform: "scaleX(-1)" }}>
-                  <path d="M11.2126 15.2884L7.92466 12.0005L11.3915 8.53368C11.4481 8.47708 11.6699 8.25401 11.8788 8.04388C12.1054 7.81597 12.1048 7.44773 11.8776 7.2205C11.6492 6.99219 11.2789 6.99284 11.0513 7.22187C10.883 7.39125 10.7158 7.55943 10.6645 7.61073L6.68721 11.588C6.45941 11.8158 6.45941 12.1852 6.68721 12.413L10.4628 16.1885C10.5235 16.2492 10.804 16.5304 11.0528 16.7799C11.2803 17.008 11.6498 17.0083 11.8776 16.7804C12.1048 16.5532 12.1053 16.1851 11.8787 15.9574C11.6019 15.6793 11.276 15.3518 11.2126 15.2884Z" fill="#646A73"/>
-                  <path d="M16.4088 15.2884L13.1208 12.0005L16.5876 8.53368C16.6442 8.47708 16.8661 8.25401 17.075 8.04388C17.3016 7.81597 17.301 7.44773 17.0737 7.2205C16.8454 6.99219 16.4751 6.99284 16.2475 7.22187C16.0792 7.39125 15.912 7.55943 15.8607 7.61073L11.8834 11.588C11.6556 11.8158 11.6556 12.1852 11.8834 12.413L15.659 16.1885C15.7197 16.2492 16.0001 16.5304 16.249 16.7799C16.4765 17.008 16.8459 17.0083 17.0738 16.7804C17.3009 16.5532 17.3015 16.1851 17.0749 15.9574C16.7981 15.6793 16.4721 15.3518 16.4088 15.2884Z" fill="#646A73"/>
-                </svg>
-              </button>
-            )}
             {/* 面包屑首项 = 当前登录用户的 username（name 同步为 username） */}
             <span className="topbar-crumb">{user?.name || user?.username || ""}</span>
             {/* Figma: Chevron right — line 716 */}

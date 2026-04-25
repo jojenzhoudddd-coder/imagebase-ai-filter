@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import InlineEdit from "../InlineEdit";
+import SidebarExpandButton from "../SidebarExpandButton";
 import ConfirmDialog from "../ConfirmDialog/index";
 import { useTranslation } from "../../i18n/index";
 import {
@@ -324,6 +325,7 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
     <div className="demo-panel">
       {/* ─── Top Bar (mirrors IdeaEditor / SvgCanvas) ─── */}
       <div className="demo-panel-topbar">
+        <SidebarExpandButton />
         <span className="demo-panel-topbar-name">
           <InlineEdit
             value={demo.name}
