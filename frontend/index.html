@@ -6,11 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Table Agent — AI 智能多维表格，通过自然语言对话完成建表、字段、记录与视图管理。" />
     <title>AI Work</title>
-    <!-- 登录页底图预加载：通过 media 限定，只下载和系统主题匹配的那张，
-         避免双倍带宽。对已登录用户也会预加载一次（~1.2 MB），交换登录
-         流的"零等待底图"体验。 -->
-    <link rel="preload" as="image" href="/auth-bg-lm.png" media="(prefers-color-scheme: light)" />
-    <link rel="preload" as="image" href="/auth-bg-dm.png" media="(prefers-color-scheme: dark)" />
+    <!-- NOTE: 登录底图（auth-bg-{lm,dm}.png 各 ~1.3MB）的 preload 已经移除。
+         这两张图只在 AuthPage 上用,通过 CSS background 在组件挂载时按需拉取。
+         之前在 index.html 里 preload 让"已登录用户"也无差别拉 ~2.5 MB,
+         冷启动至少多 1-2 秒。AuthPage 的"零等待底图"体验代价不值得这个开销 ——
+         访问登录页的用户只多一次按需 fetch（首屏多 200ms 左右）即可。 -->
   </head>
   <body>
     <div id="root"></div>

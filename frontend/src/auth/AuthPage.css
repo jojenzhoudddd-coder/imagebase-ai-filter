@@ -29,7 +29,7 @@
    * background-color 走 --surface-base token，加载途中颜色与最终一致。 */
   background:
     linear-gradient(rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.2)),
-    url("/auth-bg-lm.png") center / cover no-repeat;
+    url("/auth-bg-lm.jpg") center / cover no-repeat;
   background-color: var(--surface-base);
   overflow: hidden;
 }
@@ -389,7 +389,7 @@
    * 颜色与最终图色一致，无闪烁。 */
   background:
     linear-gradient(rgba(28, 28, 30, 0.2), rgba(28, 28, 30, 0.2)),
-    url("/auth-bg-dm.png") center / cover no-repeat;
+    url("/auth-bg-dm.jpg") center / cover no-repeat;
   background-color: var(--surface-base);
 }
 

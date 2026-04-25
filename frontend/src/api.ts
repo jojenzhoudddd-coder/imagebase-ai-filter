@@ -846,11 +846,20 @@ export async function createConversation(
 }
 
 export async function getConversationMessages(
-  conversationId: string
-): Promise<{ conversation: ChatConversation; messages: ChatMessage[] }> {
-  const res = await fetch(`${BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`);
+  conversationId: string,
+  opts?: { limit?: number; before?: string }
+): Promise<{ conversation: ChatConversation; messages: ChatMessage[]; hasMore: boolean }> {
+  const qs = new URLSearchParams();
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  if (opts?.before) qs.set("before", opts.before);
+  const url = qs.toString()
+    ? `${BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages?${qs}`
+    : `${BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error("Failed to load messages");
-  return res.json();
+  const data = await res.json();
+  // 旧版后端不返回 hasMore；保险起见 default false
+  return { conversation: data.conversation, messages: data.messages, hasMore: !!data.hasMore };
 }
 
 export async function deleteConversation(conversationId: string): Promise<void> {

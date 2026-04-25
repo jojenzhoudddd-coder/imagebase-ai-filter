@@ -217,6 +217,12 @@ export default function ChatSidebar({
   // to the bottom (within SCROLL_STICKY_THRESHOLD) or send a new message.
   const stickToBottomRef = useRef(true);
 
+  // 历史分页：初次只拉 30 条。用户向上滚到接近顶时再以最早消息 id 作为
+  // before 锚点拉下一页 30 条。hasMoreHistory=false 时停止 fetch。
+  const [hasMoreHistory, setHasMoreHistory] = useState<boolean>(false);
+  const [loadingOlder, setLoadingOlder] = useState<boolean>(false);
+  const loadingOlderRef = useRef(false);
+
   // Fetch welcome-page suggestions when opened or document changes. We
   // intentionally fetch even when cached messages exist — suggestions are
   // only shown on the empty state so there's no flicker cost, and we want
@@ -247,38 +253,25 @@ export default function ChatSidebar({
     (async () => {
       try {
         if (activeConv?.id) {
-          // Revalidate cached conversation — if it still exists server-side,
-          // merge the server messages (source of truth) on top of our cache.
           try {
-            const { conversation, messages: serverMsgs } = await getConversationMessages(activeConv.id);
+            // 初次只拉最新 30 条; 用户向上滚到顶时再分页加载更老消息(loadOlderMessages).
+            const { conversation, messages: serverMsgs, hasMore } = await getConversationMessages(activeConv.id, { limit: 30 });
             setActiveConv(conversation);
-            // GUARD: Don't clobber in-flight optimistic state. The current
-            // assistant turn is only persisted server-side at end-of-turn
-            // (chatAgentService.appendMessage) — so during a live stream,
-            // serverMsgs is STALE and doesn't contain the accumulating
-            // toolCalls. If this effect re-fires mid-turn (open toggle,
-            // StrictMode double-invoke, prop churn) without the guard,
-            // the running message with its coding/build/query cards gets
-            // wiped and subsequent SSE events can't find it (they match
-            // role==="assistant"&&streaming, which nothing satisfies
-            // because serverToUi resets streaming:false). User-visible
-            // symptom: tool card disappears mid-flow.
+            setHasMoreHistory(hasMore);
             if (!streamingRef.current) {
               setMessages(serverMsgs.map(serverToUi));
             }
             return;
           } catch {
-            // Conversation no longer exists (server restart, etc.) — drop cache
-            // and fall through to fresh bootstrap below.
             clearCache(workspaceId);
           }
         }
         const list = await listConversations(workspaceId);
         if (list.length > 0) {
           const conv = list[0];
-          const { messages: msgs } = await getConversationMessages(conv.id);
+          const { messages: msgs, hasMore } = await getConversationMessages(conv.id, { limit: 30 });
           setActiveConv(conv);
-          // Same guard applies on the list-then-load path.
+          setHasMoreHistory(hasMore);
           if (!streamingRef.current) {
             setMessages(msgs.map(serverToUi));
           }
@@ -286,6 +279,7 @@ export default function ChatSidebar({
           const conv = await createConversation(workspaceId, agentId);
           setActiveConv(conv);
           setMessages([]);
+          setHasMoreHistory(false);
         }
       } catch (err) {
         setError((err as Error).message);
@@ -319,20 +313,61 @@ export default function ChatSidebar({
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, pendingConfirm]);
 
+  // 向上滚动加载更老消息. 防抖 + 防并发（loadingOlderRef 守卫）。加载后保持
+  // 用户视觉位置:记录加载前的 scrollHeight,加载后偏移 scrollTop 使顶部锚点
+  // 不跳。
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingOlderRef.current) return;
+    if (!hasMoreHistory) return;
+    if (!activeConv?.id) return;
+    if (messages.length === 0) return;
+    const oldest = messages[0];
+    if (!oldest?.id) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    const el = scrollRef.current;
+    const prevHeight = el?.scrollHeight ?? 0;
+    try {
+      const { messages: older, hasMore } = await getConversationMessages(activeConv.id, {
+        limit: 30,
+        before: oldest.id,
+      });
+      if (older.length > 0) {
+        setMessages((prev) => [...older.map(serverToUi), ...prev]);
+        // 异步等下一帧 layout 完成,再用 scrollHeight 差值偏移 scrollTop —— 用户
+        // 视觉位置不变,新内容在他上方静默追加。
+        requestAnimationFrame(() => {
+          const el2 = scrollRef.current;
+          if (el2) el2.scrollTop = el2.scrollHeight - prevHeight;
+        });
+      }
+      setHasMoreHistory(hasMore);
+    } catch { /* swallow */ }
+    finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [activeConv?.id, messages, hasMoreHistory]);
+
   // Scroll listener → toggle stickToBottomRef based on proximity to bottom.
   // Threshold is a few px so small rendering jitter still counts as "at
   // bottom" and re-enables auto-scroll once the user returns there.
+  // 同时检测"接近顶部"触发分页 fetch.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const SCROLL_STICKY_THRESHOLD = 24;
+    const SCROLL_TOP_LOAD_TRIGGER = 80; // 距离顶部 80px 时预拉下一页
     const onScroll = () => {
       const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
       stickToBottomRef.current = distanceFromBottom <= SCROLL_STICKY_THRESHOLD;
+      if (el.scrollTop <= SCROLL_TOP_LOAD_TRIGGER) {
+        void loadOlderMessages();
+      }
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [loadOlderMessages]);
 
   // ─── Streaming callbacks ──────────────────────────────────────────────
   const appendAssistantChunk = useCallback((msgId: string, chunk: string) => {

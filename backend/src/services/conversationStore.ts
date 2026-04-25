@@ -205,17 +205,60 @@ export async function appendMessage(
   return toMessage(message);
 }
 
+/**
+ * 拉对话历史。三种模式：
+ *   1. 默认（无 limit / before） → 拉全部（保留旧行为给 chatAgentService 内部 用,
+ *      它需要完整窗口做滑动裁剪 + summary 拼接）。
+ *   2. limit=N → 拉最新 N 条（按 timestamp asc 返回,直接渲染顺序）。
+ *   3. limit=N + before=<msgId> → 拉 before 这条之前的最新 N 条。前端 ChatSidebar
+ *      初次以 limit=30 拉,用户向上滚到顶时再以 before=<最早 id>+limit=30 拉一页。
+ */
 export async function getMessages(
   conversationId: string,
-  limit?: number
-): Promise<Message[]> {
-  const rows = await prisma.message.findMany({
-    where: { conversationId },
-    orderBy: { timestamp: "asc" },
-  });
-  const mapped = rows.map(toMessage);
-  if (limit && limit > 0 && mapped.length > limit) {
-    return mapped.slice(mapped.length - limit);
+  opts: { limit?: number; before?: string } | number = {}
+): Promise<{ messages: Message[]; hasMore: boolean }> {
+  // 兼容旧调用方 getMessages(id, 20) —— 直接传数字
+  const o: { limit?: number; before?: string } =
+    typeof opts === "number" ? { limit: opts } : opts;
+  const limit = o.limit && o.limit > 0 ? o.limit : undefined;
+
+  // 解析 before 锚点的 timestamp(Prisma 的 DateTime 字段)
+  let beforeTs: Date | null = null;
+  if (o.before) {
+    const anchor = await prisma.message.findUnique({
+      where: { id: o.before },
+      select: { timestamp: true, conversationId: true },
+    });
+    if (anchor && anchor.conversationId === conversationId) {
+      beforeTs = anchor.timestamp;
+    }
   }
-  return mapped;
+
+  if (!limit && !beforeTs) {
+    // 全量(legacy 路径):chatAgentService 用,顺序 asc。
+    const rows = await prisma.message.findMany({
+      where: { conversationId },
+      orderBy: { timestamp: "asc" },
+    });
+    return { messages: rows.map(toMessage), hasMore: false };
+  }
+
+  // 分页路径 —— DB 端 take + orderBy desc,然后 reverse 得到 asc
+  const where: any = { conversationId };
+  if (beforeTs !== null) where.timestamp = { lt: beforeTs };
+  const rows = await prisma.message.findMany({
+    where,
+    orderBy: { timestamp: "desc" },
+    take: limit ?? 30,
+  });
+  // hasMore：DB 是否还有更老的消息
+  let hasMore = false;
+  if (rows.length > 0) {
+    const oldest = rows[rows.length - 1].timestamp;
+    const olderCount = await prisma.message.count({
+      where: { conversationId, timestamp: { lt: oldest } },
+    });
+    hasMore = olderCount > 0;
+  }
+  return { messages: rows.reverse().map(toMessage), hasMore };
 }

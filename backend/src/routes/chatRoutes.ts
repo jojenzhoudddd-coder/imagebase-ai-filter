@@ -184,15 +184,22 @@ router.post("/conversations", async (req: Request, res: Response) => {
   res.json(conv);
 });
 
-// GET /api/chat/conversations/:id/messages
+// GET /api/chat/conversations/:id/messages?limit=30&before=<msgId>
+//   limit  默认 30(无上限,但前端只用 30/page)
+//   before 指定时,返回 timestamp < 该消息的最新 N 条(用于"向上滚动加载更多")
+//   返回 { conversation, messages: asc-order, hasMore }
+//   不传 limit/before → 兼容旧版返回全部历史
 router.get("/conversations/:id/messages", async (req: Request, res: Response) => {
   const conv = await convStore.getConversation(req.params.id);
   if (!conv) {
     res.status(404).json({ error: "Conversation not found" });
     return;
   }
-  const messages = await convStore.getMessages(req.params.id);
-  res.json({ conversation: conv, messages });
+  const limitRaw = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : NaN;
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : undefined;
+  const before = typeof req.query.before === "string" ? req.query.before : undefined;
+  const result = await convStore.getMessages(req.params.id, { limit, before });
+  res.json({ conversation: conv, messages: result.messages, hasMore: result.hasMore });
 });
 
 // DELETE /api/chat/conversations/:id

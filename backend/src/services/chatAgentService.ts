@@ -741,7 +741,7 @@ async function assembleInput(
   };
   const systemText = buildSystemText(layers, activeSkillNames);
 
-  const history = await convStore.getMessages(conversationId);
+  const { messages: history } = await convStore.getMessages(conversationId);
   // Sliding window: last 20 messages (plan Phase 3.2)
   const windowed = history.slice(-20);
 
