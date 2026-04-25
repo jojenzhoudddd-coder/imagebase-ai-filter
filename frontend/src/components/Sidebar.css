@@ -1,7 +1,9 @@
 /* Sidebar: width set via inline style, min 120px max 400px */
 .sidebar {
   background: var(--color-white);
-  border-right: 1px solid rgba(31, 35, 41, 0.15);
+  /* 与主框架（artifact-part / chat-part）用同一根 border token，DM 下
+   * 肉眼可见。之前 rgba(31,35,41,0.15) 在 DM 深底上几乎隐形。 */
+  border-right: 1px solid var(--border-default);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
