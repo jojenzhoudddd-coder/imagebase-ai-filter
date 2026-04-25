@@ -504,4 +504,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 16px;
+  /* space-between 撑出来的间距是 ~10px；上提 2px 减到 8px。 */
+  margin-top: -2px;
 }
