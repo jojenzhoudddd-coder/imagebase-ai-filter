@@ -326,7 +326,10 @@
 }
 .auth-submit:hover:not(:disabled) { background: var(--primary-hover); }
 .auth-submit:disabled {
-  opacity: 0.5;
+  /* 与 CreateTablePopover / FieldConfig 主按钮 disabled 视觉对齐：
+   * 用 primary-light 当 disabled 底，避免 opacity 0.5 的半透明蓝色观感。 */
+  background: var(--primary-light);
+  color: var(--text-on-primary);
   cursor: not-allowed;
 }
 

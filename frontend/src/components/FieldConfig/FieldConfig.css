@@ -511,7 +511,10 @@
 }
 
 .btn-primary:disabled {
-  background: var(--color-text-placeholder);
+  /* 与 CreateTablePopover 主按钮 disabled 视觉对齐 —— 用 primary-light
+   * 当 dark-disabled 底，避免 LM/DM 各自为政（之前用 --color-text-placeholder
+   * 在 DM 下是中性灰，跟 new table popover 的主色淡底不一致）。 */
+  background: var(--primary-light);
   color: var(--text-on-primary);
 }
 
