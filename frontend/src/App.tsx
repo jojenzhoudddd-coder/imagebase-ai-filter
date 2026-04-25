@@ -25,13 +25,12 @@ import { useTableSync } from "./hooks/useTableSync";
 import { useWorkspaceSync } from "./hooks/useWorkspaceSync";
 import { useSplitResize } from "./hooks/useSplitResize";
 import ChatSidebar from "./components/ChatSidebar/index";
+import { useAuth } from "./auth/AuthContext";
 
-const WORKSPACE_ID = "doc_default";
-// Phase 1 MVP: the user has exactly one Agent (seeded on first boot as
-// `agent_default`, display name "Claw"). It's workspace-agnostic — the same
-// Agent follows you across every workspace and owns the persistent identity
-// / memory. When multi-agent support lands this becomes a state + picker.
-const AGENT_ID = "agent_default";
+// WORKSPACE_ID + AGENT_ID 都在组件内部根据 AuthContext 动态派生（见 App()
+// 顶部）。之前两者都是 module-level 常量 `"doc_default"` / `"agent_default"`，
+// 导致所有登录用户都共享同一套数据 + 同一个 chatbot identity —— 是严重的
+// 跨用户泄漏，已修掉。
 
 const MAX_UNDO = 20;
 type CellValue = string | number | boolean | string[] | null;
@@ -47,7 +46,9 @@ export default function App() {
   const [views, setViews] = useState<View[]>([]);
   const [activeViewId, setActiveViewId] = useState("view_all");
   const [tableName, setTableName] = useState("需求管理表");
-  const [documentName, setDocumentName] = useState("Default Document");
+  // 空串占位 —— 真实的 workspace.name 会在 bootstrap effect 里从后端拉回来
+  // 覆盖。之前是 "Default Document"，在接口返回前会闪一下英文文案，很丑。
+  const [documentName, setDocumentName] = useState("");
   const [activeTableId, setActiveTableId] = useState<string>("tbl_requirements");
   const activeTableIdRef = useRef(activeTableId);
   activeTableIdRef.current = activeTableId;
@@ -89,6 +90,35 @@ export default function App() {
   // the change back to the URL — see navigateToArtifact() below.
   const navigate = useNavigate();
   const urlParams = useParams<{ workspaceId?: string; artifactType?: string; artifactId?: string }>();
+
+  // ── Workspace scoping ────────────────────────────────────────────────
+  // Derived from URL first; falls back to the user's own first workspace
+  // when URL is missing (e.g. deep links that dropped the segment).
+  // A guard effect below kicks any user off URLs targeting a workspace
+  // they don't actually own.
+  const { workspaces: userWorkspaces, workspaceId: authWorkspaceId, agentId: authAgentId } = useAuth();
+  const WORKSPACE_ID = urlParams.workspaceId || authWorkspaceId || "";
+  // Agent id 跟登录用户绑定（后端 /me 返回）。空字符串保护：未加载完成时
+  // 不应触发 agent-scoped 请求。所有用到它的地方都是在 RequireAuth 之后，
+  // AuthContext 已经拿到数据。
+  const AGENT_ID = authAgentId || "";
+  const userOwnsThisWorkspace = useMemo(
+    () => userWorkspaces.some((w) => w.id === WORKSPACE_ID),
+    [userWorkspaces, WORKSPACE_ID],
+  );
+  useEffect(() => {
+    if (!urlParams.workspaceId) return; // no URL workspace → fall through to auth default
+    if (userWorkspaces.length === 0) return; // /me not loaded yet
+    if (userOwnsThisWorkspace) return; // fine
+    if (authWorkspaceId && urlParams.workspaceId !== authWorkspaceId) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[auth] URL targets workspace ${urlParams.workspaceId} which isn't yours — redirecting to ${authWorkspaceId}`,
+      );
+      navigate(`/workspace/${authWorkspaceId}`, { replace: true });
+    }
+  }, [urlParams.workspaceId, userWorkspaces, userOwnsThisWorkspace, authWorkspaceId, navigate]);
+
   useEffect(() => {
     const { artifactType, artifactId } = urlParams;
     if (!artifactType || !artifactId) return;
@@ -108,7 +138,7 @@ export default function App() {
   // previously calling `setActiveTableId + setActiveItemType` as a pair.
   const navigateToArtifact = useCallback(
     (type: TreeItemType, id: string) => {
-      const ws = urlParams.workspaceId || "doc_default";
+      const ws = urlParams.workspaceId || authWorkspaceId || WORKSPACE_ID;
       const urlType =
         type === "table" ? "table"
         : type === "idea" ? "idea"
@@ -118,7 +148,7 @@ export default function App() {
       if (!urlType) return;
       navigate(`/workspace/${ws}/${urlType}/${id}`);
     },
-    [navigate, urlParams.workspaceId],
+    [navigate, urlParams.workspaceId, authWorkspaceId, WORKSPACE_ID],
   );
 
   // Note: we do NOT have a state→URL sync effect. Prior experiment showed it
@@ -159,6 +189,7 @@ export default function App() {
   // the badge clears promptly after the user reads messages inside the chat.
   const [agentUnread, setAgentUnread] = useState<number>(0);
   useEffect(() => {
+    if (!AGENT_ID) return; // /me 还没加载完，agent 未知 —— 先不 poll
     let alive = true;
     const fetchUnread = async () => {
       try {
@@ -173,7 +204,7 @@ export default function App() {
     fetchUnread();
     const id = window.setInterval(fetchUnread, 30_000);
     return () => { alive = false; window.clearInterval(id); };
-  }, [chatAgentOpen]);
+  }, [chatAgentOpen, AGENT_ID]);
 
   // Which side the chat panel is on. Persisted in localStorage so swap sticks.
   const [chatSide, setChatSide] = useState<"left" | "right">(() => {
@@ -1253,11 +1284,9 @@ export default function App() {
       order: d.order,
       parentId: d.parentId,
     }));
-    const staticItems: SidebarItem[] = [
-      { id: "dashboard", type: "static" as const, displayName: sidebarNames.dashboard ?? t("sidebar.dashboard"), active: false, order: Infinity },
-      { id: "workflow", type: "static" as const, displayName: sidebarNames.workflow ?? t("sidebar.workflow"), active: false, order: Infinity },
-    ];
-    return [...folderItems, ...tableItems, ...designItems, ...ideaItems, ...demoItems, ...staticItems];
+    // 不再显示 "Dashboard / Workflow" 两个静态占位项（产品决策：这两个
+    // 功能目前没有实现，占位会误导用户）。
+    return [...folderItems, ...tableItems, ...designItems, ...ideaItems, ...demoItems];
   }, [documentTables, documentFolders, documentDesigns, documentIdeas, documentDemos, activeTableId, activeItemType, tableName, sidebarNames, t]);
 
   // ── Table switching ──

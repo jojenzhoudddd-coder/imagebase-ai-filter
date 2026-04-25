@@ -1,0 +1,374 @@
+/**
+ * Auth page layout — centered fixed-size card on a stretching backdrop.
+ *
+ * Outer (.auth-shell)  : full viewport. Decorative blue gradient +
+ *   pattern. Centers the card via flex; when the viewport resizes, the
+ *   backdrop stretches and the card stays in the middle.
+ * Card   (.auth-card)  : fixed 920×600, radius-xl, shadow-dropdown.
+ *   Internally a 3:2 grid — hero on the left, form on the right.
+ * Hero   (.auth-hero)  : gray base + drifting colorful ripples + frosted
+ *   glass + headline + animated-characters scene.
+ * Form   (.auth-form-pane) : clean right column with the credential form.
+ */
+
+/* ─── Shell: full viewport backdrop ────────────────────────────────── */
+.auth-shell {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 22px;
+  box-sizing: border-box;
+  /* 用户提供的薰衣草底图 — public/auth-bg.png。#BEBBE3 是提取自
+   * 图片的近似主色，万一图片没加载也不会露白。 */
+  background: #BEBBE3 url("/auth-bg.png") center / cover no-repeat;
+  overflow: hidden;
+}
+
+/* 底图本身已经携带点阵和丝带，不再需要额外的 ::before 装饰层。 */
+.auth-shell::before { content: none; }
+
+/* ─── Card: fixed size, centered ──────────────────────────────────── */
+/* Note: card background is TRANSPARENT. The right side (.auth-form-pane)
+ * paints its own solid white. The left side (.auth-hero) paints its own
+ * semi-transparent gray + backdrop-filter to act as a real frosted-glass
+ * panel over the darker backdrop. This is what gives the left half its
+ * "glass" look when the deeper gray shell shows through. */
+.auth-card {
+  position: relative;
+  z-index: 1;
+  /* 黄金比例：长边 1000 / 短边 618 (1000÷1.618≈618)。 */
+  width: 1000px;
+  height: 618px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  display: grid;
+  grid-template-columns: 1fr;
+  background: transparent;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.12),
+              0 2px 6px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+@media (min-width: 960px) {
+  .auth-card {
+    /* 3:2 split once there's room — hero left, form right. */
+    grid-template-columns: 3fr 2fr;
+  }
+}
+
+/* ─── Left side of card: 纯粹的毛玻璃 ─────────────────────────────
+ * 就是 "白色半透明 + backdrop blur" —— 让下层的紫色底图模糊后透
+ * 上来即可，不做任何色彩渲染、不加涟漪、不加动画。白色不透明度
+ * 决定 "磨砂" 深浅；blur 决定 "磨砂" 的颗粒感。 */
+.auth-hero {
+  position: relative;
+  display: none;
+  flex-direction: column;
+  padding: 32px 36px 24px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  /* 毛玻璃右侧边界 —— 与白色表单面之间的细分隔线。 */
+  border-right: 1px solid rgba(255, 255, 255, 0.5);
+}
+@media (min-width: 960px) { .auth-hero { display: flex; } }
+
+/* Kept as a no-op for any legacy refs in the JSX — renders nothing. */
+.auth-hero-glass { display: none; }
+
+.auth-hero-headline {
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+}
+.auth-hero-headline-title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.auth-hero-headline-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.auth-hero-stage {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  margin: auto 0;
+  /* 角色定位（独立于 hero padding，不影响左上标题）：
+   *   目标：Yellow 左 ↔ 玻璃左 = 100px，Green 右 ↔ 玻璃右 = 130px
+   *   玻璃宽 600；角色内容在 550×400 scene 内占 x 0-450（右侧 100px 原生空白）。
+   *   span = 450 × scale = 600 - 100 - 130 = 370 → scale = 370/450 ≈ 0.822
+   *   char 内容中心目标 (100+470)/2 = 285（玻璃中心 300 偏左 15px）；
+   *   translateX(+26) 校正 scene div 右侧原生空白并把中心推到 285。 */
+  transform: translateX(26px) translateY(20px) scale(0.822);
+  transform-origin: center center;
+}
+
+.auth-hero-footer {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+.auth-hero-footer a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.auth-hero-footer a:hover { color: var(--text-primary); }
+
+/* ─── Right side of card: form ────────────────────────────────────── */
+.auth-form-pane {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 36px;
+  background: var(--surface-2);
+}
+.auth-form-inner {
+  width: 100%;
+  max-width: 340px;
+}
+
+/* Mobile-only brand — shown when the card collapses to a single column. */
+.auth-mobile-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 24px;
+  color: var(--text-primary);
+}
+.auth-mobile-brand .auth-mobile-logo {
+  width: 28px; height: 28px; border-radius: 6px;
+  background: var(--primary); color: var(--text-on-primary);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 600;
+  font-size: 12px;
+}
+@media (min-width: 960px) { .auth-mobile-brand { display: none; } }
+
+.auth-form-header { margin-bottom: 20px; }
+.auth-form-title {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: var(--text-primary);
+}
+.auth-form-subtitle {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.auth-field { display: flex; flex-direction: column; gap: 6px; }
+.auth-field label {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.auth-field-hint {
+  display: block;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.auth-input-wrap { position: relative; }
+
+.auth-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-primary);
+  background: var(--surface-2);
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+.auth-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(20, 86, 240, 0.10);
+}
+.auth-input::placeholder { color: var(--text-placeholder); }
+.auth-input-wrap .auth-input { padding-right: 36px; }
+
+.auth-password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.auth-password-toggle:hover {
+  color: var(--text-primary);
+  background: var(--surface-3);
+}
+
+.auth-field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  line-height: 20px;
+  margin-top: -2px;
+}
+.auth-remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-weight: 400;
+}
+.auth-remember input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+.auth-form-link {
+  color: var(--primary);
+  font-weight: 400;
+  text-decoration: none;
+}
+.auth-form-link:hover { text-decoration: underline; }
+
+.auth-form-error {
+  padding: 8px 10px;
+  background: rgba(216, 57, 49, 0.08);
+  border: 1px solid rgba(216, 57, 49, 0.24);
+  border-radius: 4px;
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.auth-form-switch {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+.auth-form-switch a {
+  color: var(--primary);
+  font-weight: 500;
+  text-decoration: none;
+  margin-left: 4px;
+}
+.auth-form-switch a:hover { text-decoration: underline; }
+
+.auth-submit {
+  width: 100%;
+  height: 32px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 4px;
+  background: var(--primary);
+  color: var(--text-on-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+  /* 与上一个字段拉开呼吸感：form 自带 gap 14px + 额外 16px = 30px 总间距。 */
+  margin-top: 16px;
+}
+.auth-submit:hover:not(:disabled) { background: var(--primary-hover); }
+.auth-submit:disabled {
+  /* 与 CreateTablePopover / FieldConfig 主按钮 disabled 视觉对齐：
+   * 用 primary-light 当 disabled 底，避免 opacity 0.5 的半透明蓝色观感。 */
+  background: var(--primary-light);
+  color: var(--text-on-primary);
+  cursor: not-allowed;
+}
+
+/* ─── Language switcher (top-right of shell) ──────────────────────── */
+.auth-lang-switch {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 20px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.auth-lang-switch:hover {
+  background: var(--surface-2);
+  color: var(--primary);
+}
+.auth-lang-switch svg { flex-shrink: 0; }
+
+/* ─── Loading state for /me check ─────────────────────────────────── */
+.auth-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}

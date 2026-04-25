@@ -349,7 +349,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
             >
               <div className="field-type-row">
                 <span className="label">
-                  <span style={{ width: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#51565d" }}><FieldIcon type={fieldType} size={16} /></span>
+                  <span style={{ width: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)" }}><FieldIcon type={fieldType} size={16} /></span>
                   {t(findTypeLabelKey(fieldType))}
                 </span>
                 <span className="chevron">›</span>
@@ -455,7 +455,7 @@ function TypePicker({ cardRect, popoverRect, current, onSelect, onMouseEnter, on
                   <span className="icon"><FieldIcon type={item.type} size={16} /></span>
                   {t(item.labelKey)}
                 </span>
-                {current === item.type && <span style={{ color: "#1456f0" }}>✓</span>}
+                {current === item.type && <span style={{ color: "var(--primary)" }}>✓</span>}
               </div>
             ))}
           </div>

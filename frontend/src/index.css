@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Design tokens —— 单一 source of truth。LM/DM 在这一个文件里统一维护。 */
+@import "./styles/tokens.css";
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -7,59 +10,50 @@
 }
 
 :root {
-  /* Figma design tokens */
-  --color-primary: #1456F0;
-  --color-primary-hover: #0D45D6;
-  --color-primary-light: #F0F4FF;
-  --color-text-primary: #1F2329;
-  --color-text-title: #1F2329;
-  --color-text-secondary: #646A73;
-  --color-text-muted: #8F959E;
-  --color-text-placeholder: #BBBFC4;
-  --color-icon-n1: #2B2F36;
-  --color-icon-n2: #646A73;
-  --color-border: #DEE0E3;
-  --color-border-component: #D0D3D6;
-  --color-border-light: #EFF0F1;
-  --color-bg: #F5F6F7;
-  --color-bg-base: #F5F6F7;
-  --color-bg-secondary: #F8F9FA;
-  /* Typography */
+  /* ── Typography ───────────────────────────────────────────── */
   --fs-base: 14px;
   --lh-base: 22px;
-  --color-bg-hover: #F0F1F3;
-  --color-bg-float: #FFFFFF;
-  --color-white: #FFFFFF;
-  /* Status tags from Figma */
+  --font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+
+  /* ── Spacing / Radius ─────────────────────────────────────── */
+  --radius-s: 4px;
+  --radius-m: 6px;
+  --radius-l: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 11px;
+
+  /* ── Status tag combos（旧设计稿沿用，未走 token；保留以免回归）── */
   --color-tag-done-bg: #CAEFFC;
   --color-tag-done-text: #02312A;
   --color-tag-design-bg: #E0E9FF;
   --color-tag-design-text: #002270;
   --color-tag-pending-bg: #FEE7CD;
   --color-tag-pending-text: #3B1A02;
-  /* Palette */
   --palette-blue-100: #E0E9FF;
   --palette-blue-900: #002270;
-  /* Typography - PingFang SC from Figma */
-  --font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
-  /* Spacing / Radius from Figma */
-  --radius-s: 4px;
-  --radius-m: 6px;
-  --radius-l: 8px;
-  --radius-xl: 12px;
-  --radius-pill: 11px;
-  /* Shadows from Figma */
-  --shadow-panel: 0px 6px 12px -10px rgba(31, 35, 41, 0.06), 0px 8px 24px 0px rgba(31, 35, 41, 0.04), 0px 10px 36px 10px rgba(31, 35, 41, 0.04);
-  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.06);
+
+  /* ── Legacy shadow alias（指向新 shadow token）─────────────── */
+  --shadow-panel: var(--shadow-card);
+  --shadow-dropdown: var(--shadow-popover);
+}
+
+/* DM tag 配色微调：在深色底上原版浅蓝 chip 太鲜。 */
+[data-theme="dark"] {
+  --color-tag-done-bg: #14323B;
+  --color-tag-done-text: #7FE0CC;
+  --color-tag-design-bg: #1A2543;
+  --color-tag-design-text: #99B6FF;
+  --color-tag-pending-bg: #3A2A14;
+  --color-tag-pending-text: #FFD09C;
 }
 
 html, body {
   height: 100%;
   font-family: var(--font-family);
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--color-text-primary);
-  background: var(--color-bg);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: var(--text-primary);
+  background: var(--surface-base);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -74,16 +68,54 @@ button {
   cursor: pointer;
   border: none;
   background: none;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: inherit;
 }
 
 input, select, textarea {
   font-family: var(--font-family);
-  font-size: 14px;
-  line-height: 22px;
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: var(--text-primary);
 }
 
-select {
-  cursor: pointer;
+select { cursor: pointer; }
+
+/* ── DM 全局表单 placeholder 文字色 ──────────────────────────────
+ * 注：之前还有一条全局 input/textarea/select 的 background 规则，但
+ * vite 的 CSS minifier 会把 :where() 包裹"优化"掉，导致规则特异性
+ * 反弹到 (0,1,1) 强行盖住组件 class 的 transparent bg。已彻底去掉那
+ * 条规则；每个组件自己负责输入框的 bg（绝大多数组件已经有 explicit
+ * background 声明）。这里只留 placeholder 文字色和 color，因为这两个
+ * 即使被组件覆盖也不会出 "深色色块" 这种突兀视觉问题。 */
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder { color: var(--text-placeholder); }
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  color: var(--text-primary);
 }
+
+/* Checkbox / radio：accent-color 染选中态颜色，box bg 由 color-scheme 走
+ * 浏览器 dark UA 默认。这条给一个稳定的 LM/DM 都好看的 accent。 */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--primary);
+}
+
+/* ── DM 滚动条（webkit） ──────────────────────────────────────────
+ * 默认滚动条 + 横纵交汇处的 corner 在 DM 下太亮（默认是白色块）。
+ * track / corner 都设为透明，让父级深底色透上来。 */
+[data-theme="dark"] ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+[data-theme="dark"] ::-webkit-scrollbar-track { background: transparent; }
+[data-theme="dark"] ::-webkit-scrollbar-corner { background: transparent; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 6px;
+  border: 3px solid var(--surface-base);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }

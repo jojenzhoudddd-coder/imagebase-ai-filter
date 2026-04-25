@@ -25,9 +25,9 @@
 
 /* Figma: header row h=36 */
 .data-table th {
-  background: #F7F8FA;
-  border-bottom: 1px solid #DEE0E3;
-  border-right: 1px solid rgba(31, 35, 41, 0.15);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border-default);
+  border-right: 1px solid var(--border-default);
   padding: 0 8px;
   height: 36px;
   text-align: left;
@@ -43,19 +43,20 @@
 
 /* Header hover → gray background */
 .data-table th:hover {
-  background: #ECEDF0;
+  background: var(--border-light);
 }
 
 /* Header selected state */
 .data-table th.col-selected {
-  background: #E0E9FF;
+  background: var(--primary-light);
   color: var(--color-primary);
 }
 
-/* Figma: data row h=32 */
+/* Figma: data row h=32. 单元格框线用 --border-light（LM 浅灰、DM 中性
+ * 灰），DM 下肉眼可见但不抢视觉。 */
 .data-table td {
-  border-bottom: 1px solid rgba(31, 35, 41, 0.15);
-  border-right: 1px solid rgba(31, 35, 41, 0.15);
+  border-bottom: 1px solid var(--border-light);
+  border-right: 1px solid var(--border-light);
   height: 32px;
   font-size: 14px;
   color: var(--color-text-primary);
@@ -76,7 +77,7 @@
 
 /* Hover: light gray background on hovered row */
 .data-row.row-hovered td {
-  background: #F5F6F7;
+  background: var(--surface-inset);
 }
 
 /* Selected rows: light blue highlight */
@@ -94,8 +95,10 @@
 }
 
 .td-editing {
-  background: white !important;
-  box-shadow: inset 0 0 0 2px var(--color-primary);
+  /* 编辑态用 --surface-2（白 / DM 中性灰），与表格底色形成微对比，
+   * 主要靠 inset 蓝色 box-shadow 表达 "正在编辑"。 */
+  background: var(--surface-2) !important;
+  box-shadow: inset 0 0 0 2px var(--primary);
   z-index: 5;
 }
 
@@ -136,7 +139,7 @@
 }
 
 .col-index:hover {
-  background: #F7F8FA !important;
+  background: var(--surface-1) !important;
 }
 
 .row-number {
@@ -151,9 +154,9 @@
   cursor: pointer;
 }
 
-/* Figma columns: name column has stronger divider #BBBFC4 */
+/* Figma columns: name column has stronger divider var(--text-disabled) */
 .col-fld_name {
-  border-right-color: #BBBFC4 !important;
+  border-right-color: var(--text-disabled) !important;
 }
 
 .col-add {
@@ -162,7 +165,7 @@
 }
 
 .col-add:hover {
-  background: #F0F1F3 !important;
+  background: var(--surface-3) !important;
 }
 
 .col-add-icon {
@@ -370,8 +373,8 @@
   top: 100%;
   left: 0;
   z-index: 50;
-  background: white;
-  border: 1px solid var(--color-border);
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
   border-radius: 8px;
   box-shadow: var(--shadow-dropdown);
   padding: 12px;
@@ -501,11 +504,11 @@
 }
 
 .field-context-menu-item.danger {
-  color: #F54A45;
+  color: var(--danger);
 }
 
 .field-context-menu-item.danger:hover {
-  background: #FEE2E2;
+  background: var(--danger-bg);
 }
 
 .field-context-menu-divider {

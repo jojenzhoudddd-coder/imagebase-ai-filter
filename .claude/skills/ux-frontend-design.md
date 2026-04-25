@@ -114,6 +114,49 @@ useEffect(() => {
 ### Context Menu Positioning
 Right-click menus use `position: fixed` with `e.clientX` / `e.clientY`. Close on any outside `mousedown`.
 
+### Dropdown Menus — 两套规格不要混用
+
+项目里有两类下拉菜单，**类目不同、规范不同**，新增 UI 时务必先确认归类：
+
+#### A. Regular menu（DropdownMenu / `.topbar-menu`）—— 操作型
+
+用于"更多操作 / 工具栏二级菜单 / 右键菜单"等纯命令场景。
+
+| Token | 值 |
+|---|---|
+| 容器 width | 220 px |
+| 容器 padding | 4 px |
+| Item height | 32 px |
+| Item padding | 0 12 px |
+| Item gap | 0（item 紧贴）|
+| Item radius | `var(--radius-s)` = 4 px |
+| Hover bg | `var(--color-bg-hover)` |
+| Font size | 14 px |
+| Icon size | 16 px |
+
+JSX 用 `<DropdownMenu>` 组件 / 普通 `.topbar-menu` 类。**不要改这套 token**，会影响多个老菜单。
+
+#### B. Profile popover（`.topbar-profile-popover`）—— 身份信息卡
+
+只用于"头像下拉、用户信息编辑"场景。明显比 regular menu 更宽、行间距更大、更"卡片化"。
+
+| Token | 值 |
+|---|---|
+| 容器 width | **280 px** 固定（非 min-width）|
+| 容器 padding | 6 px |
+| **Item height** | **40 px**（比 regular 高 8px，更呼吸）|
+| Item padding | 0 12 px |
+| **Item gap** | **4 px**（item 之间留白，flex `gap: 4px`）|
+| Item radius | `var(--radius-s)` |
+| Header padding | 14 14 12（top L/R bottom）|
+| Header layout | flex-row：左 48px avatar + 右 username/email 列 |
+| Avatar hover | 半透明黑覆盖 + 白色相机 SVG（**无文字**）|
+| Username | 双击进入 `<InlineEdit>`，blur/Enter 提交，Esc 取消 |
+| Email | `font-size: 12px; color: #8F959E`（DM: `#A6ADB6`）只读 |
+| 定位 | `position: fixed; top: rect.bottom + 4; left: rect.right - 280`（保证 popover 右边对齐 avatar 右边）|
+
+**用途约束**：profile popover 只在 TopBar 用一次。如果未来出现"用户卡 / 团队成员卡"等类似形态，复用这套 token；其它"操作菜单"必须用 regular menu。
+
 ## i18n Pattern
 
 - All non-user-data UI strings use `t("key")` from `useTranslation()` hook

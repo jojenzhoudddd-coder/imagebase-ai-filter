@@ -318,7 +318,7 @@ function ConditionRow({ idx, condition, refFields, currentFields, canDelete, dis
           className="cond-delete"
           title={condition.valueType === "field" ? t("lookup.switchToConstant") : t("lookup.switchToField")}
           onClick={() => onChange({ valueType: condition.valueType === "field" ? "constant" : "field", value: undefined, currentFieldId: undefined })}
-          style={{ color: "#1456f0" }}
+          style={{ color: "var(--primary)" }}
         >
           ⇄
         </button>

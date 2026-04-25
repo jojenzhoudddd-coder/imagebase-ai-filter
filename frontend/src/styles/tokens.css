@@ -1,0 +1,192 @@
+/* ──────────────────────────────────────────────────────────────────────
+ * Design Tokens —— Light & Dark Mode 单一 source of truth
+ *
+ * 修改规则：
+ *   1. 所有组件 CSS 只用 `var(--xxx)` token，不允许直接写十六进制色
+ *   2. 新增颜色场景先在这里定义 semantic 名（比如 --surface-3），再去
+ *      组件用；不要乱发明 ad-hoc 名
+ *   3. LM 是 `:root` 默认；DM 是 `[data-theme="dark"]` 覆盖；这两段必须
+ *      字段一一对应（漏掉一个 DM 值就会回退到 LM 色，眼瞎）
+ *
+ * 取色策略（DM）：
+ *   · 不做"颜色反转"。Linear / macOS / Notion 都是给所有色加灰度调和
+ *   · Surface 用近黑 (#16181D)，不用纯黑（OLED 边缘 vignette）
+ *   · 文字用软白 (#E6E8EB ≈ 92% 白)，不用纯白（对比过强眼疲劳）
+ *   · 品牌色降饱和 + 提亮（#1456F0 → #4A82FF）
+ *   · 阴影几乎看不见，用 1px highlight border + 厚重 box-shadow 替代
+ * ────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* LM 默认 color-scheme，对应 prefers-color-scheme: light。 */
+  color-scheme: light;
+
+  /* ── Surface 表面层级 ────────────────────────────────────────────
+   * 5 层从底到顶：base / surface-1 / surface-2 / surface-3 / inset
+   * surface-2 比 surface-1 更"浮起"（card / popover），surface-3 是
+   * hover/active 态，inset 是凹陷态（输入框）。 */
+  --surface-base:        #FFFFFF;
+  --surface-1:           #F8F9FA;
+  --surface-2:           #FFFFFF;
+  --surface-3:           #F0F1F3;
+  --surface-inset:       #F5F6F7;
+  --surface-modal-scrim: rgba(31, 35, 41, 0.38);
+
+  /* ── Text 文字 ──────────────────────────────────────────────── */
+  --text-primary:        #1F2329;
+  --text-secondary:      #646A73;
+  --text-muted:          #8F959E;
+  --text-placeholder:    #B0B5BD;
+  --text-on-primary:     #FFFFFF;  /* 主色按钮上的字 */
+  --text-disabled:       #BBBFC4;
+  --text-link:           #1456F0;
+
+  /* ── Border / Divider ─────────────────────────────────────────── */
+  --border-default:      #DEE0E3;
+  --border-light:        #EFF0F1;
+  --border-strong:       #D0D3D6;
+  --border-focus:        #1456F0;
+
+  /* ── Brand 主色 ───────────────────────────────────────────────── */
+  --primary:             #1456F0;
+  --primary-hover:       #0D45D6;
+  --primary-pressed:     #0934A8;
+  --primary-bg:          #F0F4FF;  /* 主色淡底（chip / 选中态） */
+  --primary-light:       #E0E9FF;
+
+  /* ── Status ──────────────────────────────────────────────────── */
+  --success:             #34A853;
+  --success-bg:          #E6F4EA;
+  --warning:             #F5A623;
+  --warning-bg:          #FFF4E5;
+  --danger:              #F54A45;
+  --danger-bg:           #FDECEC;
+  --info:                #1456F0;
+  --info-bg:             #F0F4FF;
+
+  /* ── Icon ────────────────────────────────────────────────────── */
+  --icon-primary:        #2B2F36;
+  --icon-secondary:      #646A73;
+  --icon-muted:          #8F959E;
+
+  /* ── Shadow（LM 用 drop shadow 营造层级） ──────────────────────── */
+  --shadow-card:         0 2px 8px rgba(31, 35, 41, 0.06);
+  --shadow-popover:      0 4px 16px rgba(0, 0, 0, 0.12),
+                          0 1px 4px rgba(0, 0, 0, 0.06);
+  --shadow-modal:        0 16px 48px rgba(31, 35, 41, 0.18);
+
+  /* ── Brand color palette（"四件套" artifact 颜色，不随主题翻）─ */
+  --artifact-table:      #1456F0;
+  --artifact-taste:      #7B4BDC;
+  --artifact-idea:       #F5A623;
+  --artifact-demo:       #34A853;
+
+  /* ── Backwards-compat aliases（让旧 var(--color-*) 还能用，下一轮再删）── */
+  --color-primary:        var(--primary);
+  --color-primary-hover:  var(--primary-hover);
+  --color-primary-light:  var(--primary-bg);
+  --color-text-primary:   var(--text-primary);
+  --color-text-title:     var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted:     var(--text-muted);
+  --color-text-placeholder: var(--text-placeholder);
+  --color-icon-n1:        var(--icon-primary);
+  --color-icon-n2:        var(--icon-secondary);
+  --color-border:         var(--border-default);
+  --color-border-component: var(--border-strong);
+  --color-border-light:   var(--border-light);
+  --color-bg:             var(--surface-1);
+  --color-bg-base:        var(--surface-1);
+  --color-bg-secondary:   var(--surface-1);
+  --color-bg-hover:       var(--surface-3);
+  --color-bg-float:       var(--surface-2);
+  --color-white:          var(--surface-2);
+}
+
+[data-theme="dark"] {
+  /* color-scheme: dark —— 告诉浏览器原生表单元素（checkbox / radio /
+   * scrollbar / select / date-picker）走 dark UA 风格，无需逐个 style。
+   * accent-color 仍走我们的 --primary 染色。 */
+  color-scheme: dark;
+
+  /* ── Surface ─── macOS DM 标准取色：windowBg #1C1C1E / sidebar #2C2C2E
+   * / card #3A3A3C / hover #48484A —— 全中性灰，无蓝调。
+   * 我们 5 层映射：
+   *   base    = #1C1C1E   macOS window bg
+   *   1       = #232325   过渡灰
+   *   2       = #2C2C2E   macOS sidebar / card
+   *   3       = #38383A   macOS popover / hover
+   *   inset   = #161618   更深凹陷（input 等） */
+  --surface-base:        #1C1C1E;
+  --surface-1:           #232325;
+  --surface-2:           #2C2C2E;
+  --surface-3:           #38383A;
+  --surface-inset:       #161618;
+  --surface-modal-scrim: rgba(0, 0, 0, 0.55);
+
+  /* ── Text ─── macOS labelColor 系列：纯中性，无蓝调 */
+  --text-primary:        #F5F5F7;
+  --text-secondary:      #B0B0B5;
+  --text-muted:          #8E8E93;
+  --text-placeholder:    #6E6E73;
+  --text-on-primary:     #FFFFFF;
+  --text-disabled:       #545458;
+  --text-link:           #6B9AFF;
+
+  /* ── Border ─── 三档：light < default < strong；DM 下都对中性灰 #1C1C1E
+   * 底可见，但 light 比 default 略弱用于单元格 / 内部分隔。 */
+  --border-default:      #444446;
+  --border-light:        #38383A;
+  --border-strong:       #5C5C5E;
+  --border-focus:        #6B9AFF;
+
+  /* ── Brand（降饱和 + 提亮） ─── */
+  --primary:             #4A82FF;
+  --primary-hover:       #6B9AFF;
+  --primary-pressed:     #2E69E0;
+  --primary-bg:          #1A2543;
+  --primary-light:       #233056;
+
+  /* ── Status ─── */
+  --success:             #5BC076;
+  --success-bg:          #1A2E22;
+  --warning:             #FFB84D;
+  --warning-bg:          #3A2A14;
+  --danger:              #FF6B66;
+  --danger-bg:           #3A1F1E;
+  --info:                #6B9AFF;
+  --info-bg:             #1A2543;
+
+  /* ── Icon ─── */
+  --icon-primary:        #E6E8EB;
+  --icon-secondary:      #A6ADB6;
+  --icon-muted:          #7A828E;
+
+  /* ── Shadow（DM 用 1px highlight border + 厚重 shadow 替代） ─── */
+  --shadow-card:         0 1px 0 rgba(255, 255, 255, 0.04),
+                          0 4px 12px rgba(0, 0, 0, 0.40);
+  --shadow-popover:      0 1px 0 rgba(255, 255, 255, 0.06),
+                          0 8px 24px rgba(0, 0, 0, 0.50);
+  --shadow-modal:        0 1px 0 rgba(255, 255, 255, 0.08),
+                          0 16px 48px rgba(0, 0, 0, 0.60);
+
+  /* artifact palette 在 DM 下也轻度提亮 + 降饱（保持识别度） */
+  --artifact-table:      #4A82FF;
+  --artifact-taste:      #9C7AE8;
+  --artifact-idea:       #FFB84D;
+  --artifact-demo:       #5BC076;
+}
+
+/* ── 全局 SVG fill/stroke fallback for dark mode ────────────────────
+ * 项目里大量内联 SVG 用 fill="#xxx" 硬写颜色，单 token 抓不到。下面用
+ * attribute selector 把最高频的几个浅色 → semantic icon-primary。
+ * 长期目标是把所有 SVG 改成 fill="currentColor"，由父级 color 控制。 */
+[data-theme="dark"] svg path[fill="#2B2F36"],
+[data-theme="dark"] svg path[fill="#1F2329"],
+[data-theme="dark"] svg path[fill="#646A73"],
+[data-theme="dark"] svg path[fill="#8F959E"],
+[data-theme="dark"] svg path[fill="#333333"],
+[data-theme="dark"] svg rect[fill="#2B2F36"] { fill: var(--icon-primary); }
+[data-theme="dark"] svg path[stroke="#2B2F36"],
+[data-theme="dark"] svg path[stroke="#1F2329"],
+[data-theme="dark"] svg path[stroke="#646A73"],
+[data-theme="dark"] svg path[stroke="#8F959E"] { stroke: var(--icon-primary); }

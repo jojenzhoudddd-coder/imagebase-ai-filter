@@ -21,7 +21,7 @@
   width: 100%;
 }
 
-.dp-trigger:hover { border-color: #C0C4CC; }
+.dp-trigger:hover { border-color: var(--text-muted); }
 .dp-trigger:focus { border-color: var(--color-primary); outline: none; }
 
 .dp-label {

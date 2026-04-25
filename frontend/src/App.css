@@ -20,7 +20,7 @@
   flex-direction: row;
   flex: 1;
   overflow: hidden;
-  background: #FFFFFF;
+  background: var(--surface-2);
 }
 .artifact-part {
   display: flex;
@@ -30,12 +30,12 @@
   overflow: hidden;
   position: relative;
   order: 1;
-  background: #FFFFFF;
+  background: var(--surface-2);
   /* Full 1px border. When chat-part is not mounted, artifact fills the whole
    * workspace and has no rounded corners (it reads as the page edge). The
    * rounded corner only appears on the side that meets chat-part — see the
    * .chat-open overrides below. Bottom corners always square. */
-  border: 1px solid #DEE0E3;
+  border: 1px solid var(--border-default);
   border-radius: 0;
 }
 .chat-part {
@@ -43,7 +43,7 @@
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
-  background: #FFFFFF;
+  background: var(--surface-2);
   position: relative;
   order: 3;
   /* Symmetric 20px padding on left / right / bottom so the chat UI insets
@@ -52,7 +52,7 @@
    * Mirror rule of artifact-part: only the top corner facing artifact is
    * rounded. Default layout places chat on the right, so round top-left. */
   padding: 0 20px 20px 20px;
-  border: 1px solid #DEE0E3;
+  border: 1px solid var(--border-default);
   border-radius: 8px 0 0 0;
 }
 .workspace .split-divider { order: 2; }
@@ -108,7 +108,7 @@
   width: 100px;
   height: 4px;
   border-radius: 2px;
-  background: #D0D3D6;
+  background: var(--border-strong);
   opacity: 0;
   transition: opacity 160ms ease, background-color 160ms ease;
   cursor: grab;
@@ -132,7 +132,7 @@
 .part-hover-zone:hover ~ .part-move-bar,
 .part-move-bar:hover {
   opacity: 1;
-  background: #8F959E;
+  background: var(--text-muted);
   cursor: grab;
 }
 /* Active / dragging: once grabbed, the bar turns primary blue and the
@@ -140,7 +140,7 @@
 .part-move-bar.dragging,
 .workspace.moving .part-move-bar {
   opacity: 1;
-  background: #1456F0;
+  background: var(--primary);
 }
 .part-move-bar.dragging {
   cursor: grabbing;
@@ -156,7 +156,7 @@
  * ancestor part of the active move-bar. */
 .artifact-part:has(.part-move-bar.dragging),
 .chat-part:has(.part-move-bar.dragging) {
-  box-shadow: 0 0 0 1.5px #1456F0 inset, 0 8px 24px rgba(20, 86, 240, 0.12);
+  box-shadow: 0 0 0 1.5px var(--primary) inset, 0 8px 24px rgba(20, 86, 240, 0.12);
   transition: box-shadow 120ms ease;
 }
 

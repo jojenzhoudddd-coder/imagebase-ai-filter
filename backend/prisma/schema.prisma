@@ -12,8 +12,15 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
+  /// Display handle — shown in breadcrumb, default workspace name, default
+  /// chatbot name. **Not unique, not used for login** (email is the only
+  /// login identifier). Users can change it freely and collisions are fine.
+  username  String?
   name      String
   avatarUrl String?
+  /// bcrypt hash of the password. Null means "never set a password yet"
+  /// (legacy rows pre-auth — treated as "must reset" once auth lands).
+  passwordHash String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

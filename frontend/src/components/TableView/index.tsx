@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Field, TableRecord, UserOption } from "../../types";
 import { useTranslation } from "../../i18n/index";
+import { useResolvedTheme } from "../../theme";
 import { FieldIcon as FieldIconSvg } from "../FieldConfig/FieldIcons";
 import "./TableView.css";
 
@@ -57,8 +58,12 @@ interface DragState {
   headerRects: Map<string, DOMRect>;
 }
 
-// Lark option color palette: maps option.color → { bg, text, dot }
-const OPTION_PALETTE: Record<string, { bg: string; text: string; dot: string }> = {
+// Lark option color palette: maps option.color → { bg, text, dot }.
+// LM 用浅底 + 深字（原飞书风格）；DM 用 dot 色 18% alpha 染底 + 提亮文字
+// （Linear / Notion DM 的标准 chip 处理）。
+//
+// LM 调色板：原飞书 token，不动。
+const OPTION_PALETTE_LM: Record<string, { bg: string; text: string; dot: string }> = {
   "#D83931": { bg: "#FEE2E2", text: "#D83931", dot: "#F54A45" },   // Red
   "#F77234": { bg: "#FEE7CD", text: "#F77234", dot: "#FF7D00" },   // Orange
   "#02312A": { bg: "#CAEFFC", text: "#02312A", dot: "#14C9C9" },   // Teal
@@ -67,11 +72,27 @@ const OPTION_PALETTE: Record<string, { bg: string; text: string; dot: string }> 
   "#2B2F36": { bg: "#F0F1F3", text: "#2B2F36", dot: "#646A73" },   // Dark
   "#8F959E": { bg: "#F0F1F3", text: "#8F959E", dot: "#8F959E" },   // Gray
 };
-const DEFAULT_OPTION_STYLE = { bg: "#F0F1F3", text: "#646A73", dot: "#8F959E" };
 
-function getOptionStyle(optionColor?: string) {
-  if (optionColor && OPTION_PALETTE[optionColor]) return OPTION_PALETTE[optionColor];
-  return DEFAULT_OPTION_STYLE;
+// DM 调色板：bg 用 dot 色 22% alpha（在 #1C1C1E 底上呈现染色色块），
+// text 用提亮的纯色（hsl 高 lightness）—— 既保持识别度又对比足够。
+const OPTION_PALETTE_DM: Record<string, { bg: string; text: string; dot: string }> = {
+  "#D83931": { bg: "rgba(245, 74, 69, 0.22)",  text: "#FF8B86", dot: "#FF6B66" },   // Red
+  "#F77234": { bg: "rgba(255, 125, 0, 0.22)",  text: "#FFAA66", dot: "#FF9D4D" },   // Orange
+  "#02312A": { bg: "rgba(20, 201, 201, 0.20)", text: "#7FE0DA", dot: "#22D3D3" },   // Teal
+  "#002270": { bg: "rgba(74, 130, 255, 0.22)", text: "#99B6FF", dot: "#6B9AFF" },   // Blue
+  "#3B1A02": { bg: "rgba(255, 184, 77, 0.20)", text: "#FFD09C", dot: "#FFB84D" },   // Amber
+  "#2B2F36": { bg: "rgba(176, 176, 181, 0.16)", text: "#D0D0D5", dot: "#B0B0B5" }, // Dark
+  "#8F959E": { bg: "rgba(176, 176, 181, 0.16)", text: "#B0B0B5", dot: "#8E8E93" }, // Gray
+};
+
+const DEFAULT_OPTION_STYLE_LM = { bg: "#F0F1F3", text: "#646A73", dot: "#8F959E" };
+const DEFAULT_OPTION_STYLE_DM = { bg: "rgba(176, 176, 181, 0.16)", text: "#B0B0B5", dot: "#8E8E93" };
+
+function getOptionStyle(optionColor: string | undefined, isDark: boolean) {
+  const palette = isDark ? OPTION_PALETTE_DM : OPTION_PALETTE_LM;
+  const fallback = isDark ? DEFAULT_OPTION_STYLE_DM : DEFAULT_OPTION_STYLE_LM;
+  if (optionColor && palette[optionColor]) return palette[optionColor];
+  return fallback;
 }
 
 function findOptionColor(field: Field | undefined, optionName: string): string | undefined {
@@ -79,7 +100,8 @@ function findOptionColor(field: Field | undefined, optionName: string): string |
 }
 
 function StatusTag({ name, optColor }: { name: string; optColor?: string }) {
-  const style = getOptionStyle(optColor);
+  const theme = useResolvedTheme();
+  const style = getOptionStyle(optColor, theme === "dark");
   return (
     <span className="status-tag" style={{ background: style.bg, color: style.text }}>
       {name}
@@ -121,7 +143,7 @@ function UserAvatar({ userId, users, showName = true }: { userId: string; users:
 function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
   // Lookup sentinels first — error states surface as red labels
   if (field.type === "Lookup" && typeof value === "string" && (value === "#REF!" || value === "#CYCLE!")) {
-    return <span className="cell-text" style={{ color: "#c23b3b", fontWeight: 500 }}>{value}</span>;
+    return <span className="cell-text" style={{ color: "var(--danger)", fontWeight: 500 }}>{value}</span>;
   }
 
   if (value === null || value === undefined || value === "") {
@@ -133,7 +155,7 @@ function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
     return (
       <div className="cell-tags">
         {value.map((v, i) => (
-          <span key={i} className="status-tag" style={{ background: "#F0F2F5", color: "#1f2329" }}>
+          <span key={i} className="status-tag" style={{ background: "var(--surface-3)", color: "var(--text-primary)" }}>
             {String(v)}
           </span>
         ))}
@@ -265,6 +287,7 @@ function SelectEditor({
 }) {
   const options = field.config.options ?? [];
   const ref = useRef<HTMLDivElement>(null);
+  const theme = useResolvedTheme();
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -277,7 +300,7 @@ function SelectEditor({
   return (
     <div ref={ref} className="cell-dropdown">
       {options.map((opt) => {
-        const optStyle = getOptionStyle(opt.color);
+        const optStyle = getOptionStyle(opt.color, theme === "dark");
         const isSelected = String(value) === opt.name;
         return (
           <button

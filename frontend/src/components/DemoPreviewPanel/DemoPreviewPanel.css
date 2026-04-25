@@ -9,14 +9,14 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  background: #ffffff;
+  background: var(--surface-2);
   position: relative;
 }
 
 .demo-panel-loading,
 .demo-panel-error {
   padding: 40px;
-  color: var(--color-text-tertiary, #646A73);
+  color: var(--color-text-tertiary, var(--text-secondary));
   text-align: center;
   font-size: 13px;
 }
@@ -28,15 +28,15 @@
   justify-content: space-between;
   height: 44px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--color-border, #DEE0E3);
-  background: #ffffff;
+  border-bottom: 1px solid var(--color-border, var(--border-default));
+  background: var(--surface-2);
   flex-shrink: 0;
 }
 
 .demo-panel-topbar-name {
   font-size: 14px;
   font-weight: 500;
-  color: var(--color-text-primary, #1F2329);
+  color: var(--color-text-primary, var(--text-primary));
   min-width: 0;
   flex-shrink: 1;
 }
@@ -50,16 +50,16 @@
 
 .demo-panel-status {
   font-size: 12px;
-  color: var(--color-text-tertiary, #646A73);
+  color: var(--color-text-tertiary, var(--text-secondary));
   padding: 0 4px;
   user-select: none;
 }
 /* Build status chip. success 不用绿色 — 对齐 idea/table 其他状态指示的
  * 中性灰色调，避免顶栏出现抢眼的绿。error 依然红色（需要注意），building
  * 保持品牌蓝（正在进行中）。 */
-.demo-panel-status-success { color: var(--color-text-tertiary, #646A73); }
-.demo-panel-status-error   { color: #F54A45; cursor: help; }
-.demo-panel-status-building { color: #1456F0; }
+.demo-panel-status-success { color: var(--color-text-tertiary, var(--text-secondary)); }
+.demo-panel-status-error   { color: var(--danger); cursor: help; }
+.demo-panel-status-building { color: var(--primary); }
 
 /* Hover text buttons (mirrors .idea-editor-topbar-btn) */
 .demo-panel-topbar-btn {
@@ -71,7 +71,7 @@
   border: none;
   border-radius: var(--radius-s, 4px);
   background: transparent;
-  color: var(--color-text-secondary, #2B2F36);
+  color: var(--color-text-secondary, var(--icon-primary));
   font-size: 13px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
@@ -79,8 +79,8 @@
   font-family: inherit;
 }
 .demo-panel-topbar-btn:hover:not(:disabled) {
-  background: var(--color-bg-hover, #F0F0F0);
-  color: var(--color-text-primary, #1F2329);
+  background: var(--color-bg-hover, var(--surface-3));
+  color: var(--color-text-primary, var(--text-primary));
 }
 .demo-panel-topbar-btn:disabled {
   opacity: 0.5;
@@ -88,11 +88,11 @@
 }
 
 .demo-panel-topbar-btn-primary {
-  color: #1456F0;
+  color: var(--primary);
 }
 .demo-panel-topbar-btn-primary:hover:not(:disabled) {
-  background: #E8EFFE;
-  color: #1456F0;
+  background: var(--primary-light);
+  color: var(--primary);
 }
 
 /* ─── Public URL bar ─── */
@@ -102,12 +102,12 @@
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  background: #F7F8FA;
-  border-bottom: 1px solid var(--color-border, #DEE0E3);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--color-border, var(--border-default));
   font-size: 12px;
 }
 .demo-panel-public-url-label {
-  color: var(--color-text-tertiary, #646A73);
+  color: var(--color-text-tertiary, var(--text-secondary));
   font-weight: 500;
   flex-shrink: 0;
 }
@@ -122,7 +122,7 @@
   min-width: 0;
 }
 .demo-panel-public-url a {
-  color: #1456F0;
+  color: var(--primary);
   text-decoration: none;
   font-family: "SF Mono", ui-monospace, monospace;
   font-size: 11px;
@@ -146,27 +146,27 @@
   background: transparent;
   border: none;
   border-radius: 4px;
-  color: var(--color-text-tertiary, #646A73);
+  color: var(--color-text-tertiary, var(--text-secondary));
   cursor: pointer;
   font-family: inherit;
   transition: background 0.15s, color 0.15s;
 }
 .demo-panel-copy-btn:hover {
-  background: var(--color-bg-hover, #F0F0F0);
-  color: #1456F0;
+  background: var(--color-bg-hover, var(--surface-3));
+  color: var(--primary);
 }
 
 /* ─── Error banner ─── */
 .demo-panel-error-banner {
   padding: 8px 12px;
-  background: #FDECEC;
-  color: #F54A45;
+  background: var(--danger-bg);
+  color: var(--danger);
   font-size: 12px;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #FADDDB;
+  border-bottom: 1px solid var(--danger-bg);
 }
 .demo-panel-error-close { font-size: 16px; opacity: 0.6; margin-left: 8px; }
 
@@ -185,7 +185,7 @@
   width: 100%;
   height: 100%;
   border: none;
-  background: #fff;
+  background: var(--surface-2);
 }
 
 .demo-panel-build-failed,
@@ -196,13 +196,13 @@
   align-items: center;
   justify-content: center;
   padding: 40px;
-  color: var(--color-text-tertiary, #646A73);
+  color: var(--color-text-tertiary, var(--text-secondary));
   text-align: center;
 }
 .demo-panel-build-failed h3,
 .demo-panel-empty h3 {
   margin: 0 0 12px;
-  color: var(--color-text-primary, #1F2329);
+  color: var(--color-text-primary, var(--text-primary));
   font-size: 16px;
   font-weight: 500;
 }
@@ -210,8 +210,8 @@
   max-width: 600px;
   margin: 12px 0;
   padding: 12px 16px;
-  background: #1F2329;
-  color: #FF9D9A;
+  background: var(--text-primary);
+  color: var(--danger);
   font-family: "SF Mono", ui-monospace, monospace;
   font-size: 11px;
   text-align: left;
@@ -222,7 +222,7 @@
   overflow: auto;
 }
 .demo-panel-hint {
-  color: var(--color-text-tertiary, #8F959E);
+  color: var(--color-text-tertiary, var(--text-muted));
   font-size: 12px;
   margin-top: 8px;
 }
@@ -245,8 +245,8 @@
   z-index: 30;
   width: 420px;
   max-width: calc(100vw - 40px);
-  background: #fff;
-  border: 1px solid var(--color-border, #DEE0E3);
+  background: var(--surface-2);
+  border: 1px solid var(--color-border, var(--border-default));
   border-radius: 8px;
   padding: 20px 24px;
   box-shadow: 0 8px 24px rgba(31, 35, 41, 0.12);
@@ -269,8 +269,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #17B26A;
-  box-shadow: 0 0 0 1.5px #fff;
+  background: var(--success);
+  box-shadow: 0 0 0 1.5px var(--surface-2);
   pointer-events: none;
 }
 /* When reused inline inside the popover's pending-changes notice,
@@ -286,10 +286,10 @@
 .demo-panel-pending-notice {
   margin: 0 0 16px;
   padding: 10px 12px;
-  background: #F0FAF3;
-  border: 1px solid #CCEBD7;
+  background: var(--success-bg);
+  border: 1px solid var(--success-bg);
   border-radius: 6px;
-  color: #2A8B57;
+  color: var(--success);
   font-size: 13px;
 }
 
@@ -301,12 +301,12 @@
   gap: 6px;
   margin-bottom: 20px;
   padding: 8px 10px;
-  background: var(--color-bg-hover, #F5F6F7);
+  background: var(--color-bg-hover, var(--surface-inset));
   border-radius: 4px;
   min-width: 0;
 }
 .demo-panel-published-url {
-  color: #1456F0;
+  color: var(--primary);
   text-decoration: none;
   font-family: "SF Mono", ui-monospace, monospace;
   font-size: 12px;
@@ -329,8 +329,8 @@
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  background: #fff;
-  border: 1px solid var(--color-border, #DEE0E3);
+  background: var(--surface-2);
+  border: 1px solid var(--color-border, var(--border-default));
   border-radius: 6px;
   padding: 8px 10px;
   box-shadow: 0 4px 12px rgba(31, 35, 41, 0.08);
@@ -354,13 +354,13 @@
   gap: 12px;
 }
 .demo-panel-file-path {
-  color: var(--color-text-primary, #1F2329);
+  color: var(--color-text-primary, var(--text-primary));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 220px;
 }
 .demo-panel-file-size {
-  color: var(--color-text-tertiary, #8F959E);
+  color: var(--color-text-tertiary, var(--text-muted));
   flex: 0 0 auto;
 }

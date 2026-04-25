@@ -6,7 +6,7 @@
   height: 32px;
 }
 
-/* Figma: text inputs h=32, border=1px #D0D3D6, rounded=6px */
+/* Figma: text inputs h=32, border=1px var(--border-strong), rounded=6px */
 .fr-input {
   height: 32px;
   border: 1px solid var(--color-border-component);
@@ -35,7 +35,7 @@
 
 .fr-select:hover,
 .fr-input:hover {
-  border-color: #C0C4CC;
+  border-color: var(--text-muted);
 }
 
 /* Field selector: fixed width */
@@ -76,7 +76,7 @@
 }
 
 .fr-operator-trigger:hover {
-  border-color: #C0C4CC;
+  border-color: var(--text-muted);
 }
 
 .fr-operator-trigger:focus {
