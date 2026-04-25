@@ -6,6 +6,7 @@ import InlineEdit from "./InlineEdit";
 import { useAuth } from "../auth/AuthContext";
 import { useToast } from "./Toast/index";
 import AvatarCropDialog from "../auth/AvatarCropDialog";
+import { useTheme, type ThemePreference } from "../theme";
 import "./TopBar.css";
 
 interface Props {
@@ -26,6 +27,7 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
   const { user, patchUser, logout } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
+  const { preference: themePreference, setTheme } = useTheme();
   const [editingDocName, setEditingDocName] = useState(false);
 
   // 头像默认值：后端 register 时已随机分配 /avatars/avatar_N.png，兜底
@@ -86,17 +88,14 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
   };
 
   // ── Inline username edit in popover ──
+  // 双击 username → 进入编辑态（InlineEdit 组件负责 UI），失焦 / Enter 提交，
+  // Esc 取消。与 documentName 的编辑 UX 一致，不再有额外的 √ × 按钮。
   const [editingUsername, setEditingUsername] = useState(false);
-  const [usernameDraft, setUsernameDraft] = useState("");
-  const [usernameSaving, setUsernameSaving] = useState(false);
-  useEffect(() => { setUsernameDraft(user?.username ?? ""); }, [user?.username]);
 
-  const saveUsername = async () => {
-    const trimmed = usernameDraft.trim();
-    if (!trimmed) { toast.error(t("auth.toast.usernameRequired")); return; }
-    if (!/^[a-zA-Z0-9_-]{2,32}$/.test(trimmed)) { toast.error(t("auth.toast.usernameInvalid")); return; }
+  const commitUsername = async (trimmed: string) => {
+    if (!trimmed) { toast.error(t("auth.toast.usernameRequired")); setEditingUsername(false); return; }
+    if (!/^[a-zA-Z0-9_-]{2,32}$/.test(trimmed)) { toast.error(t("auth.toast.usernameInvalid")); setEditingUsername(false); return; }
     if (trimmed === user?.username) { setEditingUsername(false); return; }
-    setUsernameSaving(true);
     try {
       const res = await fetch("/api/auth/profile", {
         method: "PATCH",
@@ -109,45 +108,27 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
         throw new Error(err.error || "save failed");
       }
       const data = await res.json();
-      // 注意：只更新 user 自身的 name/username —— 不触动 workspace / agent 的名字。
+      // 只更新 user 自身的 name/username —— 不触动 workspace / agent 名。
       patchUser({ name: data.user.name, username: data.user.username });
       toast.success(t("topbar.nameSaved"));
-      setEditingUsername(false);
     } catch (err: any) {
       toast.error(err?.message || "save failed");
     } finally {
-      setUsernameSaving(false);
+      setEditingUsername(false);
     }
   };
-
-  // ── More button menu ──
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [subMenuOpen, setSubMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const moreBtnRef = useRef<HTMLButtonElement>(null);
-  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
-  const subCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Avatar dropdown menu ──
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [langSubOpen, setLangSubOpen] = useState(false);
+  const [themeSubOpen, setThemeSubOpen] = useState(false);
+  const [settingsSubOpen, setSettingsSubOpen] = useState(false);
   const avatarRef = useRef<HTMLImageElement>(null);
   const avatarMenuRef = useRef<HTMLDivElement>(null);
   const [avatarMenuPos, setAvatarMenuPos] = useState<{ top: number; right: number } | null>(null);
   const langSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node) &&
-          moreBtnRef.current && !moreBtnRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-        setSubMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [menuOpen]);
+  const themeSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settingsSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Close avatar menu on outside click
   useEffect(() => {
@@ -162,18 +143,6 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [avatarMenuOpen]);
-
-  const handleMoreClick = () => {
-    if (!menuOpen && moreBtnRef.current) {
-      const rect = moreBtnRef.current.getBoundingClientRect();
-      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
-    }
-    setMenuOpen(!menuOpen);
-    if (menuOpen) {
-      setSubMenuOpen(false);
-      if (subCloseTimer.current) { clearTimeout(subCloseTimer.current); subCloseTimer.current = null; }
-    }
-  };
 
   const handleAvatarClick = () => {
     if (!avatarMenuOpen && avatarRef.current) {
@@ -319,14 +288,8 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
               <path d="M1179.5 25.3821V25.187C1179.5 24.7745 1179.84 24.437 1180.25 24.437H1181.75C1182.16 24.437 1182.5 24.7745 1182.5 25.187V25.3821C1185.09 26.0697 1187 28.4946 1187 31.3806L1187 36.1532H1187.75C1188.16 36.1532 1188.5 36.4889 1188.5 36.9032C1188.5 37.3174 1188.16 37.6532 1187.75 37.6532H1174.25C1173.84 37.6532 1173.5 37.3174 1173.5 36.9032C1173.5 36.4889 1173.84 36.1532 1174.25 36.1532H1175L1175 31.3806C1175 28.4946 1176.91 26.0697 1179.5 25.3821ZM1176.5 36.1532H1185.5L1185.5 31.3827C1185.5 28.7893 1183.49 26.687 1181 26.687C1178.51 26.687 1176.5 28.7893 1176.5 31.3827L1176.5 36.1532ZM1178.56 39.5282C1178.56 39.1139 1178.9 38.7782 1179.31 38.7782H1182.69C1183.1 38.7782 1183.44 39.1139 1183.44 39.5282C1183.44 39.9424 1183.1 40.2782 1182.69 40.2782H1179.31C1178.9 40.2782 1178.56 39.9424 1178.56 39.5282Z" fill="#2B2F36"/>
             </svg>
           </button>
-          <button className="topbar-icon-btn" title={t("topbar.more")} ref={moreBtnRef} onClick={handleMoreClick}>
-            {/* Figma: Three dots horizontal — lines 760-762 */}
-            <svg width="20" height="20" viewBox="1205 22 20 20" fill="none">
-              <path d="M1210.12 31.8125C1210.12 32.5374 1209.54 33.125 1208.81 33.125C1208.09 33.125 1207.5 32.5374 1207.5 31.8125C1207.5 31.0876 1208.09 30.5 1208.81 30.5C1209.54 30.5 1210.12 31.0876 1210.12 31.8125Z" fill="#2B2F36"/>
-              <path d="M1216.29 31.8125C1216.29 32.5374 1215.71 33.125 1214.98 33.125C1214.26 33.125 1213.67 32.5374 1213.67 31.8125C1213.67 31.0876 1214.26 30.5 1214.98 30.5C1215.71 30.5 1216.29 31.0876 1216.29 31.8125Z" fill="#2B2F36"/>
-              <path d="M1222.5 31.8125C1222.5 32.5374 1221.91 33.125 1221.19 33.125C1220.46 33.125 1219.87 32.5374 1219.87 31.8125C1219.87 31.0876 1220.46 30.5 1221.19 30.5C1221.91 30.5 1222.5 31.0876 1222.5 31.8125Z" fill="#2B2F36"/>
-            </svg>
-          </button>
+          {/* 更多按钮原本只有一个 "安全删除" 开关；已迁入头像 popover 的"设置"
+              子菜单，这里就没什么可放的了，先移除。以后有更多全局开关时再加回。 */}
         </div>
         <span className="topbar-divider" />
         <div className="topbar-icon-group">
@@ -371,59 +334,10 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
         />
       </div>
 
-      {/* Cascading menu from More button */}
-      {menuOpen && menuPos && (
-        <div className="topbar-menu" ref={menuRef} style={{ position: "fixed", top: menuPos.top, right: menuPos.right }}>
-          <div
-            className="topbar-menu-item has-submenu"
-            onMouseEnter={() => {
-              if (subCloseTimer.current) { clearTimeout(subCloseTimer.current); subCloseTimer.current = null; }
-              setSubMenuOpen(true);
-            }}
-            onMouseLeave={() => {
-              subCloseTimer.current = setTimeout(() => setSubMenuOpen(false), 300);
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon">
-              <circle cx="3" cy="8" r="1.5" fill="currentColor"/>
-              <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
-              <circle cx="13" cy="8" r="1.5" fill="currentColor"/>
-            </svg>
-            <span className="topbar-menu-label">{t("topbar.more")}</span>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="topbar-menu-arrow">
-              <path d="M4.5 2.5l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-
-            {/* Submenu */}
-            {subMenuOpen && (
-              <div
-                className="topbar-submenu"
-                onMouseEnter={() => { if (subCloseTimer.current) { clearTimeout(subCloseTimer.current); subCloseTimer.current = null; } }}
-                onMouseLeave={() => { subCloseTimer.current = setTimeout(() => setSubMenuOpen(false), 300); }}
-              >
-                <div
-                  className="topbar-menu-item"
-                  onClick={(e) => { e.stopPropagation(); onDeleteProtectionChange?.(!deleteProtection); }}
-                >
-                  <span className="topbar-menu-label">{t("topbar.safeDelete")}</span>
-                  <label className="tb-switch" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={deleteProtection}
-                      onChange={(e) => onDeleteProtectionChange?.(e.target.checked)}
-                    />
-                    <span className="tb-switch-track" />
-                  </label>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
       {/* Avatar dropdown menu —— 把个人信息编辑整合进来，不再弹二次对话框 */}
       {avatarMenuOpen && avatarMenuPos && (
         <div className="topbar-menu topbar-profile-popover" ref={avatarMenuRef} style={{ position: "fixed", top: avatarMenuPos.top, right: avatarMenuPos.right }}>
-          {/* 头像 + 用户名 + 邮箱（大头区） */}
+          {/* 横向布局：左头像 + 右 {username / email}。头像 hover 出相机 icon。 */}
           {user && (
             <div className="topbar-profile-header">
               <div
@@ -437,8 +351,16 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
                   alt=""
                   onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/avatars/avatar_1.png"; }}
                 />
+                {/* 相机图标 overlay（hover 可见，无文字） */}
                 <div className="topbar-profile-avatar-overlay">
-                  {avatarUploading ? "…" : t("topbar.changeAvatar")}
+                  {avatarUploading ? (
+                    <span className="topbar-profile-uploading-dot">…</span>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V8a1 1 0 011-1z" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                      <circle cx="12" cy="13" r="3.5" stroke="#fff" strokeWidth="1.6"/>
+                    </svg>
+                  )}
                 </div>
               </div>
               <input
@@ -448,37 +370,69 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
                 style={{ display: "none" }}
                 onChange={onAvatarFilePicked}
               />
-              {/* Username: 单击进入编辑态 */}
-              {editingUsername ? (
-                <div className="topbar-profile-username-edit">
-                  <input
-                    className="topbar-profile-username-input"
-                    value={usernameDraft}
-                    autoFocus
-                    onChange={(e) => setUsernameDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") { e.preventDefault(); saveUsername(); }
-                      else if (e.key === "Escape") { setEditingUsername(false); setUsernameDraft(user?.username ?? ""); }
-                    }}
-                    disabled={usernameSaving}
+              {/* 右侧：username（双击编辑）+ email */}
+              <div className="topbar-profile-meta">
+                <div className="topbar-profile-username">
+                  <InlineEdit
+                    value={user.username || user.name || ""}
+                    isEditing={editingUsername}
+                    onStartEdit={() => setEditingUsername(true)}
+                    onSave={commitUsername}
+                    onCancelEdit={() => setEditingUsername(false)}
                     maxLength={32}
                   />
-                  <button className="topbar-profile-username-save" onClick={saveUsername} disabled={usernameSaving}>✓</button>
-                  <button className="topbar-profile-username-cancel" onClick={() => { setEditingUsername(false); setUsernameDraft(user?.username ?? ""); }} disabled={usernameSaving}>×</button>
                 </div>
-              ) : (
-                <div
-                  className="topbar-profile-username"
-                  onClick={() => setEditingUsername(true)}
-                  title={t("topbar.usernameLabel")}
-                >
-                  {user.username || user.name}
-                </div>
-              )}
-              {/* Email（灰色、只读） */}
-              <div className="topbar-profile-email">{user.email}</div>
+                <div className="topbar-profile-email">{user.email}</div>
+              </div>
             </div>
           )}
+
+          {/* 外观 submenu（浅色 / 深色 / 跟随系统） */}
+          <div
+            className="topbar-menu-item has-submenu"
+            onMouseEnter={() => {
+              if (themeSubCloseTimer.current) { clearTimeout(themeSubCloseTimer.current); themeSubCloseTimer.current = null; }
+              setThemeSubOpen(true);
+            }}
+            onMouseLeave={() => {
+              themeSubCloseTimer.current = setTimeout(() => setThemeSubOpen(false), 300);
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon" aria-hidden="true">
+              <path d="M8 1.5A6.5 6.5 0 001.5 8 6.5 6.5 0 008 14.5V1.5z" fill="currentColor"/>
+              <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2" fill="none"/>
+            </svg>
+            <span className="topbar-menu-label">{t("topbar.appearance")}</span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="topbar-menu-arrow">
+              <path d="M4.5 2.5l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {themeSubOpen && (
+              <div
+                className="topbar-submenu"
+                onMouseEnter={() => { if (themeSubCloseTimer.current) { clearTimeout(themeSubCloseTimer.current); themeSubCloseTimer.current = null; } }}
+                onMouseLeave={() => { themeSubCloseTimer.current = setTimeout(() => setThemeSubOpen(false), 300); }}
+              >
+                {([
+                  ["light", t("topbar.themeLight")],
+                  ["dark", t("topbar.themeDark")],
+                  ["system", t("topbar.themeSystem")],
+                ] as [ThemePreference, string][]).map(([pref, label]) => (
+                  <div
+                    key={pref}
+                    className={`topbar-menu-item${themePreference === pref ? " topbar-menu-item-active" : ""}`}
+                    onClick={() => setTheme(pref)}
+                  >
+                    <span className="topbar-menu-label">{label}</span>
+                    {themePreference === pref && (
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="topbar-menu-check">
+                        <path d="M3 7.5l3 3 5-6" stroke="#3370FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           {/* Language submenu */}
           <div
             className="topbar-menu-item has-submenu"
@@ -531,9 +485,52 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
               </div>
             )}
           </div>
-          {/* Logout */}
+          {/* 设置 submenu（含安全删除，从 More 菜单迁移而来） */}
+          <div
+            className="topbar-menu-item has-submenu"
+            onMouseEnter={() => {
+              if (settingsSubCloseTimer.current) { clearTimeout(settingsSubCloseTimer.current); settingsSubCloseTimer.current = null; }
+              setSettingsSubOpen(true);
+            }}
+            onMouseLeave={() => {
+              settingsSubCloseTimer.current = setTimeout(() => setSettingsSubOpen(false), 300);
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon" aria-hidden="true">
+              <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.2"/>
+              <path d="M13 8a5 5 0 01-.1 1l1.3 1-1 1.7-1.5-.4a5 5 0 01-1.8 1L9.5 14h-3l-.4-1.7a5 5 0 01-1.8-1L2.8 11.7 1.8 10l1.3-1a5 5 0 01-.1-1 5 5 0 01.1-1L1.8 6 2.8 4.3l1.5.4a5 5 0 011.8-1L6.5 2h3l.4 1.7a5 5 0 011.8 1l1.5-.4 1 1.7-1.3 1a5 5 0 01.1 1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill="none"/>
+            </svg>
+            <span className="topbar-menu-label">{t("topbar.settings")}</span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="topbar-menu-arrow">
+              <path d="M4.5 2.5l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {settingsSubOpen && (
+              <div
+                className="topbar-submenu"
+                onMouseEnter={() => { if (settingsSubCloseTimer.current) { clearTimeout(settingsSubCloseTimer.current); settingsSubCloseTimer.current = null; } }}
+                onMouseLeave={() => { settingsSubCloseTimer.current = setTimeout(() => setSettingsSubOpen(false), 300); }}
+              >
+                <div
+                  className="topbar-menu-item"
+                  onClick={(e) => { e.stopPropagation(); onDeleteProtectionChange?.(!deleteProtection); }}
+                >
+                  <span className="topbar-menu-label">{t("topbar.safeDelete")}</span>
+                  <label className="tb-switch" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={deleteProtection}
+                      onChange={(e) => onDeleteProtectionChange?.(e.target.checked)}
+                    />
+                    <span className="tb-switch-track" />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Logout —— 默认色，不再用 danger 红 */}
           <div className="topbar-menu-divider" />
-          <div className="topbar-menu-item topbar-menu-item-danger" onClick={handleLogout}>
+          <div className="topbar-menu-item" onClick={handleLogout}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon">
               <path d="M9.5 2h-5A1.5 1.5 0 003 3.5v9A1.5 1.5 0 004.5 14h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
               <path d="M7 8h7m0 0l-2.5-2.5M14 8l-2.5 2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>

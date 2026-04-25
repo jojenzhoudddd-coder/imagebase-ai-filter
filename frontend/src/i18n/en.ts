@@ -37,6 +37,11 @@ export const en = {
   "topbar.cropHint": "Drag to pick a square region",
   "topbar.avatarSaved": "Avatar updated",
   "topbar.nameSaved": "Username updated",
+  "topbar.appearance": "Appearance",
+  "topbar.settings": "Settings",
+  "topbar.themeLight": "Light",
+  "topbar.themeDark": "Dark",
+  "topbar.themeSystem": "System",
 
   // Auth pages (login / register)
   "auth.heroTitle": "Table · Taste · Idea · Demo",

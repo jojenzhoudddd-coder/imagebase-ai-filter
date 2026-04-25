@@ -408,26 +408,26 @@
   }
 }
 
-/* ─── Profile popover (merged avatar menu) ─── */
-.topbar-profile-popover { min-width: 240px; padding-top: 0; }
+/* ─── Profile popover (merged avatar menu) —— 水平布局 ─── */
+.topbar-profile-popover { min-width: 260px; padding-top: 0; }
 
+/* Header 从垂直改为水平：左 avatar（48px）+ 右 name/email 块。 */
 .topbar-profile-header {
-  padding: 16px 14px 12px;
+  padding: 14px 14px 12px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 6px;
+  gap: 12px;
 }
 
 .topbar-profile-avatar-wrap {
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
   border-radius: 50%;
   overflow: hidden;
   cursor: pointer;
-  margin-bottom: 4px;
-  box-shadow: 0 2px 8px rgba(31, 35, 41, 0.1);
 }
 .topbar-profile-avatar {
   width: 100%;
@@ -435,12 +435,11 @@
   object-fit: cover;
   display: block;
 }
+/* hover 时显示一个半透明黑底 + 白色相机 icon（无文字，符合 #4 要求） */
 .topbar-profile-avatar-overlay {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
-  color: #fff;
-  font-size: 11px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -449,61 +448,41 @@
   user-select: none;
 }
 .topbar-profile-avatar-wrap:hover .topbar-profile-avatar-overlay { opacity: 1; }
+.topbar-profile-uploading-dot { color: #fff; font-size: 18px; line-height: 1; }
+
+.topbar-profile-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
 
 .topbar-profile-username {
   font-size: 15px;
   font-weight: 600;
   color: #1F2329;
-  cursor: text;
-  padding: 2px 6px;
-  border-radius: 3px;
-  transition: background 0.12s;
-  max-width: 200px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 22px;
 }
-.topbar-profile-username:hover { background: #F5F6F7; }
+/* InlineEdit 组件内部的 text span / input 继承容器字号 */
+.topbar-profile-username .inline-edit-text,
+.topbar-profile-username .inline-edit-input {
+  font-size: 15px;
+  font-weight: 600;
+}
+.topbar-profile-username .inline-edit-text { cursor: text; padding: 0; }
+.topbar-profile-username .inline-edit-input { padding: 2px 6px; }
 
 .topbar-profile-email {
   font-size: 12px;
   color: #8F959E;
-  max-width: 220px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 16px;
 }
-
-.topbar-profile-username-edit {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.topbar-profile-username-input {
-  width: 140px;
-  height: 26px;
-  padding: 0 8px;
-  border: 1px solid #1456F0;
-  border-radius: 4px;
-  font-size: 13px;
-  font-family: inherit;
-  outline: none;
-  color: #1F2329;
-}
-.topbar-profile-username-save,
-.topbar-profile-username-cancel {
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.topbar-profile-username-save { background: #1456F0; color: #fff; }
-.topbar-profile-username-save:hover { background: #0D45D6; }
-.topbar-profile-username-cancel { background: #F0F1F3; color: #1F2329; }
-.topbar-profile-username-cancel:hover { background: #E4E5E9; }

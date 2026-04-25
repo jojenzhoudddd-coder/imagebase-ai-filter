@@ -53,6 +53,47 @@
   --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
+/* ─── Dark theme token overrides ───────────────────────────────────────
+ * 激活方式：`<html data-theme="dark">` —— 由 src/theme.ts 在启动 + 切换时写。
+ * 这一版只覆盖最核心的表面 tokens；绝大多数组件硬编码的 #FFF / #1F2329 之
+ * 类仍是浅色，后续按需逐个页面补暗色适配。顶栏 popover / 输入框 / 按钮
+ * 已在下方单独加规则。 */
+[data-theme="dark"] {
+  --color-text-primary: #E6E8EB;
+  --color-text-title: #F3F4F6;
+  --color-text-secondary: #A6ADB6;
+  --color-text-muted: #7A828E;
+  --color-text-placeholder: #5A6270;
+  --color-icon-n1: #E6E8EB;
+  --color-icon-n2: #A6ADB6;
+  --color-border: #2A2F37;
+  --color-border-component: #353B45;
+  --color-border-light: #25292F;
+  --color-bg: #16181D;
+  --color-bg-base: #16181D;
+  --color-bg-secondary: #1B1E24;
+  --color-bg-hover: #22262D;
+  --color-bg-float: #22262D;
+  --color-white: #22262D;
+}
+[data-theme="dark"] body { background: #16181D; color: var(--color-text-primary); }
+
+/* 通用组件的 dark 适配（只覆盖我们已有代码里高频出现的硬编码色）。 */
+[data-theme="dark"] .topbar-menu,
+[data-theme="dark"] .topbar-submenu {
+  background: #22262D;
+  border-color: #353B45;
+  color: var(--color-text-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+[data-theme="dark"] .topbar-menu-item:hover,
+[data-theme="dark"] .topbar-submenu .topbar-menu-item:hover { background: #2C313A; }
+[data-theme="dark"] .topbar-menu-divider { background: #2A2F37; }
+[data-theme="dark"] .topbar-profile-username { color: #F3F4F6; }
+[data-theme="dark"] .topbar-profile-username:hover { background: #2C313A; }
+[data-theme="dark"] .topbar-profile-email { color: #7A828E; }
+[data-theme="dark"] .inline-edit-input { background: #16181D; color: #F3F4F6; border-color: #1456F0; }
+
 html, body {
   height: 100%;
   font-family: var(--font-family);

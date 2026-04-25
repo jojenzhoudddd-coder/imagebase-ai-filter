@@ -39,6 +39,11 @@ export const zh: TranslationKeys = {
   "topbar.cropHint": "拖动选框选择方形区域",
   "topbar.avatarSaved": "头像已更新",
   "topbar.nameSaved": "用户名已更新",
+  "topbar.appearance": "外观",
+  "topbar.settings": "设置",
+  "topbar.themeLight": "浅色",
+  "topbar.themeDark": "深色",
+  "topbar.themeSystem": "跟随系统",
 
   // Auth pages (login / register)
   "auth.heroTitle": "Table · Taste · Idea · Demo",
