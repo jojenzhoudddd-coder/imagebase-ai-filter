@@ -14,6 +14,7 @@
  */
 
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useResolvedTheme } from "../../../theme";
 
 export interface ChatChartBlockProps {
   spec: Record<string, unknown>;
@@ -51,6 +52,8 @@ function ChatChartBlockInner({ spec, height = 280, caption }: ChatChartBlockProp
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rendering, setRendering] = useState(true);
+  // 主题切换 → 重新渲染图表(vega 不支持运行时换主题,得整张重画)
+  const resolvedTheme = useResolvedTheme();
 
   // Spec may arrive as a fresh object on every parent render (it's JSON.parsed
   // inside AssistantText's code renderer). Without memoizing by content,
@@ -70,15 +73,23 @@ function ChatChartBlockInner({ spec, height = 280, caption }: ChatChartBlockProp
         const mod = await import("vega-embed");
         if (cancelled || !hostRef.current) return;
         const embed = (mod as { default?: any }).default ?? mod;
+        // DM 适配:
+        //  - vega-embed 内置 "dark" 主题(深底浅字),light 用默认无主题
+        //  - 透明背景让图表自然吃宿主容器的 dm/lm 背景色
+        //  - tooltip theme 也跟随
+        const isDark = resolvedTheme === "dark";
         const enriched = {
           ...spec,
           width: (spec as any).width ?? "container",
           height: (spec as any).height ?? height,
+          // 强制透明背景,这样 dm 下不会出现"白色矩形浮在深色容器上"的视觉断层
+          background: (spec as any).background ?? "transparent",
         };
         await embed(hostRef.current, enriched as any, {
           actions: false,
           renderer: "svg",
-          tooltip: { theme: "light" },
+          theme: isDark ? "dark" : undefined,
+          tooltip: { theme: isDark ? "dark" : "light" },
         });
         if (!cancelled) setRendering(false);
       } catch (err) {
@@ -98,7 +109,7 @@ function ChatChartBlockInner({ spec, height = 280, caption }: ChatChartBlockProp
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [specKey, height]);
+  }, [specKey, height, resolvedTheme]);
 
   if (error) {
     return (
