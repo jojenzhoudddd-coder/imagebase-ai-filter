@@ -915,10 +915,14 @@ export async function* runAgent(
   userMessage: string,
   abortSignal?: AbortSignal
 ): AsyncGenerator<SseEvent, void, undefined> {
-  yield* authStorage.run(
-    { authToken: ctx.authToken },
-    () => runAgentImpl(ctx, userMessage, abortSignal),
-  );
+  // 用 enterWith 而不是 run() —— Node 的 AsyncLocalStorage.run(cb) 在
+  // callback 是 async generator 函数时不能正确把 store 跟随到 generator
+  // 的逐次 .next() 恢复点(callback 同步返回 generator 对象,store 在
+  // callback 退出时就清掉了)。enterWith 直接把 store 绑到当前 async
+  // resource,后续所有子 async 调用 (tool.handler → apiRequest) 都能继承,
+  // 不需要离开(每个 HTTP 请求独立 async context,turn 结束 context 释放)。
+  authStorage.enterWith({ authToken: ctx.authToken });
+  yield* runAgentImpl(ctx, userMessage, abortSignal);
 }
 
 async function* runAgentImpl(
@@ -1656,10 +1660,9 @@ export async function* resumeAfterConfirm(
   confirmed: boolean,
   abortSignal?: AbortSignal
 ): AsyncGenerator<SseEvent, void, undefined> {
-  yield* authStorage.run(
-    { authToken: ctx.authToken },
-    () => resumeAfterConfirmImpl(ctx, callId, confirmed, abortSignal),
-  );
+  // 同上(runAgent),用 enterWith 把 auth store 绑到当前 async context
+  authStorage.enterWith({ authToken: ctx.authToken });
+  yield* resumeAfterConfirmImpl(ctx, callId, confirmed, abortSignal);
 }
 
 async function* resumeAfterConfirmImpl(
