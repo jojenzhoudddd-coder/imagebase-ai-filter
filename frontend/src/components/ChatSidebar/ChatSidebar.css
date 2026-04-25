@@ -69,7 +69,9 @@
   align-items: center;
   gap: 4px;
   max-width: 180px;
-  height: 24px;
+  /* 高度对齐 artifact topbar 的图标按钮(.table-topbar-btn / .artifact-sidebar-expand-btn
+     都是 28px) —— 之前 24px 让 hover 矩形比 artifact topbar 矮一截视觉不一致。 */
+  height: 28px;
   padding: 0 8px;
   border: 1px solid transparent;
   background: transparent;
@@ -77,7 +79,7 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
-  border-radius: 6px;
+  border-radius: var(--radius-s);
   cursor: pointer;
   transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
 }
@@ -122,8 +124,9 @@
   gap: 6px;
 }
 .chat-header-btn {
-  width: 24px;
-  height: 24px;
+  /* 28×28 hover 热区,对齐 .table-topbar-icon-btn / .artifact-sidebar-expand-btn */
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -131,7 +134,7 @@
   border: none;
   background: transparent;
   color: var(--text-secondary);             /* token/icon/n2 */
-  border-radius: 6px;
+  border-radius: var(--radius-s);
   cursor: pointer;
   transition: background 100ms ease, color 100ms ease;
 }
