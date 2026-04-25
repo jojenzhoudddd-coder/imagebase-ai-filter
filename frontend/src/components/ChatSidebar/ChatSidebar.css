@@ -916,6 +916,39 @@
   background: transparent !important;
   fill: transparent !important;
 }
+
+/* 甘特泳道 / 热力图格子分隔 —— vega 默认用纯白 stroke 切割单元格,DM 下刺眼。
+   把所有"白色"stroke 换成 surface-2(chart 卡片背景色),让切割线视觉等同于
+   "消失的缝隙",作用上和 LM 白色一致(都是宿主背景色)。
+   覆盖 rect / line / path 三类 mark 的常见白色字面量(white / #fff / #FFFFFF)。 */
+[data-theme="dark"] .chat-chart-host .role-mark rect[stroke="white"],
+[data-theme="dark"] .chat-chart-host .role-mark rect[stroke="#fff"],
+[data-theme="dark"] .chat-chart-host .role-mark rect[stroke="#FFF"],
+[data-theme="dark"] .chat-chart-host .role-mark rect[stroke="#ffffff"],
+[data-theme="dark"] .chat-chart-host .role-mark rect[stroke="#FFFFFF"],
+[data-theme="dark"] .chat-chart-host .role-mark line[stroke="white"],
+[data-theme="dark"] .chat-chart-host .role-mark line[stroke="#fff"],
+[data-theme="dark"] .chat-chart-host .role-mark line[stroke="#FFF"],
+[data-theme="dark"] .chat-chart-host .role-mark line[stroke="#ffffff"],
+[data-theme="dark"] .chat-chart-host .role-mark line[stroke="#FFFFFF"],
+[data-theme="dark"] .chat-chart-host .role-mark path[stroke="white"],
+[data-theme="dark"] .chat-chart-host .role-mark path[stroke="#fff"],
+[data-theme="dark"] .chat-chart-host .role-mark path[stroke="#FFF"],
+[data-theme="dark"] .chat-chart-host .role-mark path[stroke="#ffffff"],
+[data-theme="dark"] .chat-chart-host .role-mark path[stroke="#FFFFFF"],
+[data-theme="dark"] .chat-chart-host .role-scope rect[stroke="white"],
+[data-theme="dark"] .chat-chart-host .role-scope rect[stroke="#fff"],
+[data-theme="dark"] .chat-chart-host .role-scope rect[stroke="#ffffff"] {
+  stroke: var(--surface-2) !important;
+}
+/* fill 也是白色的"分隔条 / 背景条"(部分 gantt 用白色 fill rect 区分行) */
+[data-theme="dark"] .chat-chart-host .role-mark rect[fill="white"],
+[data-theme="dark"] .chat-chart-host .role-mark rect[fill="#fff"],
+[data-theme="dark"] .chat-chart-host .role-mark rect[fill="#FFF"],
+[data-theme="dark"] .chat-chart-host .role-mark rect[fill="#ffffff"],
+[data-theme="dark"] .chat-chart-host .role-mark rect[fill="#FFFFFF"] {
+  fill: var(--surface-2) !important;
+}
 .chat-chart-loading,
 .idea-chart-loading {
   color: var(--text-muted);
