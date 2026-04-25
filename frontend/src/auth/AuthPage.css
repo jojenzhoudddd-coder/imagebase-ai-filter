@@ -372,3 +372,59 @@
   font-size: 14px;
   font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Dark Mode 适配
+ * 思路：保留 LM 的薰衣草设计语言（紫色 + 流线），DM 用同色相但更暗的
+ * 径向渐变替代浅色 PNG；毛玻璃 hero 改为低透明度白雾叠在暗底，仍透出
+ * 紫色主调。Form pane 已经走 --surface-2 token 自动翻色。
+ * ────────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .auth-shell {
+  /* 用径向暗紫渐变 + macOS 中性近黑兜底，呼应 LM 的薰衣草，但整体调暗
+   * 到适合 DM 的环境亮度。不再加载 LM 的 auth-bg.png（避免浅色底图
+   * 在 DM 下违和）。 */
+  background:
+    radial-gradient(ellipse at 20% 12%, #2D2740 0%, transparent 55%),
+    radial-gradient(ellipse at 78% 88%, #1F1A2E 0%, transparent 55%),
+    #18181C;
+}
+
+[data-theme="dark"] .auth-hero {
+  /* 玻璃在 DM 下用更淡的白雾 + 更深 blur，呈现"微亮的雾化层"叠在暗紫上 */
+  background: rgba(255, 255, 255, 0.05);
+  border-right-color: rgba(255, 255, 255, 0.10);
+}
+
+[data-theme="dark"] .auth-hero-headline-title {
+  color: #F5F5F7;
+}
+[data-theme="dark"] .auth-hero-headline-sub {
+  color: #B0B0B5;
+}
+[data-theme="dark"] .auth-hero-footer {
+  color: #B0B0B5;
+}
+[data-theme="dark"] .auth-hero-footer a:hover {
+  color: #F5F5F7;
+}
+
+/* error chip 用 status danger token，避免直接 rgba 写死的 LM 红 */
+[data-theme="dark"] .auth-form-error {
+  background: var(--danger-bg);
+  border-color: var(--border-default);
+}
+
+/* 顶部语言切换 pill —— LM 是白雾玻璃；DM 用低透明度灰雾 */
+[data-theme="dark"] .auth-lang-switch {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+[data-theme="dark"] .auth-lang-switch:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--primary);
+}
+
+/* focus shadow 在 LM 用品牌蓝 10% alpha；DM 让 ring 稍亮 */
+[data-theme="dark"] .auth-input:focus {
+  box-shadow: 0 0 0 2px rgba(74, 130, 255, 0.25);
+}
