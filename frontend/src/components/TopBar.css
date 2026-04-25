@@ -482,14 +482,29 @@
 }
 
 /* ─── Profile popover (merged avatar menu) —— 水平布局 + 固定 280px ─── */
-/* 头像 popover —— 去掉所有内边距,菜单项贴边渲染(单项自带 4px padding) */
-.topbar-profile-popover { width: 280px; padding: 0; }
-.topbar-profile-popover .topbar-menu-item {
+/* 头像 popover ——
+ * - 整体 padding:0 + gap:0 (覆盖 .topbar-menu 默认 6px 内距 / 4px gap)
+ * - 分隔线 1px 直占,无任何上下/左右 margin
+ * - 菜单项分组放在 .topbar-profile-section 里,section 自带 4px 四周 padding
+ *   形成"分组 × 4px buffer"的视觉,而不是每行单独 padding。
+ * - 每个菜单项 hover 高度固定 40px,内部 8px 左右 padding
+ */
+.topbar-profile-popover { width: 280px; padding: 0; gap: 0; }
+.topbar-profile-popover .topbar-menu-divider {
+  margin: 0;
+  height: 1px;
+}
+.topbar-profile-section {
   padding: 4px;
-  height: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.topbar-profile-popover .topbar-menu-item {
+  height: 40px;
+  padding: 0 8px;
   border-radius: var(--radius-s);
 }
-.topbar-profile-popover .topbar-menu-divider { margin: 0; }
 
 /* Header 结构参照 Lark _pp-panel-header：
  *   .topbar-profile-header
@@ -541,9 +556,8 @@
   line-height: 24px;
 }
 
-/* 第一根分割线（header 与菜单项之间）拉近距离 —— 默认 flex gap 4 +
- * header bottom 14 = 18px 太疏；用负 margin 拉到 ~10。 */
-.topbar-profile-divider-top { margin-top: -8px; }
+/* .topbar-profile-divider-top 旧版用 -8px margin 抵消 .topbar-menu 默认 4px gap,
+   现在 .topbar-profile-popover gap:0 + divider margin:0,无需额外补偿。 */
 
 .topbar-profile-avatar-wrap {
   position: relative;

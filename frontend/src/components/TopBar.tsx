@@ -491,9 +491,11 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
             </div>
           )}
 
-          {/* Header 和菜单项之间的分隔线（顶部分割线，拉近距离用 -margin） */}
+          {/* Header 和菜单项之间的分隔线 —— 1 px,无内外边距(全靠 section padding 撑开) */}
           <div className="topbar-menu-divider topbar-profile-divider-top" />
 
+          {/* 外观 / 语言 / 设置 共享一个 section,section 自带 4px 全方向 padding */}
+          <div className="topbar-profile-section">
           {/* 外观 submenu（浅色 / 深色 / 跟随系统） */}
           <div
             className="topbar-menu-item has-submenu"
@@ -635,8 +637,11 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
             )}
           </div>
 
-          {/* Logout —— 默认色，不再用 danger 红 */}
+          </div>{/* /topbar-profile-section 1 (appearance/language/settings) */}
+
+          {/* Logout —— 默认色,不再用 danger 红;独占一个 section,自带 4px padding */}
           <div className="topbar-menu-divider" />
+          <div className="topbar-profile-section">
           <div className="topbar-menu-item" onClick={handleLogout}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon">
               <path d="M9.5 2h-5A1.5 1.5 0 003 3.5v9A1.5 1.5 0 004.5 14h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
@@ -644,6 +649,7 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
             </svg>
             <span className="topbar-menu-label">{t("topbar.logout")}</span>
           </div>
+          </div>{/* /topbar-profile-section 2 (logout) */}
         </div>
       )}
 
