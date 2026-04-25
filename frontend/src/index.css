@@ -83,17 +83,19 @@ input, select, textarea {
 select { cursor: pointer; }
 
 /* ── DM 全局表单样式 ──────────────────────────────────────────────
- * 大量 form 元素的 background / color 要在 DM 下翻；统一在这里覆盖
- * （比每个组件 CSS 自己定义更省事，组件 CSS 只在需要个性化时再覆盖）。 */
-[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
-[data-theme="dark"] textarea,
-[data-theme="dark"] select {
+ * 用 :where() 把整条规则降到 0 特异性，让任何组件 class（哪怕只有一个）
+ * 都能轻松覆盖。之前是 (0,1,1) 特异性，强行把组件里 background:transparent
+ * 的 textarea/input 都刷成 inset 深底，导致 chatbot / ai-filter 输入区
+ * 出现 "比 box 还深的内嵌色块"。 */
+:where([data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"])),
+:where([data-theme="dark"] textarea),
+:where([data-theme="dark"] select) {
   background: var(--surface-inset);
   color: var(--text-primary);
   border-color: var(--border-strong);
 }
-[data-theme="dark"] input::placeholder,
-[data-theme="dark"] textarea::placeholder { color: var(--text-placeholder); }
+:where([data-theme="dark"] input::placeholder),
+:where([data-theme="dark"] textarea::placeholder) { color: var(--text-placeholder); }
 
 /* Checkbox / radio：accent-color 染选中态颜色，box bg 由 color-scheme 走
  * 浏览器 dark UA 默认。这条给一个稳定的 LM/DM 都好看的 accent。 */

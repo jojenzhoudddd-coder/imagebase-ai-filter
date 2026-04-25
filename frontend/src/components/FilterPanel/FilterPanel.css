@@ -37,19 +37,17 @@
   align-items: center;
   width: 100%;
   height: 32px;
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-m);
-  /* surface-inset：DM 下比 FilterPanel (--surface-2) 略深，自带 "凹下去
-   * 的输入框" 视觉，LM 下也维持原本 #FFFFFF 等同效果（surface-inset
-   * 在 LM = #F5F6F7，被 FilterPanel 的白色衬出来）。 */
-  background: var(--surface-inset);
+  /* 输入区与 FilterPanel 容器同色（--surface-2），不主动产生层次差，
+   * 视觉差异只靠 1px border 表达（DM 下 border 已提亮足够可见）。 */
+  background: var(--surface-2);
   overflow: hidden;
   transition: background 0.2s, border-color 0.2s;
 }
 
 .fp-ai-row:focus-within {
   border-color: var(--primary);
-  background: var(--surface-2);
 }
 
 .fp-ai-row.generating {
