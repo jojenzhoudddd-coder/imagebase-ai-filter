@@ -24,9 +24,9 @@
   font-size: 14px;
   line-height: 22px;
   box-sizing: border-box;
-  /* 用户提供的薰衣草底图 — public/auth-bg.png。#BEBBE3 是提取自
-   * 图片的近似主色，万一图片没加载也不会露白。 */
-  background: #BEBBE3 url("/auth-bg.png") center / cover no-repeat;
+  /* LM 底图 —— public/auth-bg-lm.png。DM 用 [data-theme="dark"] override
+   * 切到 auth-bg-dm.png（见文件末尾）。兜底色取自 LM 图主色。 */
+  background: #BEBBE3 url("/auth-bg-lm.png") center / cover no-repeat;
   overflow: hidden;
 }
 
@@ -380,13 +380,8 @@
  * 紫色主调。Form pane 已经走 --surface-2 token 自动翻色。
  * ────────────────────────────────────────────────────────────────────── */
 [data-theme="dark"] .auth-shell {
-  /* 用径向暗紫渐变 + macOS 中性近黑兜底，呼应 LM 的薰衣草，但整体调暗
-   * 到适合 DM 的环境亮度。不再加载 LM 的 auth-bg.png（避免浅色底图
-   * 在 DM 下违和）。 */
-  background:
-    radial-gradient(ellipse at 20% 12%, #2D2740 0%, transparent 55%),
-    radial-gradient(ellipse at 78% 88%, #1F1A2E 0%, transparent 55%),
-    #18181C;
+  /* DM 专用底图 —— public/auth-bg-dm.png。兜底色取暗中性。 */
+  background: #18181C url("/auth-bg-dm.png") center / cover no-repeat;
 }
 
 [data-theme="dark"] .auth-hero {
