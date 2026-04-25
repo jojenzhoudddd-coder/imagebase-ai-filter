@@ -125,7 +125,7 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
   const [settingsSubOpen, setSettingsSubOpen] = useState(false);
   const avatarRef = useRef<HTMLImageElement>(null);
   const avatarMenuRef = useRef<HTMLDivElement>(null);
-  const [avatarMenuPos, setAvatarMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const [avatarMenuPos, setAvatarMenuPos] = useState<{ top: number; left: number } | null>(null);
   const langSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const themeSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settingsSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,7 +147,12 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
   const handleAvatarClick = () => {
     if (!avatarMenuOpen && avatarRef.current) {
       const rect = avatarRef.current.getBoundingClientRect();
-      setAvatarMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+      // 用显式 left 计算保证 popover.right === avatar.right —— 之前用
+      // `right: window.innerWidth - rect.right` 在某些浏览器会因滚动条宽度
+      // 出现 1-17px 偏差。280 是 .topbar-profile-popover 的固定宽度。
+      const POPOVER_WIDTH = 280;
+      const left = Math.max(8, rect.right - POPOVER_WIDTH);
+      setAvatarMenuPos({ top: rect.bottom + 4, left });
     }
     setAvatarMenuOpen(!avatarMenuOpen);
     if (avatarMenuOpen) {
@@ -336,7 +341,7 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
 
       {/* Avatar dropdown menu —— 把个人信息编辑整合进来，不再弹二次对话框 */}
       {avatarMenuOpen && avatarMenuPos && (
-        <div className="topbar-menu topbar-profile-popover" ref={avatarMenuRef} style={{ position: "fixed", top: avatarMenuPos.top, right: avatarMenuPos.right }}>
+        <div className="topbar-menu topbar-profile-popover" ref={avatarMenuRef} style={{ position: "fixed", top: avatarMenuPos.top, left: avatarMenuPos.left }}>
           {/* 横向布局：左头像 + 右 {username / email}。头像 hover 出相机 icon。 */}
           {user && (
             <div className="topbar-profile-header">
