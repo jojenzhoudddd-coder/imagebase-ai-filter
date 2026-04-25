@@ -95,6 +95,13 @@ select { cursor: pointer; }
 [data-theme="dark"] input::placeholder,
 [data-theme="dark"] textarea::placeholder { color: var(--text-placeholder); }
 
+/* Checkbox / radio：accent-color 染选中态颜色，box bg 由 color-scheme 走
+ * 浏览器 dark UA 默认。这条给一个稳定的 LM/DM 都好看的 accent。 */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--primary);
+}
+
 /* ── DM 滚动条（webkit） ──────────────────────────────────────────
  * 默认滚动条在 DM 下太亮太突兀。 */
 [data-theme="dark"] ::-webkit-scrollbar {

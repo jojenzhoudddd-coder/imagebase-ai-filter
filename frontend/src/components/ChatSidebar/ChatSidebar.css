@@ -1329,7 +1329,13 @@
   right: 0;
   top: -11px;
   height: 11px;
-  background: linear-gradient(to top, var(--surface-2), rgba(255,255,255,0));
+  /* fade 到同色透明（兼容 LM/DM）—— 之前写死 rgba(255,255,255,0) 在 DM
+   * 下会出现发白的渐变中段。 */
+  background: linear-gradient(
+    to top,
+    var(--surface-2),
+    color-mix(in srgb, var(--surface-2) 0%, transparent)
+  );
   pointer-events: none;
 }
 
