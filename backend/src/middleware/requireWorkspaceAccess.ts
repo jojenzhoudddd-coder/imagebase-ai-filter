@@ -31,8 +31,18 @@ export async function requireWorkspaceAccess(
     return;
   }
 
+  // 在 app.use("/api", ...) 阶段 req.params 是空的（路由匹配前），所以
+  // workspaceId 要直接从 URL 路径用正则抽。涉及的两条路径模式：
+  //   /api/sync/workspaces/:workspaceId/events
+  //   /api/workspaces/:workspaceId/mentions/search
+  let urlWorkspaceId: string | undefined;
+  const m = req.path.match(
+    /^\/api\/(?:sync\/)?workspaces\/([^/]+)/,
+  );
+  if (m) urlWorkspaceId = m[1];
+
   const wsId =
-    (req.params as any)?.workspaceId ||
+    urlWorkspaceId ||
     (typeof (req.body as any)?.workspaceId === "string"
       ? (req.body as any).workspaceId
       : undefined) ||

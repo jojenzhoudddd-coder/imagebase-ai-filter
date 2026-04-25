@@ -25,10 +25,21 @@ interface Props {
 
 export default function TopBar({ tableName, documentName, deleteProtection = true, onDeleteProtectionChange, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount }: Props) {
   const { t, locale } = useTranslation();
-  const { user, patchUser, logout } = useAuth();
+  const { user, patchUser, logout, patchPreferences } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const { preference: themePreference, setTheme } = useTheme();
+
+  // 主题切换：先调本地 setTheme（更新 localStorage / data-theme / 广播），
+  // 再异步写后端 preferences（登录时才写）。失败 toast 提示但不回滚视觉。
+  const handleThemeChange = (pref: ThemePreference) => {
+    setTheme(pref);
+    if (user) {
+      patchPreferences({ theme: pref }).catch((err) => {
+        console.warn("[topbar] persist theme failed:", err);
+      });
+    }
+  };
   const [editingDocName, setEditingDocName] = useState(false);
 
   // 头像默认值：后端 register 时已随机分配 /avatars/avatar_N.png，兜底
@@ -164,7 +175,22 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
 
   const handleLangSwitch = (lang: Locale) => {
     if (lang !== locale) {
-      setLocale(lang);
+      // 先持久化到后端再 reload —— setLocale 内部会 reload 整页
+      if (user) {
+        patchPreferences({ locale: lang }).finally(() => setLocale(lang));
+      } else {
+        setLocale(lang);
+      }
+    }
+  };
+
+  // safe-delete 开关：透传给父级 + 持久化到后端 preferences
+  const handleSafeDeleteChange = (val: boolean) => {
+    onDeleteProtectionChange?.(val);
+    if (user) {
+      patchPreferences({ deleteProtection: val }).catch((err) => {
+        console.warn("[topbar] persist safe-delete failed:", err);
+      });
     }
   };
 
@@ -433,7 +459,7 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
                   <div
                     key={pref}
                     className={`topbar-menu-item${themePreference === pref ? " topbar-menu-item-active" : ""}`}
-                    onClick={() => setTheme(pref)}
+                    onClick={() => handleThemeChange(pref)}
                   >
                     <span className="topbar-menu-label">{label}</span>
                     {themePreference === pref && (
@@ -525,14 +551,14 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
               >
                 <div
                   className="topbar-menu-item"
-                  onClick={(e) => { e.stopPropagation(); onDeleteProtectionChange?.(!deleteProtection); }}
+                  onClick={(e) => { e.stopPropagation(); handleSafeDeleteChange(!deleteProtection); }}
                 >
                   <span className="topbar-menu-label">{t("topbar.safeDelete")}</span>
                   <label className="tb-switch" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={deleteProtection}
-                      onChange={(e) => onDeleteProtectionChange?.(e.target.checked)}
+                      onChange={(e) => handleSafeDeleteChange(e.target.checked)}
                     />
                     <span className="tb-switch-track" />
                   </label>

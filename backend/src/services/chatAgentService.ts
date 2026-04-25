@@ -49,6 +49,8 @@ import { listHandlesIfExists } from "./analyst/duckdbRuntime.js";
 // even though `arkAdapter` is not referenced by name here.
 import "./providers/index.js";
 import type { ProviderInputItem, ProviderStreamEvent } from "./providers/types.js";
+// MCP loopback 透传 JWT —— 见 dataStoreClient.ts 顶部注释
+import { authStorage } from "../../mcp-server/src/dataStoreClient.js";
 
 // Pushed up from 10 per user request. Seed can chain dozens of tool calls in
 // a single CRM-build turn; cap is only a last-resort runaway guard.
@@ -887,6 +889,11 @@ export interface AgentContext {
    * POST /confirm, the agent resumes with this callId's args patched with
    * confirmed=true. */
   pendingConfirmations?: Map<string, { tool: string; args: Record<string, unknown> }>;
+  /** 用户的 JWT cookie 值（不带 cookie name 前缀）。chat route 从
+   * req.cookies 提取后传进来 —— 用于 MCP loopback 调用时透传认证，
+   * 让 backend 的 attachUser / artifact-access 守卫能识别原 user。
+   * 缺失则 MCP 调用会变成 unauthenticated（兼容旧 stdio MCP 场景）。 */
+  authToken?: string;
 }
 
 const DEFAULT_AGENT_ID = "agent_default";
@@ -900,7 +907,20 @@ const DEFAULT_AGENT_ID = "agent_default";
  * event. The route handler should then wait for the confirm POST and invoke
  * `resumeAfterConfirm()` to continue.
  */
+/** Public entry —— 包一层 AsyncLocalStorage，把用户 JWT 透传给 MCP
+ * loopback 用。所有真正的 agent loop 逻辑在下面的 *Impl 里。 */
 export async function* runAgent(
+  ctx: AgentContext,
+  userMessage: string,
+  abortSignal?: AbortSignal
+): AsyncGenerator<SseEvent, void, undefined> {
+  yield* authStorage.run(
+    { authToken: ctx.authToken },
+    () => runAgentImpl(ctx, userMessage, abortSignal),
+  );
+}
+
+async function* runAgentImpl(
   ctx: AgentContext,
   userMessage: string,
   abortSignal?: AbortSignal
@@ -1619,6 +1639,18 @@ export async function* runAgent(
  *    decide what to do next)
  */
 export async function* resumeAfterConfirm(
+  ctx: AgentContext,
+  callId: string,
+  confirmed: boolean,
+  abortSignal?: AbortSignal
+): AsyncGenerator<SseEvent, void, undefined> {
+  yield* authStorage.run(
+    { authToken: ctx.authToken },
+    () => resumeAfterConfirmImpl(ctx, callId, confirmed, abortSignal),
+  );
+}
+
+async function* resumeAfterConfirmImpl(
   ctx: AgentContext,
   callId: string,
   confirmed: boolean,

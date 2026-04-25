@@ -21,6 +21,12 @@ model User {
   /// bcrypt hash of the password. Null means "never set a password yet"
   /// (legacy rows pre-auth — treated as "must reset" once auth lands).
   passwordHash String?
+  /// Per-user UI preferences. Currently holds:
+  ///   { theme?: "light"|"dark"|"system", locale?: "zh"|"en",
+  ///     deleteProtection?: boolean }
+  /// Empty {} means "fall back to browser localStorage / system default".
+  /// 详见 docs/per-user-preferences.md。
+  preferences Json @default("{}")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

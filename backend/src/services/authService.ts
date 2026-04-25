@@ -173,6 +173,47 @@ export async function updateUserProfile(
   });
 }
 
+/** UI preferences shape —— 后续要扩字段（譬如 timezone / dateFormat）也加到这里。 */
+export interface UserPreferences {
+  theme?: "light" | "dark" | "system";
+  locale?: "zh" | "en";
+  deleteProtection?: boolean;
+}
+
+export async function readUserPreferences(id: string): Promise<UserPreferences> {
+  const u = await prisma.user.findUnique({
+    where: { id },
+    select: { preferences: true },
+  });
+  if (!u) return {};
+  return (u.preferences as UserPreferences) || {};
+}
+
+/**
+ * 增量合并 preferences —— PATCH 语义，不传的字段保持原值。传 null
+ * 表示删除该字段（让前端走 localStorage / 系统默认 fallback）。
+ */
+export async function updateUserPreferences(
+  id: string,
+  patch: Partial<Record<keyof UserPreferences, UserPreferences[keyof UserPreferences] | null>>,
+): Promise<UserPreferences> {
+  const current = await readUserPreferences(id);
+  const next: UserPreferences = { ...current };
+  for (const [k, v] of Object.entries(patch)) {
+    const key = k as keyof UserPreferences;
+    if (v === null || v === undefined) {
+      delete next[key];
+    } else {
+      (next as any)[key] = v;
+    }
+  }
+  await prisma.user.update({
+    where: { id },
+    data: { preferences: next as any },
+  });
+  return next;
+}
+
 export async function setUserPassword(id: string, plain: string) {
   const hash = await hashPassword(plain);
   await prisma.user.update({ where: { id }, data: { passwordHash: hash } });

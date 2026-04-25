@@ -245,6 +245,8 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
       workspaceId: conv.workspaceId,
       agentId: conv.agentId ?? undefined,
       pendingConfirmations: state.pendingConfirmations,
+      // 透传 JWT cookie，让 MCP loopback 调用时仍然认得出原 user
+      authToken: (req as any).cookies?.ibase_auth,
     };
 
     try {
@@ -318,6 +320,7 @@ router.post("/conversations/:id/confirm", async (req: Request, res: Response) =>
       workspaceId: conv.workspaceId,
       agentId: conv.agentId ?? undefined,
       pendingConfirmations: state.pendingConfirmations,
+      authToken: (req as any).cookies?.ibase_auth,
     };
 
     try {
