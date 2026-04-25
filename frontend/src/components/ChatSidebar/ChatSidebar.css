@@ -887,6 +887,35 @@
   justify-content: center;
 }
 .chat-chart-host svg { max-width: 100%; height: auto; }
+/* DM 兜底 —— 直接用 CSS 把 SVG 内的文字色 / 轴线 / 网格颜色全部强制覆盖。
+   vega 写出 inline fill="#1F2329" 是 SVG 属性,CSS 属性比它优先级高;再加上
+   !important 保险,确保 inline style="" 也被压住。
+   不动 .role-mark(数据 marks 的填色),让用户图表的本职数据色保留。 */
+[data-theme="dark"] .chat-chart-host .role-axis text,
+[data-theme="dark"] .chat-chart-host .role-axis-label text,
+[data-theme="dark"] .chat-chart-host .role-axis-title text,
+[data-theme="dark"] .chat-chart-host .role-legend text,
+[data-theme="dark"] .chat-chart-host .role-legend-label text,
+[data-theme="dark"] .chat-chart-host .role-legend-title text,
+[data-theme="dark"] .chat-chart-host .role-title text,
+[data-theme="dark"] .chat-chart-host .role-title-text text,
+[data-theme="dark"] .chat-chart-host text.label,
+[data-theme="dark"] .chat-chart-host .marks text {
+  fill: #C7C9CC !important;
+}
+[data-theme="dark"] .chat-chart-host .role-axis-domain line,
+[data-theme="dark"] .chat-chart-host .role-axis-tick line {
+  stroke: #646A73 !important;
+}
+[data-theme="dark"] .chat-chart-host .role-axis-grid line {
+  stroke: rgba(229, 230, 235, 0.08) !important;
+}
+/* SVG 根背景 / vega 画的 background rect —— 透明吃容器色 */
+[data-theme="dark"] .chat-chart-host svg,
+[data-theme="dark"] .chat-chart-host .background {
+  background: transparent !important;
+  fill: transparent !important;
+}
 .chat-chart-loading,
 .idea-chart-loading {
   color: var(--text-muted);
