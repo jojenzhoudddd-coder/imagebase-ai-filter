@@ -427,18 +427,20 @@
   padding: 14px;
   display: flex;
   flex-direction: row;
-  align-items: stretch;
+  /* Lark _pp-panel-header 模式：avatar 与文字块整体竖直居中（不是 stretch
+   * 上下撑开）。avatar 居中在 header 高度内、文字块紧凑两行也居中，整体
+   * 视觉一致。 */
+  align-items: center;
   gap: 12px;
 }
 
-/* info 块和 avatar 同高，内部上下两端对齐 */
+/* info 紧凑两行，自然堆叠 + 小 gap，整体竖直居中由父级处理 */
 .topbar-profile-info {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 0;
+  gap: 2px;
 }
 
 /* name 行包一层 wrapper 处理过长省略 */
@@ -534,6 +536,4 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 16px;
-  /* space-between 撑出来的间距是 ~10px；上提 6px 减到 ~4px。 */
-  margin-top: -6px;
 }
