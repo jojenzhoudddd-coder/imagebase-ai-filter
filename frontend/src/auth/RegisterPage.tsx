@@ -13,6 +13,7 @@ import LanguageSwitcher from "./LanguageSwitcher";
 import { useTranslation } from "../i18n/index";
 import { useToast } from "../components/Toast/index";
 import { codeToToastKey } from "./authErrorToToast";
+import { isValidUsername } from "./usernameValidator";
 import "./AuthPage.css";
 
 function EyeIcon({ open }: { open: boolean }) {
@@ -29,7 +30,6 @@ function EyeIcon({ open }: { open: boolean }) {
 }
 
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
-const USERNAME_RE = /^[a-zA-Z0-9_-]{2,32}$/;
 const PASSWORD_MIN = 6;
 
 export default function RegisterPage() {
@@ -59,7 +59,7 @@ export default function RegisterPage() {
     if (!passwordConfirm) { toast.error(t("auth.toast.passwordConfirmRequired")); return; }
     if (password !== passwordConfirm) { toast.error(t("auth.toast.passwordMismatch")); return; }
     if (!trimmedUsername) { toast.error(t("auth.toast.usernameRequired")); return; }
-    if (!USERNAME_RE.test(trimmedUsername)) { toast.error(t("auth.toast.usernameInvalid")); return; }
+    if (!isValidUsername(trimmedUsername)) { toast.error(t("auth.toast.usernameInvalid")); return; }
 
     setSubmitting(true);
     try {

@@ -7,6 +7,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useToast } from "./Toast/index";
 import AvatarCropDialog from "../auth/AvatarCropDialog";
 import { useTheme, type ThemePreference } from "../theme";
+import { isValidUsername } from "../auth/usernameValidator";
 import "./TopBar.css";
 
 interface Props {
@@ -94,7 +95,7 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
 
   const commitUsername = async (trimmed: string) => {
     if (!trimmed) { toast.error(t("auth.toast.usernameRequired")); setEditingUsername(false); return; }
-    if (!/^[a-zA-Z0-9_-]{2,32}$/.test(trimmed)) { toast.error(t("auth.toast.usernameInvalid")); setEditingUsername(false); return; }
+    if (!isValidUsername(trimmed)) { toast.error(t("auth.toast.usernameInvalid")); setEditingUsername(false); return; }
     if (trimmed === user?.username) { setEditingUsername(false); return; }
     try {
       const res = await fetch("/api/auth/profile", {
