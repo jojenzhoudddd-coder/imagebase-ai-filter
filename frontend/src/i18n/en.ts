@@ -29,6 +29,8 @@ export const en = {
   "topbar.langEnglish": "English",
   "topbar.langChinese": "简体中文",
   "topbar.logout": "Sign out",
+  "sidebar.collapse": "Collapse sidebar",
+  "sidebar.expand": "Expand sidebar",
   "topbar.statsTitle": "Workspace asset stats",
   "topbar.statArtifacts": "artifacts",
   "topbar.statArtifactsTitle": "Total assets (tables + ideas + tastes + demos)",
@@ -109,7 +111,7 @@ export const en = {
 
   // Toolbar
   "toolbar.addRecord": "Add Record",
-  "toolbar.customizeField": "Customize Field",
+  "toolbar.customizeField": "Fields",
   "toolbar.viewSettings": "View Settings",
   "toolbar.filter": "Filter",
   "toolbar.filterCount": "{{count}} Filter",

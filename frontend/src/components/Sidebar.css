@@ -38,6 +38,36 @@
   flex-shrink: 0;
 }
 
+/* Search 与 collapse 按钮共行：search 占主宽度,collapse 28x28 紧贴右侧 */
+.sidebar-header-with-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sidebar-header-with-actions .sidebar-search-trigger {
+  flex: 1;
+  margin-bottom: 0;
+}
+.sidebar-collapse-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  margin-bottom: 8px;
+}
+.sidebar-collapse-btn:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
 .sidebar-search-trigger {
   display: flex;
   align-items: center;

@@ -204,15 +204,36 @@
   border-left: 3px solid var(--color-border);
   color: var(--color-text-secondary);
 }
+/* GFM 表格随容器宽度自适应：表格本身占满 100%，单元格可以换行 / 显示
+ * 省略号；当列数太多确实超宽时，外层包一层 overflow-x:auto，避免撑爆
+ * idea-editor 的左右 padding。 */
 .idea-preview-body table {
   border-collapse: collapse;
   margin: 8px 0;
   font-size: 13px;
+  width: 100%;
+  max-width: 100%;
+  table-layout: auto;
+  display: block;
+  overflow-x: auto;
+}
+.idea-preview-body table thead,
+.idea-preview-body table tbody {
+  width: 100%;
+}
+.idea-preview-body table tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
 }
 .idea-preview-body th,
 .idea-preview-body td {
   border: 1px solid var(--color-border);
   padding: 4px 8px;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  vertical-align: top;
 }
 .idea-preview-body img,
 .idea-preview-body svg {

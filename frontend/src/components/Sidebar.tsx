@@ -43,6 +43,8 @@ interface Props {
    * next render. Used after creating a folder (which cannot become the active
    * item) so the user can see where the new node landed. */
   scrollToItemId?: string | null;
+  /** 点击 sidebar 内"收起"按钮（搜索右侧）触发。父级把 sidebar 整体隐藏。 */
+  onCollapse?: () => void;
 }
 
 const DRAG_THRESHOLD = 4;
@@ -111,7 +113,7 @@ const SIDEBAR_MIN_W = 120;
 const SIDEBAR_MAX_W = 400;
 const SIDEBAR_DEFAULT_W = 190;
 
-export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onCreateIdea, onDeleteItem, onMoveItem, scrollToItemId }: Props) {
+export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onCreateIdea, onDeleteItem, onMoveItem, scrollToItemId, onCollapse }: Props) {
   const { t } = useTranslation();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
@@ -411,13 +413,28 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   return (
     <aside ref={asideRef} className="sidebar" style={{ width: sidebarWidth }}>
       <div className="sidebar-resize-handle" onMouseDown={handleResizeMouseDown} />
-      <div className="sidebar-header">
+      <div className="sidebar-header sidebar-header-with-actions">
         <div className="sidebar-search-trigger">
           <svg className="sidebar-search-icon" width="14" height="14" viewBox="20 80 15 15" fill="none">
             <path d="M30.982 91.9251C29.8941 92.8058 28.5086 93.3334 26.9998 93.3334C23.502 93.3334 20.6665 90.4979 20.6665 87.0001C20.6665 83.5023 23.502 80.6667 26.9998 80.6667C30.4976 80.6667 33.3332 83.5023 33.3332 87.0001C33.3332 88.5088 32.8056 89.8944 31.9249 90.9823L34.4399 93.4973C34.6987 93.7561 34.6938 94.1765 34.435 94.4353C34.1763 94.694 33.7559 94.6989 33.4971 94.4402L30.982 91.9251ZM31.9998 87.0001C31.9998 84.2387 29.7613 82.0001 26.9998 82.0001C24.2384 82.0001 21.9998 84.2387 21.9998 87.0001C21.9998 89.7615 24.2384 92.0001 26.9998 92.0001C29.7613 92.0001 31.9998 89.7615 31.9998 87.0001Z" fill="currentColor"/>
           </svg>
           <span>{t("sidebar.search")}</span>
         </div>
+        {onCollapse && (
+          <button
+            className="sidebar-collapse-btn"
+            onClick={onCollapse}
+            title={t("sidebar.collapse")}
+            aria-label={t("sidebar.collapse")}
+          >
+            {/* 收起 icon —— 朝左的箭头 + 竖线（与 TopBar 那个"侧边栏切换"icon 互为开合） */}
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="2.5" y="3" width="11" height="10" rx="1.4" stroke="currentColor" strokeWidth="1.2"/>
+              <path d="M6 3v10" stroke="currentColor" strokeWidth="1.2"/>
+              <path d="M11 6.5l-2 1.5 2 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
       </div>
       <div className="sidebar-nav">
         {(() => {

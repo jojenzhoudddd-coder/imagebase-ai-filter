@@ -183,6 +183,15 @@ export default function App() {
     try { localStorage.setItem("chat_agent_open_v1", String(chatAgentOpen)); } catch { /* ignore */ }
   }, [chatAgentOpen]);
 
+  // Sidebar 折叠状态 —— 用户关掉后整个 .sidebar 不渲染（没有动画压缩,直接消失）；
+  // TopBar 显示一个 expand icon 让用户重新展开。
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem("sidebar_collapsed_v1") === "true"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("sidebar_collapsed_v1", String(sidebarCollapsed)); } catch { /* ignore */ }
+  }, [sidebarCollapsed]);
+
   // Phase 4 Day 3 — unread inbox count for the four-pointed star button.
   // Polled every 30 s; also refetched whenever the chat drawer opens/closes so
   // the badge clears promptly after the user reads messages inside the chat.
@@ -945,12 +954,17 @@ export default function App() {
     }
   }, [deleteProtection, executeDelete]);
 
-  // ── Add a single empty record (from ".add-record-btn" in TableView / Toolbar) ──
-  const handleAddRecord = useCallback(async (): Promise<string> => {
+  // ── Add a single empty record ──
+  // position: "start" → 插到第一行（top toolbar 用）、"end" → 末行（table 底部 +）
+  // 服务端按 createdAt asc 返回，所以 end 是天然位置；start 是 FE-only 视觉插入,
+  // 刷新后会回到 end —— 后续要持久化"首行"需要在 backend 加 order 字段。
+  const handleAddRecord = useCallback(async (position: "start" | "end" = "end"): Promise<string> => {
     const tableId = activeTableIdRef.current;
     const record = await createRecord(tableId, {});
-    // Optimistically append to local state; SSE echo is deduped by id in handleRemoteRecordCreate
-    setAllRecords(prev => prev.some(r => r.id === record.id) ? prev : [...prev, record]);
+    setAllRecords(prev => {
+      if (prev.some(r => r.id === record.id)) return prev;
+      return position === "start" ? [record, ...prev] : [...prev, record];
+    });
     return record.id;
   }, []);
 
@@ -1911,6 +1925,8 @@ export default function App() {
         onOpenChatAgent={() => setChatAgentOpen((v) => !v)}
         chatAgentOpen={chatAgentOpen}
         agentUnreadCount={agentUnread}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
       />
       <div className={`workspace${chatAgentOpen ? " chat-open" : ""}${chatAgentOpen && chatSide === "left" ? " chat-left" : ""}${movingPart ? " moving" : ""}`} ref={workspaceRef}>
         <div
@@ -1920,25 +1936,28 @@ export default function App() {
           style={chatAgentOpen ? { flex: "1 1 auto", minWidth: 0 } : undefined}
         >
         <div className="app-body">
-        <Sidebar
-          items={sidebarItems}
-          onRenameItem={handleRenameSidebarItemExtended}
-          activeItemId={activeTableId}
-          onSelectItem={handleSelectItem}
-          onReorderItems={handleReorderItems}
-          onDeleteTable={handleDeleteTable}
-          tableCount={documentTables.length}
-          onCreateWithAI={handleCreateWithAI}
-          onResetToDefault={handleResetToDefault}
-          onCreateBlank={handleCreateBlankTable}
-          folders={documentFolders.map(f => ({ id: f.id, name: f.name }))}
-          onCreateFolder={handleCreateFolder}
-          onCreateDesign={handleCreateDesign}
-          onCreateIdea={handleCreateIdea}
-          onDeleteItem={handleDeleteItem}
-          onMoveItem={handleMoveItem}
-          scrollToItemId={scrollToItemId}
-        />
+        {!sidebarCollapsed && (
+          <Sidebar
+            items={sidebarItems}
+            onRenameItem={handleRenameSidebarItemExtended}
+            activeItemId={activeTableId}
+            onSelectItem={handleSelectItem}
+            onReorderItems={handleReorderItems}
+            onDeleteTable={handleDeleteTable}
+            tableCount={documentTables.length}
+            onCreateWithAI={handleCreateWithAI}
+            onResetToDefault={handleResetToDefault}
+            onCreateBlank={handleCreateBlankTable}
+            folders={documentFolders.map(f => ({ id: f.id, name: f.name }))}
+            onCreateFolder={handleCreateFolder}
+            onCreateDesign={handleCreateDesign}
+            onCreateIdea={handleCreateIdea}
+            onDeleteItem={handleDeleteItem}
+            onMoveItem={handleMoveItem}
+            scrollToItemId={scrollToItemId}
+            onCollapse={() => setSidebarCollapsed(true)}
+          />
+        )}
         <div className="app-main">
           {/* SVG Canvas — shown when a design is active */}
           {activeItemType === "design" && (() => {
@@ -2001,7 +2020,7 @@ export default function App() {
             customizeFieldBtnRef={customizeFieldBtnRef}
             canUndo={canUndo}
             onUndo={performUndo}
-            onAddRecord={() => { void tableViewRef.current?.addRecord(); }}
+            onAddRecord={() => { void tableViewRef.current?.addRecord("start"); }}
           />
           <div className="app-content">
             <TableView

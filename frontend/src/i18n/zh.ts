@@ -31,6 +31,8 @@ export const zh: TranslationKeys = {
   "topbar.langEnglish": "English",
   "topbar.langChinese": "简体中文",
   "topbar.logout": "退出登录",
+  "sidebar.collapse": "收起侧边栏",
+  "sidebar.expand": "展开侧边栏",
   "topbar.statsTitle": "工作区资产统计",
   "topbar.statArtifacts": "artifacts",
   "topbar.statArtifactsTitle": "全部资产数量（表 + 灵感 + 画布 + Demo）",
@@ -111,7 +113,7 @@ export const zh: TranslationKeys = {
 
   // Toolbar
   "toolbar.addRecord": "添加记录",
-  "toolbar.customizeField": "字段设置",
+  "toolbar.customizeField": "字段",
   "toolbar.viewSettings": "视图配置",
   "toolbar.filter": "筛选",
   "toolbar.filterCount": "{{count}} 筛选",

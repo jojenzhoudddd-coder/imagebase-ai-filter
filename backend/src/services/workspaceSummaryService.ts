@@ -187,26 +187,36 @@ async function generateForWorkspace(workspaceId: string): Promise<void> {
  *
  * 因为 heartbeat 是 per-agent 的（每个 tick 多个 agent 都会调用一次本函数），
  * 这里用 lastRunDayKey 做去重，第一个进入的 agent 触发，剩下的全部跳过。
+ *
+ * `force=true` 跳过日期 / 小时的早退，并把所有 workspace 视作"今天还没跑过"
+ * （清掉 aiSummaryAt 是不破坏性的：哪个 workspace 已经有最新摘要就重新生成
+ * 一遍而已）。boot-time / 一次性 admin 操作用。
  */
-export async function maybeRefreshDailySummaries(now: Date = new Date()): Promise<void> {
+export async function maybeRefreshDailySummaries(
+  now: Date = new Date(),
+  opts: { force?: boolean } = {},
+): Promise<void> {
   const dayKey = utc8DayKey(now);
   const hour = utc8Hour(now);
+  const force = opts.force === true;
 
   // 还没到 04:00（UTC+8）就跳过 —— 留给凌晨过后第一次 tick。
-  if (hour < 4) return;
-  if (lastRunDayKey === dayKey) return;
+  if (!force && hour < 4) return;
+  if (!force && lastRunDayKey === dayKey) return;
   if (inflight) return;
 
   inflight = true;
-  lastRunDayKey = dayKey; // 提前置位，避免并发 tick 重复触发
+  if (!force) lastRunDayKey = dayKey; // force 模式不要污染 daily 去重
   try {
     const workspaces = await prisma.workspace.findMany({
       select: { id: true, aiSummaryAt: true },
     });
     let refreshed = 0;
     for (const ws of workspaces) {
-      const lastRun = ws.aiSummaryAt ? utc8DayKey(ws.aiSummaryAt) : null;
-      if (lastRun === dayKey) continue;
+      if (!force) {
+        const lastRun = ws.aiSummaryAt ? utc8DayKey(ws.aiSummaryAt) : null;
+        if (lastRun === dayKey) continue;
+      }
       try {
         await generateForWorkspace(ws.id);
         refreshed++;
@@ -214,11 +224,10 @@ export async function maybeRefreshDailySummaries(now: Date = new Date()): Promis
         console.warn(`[workspaceSummary] ${ws.id}: generate failed`, err);
       }
     }
-    console.log(`[workspaceSummary] daily refresh ${dayKey} done — ${refreshed} workspaces refreshed`);
+    console.log(`[workspaceSummary] ${force ? "force" : "daily"} refresh ${dayKey} done — ${refreshed} workspaces refreshed`);
   } catch (err) {
     console.warn(`[workspaceSummary] daily refresh failed:`, err);
-    // 失败时回滚 dayKey 以便下次 tick 重试
-    lastRunDayKey = null;
+    if (!force) lastRunDayKey = null; // 失败时回滚 dayKey 以便下次 tick 重试
   } finally {
     inflight = false;
   }
@@ -233,5 +242,34 @@ export async function generateInitialSummary(workspaceId: string): Promise<void>
     await generateForWorkspace(workspaceId);
   } catch (err) {
     console.warn(`[workspaceSummary] initial gen failed for ${workspaceId}:`, err);
+  }
+}
+
+/**
+ * Boot-time 一次性补全 —— 扫描所有 aiSummary IS NULL 的 workspace 并生成。
+ * 已有摘要的 workspace 直接跳过（幂等：重启不浪费 token,不覆盖已有内容）。
+ * 失败不抛,顺序串行（避免一次性打太多模型请求）。
+ */
+export async function regenerateMissingSummaries(): Promise<void> {
+  if (inflight) return;
+  inflight = true;
+  try {
+    const workspaces = await prisma.workspace.findMany({
+      where: { aiSummary: null },
+      select: { id: true },
+    });
+    if (workspaces.length === 0) return;
+    let done = 0;
+    for (const ws of workspaces) {
+      try {
+        await generateForWorkspace(ws.id);
+        done++;
+      } catch (err) {
+        console.warn(`[workspaceSummary] missing-fill failed for ${ws.id}:`, err);
+      }
+    }
+    console.log(`[workspaceSummary] missing-fill done — ${done}/${workspaces.length} workspaces generated`);
+  } finally {
+    inflight = false;
   }
 }

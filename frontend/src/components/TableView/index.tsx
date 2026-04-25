@@ -24,7 +24,9 @@ interface Props {
   onEditField?: (fieldId: string, anchorRect: DOMRect) => void;
   /** Create an empty record; resolves to the new record id so the caller
    * can enter edit mode on its first cell. */
-  onAddRecord?: () => Promise<string>;
+  /** 创建一条空记录。position 决定插在表格顶部还是底部（topbar Add Record →
+   *  "start"；表格底部的 + 行 → "end"）。返回新记录 id。 */
+  onAddRecord?: (position?: "start" | "end") => Promise<string>;
 }
 
 interface CellRange {
@@ -629,7 +631,8 @@ function getDefaultColWidth(field: { id: string; isPrimary?: boolean }): number 
 export interface TableViewHandle {
   selectAndScrollToField: (fieldId: string) => void;
   clearRowSelection: () => void;
-  addRecord: () => Promise<void>;
+  /** position 默认 "end"。topbar 的 Add Record 传 "start" 让新记录出现在第一行。 */
+  addRecord: (position?: "start" | "end") => Promise<void>;
 }
 
 const COL_WIDTHS_KEY = "col_widths_v1";
@@ -709,7 +712,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
 
   // Forward ref to addRecordClickHandlerRef so the imperative handle can call
   // the current closure (which captures latest visibleFields/onAddRecord).
-  const addRecordClickRef = useRef<() => Promise<void>>(async () => {});
+  const addRecordClickRef = useRef<(position?: "start" | "end") => Promise<void>>(async () => {});
 
   // Expose imperative methods to parent
   useImperativeHandle(ref, () => ({
@@ -723,8 +726,8 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     clearRowSelection() {
       setSelectedRowIds(new Set());
     },
-    async addRecord() {
-      await addRecordClickRef.current();
+    async addRecord(position) {
+      await addRecordClickRef.current(position);
     },
   }), []);
 
@@ -820,11 +823,11 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     setCellRange(null);
   }, []);
 
-  const handleAddRecordClick = useCallback(async () => {
+  const handleAddRecordClick = useCallback(async (position: "start" | "end" = "end") => {
     if (!onAddRecord) return;
     const firstFieldId = visibleFields[0]?.id;
     try {
-      const newId = await onAddRecord();
+      const newId = await onAddRecord(position);
       if (firstFieldId) {
         setEditing({ recordId: newId, fieldId: firstFieldId });
         setCellRange(null);
@@ -1360,7 +1363,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
               <td colSpan={visibleFields.length + 2}>
                 <button
                   className="add-record-btn"
-                  onClick={handleAddRecordClick}
+                  onClick={() => { void handleAddRecordClick("end"); }}
                   disabled={!onAddRecord}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none">

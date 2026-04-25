@@ -987,13 +987,7 @@ function EmptyState({
   return (
     <div className="chat-empty">
       <div className="chat-empty-hero">
-        <img
-          className="chat-empty-mascot"
-          src="/chat-mascot.jpg"
-          alt=""
-          aria-hidden="true"
-          draggable={false}
-        />
+        {/* 头像 IP 图已移除（产品方向） —— 仅保留标题 */}
         <div className="chat-empty-title">{renderTitleWithCommaBreak(t("chat.empty.title"))}</div>
       </div>
 

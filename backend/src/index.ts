@@ -33,7 +33,7 @@ import { startSuggestionScheduler } from "./services/suggestionService.js";
 import { ensureDefaultAgent } from "./services/agentService.js";
 import { startHeartbeat, stopHeartbeat } from "./services/runtimeService.js";
 import { startModelProbe, stopModelProbe } from "./services/modelRegistry.js";
-import { maybeRefreshDailySummaries } from "./services/workspaceSummaryService.js";
+import { maybeRefreshDailySummaries, regenerateMissingSummaries } from "./services/workspaceSummaryService.js";
 // Side-effect import: registers every provider adapter with the registry at
 // boot. Must happen before the first runAgent() call.
 import "./services/providers/index.js";
@@ -348,6 +348,16 @@ async function start() {
     });
   } else {
     console.log("[runtime] heartbeat disabled via RUNTIME_DISABLED=1");
+  }
+
+  // Boot-time 补全：扫描 aiSummary IS NULL 的 workspace 并生成。已有摘要的
+  // 直接跳过（幂等,重启不浪费 token,不覆盖已有内容）。30s 延迟避免启动期
+  // 抢资源；之后由 heartbeat 在 UTC+8 04:00 接管日常刷新。
+  if (process.env.RUNTIME_DISABLED !== "1") {
+    setTimeout(() => {
+      void regenerateMissingSummaries()
+        .catch((err) => console.warn("[boot] missing-summary fill failed:", err));
+    }, 30_000).unref();
   }
 
   // Graceful shutdown: let any in-flight tick finish before exiting so we

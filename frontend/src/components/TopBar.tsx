@@ -23,6 +23,10 @@ interface Props {
   chatAgentOpen?: boolean;
   /** Phase 4 Day 3 — unread count from /api/agents/:id/inbox?unread=1. 0 or undefined hides the dot. */
   agentUnreadCount?: number;
+  /** Sidebar 是否当前已收起；为 true 时左上角显示一个"展开" icon。 */
+  sidebarCollapsed?: boolean;
+  /** 切换 sidebar 收起/展开。绑定到顶栏最左侧的 sidebar-toggle 按钮。 */
+  onToggleSidebar?: () => void;
 }
 
 interface WorkspaceStats {
@@ -51,7 +55,7 @@ function formatTokenCount(n: number): string {
   return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0).replace(/\.0$/, "")}M`;
 }
 
-export default function TopBar({ tableName, documentName, workspaceId, deleteProtection = true, onDeleteProtectionChange, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount }: Props) {
+export default function TopBar({ tableName, documentName, workspaceId, deleteProtection = true, onDeleteProtectionChange, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount, sidebarCollapsed, onToggleSidebar }: Props) {
   const { t, locale } = useTranslation();
   const { user, patchUser, logout, patchPreferences } = useAuth();
   const toast = useToast();
@@ -272,8 +276,13 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
       {/* Left: nav icons + divider + stacked basic info */}
       <div className="topbar-left">
         <div className="topbar-nav">
-          <button className="topbar-icon-btn" title={t("topbar.menu")}>
-            {/* Figma: Sidebar toggle — lines 708-711 */}
+          <button
+            className="topbar-icon-btn"
+            title={sidebarCollapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+            onClick={onToggleSidebar}
+          >
+            {/* Figma: Sidebar toggle —— 即开即合,sidebar 关闭时这个 icon 就是
+                 "展开侧边栏"的入口（位于顶栏最左,在标题文字之前）。 */}
             <svg width="16" height="16" viewBox="24 24 16 16" fill="none">
               <path d="M38.6669 26.6667C38.6669 26.2985 38.3684 26 38.0002 26H26.0002C25.632 26 25.3335 26.2985 25.3335 26.6667C25.3335 27.0349 25.632 27.3333 26.0002 27.3333H38.0002C38.3684 27.3333 38.6669 27.0349 38.6669 26.6667Z" fill="#646A73"/>
               <path d="M37.926 31.3333C38.3351 31.3333 38.6667 31.6318 38.6667 32C38.6667 32.3682 38.3351 32.6667 37.926 32.6667H32.7408C32.3317 32.6667 32 32.3682 32 32C32 31.6318 32.3317 31.3333 32.7408 31.3333H37.926Z" fill="#646A73"/>
@@ -337,10 +346,13 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
             {(stats?.summary || stats?.slogan) && (
               <>
                 <span className="topbar-info-sep" />
-                <span className="topbar-summary">
-                  {stats.summary ? `${stats.summary}` : ""}
-                  {stats.summary && stats.slogan ? " · " : ""}
-                  {stats.slogan ? stats.slogan : ""}
+                <span className="topbar-summary" title={stats.slogan ?? stats.summary ?? ""}>
+                  <SloganIcon />
+                  <span className="topbar-summary-text">
+                    {stats.summary ? `${stats.summary}` : ""}
+                    {stats.summary && stats.slogan ? " · " : ""}
+                    {stats.slogan ? stats.slogan : ""}
+                  </span>
                 </span>
               </>
             )}
@@ -681,6 +693,16 @@ function SparkIcon() {
   return (
     <svg className="topbar-stat-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
       <path d="M6.5 1L3 7h2.5L5 11l3.5-6H6L6.5 1z" stroke="currentColor" strokeWidth="1.0" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function SloganIcon() {
+  // 引号 / 标语 icon —— 表达"工作区描述 + slogan"
+  return (
+    <svg className="topbar-stat-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M3 3.5h2v3l-1 2H2.5l1-2h-1v-3z" stroke="currentColor" strokeWidth="0.9" strokeLinejoin="round"/>
+      <path d="M7 3.5h2v3l-1 2H6.5l1-2h-1v-3z" stroke="currentColor" strokeWidth="0.9" strokeLinejoin="round"/>
     </svg>
   );
 }

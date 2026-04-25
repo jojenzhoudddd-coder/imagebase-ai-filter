@@ -318,11 +318,8 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
         </button>
       </div>
 
-      {filter.conditions.length > 0 && (
-        <div className="fp-footer">
-          <button className="fp-save-view">{t("filter.saveAsNewView")}</button>
-        </div>
-      )}
+      {/* "Save as new view" 按钮已移除（产品方向：filter 直接作用于当前 view，
+           不再支持另存为视图）。 */}
     </div>
   );
 });
