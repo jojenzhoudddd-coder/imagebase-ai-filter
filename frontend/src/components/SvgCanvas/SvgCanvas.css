@@ -336,7 +336,7 @@
 /* Override: popover buttons need visible fills */
 .figma-import-row .svg-canvas-topbar-btn.primary {
   background: var(--color-primary);
-  color: var(--surface-2);
+  color: var(--text-on-primary);
   border: none;
 }
 
@@ -414,7 +414,7 @@
 
 .alt-distance-label {
   background: var(--danger);
-  color: var(--surface-2);
+  color: var(--text-on-primary);
   font-size: 10px;
   line-height: 1;
   padding: 1px 4px;

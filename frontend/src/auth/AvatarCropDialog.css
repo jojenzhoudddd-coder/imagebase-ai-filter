@@ -84,6 +84,6 @@
 .avatar-crop-btn-cancel:hover:not(:disabled) { background: var(--surface-3); }
 .avatar-crop-btn-ok {
   background: var(--primary);
-  color: var(--surface-2);
+  color: var(--text-on-primary);
 }
 .avatar-crop-btn-ok:hover:not(:disabled) { background: var(--primary-hover); }

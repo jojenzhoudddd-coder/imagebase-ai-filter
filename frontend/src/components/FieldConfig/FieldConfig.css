@@ -339,7 +339,7 @@
   height: 16px;
   border-radius: 3px;
   background: linear-gradient(135deg, var(--primary), var(--artifact-taste));
-  color: var(--surface-2);
+  color: var(--text-on-primary);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.3px;
@@ -503,7 +503,7 @@
 
 .btn-primary {
   background: var(--color-primary);
-  color: var(--surface-2);
+  color: var(--text-on-primary);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -512,7 +512,7 @@
 
 .btn-primary:disabled {
   background: var(--color-text-placeholder);
-  color: var(--surface-2);
+  color: var(--text-on-primary);
 }
 
 /* ── Lookup cell display ── */

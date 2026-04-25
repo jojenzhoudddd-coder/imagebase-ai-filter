@@ -102,7 +102,7 @@
 
 .create-table-popover-btn.primary {
   background: var(--primary);
-  color: var(--surface-2);
+  color: var(--text-on-primary);
 }
 
 .create-table-popover-btn.primary:hover {

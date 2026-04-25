@@ -82,20 +82,20 @@ input, select, textarea {
 
 select { cursor: pointer; }
 
-/* ── DM 全局表单样式 ──────────────────────────────────────────────
- * 用 :where() 把整条规则降到 0 特异性，让任何组件 class（哪怕只有一个）
- * 都能轻松覆盖。之前是 (0,1,1) 特异性，强行把组件里 background:transparent
- * 的 textarea/input 都刷成 inset 深底，导致 chatbot / ai-filter 输入区
- * 出现 "比 box 还深的内嵌色块"。 */
-:where([data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"])),
-:where([data-theme="dark"] textarea),
-:where([data-theme="dark"] select) {
-  background: var(--surface-inset);
+/* ── DM 全局表单 placeholder 文字色 ──────────────────────────────
+ * 注：之前还有一条全局 input/textarea/select 的 background 规则，但
+ * vite 的 CSS minifier 会把 :where() 包裹"优化"掉，导致规则特异性
+ * 反弹到 (0,1,1) 强行盖住组件 class 的 transparent bg。已彻底去掉那
+ * 条规则；每个组件自己负责输入框的 bg（绝大多数组件已经有 explicit
+ * background 声明）。这里只留 placeholder 文字色和 color，因为这两个
+ * 即使被组件覆盖也不会出 "深色色块" 这种突兀视觉问题。 */
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder { color: var(--text-placeholder); }
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
   color: var(--text-primary);
-  border-color: var(--border-strong);
 }
-:where([data-theme="dark"] input::placeholder),
-:where([data-theme="dark"] textarea::placeholder) { color: var(--text-placeholder); }
 
 /* Checkbox / radio：accent-color 染选中态颜色，box bg 由 color-scheme 走
  * 浏览器 dark UA 默认。这条给一个稳定的 LM/DM 都好看的 accent。 */

@@ -209,7 +209,7 @@
   box-sizing: border-box;
   border-radius: 7px;
   background: var(--danger);
-  color: var(--surface-2);
+  color: var(--text-on-primary);
   font-size: 10px;
   font-weight: 600;
   line-height: 14px;
@@ -494,7 +494,7 @@
   pointer-events: none; /* 让事件穿透到下面的 file input */
 }
 .topbar-profile-avatar-wrap:hover .topbar-profile-avatar-overlay { opacity: 1; }
-.topbar-profile-uploading-dot { color: var(--surface-2); font-size: 18px; line-height: 1; }
+.topbar-profile-uploading-dot { color: var(--text-on-primary); font-size: 18px; line-height: 1; }
 
 /* 透明 file input 铺满 avatar，点头像直接打开文件选择器（mirrors Lark
  * _pp-avatar-selector input 模式 —— 不需要 JS click 转发）。 */

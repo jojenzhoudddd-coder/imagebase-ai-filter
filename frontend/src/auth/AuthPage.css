@@ -165,7 +165,7 @@
 }
 .auth-mobile-brand .auth-mobile-logo {
   width: 28px; height: 28px; border-radius: 6px;
-  background: var(--primary); color: var(--surface-2);
+  background: var(--primary); color: var(--text-on-primary);
   display: inline-flex; align-items: center; justify-content: center;
   font-weight: 600;
   font-size: 12px;
@@ -314,7 +314,7 @@
   border: none;
   border-radius: 4px;
   background: var(--primary);
-  color: var(--surface-2);
+  color: var(--text-on-primary);
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;

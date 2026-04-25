@@ -1282,7 +1282,7 @@
 }
 .chat-confirm-btn.primary {
   background: var(--primary);
-  color: var(--surface-2);
+  color: var(--text-on-primary);
 }
 .chat-confirm-btn.primary:hover { background: var(--primary-hover); }
 .chat-confirm-btn.secondary {
@@ -1453,7 +1453,7 @@
   border-radius: 16.471px;
   border: none;
   background: rgba(20, 86, 240, 0.35);  /* primary blue at 35% — disabled affordance */
-  color: var(--surface-2);
+  color: var(--text-on-primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1509,7 +1509,7 @@
 .chat-input-voice-btn.listening {
   background: var(--primary);
   border-color: var(--primary);
-  color: var(--surface-2);
+  color: var(--text-on-primary);
 }
 .chat-input-voice-btn.listening:hover {
   background: var(--primary-hover);
@@ -1517,7 +1517,7 @@
 .chat-input-voice-btn.stopping {
   background: var(--primary);
   border-color: var(--primary);
-  color: var(--surface-2);
+  color: var(--text-on-primary);
   opacity: 0.7;
   cursor: not-allowed;
 }
