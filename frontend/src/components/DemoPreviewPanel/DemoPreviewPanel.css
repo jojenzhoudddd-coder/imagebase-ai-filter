@@ -26,6 +26,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* gap 与 .table-topbar-left 一致(12px) —— sidebar 收起时 SidebarExpandButton
+     和 title 之间的间距;actions 容器有 margin-left:auto,gap 不会影响其右侧位置 */
+  gap: 12px;
   height: 44px;
   padding: 0 12px;
   border-bottom: 1px solid var(--color-border, var(--border-default));
