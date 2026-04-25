@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
-import ViewTabs from "./components/ViewTabs";
 import Toolbar from "./components/Toolbar";
 import TableView, { TableViewHandle } from "./components/TableView/index";
 import FilterPanel from "./components/FilterPanel/index";
@@ -1984,22 +1983,17 @@ export default function App() {
           })()}
           {activeItemType !== "design" && activeItemType !== "idea" && activeItemType !== "demo" && (
           <>
-          <ViewTabs
-            views={views}
-            activeViewId={activeViewId}
-            onSelect={setActiveViewId}
+          {/* ViewTabs 已废弃 —— 表名 + filter apply pill 全部进入 Toolbar 顶栏 */}
+          <Toolbar
+            tableName={tableName}
+            onRenameTable={(name) => handleRenameSidebarItem(activeTableId, name)}
             isFiltered={isFiltered}
             isFilterDirty={isFilterDirty}
-            onSaveView={handleSaveView}
-            onClearFilter={handleClearFilter}
-            onRenameView={handleRenameView}
-          />
-          <Toolbar
-            isFiltered={isFiltered}
             filterConditionCount={filter.conditions.length}
             filterPanelOpen={filterPanelOpen}
             onFilterClick={() => setFilterPanelOpen((o) => !o)}
             onClearFilter={handleClearFilter}
+            onSaveView={handleSaveView}
             filterBtnRef={filterBtnRef}
             fieldConfigOpen={fieldConfigOpen}
             onCustomizeFieldClick={() => setFieldConfigOpen((o) => !o)}
