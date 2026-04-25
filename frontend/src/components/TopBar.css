@@ -416,14 +416,22 @@
 /* ─── Profile popover (merged avatar menu) —— 水平布局 + 固定 280px ─── */
 .topbar-profile-popover { width: 280px; padding-top: 0; }
 
-/* Header 从垂直改为水平：左 avatar（48px）+ 右 name/email 块。 */
+/* Header 水平布局：左 avatar（48px）+ 右 name/email 块。
+ * · padding 上/下/左统一 12，avatar 四周间距视觉一致
+ * · align-items: flex-end —— email bottom 对齐 avatar bottom（参考用户反馈
+ *   "邮箱往下移动 2px 底部对齐头像下边缘"，center 对齐会让 email 略高于
+ *   avatar 底） */
 .topbar-profile-header {
-  padding: 14px 14px 12px;
+  padding: 12px 14px 12px 12px;
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: flex-end;
   gap: 12px;
 }
+
+/* 第一根分割线（header 与菜单项之间）拉近距离 —— 默认 flex gap 4 +
+ * header bottom 12 = 16px，太疏；用负 margin 拉到 8 左右。 */
+.topbar-profile-divider-top { margin-top: -8px; }
 
 .topbar-profile-avatar-wrap {
   position: relative;

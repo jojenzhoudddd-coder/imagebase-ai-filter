@@ -392,8 +392,8 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
             </div>
           )}
 
-          {/* Header 和菜单项之间的分隔线 */}
-          <div className="topbar-menu-divider" />
+          {/* Header 和菜单项之间的分隔线（顶部分割线，拉近距离用 -margin） */}
+          <div className="topbar-menu-divider topbar-profile-divider-top" />
 
           {/* 外观 submenu（浅色 / 深色 / 跟随系统） */}
           <div
