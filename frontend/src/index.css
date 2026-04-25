@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Design tokens —— 单一 source of truth。LM/DM 在这一个文件里统一维护。 */
+@import "./styles/tokens.css";
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -7,209 +10,50 @@
 }
 
 :root {
-  /* Figma design tokens */
-  --color-primary: #1456F0;
-  --color-primary-hover: #0D45D6;
-  --color-primary-light: #F0F4FF;
-  --color-text-primary: #1F2329;
-  --color-text-title: #1F2329;
-  --color-text-secondary: #646A73;
-  --color-text-muted: #8F959E;
-  --color-text-placeholder: #BBBFC4;
-  --color-icon-n1: #2B2F36;
-  --color-icon-n2: #646A73;
-  --color-border: #DEE0E3;
-  --color-border-component: #D0D3D6;
-  --color-border-light: #EFF0F1;
-  --color-bg: #F5F6F7;
-  --color-bg-base: #F5F6F7;
-  --color-bg-secondary: #F8F9FA;
-  /* Typography */
+  /* ── Typography ───────────────────────────────────────────── */
   --fs-base: 14px;
   --lh-base: 22px;
-  --color-bg-hover: #F0F1F3;
-  --color-bg-float: #FFFFFF;
-  --color-white: #FFFFFF;
-  /* Status tags from Figma */
+  --font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+
+  /* ── Spacing / Radius ─────────────────────────────────────── */
+  --radius-s: 4px;
+  --radius-m: 6px;
+  --radius-l: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 11px;
+
+  /* ── Status tag combos（旧设计稿沿用，未走 token；保留以免回归）── */
   --color-tag-done-bg: #CAEFFC;
   --color-tag-done-text: #02312A;
   --color-tag-design-bg: #E0E9FF;
   --color-tag-design-text: #002270;
   --color-tag-pending-bg: #FEE7CD;
   --color-tag-pending-text: #3B1A02;
-  /* Palette */
   --palette-blue-100: #E0E9FF;
   --palette-blue-900: #002270;
-  /* Typography - PingFang SC from Figma */
-  --font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
-  /* Spacing / Radius from Figma */
-  --radius-s: 4px;
-  --radius-m: 6px;
-  --radius-l: 8px;
-  --radius-xl: 12px;
-  --radius-pill: 11px;
-  /* Shadows from Figma */
-  --shadow-panel: 0px 6px 12px -10px rgba(31, 35, 41, 0.06), 0px 8px 24px 0px rgba(31, 35, 41, 0.04), 0px 10px 36px 10px rgba(31, 35, 41, 0.04);
-  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.06);
+
+  /* ── Legacy shadow alias（指向新 shadow token）─────────────── */
+  --shadow-panel: var(--shadow-card);
+  --shadow-dropdown: var(--shadow-popover);
 }
 
-/* ─── Dark theme token overrides ───────────────────────────────────────
- * 激活方式：`<html data-theme="dark">` —— 由 src/theme.ts 在启动 + 切换时写。
- * 这一版只覆盖最核心的表面 tokens；绝大多数组件硬编码的 #FFF / #1F2329 之
- * 类仍是浅色，后续按需逐个页面补暗色适配。顶栏 popover / 输入框 / 按钮
- * 已在下方单独加规则。 */
+/* DM tag 配色微调：在深色底上原版浅蓝 chip 太鲜。 */
 [data-theme="dark"] {
-  --color-text-primary: #E6E8EB;
-  --color-text-title: #F3F4F6;
-  --color-text-secondary: #A6ADB6;
-  --color-text-muted: #7A828E;
-  --color-text-placeholder: #5A6270;
-  --color-icon-n1: #E6E8EB;
-  --color-icon-n2: #A6ADB6;
-  --color-border: #2A2F37;
-  --color-border-component: #353B45;
-  --color-border-light: #25292F;
-  --color-bg: #16181D;
-  --color-bg-base: #16181D;
-  --color-bg-secondary: #1B1E24;
-  --color-bg-hover: #22262D;
-  --color-bg-float: #22262D;
-  --color-white: #22262D;
+  --color-tag-done-bg: #14323B;
+  --color-tag-done-text: #7FE0CC;
+  --color-tag-design-bg: #1A2543;
+  --color-tag-design-text: #99B6FF;
+  --color-tag-pending-bg: #3A2A14;
+  --color-tag-pending-text: #FFD09C;
 }
-[data-theme="dark"] body { background: #16181D; color: var(--color-text-primary); }
-
-/* ─── Dark mode broad coverage ─────────────────────────────────────────
- * 参考 macOS / Linear / Notion 的 DM 处理：primary text 用 #E6E8EB（不用
- * 纯白，否则对比过强刺眼），secondary #A6ADB6，各层表面用 #16181D /
- * #1B1E24 / #22262D。下面把 codebase 里高频出现的硬编码白/浅灰通过
- * class 选择器和 attribute 选择器批量改色。 */
-
-/* 1. 通用表面 —— 所有指向 #FFFFFF / #fff 的 inline style 没法抓，但用
- *    var(--color-white) 的已自动走 token；这里补一批常见的 class 白底。 */
-[data-theme="dark"] .sidebar,
-[data-theme="dark"] .topbar,
-[data-theme="dark"] .table-view,
-[data-theme="dark"] .table-container,
-[data-theme="dark"] .chat-sidebar,
-[data-theme="dark"] .chat-messages,
-[data-theme="dark"] .chat-input-wrap,
-[data-theme="dark"] .idea-editor,
-[data-theme="dark"] .svg-canvas,
-[data-theme="dark"] .demo-preview-panel,
-[data-theme="dark"] .field-config-panel,
-[data-theme="dark"] .filter-panel,
-[data-theme="dark"] .auth-form-pane {
-  background: #1B1E24;
-  color: #E6E8EB;
-}
-
-[data-theme="dark"] body,
-[data-theme="dark"] .workspace,
-[data-theme="dark"] .artifact-part,
-[data-theme="dark"] .chat-part {
-  background: #16181D;
-  color: #E6E8EB;
-}
-
-/* 2. Topbar / menu —— 单独覆盖（这一块是 popover 所在，视觉高优先级） */
-[data-theme="dark"] .topbar { border-bottom-color: #2A2F37; }
-[data-theme="dark"] .topbar-breadcrumb,
-[data-theme="dark"] .topbar-crumb,
-[data-theme="dark"] .topbar-crumb-current { color: #E6E8EB; }
-[data-theme="dark"] .topbar-divider,
-[data-theme="dark"] .topbar-badge-divider { background: #2A2F37; }
-[data-theme="dark"] .topbar-icon-btn { color: #E6E8EB; }
-[data-theme="dark"] .topbar-icon-btn:hover { background: #2C313A; }
-[data-theme="dark"] .topbar-menu,
-[data-theme="dark"] .topbar-submenu {
-  background: #22262D;
-  border-color: #353B45;
-  color: #E6E8EB;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-}
-[data-theme="dark"] .topbar-menu-item,
-[data-theme="dark"] .topbar-menu-label,
-[data-theme="dark"] .topbar-menu-icon { color: #E6E8EB; }
-[data-theme="dark"] .topbar-menu-item:hover,
-[data-theme="dark"] .topbar-submenu .topbar-menu-item:hover { background: #2C313A; }
-[data-theme="dark"] .topbar-menu-divider { background: #2A2F37; }
-[data-theme="dark"] .topbar-profile-username,
-[data-theme="dark"] .topbar-profile-username .inline-edit-text { color: #E6E8EB; }
-[data-theme="dark"] .topbar-profile-email { color: #A6ADB6; }
-[data-theme="dark"] .inline-edit-input { background: #16181D; color: #E6E8EB; border-color: #1456F0; }
-
-/* 3. Sidebar */
-[data-theme="dark"] .sidebar { border-right-color: #2A2F37; }
-[data-theme="dark"] .sidebar-item { color: #E6E8EB; }
-[data-theme="dark"] .sidebar-item:hover { background: #22262D; }
-[data-theme="dark"] .sidebar-item.active { background: #2F3440; color: #E6E8EB; }
-[data-theme="dark"] .sidebar-icon,
-[data-theme="dark"] .sidebar-label,
-[data-theme="dark"] .sidebar-icon-btn { color: #E6E8EB; }
-[data-theme="dark"] .sidebar-search-trigger {
-  background: #22262D;
-  color: #A6ADB6;
-  border-color: #353B45;
-}
-
-/* 4. 批量抓所有内联 SVG 上常见的硬编码浅色 fill —— 改成软白 E6E8EB。
- *    这是针对顶栏 / 侧栏 / 面板里大量 hardcoded 图标最省事的办法。 */
-[data-theme="dark"] svg path[fill="#2B2F36"],
-[data-theme="dark"] svg path[fill="#1F2329"],
-[data-theme="dark"] svg path[fill="#646A73"],
-[data-theme="dark"] svg path[fill="#8F959E"],
-[data-theme="dark"] svg path[fill="#333333"],
-[data-theme="dark"] svg rect[fill="#2B2F36"] { fill: #E6E8EB; }
-[data-theme="dark"] svg path[stroke="#2B2F36"],
-[data-theme="dark"] svg path[stroke="#1F2329"],
-[data-theme="dark"] svg path[stroke="#646A73"] { stroke: #E6E8EB; }
-
-/* 5. 输入框 / 按钮通用 */
-[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
-[data-theme="dark"] textarea,
-[data-theme="dark"] select {
-  background: #16181D;
-  color: #E6E8EB;
-  border-color: #353B45;
-}
-[data-theme="dark"] input::placeholder,
-[data-theme="dark"] textarea::placeholder { color: #5A6270; }
-
-/* 6. 弹窗 / modal 通用（非 auth） */
-[data-theme="dark"] .confirm-dialog,
-[data-theme="dark"] .avatar-crop-card,
-[data-theme="dark"] .dropdown-menu {
-  background: #22262D;
-  color: #E6E8EB;
-  border-color: #353B45;
-}
-
-/* 7. Chat sidebar 的关键色（高频可见） */
-[data-theme="dark"] .chat-header,
-[data-theme="dark"] .chat-title,
-[data-theme="dark"] .chat-message { color: #E6E8EB; }
-[data-theme="dark"] .chat-user-bubble { background: #1F3A66; color: #E6E8EB; }
-[data-theme="dark"] .chat-tool-card {
-  background: #1B1E24;
-  border-color: #353B45;
-  color: #E6E8EB;
-}
-
-/* 8. Table 视图最基础的色 —— 深色 bg + 可读文字；精细样式（单元格边框、
- *    行 hover、列 resize 条等）留给后续针对性补全。 */
-[data-theme="dark"] .table-row { border-bottom-color: #2A2F37; }
-[data-theme="dark"] .table-row:hover { background: #22262D; }
-[data-theme="dark"] .table-cell { color: #E6E8EB; }
-[data-theme="dark"] .table-header,
-[data-theme="dark"] .table-header-cell { background: #16181D; color: #E6E8EB; }
 
 html, body {
   height: 100%;
   font-family: var(--font-family);
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--color-text-primary);
-  background: var(--color-bg);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: var(--text-primary);
+  background: var(--surface-base);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -224,16 +68,43 @@ button {
   cursor: pointer;
   border: none;
   background: none;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: inherit;
 }
 
 input, select, textarea {
   font-family: var(--font-family);
-  font-size: 14px;
-  line-height: 22px;
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: var(--text-primary);
 }
 
-select {
-  cursor: pointer;
+select { cursor: pointer; }
+
+/* ── DM 全局表单样式 ──────────────────────────────────────────────
+ * 大量 form 元素的 background / color 要在 DM 下翻；统一在这里覆盖
+ * （比每个组件 CSS 自己定义更省事，组件 CSS 只在需要个性化时再覆盖）。 */
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
 }
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder { color: var(--text-placeholder); }
+
+/* ── DM 滚动条（webkit） ──────────────────────────────────────────
+ * 默认滚动条在 DM 下太亮太突兀。 */
+[data-theme="dark"] ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+[data-theme="dark"] ::-webkit-scrollbar-track { background: transparent; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 6px;
+  border: 3px solid var(--surface-base);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }

@@ -121,7 +121,7 @@ function UserAvatar({ userId, users, showName = true }: { userId: string; users:
 function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
   // Lookup sentinels first — error states surface as red labels
   if (field.type === "Lookup" && typeof value === "string" && (value === "#REF!" || value === "#CYCLE!")) {
-    return <span className="cell-text" style={{ color: "#c23b3b", fontWeight: 500 }}>{value}</span>;
+    return <span className="cell-text" style={{ color: "var(--danger)", fontWeight: 500 }}>{value}</span>;
   }
 
   if (value === null || value === undefined || value === "") {
@@ -133,7 +133,7 @@ function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
     return (
       <div className="cell-tags">
         {value.map((v, i) => (
-          <span key={i} className="status-tag" style={{ background: "#F0F2F5", color: "#1f2329" }}>
+          <span key={i} className="status-tag" style={{ background: "var(--surface-3)", color: "var(--text-primary)" }}>
             {String(v)}
           </span>
         ))}

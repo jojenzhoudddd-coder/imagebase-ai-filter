@@ -20,7 +20,7 @@
   justify-content: center;
   padding: 24px;
   font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  color: #1F2329;
+  color: var(--text-primary);
   font-size: 14px;
   line-height: 22px;
   box-sizing: border-box;
@@ -93,14 +93,14 @@
   font-size: 20px;
   line-height: 28px;
   font-weight: 600;
-  color: #1F2329;
+  color: var(--text-primary);
 }
 .auth-hero-headline-sub {
   margin: 4px 0 0;
   font-size: 13px;
   line-height: 20px;
   font-weight: 400;
-  color: #646A73;
+  color: var(--text-secondary);
 }
 
 .auth-hero-stage {
@@ -130,14 +130,14 @@
   gap: 16px;
   font-size: 12px;
   line-height: 20px;
-  color: #646A73;
+  color: var(--text-secondary);
 }
 .auth-hero-footer a {
   color: inherit;
   text-decoration: none;
   transition: color 0.15s;
 }
-.auth-hero-footer a:hover { color: #1F2329; }
+.auth-hero-footer a:hover { color: var(--text-primary); }
 
 /* ─── Right side of card: form ────────────────────────────────────── */
 .auth-form-pane {
@@ -145,7 +145,7 @@
   align-items: center;
   justify-content: center;
   padding: 32px 36px;
-  background: #FFFFFF;
+  background: var(--surface-2);
 }
 .auth-form-inner {
   width: 100%;
@@ -161,11 +161,11 @@
   font-size: 14px;
   font-weight: 500;
   margin-bottom: 24px;
-  color: #1F2329;
+  color: var(--text-primary);
 }
 .auth-mobile-brand .auth-mobile-logo {
   width: 28px; height: 28px; border-radius: 6px;
-  background: #1456F0; color: #FFFFFF;
+  background: var(--primary); color: var(--surface-2);
   display: inline-flex; align-items: center; justify-content: center;
   font-weight: 600;
   font-size: 12px;
@@ -178,12 +178,12 @@
   line-height: 28px;
   font-weight: 600;
   margin: 0 0 4px;
-  color: #1F2329;
+  color: var(--text-primary);
 }
 .auth-form-subtitle {
   font-size: 13px;
   line-height: 20px;
-  color: #646A73;
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -197,13 +197,13 @@
   font-size: 13px;
   line-height: 20px;
   font-weight: 500;
-  color: #1F2329;
+  color: var(--text-primary);
 }
 .auth-field-hint {
   display: block;
   font-size: 12px;
   line-height: 18px;
-  color: #8F959E;
+  color: var(--text-muted);
   margin-top: 2px;
 }
 .auth-input-wrap { position: relative; }
@@ -212,22 +212,22 @@
   width: 100%;
   height: 32px;
   padding: 0 10px;
-  border: 1px solid #DEE0E3;
+  border: 1px solid var(--border-default);
   border-radius: 4px;
   font-size: 14px;
   line-height: 22px;
-  color: #1F2329;
-  background: #FFFFFF;
+  color: var(--text-primary);
+  background: var(--surface-2);
   font-family: inherit;
   transition: border-color 0.15s, box-shadow 0.15s;
   box-sizing: border-box;
 }
 .auth-input:focus {
   outline: none;
-  border-color: #1456F0;
+  border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(20, 86, 240, 0.10);
 }
-.auth-input::placeholder { color: #B0B5BD; }
+.auth-input::placeholder { color: var(--text-placeholder); }
 .auth-input-wrap .auth-input { padding-right: 36px; }
 
 .auth-password-toggle {
@@ -240,7 +240,7 @@
   background: none;
   border: none;
   padding: 0;
-  color: #8F959E;
+  color: var(--text-muted);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -249,8 +249,8 @@
   transition: color 0.15s, background 0.15s;
 }
 .auth-password-toggle:hover {
-  color: #1F2329;
-  background: #F0F1F3;
+  color: var(--text-primary);
+  background: var(--surface-3);
 }
 
 .auth-field-row {
@@ -266,17 +266,17 @@
   align-items: center;
   gap: 6px;
   cursor: pointer;
-  color: #1F2329;
+  color: var(--text-primary);
   font-weight: 400;
 }
 .auth-remember input[type="checkbox"] {
   width: 14px;
   height: 14px;
   cursor: pointer;
-  accent-color: #1456F0;
+  accent-color: var(--primary);
 }
 .auth-form-link {
-  color: #1456F0;
+  color: var(--primary);
   font-weight: 400;
   text-decoration: none;
 }
@@ -287,7 +287,7 @@
   background: rgba(216, 57, 49, 0.08);
   border: 1px solid rgba(216, 57, 49, 0.24);
   border-radius: 4px;
-  color: #D83931;
+  color: var(--danger);
   font-size: 13px;
   line-height: 20px;
 }
@@ -297,10 +297,10 @@
   text-align: center;
   font-size: 13px;
   line-height: 20px;
-  color: #646A73;
+  color: var(--text-secondary);
 }
 .auth-form-switch a {
-  color: #1456F0;
+  color: var(--primary);
   font-weight: 500;
   text-decoration: none;
   margin-left: 4px;
@@ -313,8 +313,8 @@
   padding: 0 16px;
   border: none;
   border-radius: 4px;
-  background: #1456F0;
-  color: #FFFFFF;
+  background: var(--primary);
+  color: var(--surface-2);
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;
@@ -324,7 +324,7 @@
   /* 与上一个字段拉开呼吸感：form 自带 gap 14px + 额外 16px = 30px 总间距。 */
   margin-top: 16px;
 }
-.auth-submit:hover:not(:disabled) { background: #0D45D6; }
+.auth-submit:hover:not(:disabled) { background: var(--primary-hover); }
 .auth-submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -344,7 +344,7 @@
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid transparent;
   border-radius: 4px;
-  color: #1F2329;
+  color: var(--text-primary);
   font-size: 13px;
   line-height: 20px;
   font-family: inherit;
@@ -354,8 +354,8 @@
   -webkit-backdrop-filter: blur(8px);
 }
 .auth-lang-switch:hover {
-  background: #FFFFFF;
-  color: #1456F0;
+  background: var(--surface-2);
+  color: var(--primary);
 }
 .auth-lang-switch svg { flex-shrink: 0; }
 
@@ -365,7 +365,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #646A73;
+  color: var(--text-secondary);
   font-size: 14px;
   font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }

@@ -3,8 +3,8 @@
   position: fixed;
   z-index: 1001;
   width: 320px;
-  background: #FFFFFF;
-  border: 1px solid #DEE0E3;
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
   border-radius: 8px;
   box-shadow:
     0 4px 8px -8px rgba(31, 35, 41, 0.06),
@@ -29,14 +29,14 @@
   background: none;
   border: none;
   border-radius: 4px;
-  color: #8F959E;
+  color: var(--text-muted);
   cursor: pointer;
   z-index: 1;
 }
 
 .create-table-popover-close:hover {
   background: var(--color-bg-hover);
-  color: #1F2329;
+  color: var(--text-primary);
 }
 
 /* Title */
@@ -44,7 +44,7 @@
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;
-  color: #1F2329;
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -60,23 +60,23 @@
   width: 100%;
   height: 32px;
   padding: 0 10px;
-  border: 1px solid #DEE0E3;
+  border: 1px solid var(--border-default);
   border-radius: 6px;
   font-size: 14px;
   line-height: 22px;
-  color: #1F2329;
-  background: #FFFFFF;
+  color: var(--text-primary);
+  background: var(--surface-2);
   outline: none;
   box-sizing: border-box;
   font-family: var(--font-family);
 }
 
 .create-table-popover-input::placeholder {
-  color: #8F959E;
+  color: var(--text-muted);
 }
 
 .create-table-popover-input:focus {
-  border-color: #3370FF;
+  border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.15);
 }
 
@@ -101,27 +101,27 @@
 }
 
 .create-table-popover-btn.primary {
-  background: #3370FF;
-  color: #FFFFFF;
+  background: var(--primary);
+  color: var(--surface-2);
 }
 
 .create-table-popover-btn.primary:hover {
-  background: #2860E1;
+  background: var(--primary);
 }
 
 .create-table-popover-btn.primary:disabled {
-  background: #94BFFF;
+  background: var(--primary-light);
   cursor: not-allowed;
 }
 
 .create-table-popover-btn.secondary {
-  background: #F5F6F7;
-  color: #1F2329;
-  border: 1px solid #DEE0E3;
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
 }
 
 .create-table-popover-btn.secondary:hover {
-  background: #E8E9EB;
+  background: var(--surface-1);
 }
 
 /* ── Generating state ── */
@@ -156,7 +156,7 @@
 .create-table-popover-progress-bar {
   width: 100%;
   height: 4px;
-  background: #E8E9EB;
+  background: var(--surface-1);
   border-radius: 2px;
   overflow: hidden;
   margin-bottom: 12px;
@@ -166,7 +166,7 @@
   width: 40%;
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, #4752E6, #CF5ECF, #4752E6);
+  background: linear-gradient(90deg, var(--primary-hover), var(--artifact-taste), var(--primary-hover));
   background-size: 200% 100%;
   animation: ctp-progress-slide 2s ease-in-out infinite, ctp-progress-shimmer 1.5s linear infinite;
 }
@@ -186,7 +186,7 @@
 .create-table-popover-status-text {
   font-size: 14px;
   line-height: 22px;
-  color: #1F2329;
+  color: var(--text-primary);
 }
 
 /* ── Complete state ── */
@@ -209,7 +209,7 @@
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;
-  color: #1F2329;
+  color: var(--text-primary);
   text-align: center;
   margin-bottom: 16px;
 }
@@ -231,5 +231,5 @@
 .create-table-popover-error {
   font-size: 13px;
   line-height: 20px;
-  color: #F54A45;
+  color: var(--danger);
 }

@@ -25,8 +25,8 @@
 
 /* Figma: header row h=36 */
 .data-table th {
-  background: #F7F8FA;
-  border-bottom: 1px solid #DEE0E3;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border-default);
   border-right: 1px solid rgba(31, 35, 41, 0.15);
   padding: 0 8px;
   height: 36px;
@@ -43,12 +43,12 @@
 
 /* Header hover → gray background */
 .data-table th:hover {
-  background: #ECEDF0;
+  background: var(--border-light);
 }
 
 /* Header selected state */
 .data-table th.col-selected {
-  background: #E0E9FF;
+  background: var(--primary-light);
   color: var(--color-primary);
 }
 
@@ -76,7 +76,7 @@
 
 /* Hover: light gray background on hovered row */
 .data-row.row-hovered td {
-  background: #F5F6F7;
+  background: var(--surface-inset);
 }
 
 /* Selected rows: light blue highlight */
@@ -136,7 +136,7 @@
 }
 
 .col-index:hover {
-  background: #F7F8FA !important;
+  background: var(--surface-1) !important;
 }
 
 .row-number {
@@ -151,9 +151,9 @@
   cursor: pointer;
 }
 
-/* Figma columns: name column has stronger divider #BBBFC4 */
+/* Figma columns: name column has stronger divider var(--text-disabled) */
 .col-fld_name {
-  border-right-color: #BBBFC4 !important;
+  border-right-color: var(--text-disabled) !important;
 }
 
 .col-add {
@@ -162,7 +162,7 @@
 }
 
 .col-add:hover {
-  background: #F0F1F3 !important;
+  background: var(--surface-3) !important;
 }
 
 .col-add-icon {
@@ -501,11 +501,11 @@
 }
 
 .field-context-menu-item.danger {
-  color: #F54A45;
+  color: var(--danger);
 }
 
 .field-context-menu-item.danger:hover {
-  background: #FEE2E2;
+  background: var(--danger-bg);
 }
 
 .field-context-menu-divider {

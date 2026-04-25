@@ -1,4 +1,4 @@
-/* FilterPanel: Figma w=520, border=1px #DEE0E3, rounded=12px, shadow=3-layer */
+/* FilterPanel: Figma w=520, border=1px var(--border-default), rounded=12px, shadow=3-layer */
 .filter-panel {
   position: absolute;
   top: 0;
@@ -23,7 +23,7 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Title: Figma "设置筛选条件" 14px/22px Medium #646A73 */
+/* Title: Figma "设置筛选条件" 14px/22px Medium var(--text-secondary) */
 .fp-title {
   font-size: 14px;
   font-weight: 500;
@@ -31,7 +31,7 @@
   line-height: 22px;
 }
 
-/* AI Input: Figma h=32, border=1px #D0D3D6, rounded=6px */
+/* AI Input: Figma h=32, border=1px var(--border-strong), rounded=6px */
 .fp-ai-row {
   display: flex;
   align-items: center;
@@ -54,8 +54,8 @@
 }
 
 .fp-ai-row.error {
-  border-color: #EF4444;
-  background: #FEF2F2;
+  border-color: var(--danger);
+  background: var(--danger-bg);
 }
 
 /* Figma: AI icon at left x=4, y=4, 22x22 button */
@@ -253,7 +253,7 @@
   align-items: center;
   gap: 6px;
   font-size: 14px;
-  color: #EF4444;
+  color: var(--danger);
   line-height: 22px;
 }
 

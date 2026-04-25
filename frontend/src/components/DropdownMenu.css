@@ -97,7 +97,7 @@
   font-size: 12px;
   line-height: 20px;
   font-weight: 500;
-  color: #8F959E;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 

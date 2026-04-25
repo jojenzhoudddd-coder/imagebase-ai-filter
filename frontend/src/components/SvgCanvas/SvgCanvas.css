@@ -18,7 +18,7 @@
   height: 44px;
   padding: 0 12px;
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg-elevated, #fff);
+  background: var(--color-bg-elevated, var(--surface-2));
   flex-shrink: 0;
 }
 
@@ -59,7 +59,7 @@
 }
 
 .svg-canvas-topbar-btn:hover {
-  background: var(--color-bg-hover, #f0f0f0);
+  background: var(--color-bg-hover, var(--surface-3));
   color: var(--color-text-primary);
 }
 
@@ -108,7 +108,7 @@
   cursor: default;
   /* Dot grid background — stays fixed relative to viewport */
   background-color: var(--color-bg);
-  background-image: radial-gradient(circle, #d4d6d9 0.8px, transparent 0.8px);
+  background-image: radial-gradient(circle, var(--border-strong) 0.8px, transparent 0.8px);
   background-size: 20px 20px;
 }
 
@@ -151,13 +151,13 @@
   cursor: pointer;
   border-radius: var(--radius-s, 4px);
   transition: box-shadow 0.12s;
-  background: #fff;
+  background: var(--surface-2);
 }
 
 /* Hover state: light grey outline at a constant 1.5px screen-space. */
 .svg-canvas-item:hover {
   box-shadow:
-    0 0 0 calc(1.5px * var(--inv-scale, 1)) #c0c4cc,
+    0 0 0 calc(1.5px * var(--inv-scale, 1)) var(--text-muted),
     0 calc(1px * var(--inv-scale, 1)) calc(4px * var(--inv-scale, 1)) rgba(0, 0, 0, 0.06);
 }
 
@@ -240,7 +240,7 @@
   padding: 0 4px;
   border: 1px solid var(--color-primary);
   border-radius: 2px;
-  background: #fff;
+  background: var(--surface-2);
   color: var(--color-text-primary);
   outline: none;
   min-width: 80px;
@@ -301,7 +301,7 @@
   right: 12px;
   z-index: 30;
   width: 320px;
-  background: var(--color-bg-elevated, #fff);
+  background: var(--color-bg-elevated, var(--surface-2));
   border: 1px solid var(--color-border);
   border-radius: var(--radius-m, 6px);
   box-shadow: var(--shadow-dropdown, 0 4px 16px rgba(0, 0, 0, 0.12));
@@ -336,27 +336,27 @@
 /* Override: popover buttons need visible fills */
 .figma-import-row .svg-canvas-topbar-btn.primary {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--surface-2);
   border: none;
 }
 
 .figma-import-row .svg-canvas-topbar-btn.primary:hover {
-  background: #2860E1;
+  background: var(--primary);
 }
 
 .figma-import-row .svg-canvas-topbar-btn.primary:disabled {
-  background: #94BFFF;
+  background: var(--primary-light);
   opacity: 1;
 }
 
 .figma-import-row .svg-canvas-topbar-btn:not(.primary) {
   border: 1px solid var(--color-border);
-  background: #fff;
+  background: var(--surface-2);
 }
 
 .figma-import-error {
   font-size: 12px;
-  color: var(--color-error, #e53e3e);
+  color: var(--color-error, var(--danger));
 }
 
 /* ─── Item dragging state ─── */
@@ -403,18 +403,18 @@
 
 .alt-distance-h {
   height: 1px;
-  background: #F54A45;
+  background: var(--danger);
 }
 
 .alt-distance-v {
   width: 1px;
-  background: #F54A45;
+  background: var(--danger);
   flex-direction: column;
 }
 
 .alt-distance-label {
-  background: #F54A45;
-  color: #fff;
+  background: var(--danger);
+  color: var(--surface-2);
   font-size: 10px;
   line-height: 1;
   padding: 1px 4px;
@@ -428,7 +428,7 @@
   position: fixed;
   z-index: 50;
   min-width: 160px;
-  background: #fff;
+  background: var(--surface-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-m, 6px);
   box-shadow: var(--shadow-dropdown, 0 4px 16px rgba(0, 0, 0, 0.12));
@@ -454,11 +454,11 @@
 }
 
 .taste-context-menu-item:hover {
-  background: var(--color-bg-hover, #f0f0f0);
+  background: var(--color-bg-hover, var(--surface-3));
 }
 
 .taste-context-menu-item.danger {
-  color: #F54A45;
+  color: var(--danger);
 }
 
 .taste-context-menu-item.danger:hover {

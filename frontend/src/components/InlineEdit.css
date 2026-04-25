@@ -5,7 +5,7 @@
 
 .inline-edit-input {
   outline: none;
-  background: var(--color-white, #fff);
+  background: var(--color-white, var(--surface-2));
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-s);
   padding: 0 6px;

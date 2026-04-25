@@ -41,9 +41,9 @@
 
 .field-popover-error {
   padding: 8px 12px;
-  border-top: 1px solid #fadcde;
-  background: #fff5f5;
-  color: #c23b3b;
+  border-top: 1px solid var(--danger-bg);
+  background: var(--danger-bg);
+  color: var(--danger);
   font-size: 13px;
   line-height: var(--lh-base);
 }
@@ -109,7 +109,7 @@
 
 .fc-input:hover,
 .fc-select:hover {
-  border-color: #C0C4CC;
+  border-color: var(--text-muted);
 }
 
 .fc-input:focus,
@@ -136,7 +136,7 @@
 }
 
 .field-type-card:hover {
-  border-color: #C0C4CC;
+  border-color: var(--text-muted);
 }
 
 .field-type-row {
@@ -338,8 +338,8 @@
   padding: 0 4px;
   height: 16px;
   border-radius: 3px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--artifact-taste));
+  color: var(--surface-2);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.3px;
@@ -498,12 +498,12 @@
 
 .btn-secondary:hover:not(:disabled) {
   background: var(--color-bg-hover);
-  border-color: #C0C4CC;
+  border-color: var(--text-muted);
 }
 
 .btn-primary {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--surface-2);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -512,7 +512,7 @@
 
 .btn-primary:disabled {
   background: var(--color-text-placeholder);
-  color: #fff;
+  color: var(--surface-2);
 }
 
 /* ── Lookup cell display ── */
@@ -524,7 +524,7 @@
 }
 
 .lookup-cell.error {
-  color: #c23b3b;
+  color: var(--danger);
   font-weight: 500;
 }
 
