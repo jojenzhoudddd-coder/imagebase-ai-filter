@@ -122,6 +122,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* 让最右侧"更多"按钮的 hover 热区距离 sidebar 右边缘只有 8px(而不是 20px)。
+     不动 .chat-part 的 20px padding —— 用负 margin 把整个 actions 容器右移 12px。 */
+  margin-right: -12px;
 }
 .chat-header-btn {
   /* 28×28 hover 热区,对齐 .table-topbar-icon-btn / .artifact-sidebar-expand-btn */

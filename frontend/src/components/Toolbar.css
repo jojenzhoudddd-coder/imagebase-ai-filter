@@ -40,7 +40,10 @@
 .table-topbar-name .inline-edit-text { cursor: text; padding: 0; }
 
 /* Artifact topbar 的 sidebar 展开按钮 —— 全局样式（4 类 artifact topbar 共用）。
-   尺寸完全对齐其它 artifact topbar 图标按钮（28×28 / 14×14 svg / radius-s）。 */
+   尺寸完全对齐其它 artifact topbar 图标按钮（28×28 / 14×14 svg / radius-s）。
+   margin-left: -4px 让按钮左边缘距离 topbar 左缘 8px(topbar 自带 padding-left
+   是 12px,负 margin 4 → 8px),不动 padding 也就不动 sidebar 展开时 title 的
+   12px 位置。 */
 .artifact-sidebar-expand-btn {
   display: inline-flex;
   align-items: center;
@@ -54,6 +57,7 @@
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
   flex-shrink: 0;
+  margin-left: -4px;
 }
 .artifact-sidebar-expand-btn:hover {
   background: var(--surface-3);
