@@ -57,12 +57,15 @@ export function useWorkspaceSync(
     es.addEventListener("workspace-change", (e) => {
       try {
         const event = JSON.parse(e.data);
-        if (event.clientId === clientId) return;
 
-        // 通知顶栏 stats 刷新 —— 任何 artifact CRUD / publish / unpublish 都会
-        // 改 artifacts/workend 数。TopBar 监听这个 window 事件做即时 refetch，
-        // 避免它再独立开一条 SSE。
+        // 通知顶栏 stats 刷新 —— 必须在 clientId 过滤之前 dispatch，否则
+        // 发起 CRUD 的本人因为 SSE 回声被过滤掉,顶栏永远不会刷新。stats
+        // refetch 是幂等的（仅拉一个数字),不会因 self-echo 重复更新出错。
         try { window.dispatchEvent(new CustomEvent("workspace-stats-changed")); } catch { /* noop */ }
+
+        // clientId 过滤只针对下面的"业务侧 handler"（onTableCreate 等)，
+        // 防止本地状态被自己的 SSE 回声重复更新。
+        if (event.clientId === clientId) return;
 
         const h = handlersRef.current;
         const p = event.payload;
