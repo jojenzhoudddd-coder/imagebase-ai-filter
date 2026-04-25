@@ -487,7 +487,8 @@
  * - 分隔线 1px 直占,无任何上下/左右 margin
  * - 菜单项分组放在 .topbar-profile-section 里,section 自带 4px 四周 padding
  *   形成"分组 × 4px buffer"的视觉,而不是每行单独 padding。
- * - 每个菜单项 hover 高度固定 40px,内部 8px 左右 padding
+ * - 一级菜单项(.topbar-profile-section 直接子级) hover 40px + 12px L/R padding
+ *   (覆盖 .topbar-menu-item 默认即可,不动二级 submenu 内的项)
  */
 .topbar-profile-popover { width: 280px; padding: 0; gap: 0; }
 .topbar-profile-popover .topbar-menu-divider {
@@ -500,9 +501,9 @@
   flex-direction: column;
   gap: 0;
 }
-.topbar-profile-popover .topbar-menu-item {
+.topbar-profile-section > .topbar-menu-item {
   height: 40px;
-  padding: 0 8px;
+  padding: 0 12px;
   border-radius: var(--radius-s);
 }
 
@@ -608,7 +609,7 @@
 /* username 现在是 .topbar-profile-name-wrap 内的 <span>；overflow 由
  * wrapper 处理，username 自身只管字号 / 字重 / 颜色。 */
 .topbar-profile-username {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
   line-height: 24px;
@@ -616,14 +617,14 @@
 /* InlineEdit 组件内部的 text span / input 继承容器字号 */
 .topbar-profile-username .inline-edit-text,
 .topbar-profile-username .inline-edit-input {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
 }
 .topbar-profile-username .inline-edit-text { cursor: text; padding: 0; }
 .topbar-profile-username .inline-edit-input { padding: 2px 6px; }
 
 .topbar-profile-email {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-muted);
   max-width: 100%;
   overflow: hidden;
