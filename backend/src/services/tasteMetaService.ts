@@ -148,6 +148,7 @@ async function runSingleShot(
   model: ModelEntry,
   prompt: string,
   signal?: AbortSignal,
+  recordContext?: { userId: string | null; workspaceId?: string | null; feature: string },
 ): Promise<string> {
   const provider = resolveAdapter(model);
   let out = "";
@@ -160,6 +161,7 @@ async function runSingleShot(
       },
     ],
     signal,
+    recordContext,
   })) {
     if (ev.kind === "text_delta") out += ev.text;
     else if (ev.kind === "error") throw new Error(ev.message);
@@ -194,6 +196,8 @@ export interface GenerateMetaOptions {
   /** Skip retries (for sync path that needs fast failure). */
   singleAttempt?: boolean;
   signal?: AbortSignal;
+  /** Token-usage 记账上下文 —— 由 enqueueMetaGeneration 调用方注入。 */
+  recordContext?: { userId: string | null; workspaceId?: string | null };
 }
 
 async function generateMetaFromSvg(
@@ -210,7 +214,14 @@ async function generateMetaFromSvg(
 
   for (let i = 0; i < attempts; i++) {
     try {
-      const raw = await runSingleShot(resolved, prompt, opts.signal);
+      const raw = await runSingleShot(
+        resolved,
+        prompt,
+        opts.signal,
+        opts.recordContext
+          ? { ...opts.recordContext, feature: "taste-meta" }
+          : undefined,
+      );
       const parsed = extractJsonObject(raw);
       const validated = tasteMetaSchema.safeParse(parsed);
       if (!validated.success) {
@@ -327,7 +338,18 @@ async function processOne(entry: QueueEntry): Promise<void> {
       return;
     }
     const hash = hashSvg(svg);
-    const meta = await generateMetaFromSvg(svg, { agentId: entry.agentId });
+    // Resolve workspaceId + userId for token attribution.
+    const tasteRow = await prisma.taste.findUnique({
+      where: { id: entry.tasteId },
+      include: { design: { select: { workspaceId: true, workspace: { select: { createdById: true } } } } },
+    }).catch(() => null);
+    const recordContext = tasteRow?.design
+      ? {
+          userId: (tasteRow.design as any).workspace?.createdById ?? null,
+          workspaceId: tasteRow.design.workspaceId ?? null,
+        }
+      : undefined;
+    const meta = await generateMetaFromSvg(svg, { agentId: entry.agentId, recordContext });
     await persistMeta(entry.tasteId, meta, hash);
   } catch (err: any) {
     console.error(`[taste-meta] queue processOne failed for ${entry.tasteId}:`, err);

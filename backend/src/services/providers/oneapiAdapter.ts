@@ -47,6 +47,7 @@ import type {
 } from "./types.js";
 import type { ModelEntry } from "../modelRegistry.js";
 import type { ToolDefinition } from "../../../mcp-server/src/tools/tableTools.js";
+import { recordTokenUsage } from "../tokenUsageService.js";
 
 const ONEAPI_BASE_URL =
   (process.env.ONEAPI_BASE_URL || "https://oneapi.example.com/v1").replace(/\/$/, "");
@@ -509,6 +510,10 @@ async function* streamAnthropic(
     }
   >();
   const yieldedCallIds = new Set<string>();
+  // Token usage 累计：message_start 给 input_tokens，message_delta 持续更新 output_tokens
+  let promptTokens = 0;
+  let completionTokens = 0;
+  const startedAt = Date.now();
 
   try {
     while (true) {
@@ -525,10 +530,34 @@ async function* streamAnthropic(
         if (!parsed) continue;
         const { event, data } = parsed;
         if (data === null) {
-          yield { kind: "done" };
+          // [DONE] 兜底分支（Anthropic 通常发 message_stop）—— 也走一遍记账。
+          const usage = promptTokens + completionTokens > 0
+            ? { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens }
+            : undefined;
+          if (params.recordContext && usage) {
+            void recordTokenUsage(
+              { ...params.recordContext, model: model.providerModelId, provider: "oneapi-anthropic" },
+              { ...usage, durationMs: Date.now() - startedAt },
+            );
+          }
+          yield { kind: "done", usage };
           return;
         }
         const d = data as any;
+
+        // Anthropic stream usage 透传
+        if (event === "message_start" && d?.message?.usage) {
+          promptTokens = Number(d.message.usage.input_tokens ?? 0);
+          completionTokens = Number(d.message.usage.output_tokens ?? 0);
+          continue;
+        }
+        if (event === "message_delta" && d?.usage) {
+          // message_delta 的 usage 是 cumulative output_tokens
+          if (typeof d.usage.output_tokens === "number") {
+            completionTokens = Number(d.usage.output_tokens);
+          }
+          continue;
+        }
 
         if (event === "content_block_start") {
           const index = d.index as number;
@@ -596,7 +625,16 @@ async function* streamAnthropic(
         }
 
         if (event === "message_stop") {
-          yield { kind: "done" };
+          const usage = promptTokens + completionTokens > 0
+            ? { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens }
+            : undefined;
+          if (params.recordContext && usage) {
+            void recordTokenUsage(
+              { ...params.recordContext, model: model.providerModelId, provider: "oneapi-anthropic" },
+              { ...usage, durationMs: Date.now() - startedAt },
+            );
+          }
+          yield { kind: "done", usage };
           return;
         }
 
@@ -618,7 +656,17 @@ async function* streamAnthropic(
       /* noop */
     }
   }
-  yield { kind: "done" };
+  // 流被外部关闭（无 message_stop）—— 用最终累计 usage 记账
+  const usage = promptTokens + completionTokens > 0
+    ? { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens }
+    : undefined;
+  if (params.recordContext && usage) {
+    void recordTokenUsage(
+      { ...params.recordContext, model: model.providerModelId, provider: "oneapi-anthropic" },
+      { ...usage, durationMs: Date.now() - startedAt },
+    );
+  }
+  yield { kind: "done", usage };
 }
 
 // ─── OpenAI branch ───────────────────────────────────────────────────────
@@ -634,6 +682,9 @@ async function* streamOpenAI(
     model: model.providerModelId,
     messages,
     stream: true,
+    // 让最终 chunk 带 usage —— OpenAI-spec 的 stream 默认不返回 usage，
+    // 加上这个 flag 才行。
+    stream_options: { include_usage: true },
     temperature: model.defaults.temperature,
     max_tokens: model.defaults.maxOutputTokens,
   };
@@ -676,6 +727,24 @@ async function* streamOpenAI(
     { id: string; name: string; args: string }
   >();
   const yieldedCallIds = new Set<string>();
+  // Token usage —— stream_options.include_usage 后，最后一个非 [DONE] chunk
+  // 会附带 usage 字段；提前 capture 到 emit done 时一起记账。
+  let promptTokens = 0;
+  let completionTokens = 0;
+  const startedAt = Date.now();
+
+  const emitDone = () => {
+    const usage = promptTokens + completionTokens > 0
+      ? { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens }
+      : undefined;
+    if (params.recordContext && usage) {
+      void recordTokenUsage(
+        { ...params.recordContext, model: model.providerModelId, provider: "oneapi-openai" },
+        { ...usage, durationMs: Date.now() - startedAt },
+      );
+    }
+    return usage;
+  };
 
   try {
     while (true) {
@@ -702,11 +771,16 @@ async function* streamOpenAI(
               };
             }
           }
-          yield { kind: "done" };
+          yield { kind: "done", usage: emitDone() };
           return;
         }
 
         const d = data as any;
+        // 含 usage 的 chunk 一般是最后一个真实 chunk（无 choices 或 choices 为空）
+        if (d?.usage && (d.usage.prompt_tokens || d.usage.completion_tokens)) {
+          promptTokens = Number(d.usage.prompt_tokens ?? 0);
+          completionTokens = Number(d.usage.completion_tokens ?? 0);
+        }
         const choice = d?.choices?.[0];
         if (!choice) continue;
         const delta = choice.delta || {};
@@ -763,7 +837,8 @@ async function* streamOpenAI(
       /* noop */
     }
   }
-  yield { kind: "done" };
+  // 流被外部关闭（无 [DONE]）—— 用最终累计 usage 兜底记账。
+  yield { kind: "done", usage: emitDone() };
 }
 
 // ─── Adapter shell ───────────────────────────────────────────────────────

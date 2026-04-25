@@ -92,6 +92,14 @@ model Workspace {
   createdById String
   name        String
   description String?
+  /// AI 生成的工作区一句话摘要（~50 字）。null 表示尚未生成；前端会
+  /// 显示一个静态默认。每日 04:00 UTC+8 由 heartbeat 异步刷新（见
+  /// services/workspaceSummaryService.ts）。
+  aiSummary   String?
+  /// AI 生成的 slogan / punchline（~20 字以内）。
+  aiSlogan    String?
+  /// 上次 AI 摘要生成时间。判断"今天是否已经生成过"用。
+  aiSummaryAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -105,6 +113,39 @@ model Workspace {
 
   @@index([orgId])
   @@map("workspaces")
+}
+
+// ─── Token 使用记录 —— 追踪每次 LLM 调用的 prompt/completion token 数 ───
+// 写入触发：每个 provider adapter 完成一次 stream 后，调用
+//   recordTokenUsage(userId, workspaceId, feature, ...)
+// 用途：
+//   1) 顶栏右栏 totalTokens 展示（workspace 累计）
+//   2) 将来管理后台展示明细（按 feature / model / 时间范围）
+//   3) 计费 / 配额（暂不开启）
+model TokenUsage {
+  id               String   @id @default(cuid())
+  userId           String
+  /// 部分调用没有具体 workspace 上下文（如登录后立刻发起的全局 prompt
+  /// suggestion），允许 null。
+  workspaceId      String?
+  /// "ark" | "oneapi-anthropic" | "oneapi-openai"
+  provider         String
+  /// 后端 modelRegistry 里的 model id —— "doubao-2.0" / "claude-opus-4.7" 等
+  model            String
+  /// 调用场景标签 —— "chat" / "ai-filter" / "field-suggest" / "taste-meta"
+  /// / "workspace-summary" / "prompt-suggest"
+  feature          String
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  /// 可选，便于后续根据响应延迟做监控
+  durationMs       Int?
+  createdAt        DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([userId, createdAt])
+  @@index([feature, createdAt])
+  @@map("token_usage")
 }
 
 // ─── 数据表（fields + views 作为 JSONB 存储） ───

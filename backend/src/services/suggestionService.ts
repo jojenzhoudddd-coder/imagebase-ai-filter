@@ -26,9 +26,17 @@
  */
 
 import * as store from "./dbStore.js";
+import { recordTokenUsage } from "./tokenUsageService.js";
+import { PrismaClient } from "../generated/prisma/client.js";
+import pg from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 const ARK_BASE_URL = process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 const SEED_MODEL = process.env.SEED_MODEL || process.env.ARK_MODEL || "ep-20260412192731-vwdh7";
+
+const __pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const __adapter = new PrismaPg(__pool);
+const __prisma = new PrismaClient({ adapter: __adapter });
 
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 min
 
@@ -102,7 +110,10 @@ const SYSTEM_PROMPT = `你是飞书多维表格的 AI 助手。你的任务是�
 
 注意：你只负责生成建议文案，不需要调用任何工具。`;
 
-async function callArkForSuggestions(outline: string): Promise<Suggestion[]> {
+async function callArkForSuggestions(
+  outline: string,
+  recordContext?: { userId: string | null; workspaceId?: string | null },
+): Promise<Suggestion[]> {
   const apiKey = process.env.ARK_API_KEY;
   if (!apiKey) throw new Error("ARK_API_KEY not configured");
 
@@ -120,6 +131,7 @@ async function callArkForSuggestions(outline: string): Promise<Suggestion[]> {
     thinking: { type: "disabled" },
   };
 
+  const startedAt = Date.now();
   const res = await fetch(`${ARK_BASE_URL}/responses`, {
     method: "POST",
     headers: {
@@ -135,7 +147,21 @@ async function callArkForSuggestions(outline: string): Promise<Suggestion[]> {
   const json = (await res.json()) as {
     output?: Array<{ type: string; text?: string; content?: Array<{ type: string; text?: string }> }>;
     choices?: Array<{ message?: { content?: string } }>;
+    usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
   };
+
+  // Token 埋点
+  if (recordContext && json.usage) {
+    const promptTokens = Number(json.usage.input_tokens ?? 0);
+    const completionTokens = Number(json.usage.output_tokens ?? 0);
+    const totalTokens = Number(json.usage.total_tokens ?? promptTokens + completionTokens);
+    if (totalTokens > 0) {
+      void recordTokenUsage(
+        { ...recordContext, model: SEED_MODEL, provider: "ark", feature: "suggestion" },
+        { promptTokens, completionTokens, totalTokens, durationMs: Date.now() - startedAt },
+      );
+    }
+  }
 
   // Extract raw text from ARK Responses API output shape.
   let text = "";
@@ -203,7 +229,19 @@ export async function refreshSuggestions(workspaceId: string): Promise<Suggestio
       return cached.suggestions;
     }
     try {
-      const suggestions = await callArkForSuggestions(outline);
+      // Resolve workspace owner for token attribution.
+      let ownerUserId: string | null = null;
+      try {
+        const ws = await __prisma.workspace.findUnique({
+          where: { id: workspaceId },
+          select: { createdById: true },
+        });
+        ownerUserId = ws?.createdById ?? null;
+      } catch { /* non-fatal */ }
+      const suggestions = await callArkForSuggestions(outline, {
+        userId: ownerUserId,
+        workspaceId,
+      });
       cache.set(workspaceId, {
         suggestions,
         updatedAt: Date.now(),

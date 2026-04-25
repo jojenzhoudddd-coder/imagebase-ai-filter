@@ -37,7 +37,11 @@ router.post("/filter/generate", async (req: Request, res: Response) => {
 
   sendEvent("start", { requestId: `req-${Date.now()}` });
 
-  await generateFilter(body, fields, sendEvent);
+  const userId = (req as any).user?.id ?? null;
+  await generateFilter(body, fields, sendEvent, {
+    userId,
+    workspaceId: (table as any).workspaceId ?? null,
+  });
 
   res.write("event: done\ndata: {}\n\n");
   res.end();
@@ -59,7 +63,11 @@ router.post("/fields/suggest", async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await suggestFields({ tableId, title, excludeNames, forceRefresh });
+    const userId = (req as any).user?.id ?? null;
+    const result = await suggestFields(
+      { tableId, title, excludeNames, forceRefresh },
+      { userId, workspaceId: (table as any).workspaceId ?? null },
+    );
     res.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -90,7 +98,12 @@ router.post("/table/generate", async (req: Request, res: Response) => {
   sendEvent("start", { requestId: `req-${Date.now()}` });
 
   try {
-    const fields = await generateTableFields(tableName.trim());
+    const userId = (req as any).user?.id ?? null;
+    const workspaceId = (typeof req.body?.workspaceId === "string" ? req.body.workspaceId : null) ?? null;
+    const fields = await generateTableFields(tableName.trim(), {
+      userId,
+      workspaceId,
+    });
     sendEvent("fields", { fields });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

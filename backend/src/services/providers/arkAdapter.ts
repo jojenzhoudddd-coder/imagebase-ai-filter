@@ -23,6 +23,7 @@
 
 import { v4 as uuidv4 } from "uuid";
 import { toArkToolFormat } from "../../../mcp-server/src/tools/index.js";
+import { recordTokenUsage } from "../tokenUsageService.js";
 import type {
   ProviderAdapter,
   ProviderStreamEvent,
@@ -31,6 +32,17 @@ import type {
 
 const ARK_BASE_URL =
   process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
+
+/** ARK Responses API 的 usage 字段格式：input_tokens / output_tokens / total_tokens。
+ *  归一成 {promptTokens / completionTokens / totalTokens}。 */
+function normalizeArkUsage(raw: any): { promptTokens: number; completionTokens: number; totalTokens: number } | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const promptTokens = Number(raw.input_tokens ?? raw.prompt_tokens ?? 0);
+  const completionTokens = Number(raw.output_tokens ?? raw.completion_tokens ?? 0);
+  const totalTokens = Number(raw.total_tokens ?? promptTokens + completionTokens);
+  if (!totalTokens) return undefined;
+  return { promptTokens, completionTokens, totalTokens };
+}
 
 /**
  * Strip IBASE_IMAGE markers from the input array. ARK (Doubao) Responses
@@ -74,7 +86,8 @@ export const arkAdapter: ProviderAdapter = {
   name: "ark",
 
   async *stream(params: ProviderStreamParams): AsyncGenerator<ProviderStreamEvent> {
-    const { model, input, tools, signal } = params;
+    const { model, input, tools, signal, recordContext } = params;
+    const startedAt = Date.now();
 
     const apiKey = process.env.ARK_API_KEY;
     if (!apiKey) throw new Error("ARK_API_KEY not configured");
@@ -298,7 +311,20 @@ export const arkAdapter: ProviderAdapter = {
                 }
               }
             }
-            yield { kind: "done" };
+            // 提取 usage 并记账（ARK Responses API 的 input/output_tokens）
+            const usageRaw = data?.response?.usage ?? data?.usage;
+            const usage = normalizeArkUsage(usageRaw);
+            if (recordContext && usage) {
+              void recordTokenUsage(
+                {
+                  ...recordContext,
+                  model: model.providerModelId,
+                  provider: "ark",
+                },
+                { ...usage, durationMs: Date.now() - startedAt },
+              );
+            }
+            yield { kind: "done", usage };
             return;
           }
           if (event === "response.error" || event === "error") {

@@ -5,6 +5,68 @@
 
 ---
 
+## 2026-04-25 (下午)
+
+### feat(topbar): 工作区指标 + Token 累计 + AI 摘要 + Slogan
+
+**分支**: `AIWorkBeta` · **commits**: 待提交
+
+主 TopBar 第二行从原本的「L2 internal · last modified · 公开警示」三段 chip 重构为：
+四个 artifact 数量统计（Table/Idea/Design/Demo）+ 当前工作区累计 Token 数 + AI 自动生成
+的中性介绍 + slogan。所有数据由新增 `GET /api/workspaces/:wsId/stats` 端点返回，前端 5min
+轮询。
+
+#### Phase A · UI 瘦身 + stats endpoint
+- 删除右侧多余按钮（share / robot / permissions / extensions / notifications），
+  仅保留 +、search、AI 四芒星、avatar
+- 删除 base-icon、pin、icon-group 之间的 divider
+- `frontend/src/components/TopBar.tsx` 增加 `formatTokenCount()` 帮手（千分位 + k/M 压缩）
+- 新建 `topbar-info-row` 渲染 4 个 stat + token + summary + slogan
+- 新建 `GET /api/workspaces/:wsId/stats`：聚合 Workspace meta + 4 个 artifact COUNT(*) +
+  `token_usage` SUM(totalTokens) + AI summary/slogan/summaryAt
+
+#### Phase B · Token 埋点全量接入
+- 新建 Prisma `TokenUsage` 模型 + 迁移 `20260425220000_workspace_stats_token_usage`：
+  `(userId, workspaceId, provider, model, feature, promptTokens, completionTokens,
+  totalTokens, durationMs, createdAt)` + 3 索引（按 workspace / user / feature 时间分布查）
+- 新建 `services/tokenUsageService.ts`，提供 `recordTokenUsage(ctx, usage)` 接口：失败不抛
+  （记账丢一两条不能阻塞主流程，silently log）
+- `ProviderStreamParams.recordContext` 新增——业务方传 `{userId, workspaceId, feature}`，
+  provider adapter 在 stream done 时把 usage 写入 token_usage 表
+- 全部 6 个 LLM 调用点接入：
+  - `chatAgentService` (feature=`chat`，userId 来自 Agent.userId)
+  - `aiService.generateFilter` (feature=`ai-filter`)
+  - `fieldSuggestService.suggestFields` (feature=`field-suggest`)
+  - `tableGenerateService.generateTableFields` (feature=`table-generate`)
+  - `tasteMetaService.generateMetaFromSvg` (feature=`taste-meta`)
+  - `suggestionService.callArkForSuggestions` (feature=`suggestion`)
+- `arkAdapter` / `oneapiAdapter` (Anthropic + OpenAI 两条路径) 解析各自 SSE 的 usage 字段
+  归一成 `{promptTokens, completionTokens, totalTokens}`：
+  - ARK Responses API：`response.completed` 的 `response.usage.input_tokens/output_tokens`
+  - Anthropic OneAPI：`message_start` 给 input，`message_delta` 持续更新 output cumulative
+  - OpenAI OneAPI：`stream_options.include_usage:true` 后最后一个 chunk 带 `usage`
+- 流被外部关闭（无 stop event）时，adapter 的 try/finally 兜底也会写一次
+
+#### Phase C · AI workspace summary 服务
+- 新增 `Workspace.aiSummary` / `aiSlogan` / `aiSummaryAt` 字段（migration 同上）
+- 新建 `services/workspaceSummaryService.ts`：
+  - `generateForWorkspace(workspaceId)`：拉 workspace 名 / 描述 / 全部 table/idea/design 名称
+    列表 → 喂给 doubao-2.0 → 解析 `{summary, slogan}` JSON → 落库 + 走 token 埋点
+  - `maybeRefreshDailySummaries(now)`：UTC+8 04:00 之后每天一次，扫描 aiSummaryAt 不是
+    今天的 workspace 全量刷新；module-level `lastRunDayKey` 去重，per-agent heartbeat
+    并发 tick 只有第一个真正跑
+  - `generateInitialSummary(workspaceId)`：注册新用户时 fire-and-forget 立刻生成一份
+- `index.ts` 在 heartbeat onTick 调一次 `void maybeRefreshDailySummaries(ctx.firedAt)`
+- `authService.createUserWithWorkspace` 在事务后 fire-and-forget 调 `generateInitialSummary`
+
+#### feat(table-topbar): Table 视图 topbar 对齐 Idea/Taste 风格
+- 移除 ViewTabs（旧版 tab 横排）
+- `Toolbar.tsx` 重写为 `.table-topbar`：左侧表名 + filter apply pill，右侧 5 个图标
+  （add record / customize field / filter / sort / undo）
+- 高度 44px、与 idea-editor-topbar 对齐；icon 使用 16px line-icon 风格
+
+---
+
 ## 2026-04-23 (下午)
 
 ### feat(vibe-demo): Vibe Design + Vibe Coding 全链路 V1

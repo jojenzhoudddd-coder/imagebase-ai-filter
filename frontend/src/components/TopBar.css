@@ -36,12 +36,62 @@
   flex-shrink: 0;
 }
 
-/* Stacked info: breadcrumb on top, badges below */
+/* Stacked info: breadcrumb on top, info row below */
 .topbar-info {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
+  /* topbar-left 已 align-items: center；这两行整块在 64px topbar 内自然
+   * 上下居中。 */
+}
+
+/* 新 info row（替代原 .topbar-badges：L2/lastModified/warning） */
+.topbar-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.topbar-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.topbar-stat-num {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.topbar-stat-label {
+  color: var(--text-muted);
+}
+.topbar-stat-dot {
+  color: var(--text-placeholder);
+  margin: 0 2px;
+}
+
+.topbar-info-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--border-default);
+  flex-shrink: 0;
+}
+
+.topbar-summary {
+  color: var(--text-muted);
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
 }
 
 /* Breadcrumb row */

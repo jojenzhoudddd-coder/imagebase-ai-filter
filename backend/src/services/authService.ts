@@ -313,6 +313,16 @@ export async function createUserWithWorkspace(input: {
 
   // Agent 的文件系统目录必须在事务外 / 事务成功后创建（写文件不可回滚）
   await ensureAgentFiles(result.agentId);
+  // Fire-and-forget initial AI summary 生成 —— 注册成功后立刻给 TopBar 一段
+  // 文字看，不用等到第二天 04:00 heartbeat。失败不影响注册流程。
+  void (async () => {
+    try {
+      const { generateInitialSummary } = await import("./workspaceSummaryService.js");
+      await generateInitialSummary(result.workspaceId);
+    } catch (err) {
+      console.warn("[authService] initial workspace summary failed:", err);
+    }
+  })();
   return result;
 }
 

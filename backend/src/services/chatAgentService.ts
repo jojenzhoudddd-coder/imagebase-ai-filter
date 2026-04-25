@@ -855,10 +855,11 @@ async function* callModelStream(
   model: ModelEntry,
   input: ArkInputItem[],
   abortSignal?: AbortSignal,
-  tools?: ToolDefinition[]
+  tools?: ToolDefinition[],
+  recordContext?: { userId: string | null; workspaceId?: string | null; feature: string }
 ): AsyncGenerator<ProviderStreamEvent> {
   const adapter = resolveAdapter(model);
-  yield* adapter.stream({ model, input, tools, signal: abortSignal });
+  yield* adapter.stream({ model, input, tools, signal: abortSignal, recordContext });
 }
 
 // ─── Agent loop ──────────────────────────────────────────────────────────
@@ -938,6 +939,17 @@ async function* runAgentImpl(
   // flips back.
   const storedModelId = await agentSvc.getSelectedModel(agentId);
   const { resolved: initialModel, requested, usedFallback } = resolveModelForCall(storedModelId);
+  // Token-usage 记账上下文 —— provider adapter 在 stream 结束时把 usage 写到
+  // token_usage 表，TopBar 的统计用同一份数据展示。userId 从 Agent 行直接
+  // 取（不依赖 cookie，因为 Agent 是 user-scoped 的，cron 触发的 agent 调用
+  // 也能正确归属）。
+  const ownerAgent = await getAgent(agentId);
+  const ownerUserId = ownerAgent?.userId ?? null;
+  const tokenRecordContext = {
+    userId: ownerUserId,
+    workspaceId,
+    feature: "chat" as const,
+  };
   // `model` may be swapped mid-turn on upstream-overload (see fallback path
   // in the loop below). Tracked alongside `triedForOverload` so we don't
   // ping-pong between two overloaded upstreams.
@@ -1162,7 +1174,7 @@ async function* runAgentImpl(
     let roundText = "";
     let streamErrored: string | null = null;
     try {
-      for await (const ev of callModelStream(model, input, abortSignal, activeTools)) {
+      for await (const ev of callModelStream(model, input, abortSignal, activeTools, tokenRecordContext)) {
         if (ev.kind === "text_delta") {
           // V2 streaming-write interception. Route to the idea doc's SSE
           // channel instead of the chat bubble so the user sees the content

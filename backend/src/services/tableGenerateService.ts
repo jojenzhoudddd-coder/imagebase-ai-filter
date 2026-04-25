@@ -1,3 +1,5 @@
+import { recordTokenUsage } from "./tokenUsageService.js";
+
 const ARK_BASE_URL = process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 const ARK_MODEL = process.env.ARK_MODEL || "ep-20260412192731-vwdh7";
 
@@ -80,7 +82,10 @@ Formula, SingleLink, DuplexLink, Lookup, CreatedUser, ModifiedUser, ai_summary, 
 
 // ─── Main function ───
 
-export async function generateTableFields(tableName: string): Promise<GeneratedField[]> {
+export async function generateTableFields(
+  tableName: string,
+  recordContext?: { userId: string | null; workspaceId?: string | null },
+): Promise<GeneratedField[]> {
   const apiKey = process.env.ARK_API_KEY;
   if (!apiKey) {
     throw new Error("ARK_API_KEY not configured");
@@ -88,6 +93,7 @@ export async function generateTableFields(tableName: string): Promise<GeneratedF
 
   const userMessage = `数据表名：${tableName}\n请为这个数据表设计合理的字段结构。`;
 
+  const startedAt = Date.now();
   try {
     const response = await fetch(`${ARK_BASE_URL}/responses`, {
       method: "POST",
@@ -115,6 +121,20 @@ export async function generateTableFields(tableName: string): Promise<GeneratedF
     }
 
     const data = await response.json() as Record<string, any>;
+
+    // Token 埋点
+    const usage = data?.usage;
+    if (recordContext && usage && typeof usage === "object") {
+      const promptTokens = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0);
+      const completionTokens = Number(usage.output_tokens ?? usage.completion_tokens ?? 0);
+      const totalTokens = Number(usage.total_tokens ?? promptTokens + completionTokens);
+      if (totalTokens > 0) {
+        void recordTokenUsage(
+          { ...recordContext, model: ARK_MODEL, provider: "ark", feature: "table-generate" },
+          { promptTokens, completionTokens, totalTokens, durationMs: Date.now() - startedAt },
+        );
+      }
+    }
 
     // Extract text from response (Responses API format)
     let text: string | null = null;

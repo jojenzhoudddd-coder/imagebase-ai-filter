@@ -1903,6 +1903,7 @@ export default function App() {
       <TopBar
         tableName={tableName}
         documentName={documentName}
+        workspaceId={WORKSPACE_ID}
         deleteProtection={deleteProtection}
         onDeleteProtectionChange={setDeleteProtection}
         onRenameTable={(name) => handleRenameSidebarItem(activeTableId, name)}

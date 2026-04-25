@@ -33,6 +33,7 @@ import { startSuggestionScheduler } from "./services/suggestionService.js";
 import { ensureDefaultAgent } from "./services/agentService.js";
 import { startHeartbeat, stopHeartbeat } from "./services/runtimeService.js";
 import { startModelProbe, stopModelProbe } from "./services/modelRegistry.js";
+import { maybeRefreshDailySummaries } from "./services/workspaceSummaryService.js";
 // Side-effect import: registers every provider adapter with the registry at
 // boot. Must happen before the first runAgent() call.
 import "./services/providers/index.js";
@@ -48,6 +49,8 @@ const PORT = parseInt(process.env.PORT || "3001", 10);
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const treePrisma = new PrismaClient({ adapter } as any);
+// Alias —— /workspaces/:id/stats 用同一个 client，避免多实例 pool。
+const prismaForStats = treePrisma;
 
 app.use(cors());
 // Bumped body limit to 10mb so large SVG pastes (Figma exports, embedded <image>
@@ -170,6 +173,47 @@ app.get("/api/workspaces/:workspaceId/tables", async (req, res) => {
   res.json(tables);
 });
 
+// GET /api/workspaces/:workspaceId/stats —— 顶栏右栏的指标和 AI 摘要
+//   { tables, ideas, designs, demos, totalTokens, summary, slogan, summaryAt }
+// totalTokens 是 token_usage 表里 workspace 累计总和（Phase B 之后才会
+// 有非零数据）；summary / slogan 在 Phase C 上线前显示默认值。
+app.get("/api/workspaces/:workspaceId/stats", async (req, res) => {
+  const { workspaceId } = req.params;
+  try {
+    const [ws, tables, ideas, designs, demos, tokenAgg] = await Promise.all([
+      getWorkspace(workspaceId),
+      prismaForStats.table.count({ where: { workspaceId } }),
+      prismaForStats.idea.count({ where: { workspaceId } }),
+      prismaForStats.design.count({ where: { workspaceId } }),
+      prismaForStats.demo.count({ where: { workspaceId } }),
+      prismaForStats.tokenUsage
+        .aggregate({
+          _sum: { totalTokens: true },
+          where: { workspaceId },
+        })
+        .catch(() => ({ _sum: { totalTokens: 0 } } as { _sum: { totalTokens: number | null } })),
+    ]);
+    if (!ws) {
+      res.status(404).json({ error: "Workspace not found" });
+      return;
+    }
+    res.json({
+      workspaceId,
+      tables,
+      ideas,
+      designs,
+      demos,
+      totalTokens: tokenAgg._sum.totalTokens ?? 0,
+      summary: (ws as any).aiSummary ?? null,
+      slogan: (ws as any).aiSlogan ?? null,
+      summaryAt: (ws as any).aiSummaryAt ?? null,
+    });
+  } catch (err) {
+    console.error("[/workspaces/:id/stats]", err);
+    res.status(500).json({ error: "stats failed" });
+  }
+});
+
 // GET /api/workspaces/:workspaceId/tree — full tree (folders + tables + designs + ideas)
 app.get("/api/workspaces/:workspaceId/tree", async (req, res) => {
   try {
@@ -269,6 +313,9 @@ async function start() {
   if (process.env.RUNTIME_DISABLED !== "1") {
     startHeartbeat({
       onTick: async (ctx) => {
+        // 每天 UTC+8 04:00 之后第一次 tick 触发一次 workspace summary 刷新。
+        // module-level 去重，多 agent tick 只会有第一个真正跑。fire-and-forget。
+        void maybeRefreshDailySummaries(ctx.firedAt);
         const cronResult = await evaluateCron(ctx.agentId, ctx.firedAt);
         const details: Record<string, unknown> = {};
         if (cronResult.fired.length > 0) {

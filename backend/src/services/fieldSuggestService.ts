@@ -1,4 +1,5 @@
 import * as store from "./dbStore.js";
+import { recordTokenUsage } from "./tokenUsageService.js";
 
 const ARK_BASE_URL = process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 const ARK_MODEL = process.env.ARK_MODEL || "ep-20260412192731-vwdh7";
@@ -93,7 +94,10 @@ const FIELD_SUGGEST_SYSTEM_PROMPT = `# 角色
 
 // ─── Core LLM call (no cache) ───
 
-async function callLLM(tableId: string): Promise<FieldSuggestion[]> {
+async function callLLM(
+  tableId: string,
+  recordContext?: { userId: string | null; workspaceId?: string | null },
+): Promise<FieldSuggestion[]> {
   const apiKey = process.env.ARK_API_KEY;
   if (!apiKey) return [];
 
@@ -106,6 +110,7 @@ async function callLLM(tableId: string): Promise<FieldSuggestion[]> {
   const suggestCount = Math.min(20, Math.max(10, existingFieldNames.length + 5));
   const userMessage = `数据表名：${tableName}\n已有字段：${existingFieldNames.join(", ")}\n请推荐 ${suggestCount} 个合适的新字段。`;
 
+  const startedAt = Date.now();
   try {
     const response = await fetch(`${ARK_BASE_URL}/responses`, {
       method: "POST",
@@ -132,6 +137,20 @@ async function callLLM(tableId: string): Promise<FieldSuggestion[]> {
     }
 
     const data = await response.json() as Record<string, any>;
+
+    // Token 埋点
+    const usage = data?.usage;
+    if (recordContext && usage && typeof usage === "object") {
+      const promptTokens = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0);
+      const completionTokens = Number(usage.output_tokens ?? usage.completion_tokens ?? 0);
+      const totalTokens = Number(usage.total_tokens ?? promptTokens + completionTokens);
+      if (totalTokens > 0) {
+        void recordTokenUsage(
+          { ...recordContext, model: ARK_MODEL, provider: "ark", feature: "field-suggest" },
+          { promptTokens, completionTokens, totalTokens, durationMs: Date.now() - startedAt },
+        );
+      }
+    }
 
     // Extract text
     let text: string | null = null;
@@ -203,7 +222,10 @@ export function invalidateSuggestionCache(tableId: string): void {
 
 // ─── Main function: returns cached if available, else generates ───
 
-export async function suggestFields(req: SuggestFieldsRequest): Promise<SuggestFieldsResponse> {
+export async function suggestFields(
+  req: SuggestFieldsRequest,
+  recordContext?: { userId: string | null; workspaceId?: string | null },
+): Promise<SuggestFieldsResponse> {
   // Force refresh: invalidate cache and call LLM again
   if (req.forceRefresh) {
     cache.delete(req.tableId);
@@ -215,7 +237,7 @@ export async function suggestFields(req: SuggestFieldsRequest): Promise<SuggestF
   if (isCacheValid(entry)) {
     suggestions = entry.suggestions;
   } else {
-    suggestions = await callLLM(req.tableId);
+    suggestions = await callLLM(req.tableId, recordContext);
     cache.set(req.tableId, { suggestions, timestamp: Date.now(), generating: false });
   }
 

@@ -39,7 +39,10 @@ export type ProviderStreamEvent =
   | { kind: "text_delta"; text: string }
   | { kind: "thinking_delta"; text: string }
   | { kind: "tool_call_done"; call: RawFunctionCall }
-  | { kind: "done" }
+  /** done 事件可附带 usage —— provider 解析到 stop/usage 时填，business
+   * 层不直接消费（adapter 已经主动写了 token_usage 表）；保留在事件
+   * 里方便日志 / 调试。 */
+  | { kind: "done"; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }
   | { kind: "error"; message: string };
 
 // ─── Input shape (ARK Responses API today; provider-agnostic on Day 2) ───
@@ -61,6 +64,14 @@ export interface ProviderStreamParams {
   input: ProviderInputItem[];
   tools?: ToolDefinition[];
   signal?: AbortSignal;
+  /** 记账上下文 —— 业务方传 { userId, workspaceId, feature }，provider
+   * adapter 在 stream 完成时把 usage 写入 token_usage 表。
+   * 不传 → 不记录（兼容 cron / 系统调用 / 单测）。 */
+  recordContext?: {
+    userId: string | null;
+    workspaceId?: string | null;
+    feature: string;
+  };
 }
 
 export interface ProviderAdapter {

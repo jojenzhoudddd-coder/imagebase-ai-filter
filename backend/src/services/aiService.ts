@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
 import path from "path";
 import * as store from "./dbStore.js";
+import { recordTokenUsage } from "./tokenUsageService.js";
 
 const ARK_BASE_URL = process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 const ARK_MODEL = process.env.ARK_MODEL || "ep-20260412192731-vwdh7";
@@ -1004,7 +1005,8 @@ const MAX_TOOL_ROUNDS = 3;
 export async function generateFilter(
   req: FilterGenerateRequest,
   fields: Field[],
-  onChunk: (event: string, data: object) => void
+  onChunk: (event: string, data: object) => void,
+  recordContext?: { userId: string | null; workspaceId?: string | null }
 ): Promise<void> {
   const apiKey = process.env.ARK_API_KEY;
   if (!apiKey) {
@@ -1078,8 +1080,22 @@ export async function generateFilter(
       const roundElapsed = Date.now() - roundStart;
 
       // Extract usage from response
-      const usage = (result as Record<string, unknown>).usage || null;
+      const usage = (result as unknown as Record<string, unknown>).usage || null;
       usageLog.push({ round, elapsedMs: roundElapsed, usage });
+
+      // Token 埋点 —— ARK Responses API 的 usage 字段是 input_tokens / output_tokens / total_tokens。
+      if (recordContext && usage && typeof usage === "object") {
+        const u = usage as Record<string, unknown>;
+        const promptTokens = Number(u.input_tokens ?? u.prompt_tokens ?? 0);
+        const completionTokens = Number(u.output_tokens ?? u.completion_tokens ?? 0);
+        const totalTokens = Number(u.total_tokens ?? promptTokens + completionTokens);
+        if (totalTokens > 0) {
+          void recordTokenUsage(
+            { ...recordContext, model: ARK_MODEL, provider: "ark", feature: "ai-filter" },
+            { promptTokens, completionTokens, totalTokens, durationMs: roundElapsed },
+          );
+        }
+      }
 
       // Log full API response for this round
       logAI({ type: "api_response", round, elapsedMs: roundElapsed, usage, fullResponse: result });

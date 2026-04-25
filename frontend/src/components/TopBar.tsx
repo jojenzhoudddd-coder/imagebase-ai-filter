@@ -13,6 +13,8 @@ import "./TopBar.css";
 interface Props {
   tableName: string;
   documentName: string;
+  /** 当前 workspace id —— 用来拉 stats（artifact 数 / token / AI 摘要）。 */
+  workspaceId: string;
   deleteProtection?: boolean;
   onDeleteProtectionChange?: (on: boolean) => void;
   onRenameTable?: (newName: string) => void;
@@ -23,12 +25,56 @@ interface Props {
   agentUnreadCount?: number;
 }
 
-export default function TopBar({ tableName, documentName, deleteProtection = true, onDeleteProtectionChange, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount }: Props) {
+interface WorkspaceStats {
+  tables: number;
+  ideas: number;
+  designs: number;
+  demos: number;
+  totalTokens: number;
+  summary: string | null;
+  slogan: string | null;
+  summaryAt: string | null;
+}
+
+/**
+ * 把数字压缩成 "1,234" / "12.3k" / "1.2M"。
+ * 小于 1000 用千分位逗号；≥ 1000 用 k；≥ 1000000 用 M。
+ */
+function formatTokenCount(n: number): string {
+  if (n < 1000) return n.toLocaleString("en-US");
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10000 ? 1 : 0).replace(/\.0$/, "")}k`;
+  return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0).replace(/\.0$/, "")}M`;
+}
+
+export default function TopBar({ tableName, documentName, workspaceId, deleteProtection = true, onDeleteProtectionChange, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount }: Props) {
   const { t, locale } = useTranslation();
   const { user, patchUser, logout, patchPreferences } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const { preference: themePreference, setTheme } = useTheme();
+
+  // ── Workspace stats ──
+  // /me 完成后或 workspaceId 切换时拉 stats，用于顶栏右栏显示
+  // artifact 数 / token 总量 / AI 摘要 + slogan。
+  // SSE 同步事件能让本地 ±1，但简单起见这里暂不接 SSE，5 分钟自动 refetch。
+  const [stats, setStats] = useState<WorkspaceStats | null>(null);
+  useEffect(() => {
+    if (!workspaceId) return;
+    let alive = true;
+    const fetchStats = async () => {
+      try {
+        const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/stats`, {
+          credentials: "same-origin",
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as WorkspaceStats;
+        if (alive) setStats(data);
+      } catch { /* ignore */ }
+    };
+    fetchStats();
+    const id = window.setInterval(fetchStats, 5 * 60 * 1000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, [workspaceId]);
 
   // 主题切换：先调本地 setTheme（更新 localStorage / data-theme / 广播），
   // 再异步写后端 preferences（登录时才写）。失败 toast 提示但不回滚视觉。
@@ -226,12 +272,7 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
               <path d="M144.146 16.6464C143.951 16.8417 143.951 17.1583 144.146 17.3536L147.293 20.5L144.146 23.6464C143.951 23.8417 143.951 24.1583 144.146 24.3536C144.342 24.5488 144.658 24.5488 144.854 24.3536L148.354 20.8536C148.447 20.7598 148.5 20.6326 148.5 20.5C148.5 20.3674 148.447 20.2402 148.354 20.1464L144.854 16.6464C144.658 16.4512 144.342 16.4512 144.146 16.6464Z" fill="#8F959E"/>
             </svg>
             <span className="topbar-crumb-current">
-              <svg className="topbar-base-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="1" width="14" height="14" rx="3" fill="#3370FF"/>
-                <rect x="3.5" y="4" width="9" height="1.5" rx="0.5" fill="white"/>
-                <rect x="3.5" y="7" width="6" height="1.5" rx="0.5" fill="white"/>
-                <rect x="3.5" y="10" width="7.5" height="1.5" rx="0.5" fill="white"/>
-              </svg>
+              {/* workspace 蓝色 base icon 已删除 —— 视觉精简 */}
               <InlineEdit
                 value={documentName}
                 isEditing={editingDocName}
@@ -243,52 +284,46 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
                 onCancelEdit={() => setEditingDocName(false)}
               />
             </span>
-            <button className="topbar-pin-btn" title={t("topbar.pin")}>
-              {/* Figma: Pin — line 731 */}
-              <svg width="14" height="14" viewBox="262 13 14 14" fill="none">
-                <path d="M265.687 14.375C265.322 14.375 265.091 14.6541 265.091 14.9758C265.091 15.2876 265.375 15.5434 265.687 15.5417L266.674 15.5434L266.673 18.1836C266.673 18.262 266.608 18.3379 266.552 18.3933L264.128 21.1755C264.073 21.2309 264.042 21.3068 264.042 21.3852L264.042 21.8533C264.042 22.18 264.296 22.4437 264.631 22.4437L268.412 22.4443L268.416 26.2938C268.416 26.6157 268.677 26.8765 268.999 26.8765H269.012C269.334 26.8765 269.595 26.6154 269.595 26.2932L269.595 22.4451L273.375 22.4437C273.696 22.4437 273.958 22.18 273.958 21.8533L273.958 21.3844C273.958 21.3061 273.927 21.2304 273.871 21.1747L271.453 18.3925C271.4 18.3389 271.345 18.2634 271.345 18.185L271.345 15.5447L272.331 15.5417C272.745 15.5417 272.928 15.1896 272.928 14.97C272.928 14.6104 272.646 14.375 272.331 14.375H265.687ZM267.866 15.543L270.202 15.5417L270.206 18.7026L272.438 21.279L265.614 21.2769L267.868 18.6917L267.866 15.543Z" fill="#646A73"/>
-              </svg>
-            </button>
+            {/* pin 按钮已删除 */}
           </div>
-          {/* Row 2: info badges */}
-          <div className="topbar-badges">
-            <button className="topbar-badge-btn">
-              {/* Figma: Shield badge — line 732 */}
-              <svg width="12" height="12" viewBox="105 37.5 12 12" fill="none">
-                <path d="M115.422 40.085C115.597 40.1552 115.711 40.3247 115.711 40.513V43.8472C115.711 46.1602 113.406 48.2852 111.128 48.9437C111.044 48.9677 110.956 48.9677 110.872 48.9437C108.594 48.2852 106.288 46.1602 106.288 43.8472V40.513C106.288 40.3247 106.403 40.1555 106.577 40.085C107.045 39.8636 107.511 39.6311 107.979 39.398C108.857 38.9604 109.738 38.5209 110.638 38.1493C110.87 38.0536 111.13 38.0538 111.362 38.1497C112.262 38.5223 113.143 38.9613 114.021 39.3985C114.489 39.6313 114.955 39.8635 115.422 40.085ZM113.604 42.6038C113.799 42.4085 113.799 42.0919 113.604 41.8967C113.408 41.7014 113.092 41.7014 112.896 41.8967L110.5 44.2931L109.354 43.1467C109.158 42.9514 108.842 42.9514 108.646 43.1467C108.451 43.3419 108.451 43.6585 108.646 43.8538L110.146 45.3538C110.342 45.549 110.658 45.549 110.854 45.3538L113.604 42.6038Z" fill="#8F959E"/>
-              </svg>
-              {t("topbar.l2Internal")}
-            </button>
-            <span className="topbar-badge-divider" />
-            <button className="topbar-badge-btn">{t("topbar.lastModified")}</button>
-            <span className="topbar-badge-divider" />
-            <button className="topbar-badge-btn topbar-badge-warning">
-              {/* Figma: Warning circle — lines 737-739 */}
-              <svg width="12" height="12" viewBox="308 37.5 12 12" fill="none">
-                <path d="M319.5 43.5C319.5 46.5376 317.038 49 314 49C310.962 49 308.5 46.5376 308.5 43.5C308.5 40.4624 310.962 38 314 38C317.038 38 319.5 40.4624 319.5 43.5Z" fill="#8F959E"/>
-                <path d="M314 41C313.724 41 313.5 41.2239 313.5 41.5V44C313.5 44.2761 313.724 44.5 314 44.5C314.276 44.5 314.5 44.2761 314.5 44V41.5C314.5 41.2239 314.276 41 314 41Z" fill="white"/>
-                <path d="M314 45C313.724 45 313.5 45.2239 313.5 45.5C313.5 45.7761 313.724 46 314 46C314.276 46 314.5 45.7761 314.5 45.5C314.5 45.2239 314.276 45 314 45Z" fill="white"/>
-              </svg>
-              {t("topbar.publicWarning")}
-            </button>
+          {/* Row 2 —— 工作区指标 + AI 摘要（替换原 L2 / lastModified / public-warning） */}
+          <div className="topbar-info-row">
+            <span className="topbar-stat" title={t("topbar.statsTitle")}>
+              <span className="topbar-stat-num">{stats?.tables ?? 0}</span>
+              <span className="topbar-stat-label">{t("topbar.statTable")}</span>
+              <span className="topbar-stat-dot">·</span>
+              <span className="topbar-stat-num">{stats?.ideas ?? 0}</span>
+              <span className="topbar-stat-label">{t("topbar.statIdea")}</span>
+              <span className="topbar-stat-dot">·</span>
+              <span className="topbar-stat-num">{stats?.designs ?? 0}</span>
+              <span className="topbar-stat-label">{t("topbar.statTaste")}</span>
+              <span className="topbar-stat-dot">·</span>
+              <span className="topbar-stat-num">{stats?.demos ?? 0}</span>
+              <span className="topbar-stat-label">{t("topbar.statDemo")}</span>
+            </span>
+            <span className="topbar-info-sep" />
+            <span className="topbar-stat" title={t("topbar.tokenTitle")}>
+              <span className="topbar-stat-num">{formatTokenCount(stats?.totalTokens ?? 0)}</span>
+              <span className="topbar-stat-label">tokens</span>
+            </span>
+            {(stats?.summary || stats?.slogan) && (
+              <>
+                <span className="topbar-info-sep" />
+                <span className="topbar-summary">
+                  {stats.summary ? `${stats.summary}` : ""}
+                  {stats.summary && stats.slogan ? " · " : ""}
+                  {stats.slogan ? stats.slogan : ""}
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Right: action buttons */}
+      {/* Right: 只保留搜索 / 新建 / AI 三个图标 + 头像 */}
       <div className="topbar-right">
-        <button className="topbar-share-btn">
-          {/* icon_building_outlined — 公司协作 */}
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            <path d="M3 14.5a1 1 0 01-1-1V2.5a1 1 0 011-1h7a1 1 0 011 1V4h1.5a1 1 0 011 1v8.5a1 1 0 01-1 1H3zm7-12H3v11h2v-2a.5.5 0 01.5-.5h1a.5.5 0 01.5.5v2h3v-11zm1 11h1.5V5H11v8.5z" fill="white"/>
-            <rect x="4.5" y="4.5" width="1.5" height="1" rx=".2" fill="white"/>
-            <rect x="7" y="4.5" width="1.5" height="1" rx=".2" fill="white"/>
-            <rect x="4.5" y="7" width="1.5" height="1" rx=".2" fill="white"/>
-            <rect x="7" y="7" width="1.5" height="1" rx=".2" fill="white"/>
-          </svg>
-          {t("topbar.share")}
-        </button>
-        <div className="topbar-icon-group">
+        {/* share / robot / permissions / extensions / notifications 全部移除 */}
+        <div className="topbar-icon-group" style={{ display: "none" }}>
           <button className="topbar-icon-btn" title={t("topbar.robot")}>
             {/* Figma: Robot — lines 749-753 */}
             <svg width="20" height="20" viewBox="1069 21.5 20 20" fill="none">
@@ -320,10 +355,8 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
               <path d="M1179.5 25.3821V25.187C1179.5 24.7745 1179.84 24.437 1180.25 24.437H1181.75C1182.16 24.437 1182.5 24.7745 1182.5 25.187V25.3821C1185.09 26.0697 1187 28.4946 1187 31.3806L1187 36.1532H1187.75C1188.16 36.1532 1188.5 36.4889 1188.5 36.9032C1188.5 37.3174 1188.16 37.6532 1187.75 37.6532H1174.25C1173.84 37.6532 1173.5 37.3174 1173.5 36.9032C1173.5 36.4889 1173.84 36.1532 1174.25 36.1532H1175L1175 31.3806C1175 28.4946 1176.91 26.0697 1179.5 25.3821ZM1176.5 36.1532H1185.5L1185.5 31.3827C1185.5 28.7893 1183.49 26.687 1181 26.687C1178.51 26.687 1176.5 28.7893 1176.5 31.3827L1176.5 36.1532ZM1178.56 39.5282C1178.56 39.1139 1178.9 38.7782 1179.31 38.7782H1182.69C1183.1 38.7782 1183.44 39.1139 1183.44 39.5282C1183.44 39.9424 1183.1 40.2782 1182.69 40.2782H1179.31C1178.9 40.2782 1178.56 39.9424 1178.56 39.5282Z" fill="#2B2F36"/>
             </svg>
           </button>
-          {/* 更多按钮原本只有一个 "安全删除" 开关；已迁入头像 popover 的"设置"
-              子菜单，这里就没什么可放的了，先移除。以后有更多全局开关时再加回。 */}
         </div>
-        <span className="topbar-divider" />
+        {/* 老的 group-1 / group-2 之间的 divider 删除，因为 group-1 已经隐藏 */}
         <div className="topbar-icon-group">
           <button className="topbar-icon-btn" title={t("topbar.search")}>
             {/* Figma: Search — line 764 */}
