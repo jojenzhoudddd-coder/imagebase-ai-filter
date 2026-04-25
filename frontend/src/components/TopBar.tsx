@@ -342,21 +342,19 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
       {/* Avatar dropdown menu —— 把个人信息编辑整合进来，不再弹二次对话框 */}
       {avatarMenuOpen && avatarMenuPos && (
         <div className="topbar-menu topbar-profile-popover" ref={avatarMenuRef} style={{ position: "fixed", top: avatarMenuPos.top, left: avatarMenuPos.left }}>
-          {/* 横向布局：左头像 + 右 {username / email}。头像 hover 出相机 icon。 */}
+          {/* 头像区结构对齐 Lark _pp-panel-header：
+               · avatar-selector 内部 = img + hover overlay + 直接覆盖的 file input
+               · panel-information = name 行 (overflow ellipsis) + 底部行 (text + tag slot)
+               file input 用绝对定位铺满 avatar，点头像直接触发 picker，无需 JS click()。 */}
           {user && (
             <div className="topbar-profile-header">
-              <div
-                className="topbar-profile-avatar-wrap"
-                onClick={() => avatarFileRef.current?.click()}
-                title={t("topbar.changeAvatar")}
-              >
+              <div className="topbar-profile-avatar-wrap" title={t("topbar.changeAvatar")}>
                 <img
                   className="topbar-profile-avatar"
                   src={userAvatar}
                   alt=""
                   onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/avatars/avatar_1.png"; }}
                 />
-                {/* 相机图标 overlay（hover 可见，无文字） */}
                 <div className="topbar-profile-avatar-overlay">
                   {avatarUploading ? (
                     <span className="topbar-profile-uploading-dot">…</span>
@@ -367,27 +365,33 @@ export default function TopBar({ tableName, documentName, deleteProtection = tru
                     </svg>
                   )}
                 </div>
+                <input
+                  ref={avatarFileRef}
+                  type="file"
+                  title=""
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  className="topbar-profile-avatar-input"
+                  onChange={onAvatarFilePicked}
+                />
               </div>
-              <input
-                ref={avatarFileRef}
-                type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp"
-                style={{ display: "none" }}
-                onChange={onAvatarFilePicked}
-              />
-              {/* 右侧：username（双击编辑）+ email */}
-              <div className="topbar-profile-meta">
-                <div className="topbar-profile-username">
-                  <InlineEdit
-                    value={user.username || user.name || ""}
-                    isEditing={editingUsername}
-                    onStartEdit={() => setEditingUsername(true)}
-                    onSave={commitUsername}
-                    onCancelEdit={() => setEditingUsername(false)}
-                    maxLength={32}
-                  />
+              <div className="topbar-profile-info">
+                <div className="topbar-profile-name-wrap">
+                  <span className="topbar-profile-username">
+                    <InlineEdit
+                      value={user.username || user.name || ""}
+                      isEditing={editingUsername}
+                      onStartEdit={() => setEditingUsername(true)}
+                      onSave={commitUsername}
+                      onCancelEdit={() => setEditingUsername(false)}
+                      maxLength={32}
+                    />
+                  </span>
                 </div>
-                <div className="topbar-profile-email">{user.email}</div>
+                <div className="topbar-profile-tenant">
+                  <span className="topbar-profile-email">{user.email}</span>
+                  {/* tag slot —— 当前没有验证 / plan 概念，留空。后续可加 chip
+                      <span className="topbar-profile-tags">…</span> */}
+                </div>
               </div>
             </div>
           )}
