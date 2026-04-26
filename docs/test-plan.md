@@ -615,3 +615,37 @@
 - `backend/src/scripts/analyst-p1-smoke.ts` — 独立 DuckDB runtime 冒烟，不需要主 backend
 - `backend/src/scripts/analyst-p2-smoke.ts` — 需要 `npm run dev:backend`，跑 P2 HTTP 接口全链路
 - 部署流程强制在 CI 或本地运行这两个脚本
+
+---
+
+## Magic Canvas · Multi-block table sync (P0)
+
+> 验证 `TableArtifactSurface` 自包含组件 + per-instance `instanceClientId` 的多 block 同表实时同步。
+
+### P0 用例
+
+| ID | 步骤 | 期望 |
+|---|------|------|
+| MC-T-01 | 打开页面，默认布局 1 chat + 1 artifact | 渲染正常，artifact block 显示当前 active table |
+| MC-T-02 | TopBar `+` 加第二个 artifact block | 新 block 默认 seed 当前 globalActiveTableId（与左 block 一致） |
+| MC-T-03 | A、B 两个 artifact block 在不同 table 之间切换 | 各自独立显示，互不影响 |
+| MC-T-04 | A、B 切到**同一张** table | 两 block 同时显示 fields / records / 0 records 完全一致 |
+| MC-T-05 | 在 A 加 record（点 + Add Record）| **A、B 同时变为 `n+1` records** |
+| MC-T-06 | 在 B 加 record | **A、B 同时变更**（反向也成立）|
+| MC-T-07 | 在 A 编辑 cell | **B 立即显示新值**（不需要刷新）|
+| MC-T-08 | 在 A 删除 record | **A、B 同时移除该行** |
+| MC-T-09 | 在 A 加 field（新列）| **A、B 同时显示新列** |
+| MC-T-10 | 在 A 改 field 名/类型 | **A、B 列头同步更新** |
+| MC-T-11 | 在 A 删 field | **A、B 同时移除该列** |
+| MC-T-12 | 在 A 改 view filter / hidden field / fieldOrder | A 立即生效；B 因为是同一 viewId 也同步（Toolbar / FieldConfig 状态都更）|
+| MC-T-13 | 在 A undo（Cmd/Ctrl+Z）| 仅撤销 A 的最后一个动作（A 内部 undo 栈独立），不会影响 B 的 undo 栈 |
+| MC-T-14 | 关闭 B（block 内 close X）| layout 还原 1+1，A 继续可用 |
+| MC-T-15 | 刷新页面 | layout / 各 block.active table / sidebar 宽度都保留（持久化到 user.preferences）|
+
+### 自动化校验
+
+`/tmp/test-sse-clientid.mjs`（开发期手动跑）：模拟两个独立 SSE 订阅 + 三种 mutation，断言 `event.clientId` 正确携带源端 clientId。**6/6 assertions pass** = 后端事件层面 OK。前端 useTableSync 的 `if (event.clientId === clientId) return` 只是一行确定性过滤，无需额外覆盖。
+
+### 已知保留事项
+
+- 无（V1 中"同表多开 SSE 不互通"的限制本次已消除）

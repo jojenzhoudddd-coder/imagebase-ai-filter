@@ -18,14 +18,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "../../contexts/workspaceContext";
-import { useArtifactView } from "../../contexts/artifactViewContext";
 import { useCanvas } from "../../contexts/canvasContext";
 import { SidebarToggleProvider } from "../../contexts/sidebarToggleContext";
 import Sidebar from "../Sidebar";
 import IdeaEditor from "../IdeaEditor/index";
 import SvgCanvas from "../SvgCanvas/index";
 import DemoPreviewPanel from "../DemoPreviewPanel/index";
-import SimpleTableViewer from "./SimpleTableViewer";
+import TableArtifactSurface from "../TableArtifactSurface/index";
 import { CLIENT_ID } from "../../api";
 import type { ArtifactBlockState, ArtifactKind } from "../../canvas/types";
 import type { TreeItemType } from "../../types";
@@ -49,15 +48,30 @@ function toArtifactKind(t: TreeItemType | undefined): ArtifactKind | null {
 
 export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlobalTable }: Props) {
   const ws = useWorkspace();
-  const av = useArtifactView();
   const { state, patchBlockState } = useCanvas();
   const { t } = useTranslation();
 
   const blockState = (state.blockStates[blockId] ?? {}) as ArtifactBlockState;
-  // 默认 active —— 第一次创建 block 时如果还没设置 active,用 global 作为初值。
-  const active = blockState.active ?? (globalActiveTableId
-    ? { type: "table" as const, id: globalActiveTableId }
-    : null);
+  // 真正在使用的 active —— 完全 per-block,不再 fallback 到 global。
+  // 仅在 block 首次创建(active 还是 null/undefined)时一次性 seed 进 global 当前选中的 table。
+  // 以后用户在该 block 切换 artifact 都只更新 blockState.active,不影响其它 block。
+  const active = blockState.active ?? null;
+
+  // Seed 一次:如果 blockState.active 从未被设置(刚创建的 artifact block),
+  // 把 global activeTableId 作为初始值持久化到 blockState。这样后续 global 变化
+  // 不会再透传过来,真正实现 "table 切换不会一起切换" 的隔离。
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current) return;
+    if (blockState.active) {
+      seededRef.current = true;
+      return;
+    }
+    if (globalActiveTableId) {
+      patchBlockState(blockId, { active: { type: "table", id: globalActiveTableId } });
+      seededRef.current = true;
+    }
+  }, [blockId, blockState.active, globalActiveTableId, patchBlockState]);
 
   const userCollapsed = blockState.sidebarCollapsedPreference ?? false;
 
@@ -84,9 +98,9 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
       const kind = toArtifactKind(type);
       if (!kind) return;
       patchBlockState(blockId, { active: { type: kind, id } });
-      // 如果选的是 table,需要把 global activeTableId 同步过去 ——
-      // 因为 table 渲染层(Toolbar+TableView+Filter)的 fields/records 仍在 App.tsx 全局,
-      // 不同步会导致此 block 渲染的 table 不是用户刚选的那张。V2 lift table state 后可去掉。
+      // 同步 global —— 仅用于跨组件 (TopBar tableName / AI 工具引用) 仍依赖
+      // App-level activeTableId 的场景。不会反向影响其它 block 的渲染,因为
+      // 各 block 现在直接从 blockState.active 读、不再 fallback。
       if (kind === "table") {
         onPickGlobalTable(id);
       }
@@ -136,17 +150,21 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
       if (!demo) return <div className="mc-artifact-empty">Demo 已不存在</div>;
       return <DemoPreviewPanel key={active.id} demoId={active.id} workspaceId={ws.workspaceId} />;
     }
-    // table V2:
-    //   - 主 block (active.id === globalActiveTableId) 走 ArtifactViewContext 的
-    //     global render —— 完整 UX (Toolbar/Filter/Undo/Customize/...)
-    //   - 其它 block 用 SimpleTableViewer 自包含 fetch + SSE,只读 + add record,
-    //     用户可以"同时看到不同的表"。编辑要切到主 block 操作。
-    if (active.id === globalActiveTableId) {
-      return av.render();
+    // table V2:每个 block 使用一个独立的 TableArtifactSurface,自管 fields /
+    // records / filter / undo / SSE。N 个 block 完全独立,互不切换。
+    if (active.type === "table") {
+      return (
+        <TableArtifactSurface
+          key={active.id}
+          tableId={active.id}
+          workspaceId={ws.workspaceId}
+          onRename={(name) => ws.onRenameItem(active.id, name)}
+        />
+      );
     }
-    return <SimpleTableViewer key={active.id} tableId={active.id} />;
+    return null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id, active?.type, ws.ideas, ws.designs, ws.demos, ws.workspaceId, av]);
+  }, [active?.id, active?.type, ws.ideas, ws.designs, ws.demos, ws.workspaceId]);
 
   // per-block SidebarToggleProvider —— 让 artifact topbar 里的 SidebarExpandButton
   // 读取这个 block 的 collapsed 状态(原 App-level 全局 SidebarToggleProvider 不再

@@ -4,7 +4,7 @@ import {
   FieldType,
   LookupConfig,
 } from "../../types";
-import { createField, updateField, fetchTables, suggestFields, TableBrief, ApiError, FieldSuggestion } from "../../api";
+import { createField, updateField, fetchTables, suggestFields, withClientId, TableBrief, ApiError, FieldSuggestion } from "../../api";
 import { LookupConfigPanel } from "./LookupConfigPanel";
 import { FieldIcon } from "./FieldIcons";
 import { useTranslation } from "../../i18n";
@@ -18,6 +18,13 @@ interface Props {
   onConfirm: (newField: Field) => void;
   fieldSuggestions: FieldSuggestionsState;
   editingField?: Field;
+  /**
+   * 可选:覆盖 mutation 携带的 X-Client-Id。
+   * Magic Canvas 多 block 场景下,每个 TableArtifactSurface 实例传入自己的
+   * instanceClientId,使 SSE 自身回声过滤逐 block 独立——同 table 双开时
+   * 一边编辑另一边能立即同步。
+   */
+  clientId?: string;
 }
 
 interface FieldTypeItem { type: FieldType; icon: string; labelKey: string }
@@ -173,7 +180,7 @@ export interface FieldSuggestionsState {
 
 // ─── Main component ───
 
-export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onCancel, onConfirm, fieldSuggestions, editingField }: Props) {
+export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onCancel, onConfirm, fieldSuggestions, editingField, clientId }: Props) {
   const isEdit = !!editingField;
   const { t } = useTranslation();
   const [title, setTitle] = useState(editingField?.name ?? "");
@@ -232,7 +239,9 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
         const dto: Record<string, any> = {};
         if (title.trim() !== editingField.name) dto.name = title.trim();
         if (fieldType !== editingField.type) dto.type = fieldType;
-        const updated = await updateField(currentTableId, editingField.id, dto);
+        const updated = clientId
+          ? await withClientId(clientId, () => updateField(currentTableId, editingField.id, dto))
+          : await updateField(currentTableId, editingField.id, dto);
         onConfirm(updated);
       } else {
         // Create mode
@@ -242,7 +251,10 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
             : fieldType === "DateTime"
             ? { format: "yyyy-MM-dd", includeTime: false }
             : {};
-        const newField = await createField(currentTableId, { name: title.trim(), type: fieldType, config });
+        const dto = { name: title.trim(), type: fieldType, config };
+        const newField = clientId
+          ? await withClientId(clientId, () => createField(currentTableId, dto))
+          : await createField(currentTableId, dto);
         onConfirm(newField);
       }
     } catch (e: unknown) {

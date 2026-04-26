@@ -7,9 +7,39 @@ export const CLIENT_ID =
   crypto.randomUUID?.() ??
   `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+/**
+ * Per-call clientId override 机制 ——
+ *
+ * 同一用户在 Magic Canvas 多个 block 同时打开同一张 table 时,需要每个
+ * TableArtifactSurface 实例用各自独立的 clientId 才能让"我编辑/对方刷新"成立:
+ *   - A 实例 mutate → backend 回放 SSE event with clientId=instanceA
+ *   - A useTableSync(clientId=instanceA) 过滤掉 → 不重复应用(已乐观更新)
+ *   - B useTableSync(clientId=instanceB) 不匹配 → 应用变更
+ *
+ * 实现:同步 override + 同步读取。`fetch()` 在 mutationFetch 内部同步调用并且
+ * `headers.set` 在 await 前发生,因此 withClientId 只需要在 fn() 同步段保持
+ * override 即可,fetch 已经把 header 捕获走。fn() 返回的 Promise 在 override
+ * 重置后继续 in-flight 不受影响。
+ *
+ * 注意:目前所有走 mutationFetch 的 API 函数都只在第一个 await 前调用一次
+ * fetch(),没有"先 fetch 再 await 再 fetch"的串联场景,因此这个简化的同步
+ * override 安全。如果未来加了串联,需改成显式 ctx 参数。
+ */
+let _clientIdOverride: string | null = null;
+
+export function withClientId<T>(clientId: string, fn: () => T): T {
+  const prev = _clientIdOverride;
+  _clientIdOverride = clientId;
+  try {
+    return fn();
+  } finally {
+    _clientIdOverride = prev;
+  }
+}
+
 function mutationFetch(url: string, options: RequestInit): Promise<Response> {
   const headers = new Headers(options.headers);
-  headers.set("X-Client-Id", CLIENT_ID);
+  headers.set("X-Client-Id", _clientIdOverride ?? CLIENT_ID);
   return fetch(url, { ...options, headers });
 }
 

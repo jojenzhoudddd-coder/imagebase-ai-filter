@@ -5,6 +5,73 @@
 
 ---
 
+## 2026-04-26 (晚间)
+
+### feat(magic-canvas): TableArtifactSurface 抽出 + per-instance clientId 实现多 block 同表实时同步
+
+**分支**: `AIWorkBeta` · **commits**: 待提交
+
+把 table 视图从 App.tsx 的全局单例升级成像 idea / design / demo 那样的 per-block 自包含组件，同时引入 per-instance clientId 让"同一用户多个 block 同时打开同一张 table"的实时同步成立——这是 Magic Canvas 的最后一个表层短板。
+
+#### 改动详情
+
+**新建 `frontend/src/components/TableArtifactSurface/index.tsx`** —— ~620 LOC 自包含组件：
+- 接收 `{tableId, workspaceId, onRename}` props，内部自管 fields / records / views / filter / undo / SSE 订阅
+- 14 个 useState + 5 个 useRef + 30+ handlers（cell change / add record / delete / clear cells / add field / edit field / batch delete fields / hide field / view filter save / 远端 SSE 处理 / undo 栈 / Cmd+Z 快捷键 / outside-click filter panel close 等）
+- 每实例 `useMemo` 一次 `instanceClientId`（crypto.randomUUID），用于 SSE 自身回声过滤 + mutation header
+- 渲染 Toolbar + TableView + FilterPanel + FieldConfigPanel + AddFieldPopover + EditFieldPopover + 内置 ConfirmDialog
+- 不再依赖 ArtifactViewContext 或 App.tsx 全局 table 状态——任意数量 block 可同时打开任意 table
+
+**`frontend/src/api.ts` 新增 `withClientId(clientId, fn)` 同步 override**：
+- module-level `_clientIdOverride` 变量，`mutationFetch` 优先读它，否则 fallback `CLIENT_ID`
+- 同步开关：`fn()` 内 `fetch()` 同步调用 + `headers.set` 同步读取 override，所以 fn 返回 promise 后即使 override 重置，已 in-flight 的 fetch 也已捕获正确 header
+- 所有走 mutationFetch 的 API 函数（updateRecord / createRecord / deleteRecords / batchCreateRecords / batchDeleteFields / batchRestoreFields / updateView / updateViewFilter / createField / updateField）只在第一个 await 前调用一次 fetch，符合此简化模型
+- 零 API 表面破坏——老调用点（不带 override）继续走 module CLIENT_ID
+
+**`frontend/src/components/MagicCanvas/ArtifactBlock.tsx` 修复 active fallback bug + 接入新组件**：
+- 旧：`active = blockState.active ?? globalActiveTableId fallback` —— 多 block 同时存在时 fallback 让 block 跟随全局，导致用户在 A 切表 B 也跟着切（用户原话："table 现在还是会一起切换"）
+- 新：`active = blockState.active ?? null`；首次 mount 时一次性 seed `useEffect` 把 globalActiveTableId 写入 blockState 后就不再读 global
+- table 渲染分支从 `if (active.id === globalActiveTableId) return av.render(); else <SimpleTableViewer>` 改为统一 `<TableArtifactSurface tableId={active.id}>`
+- 删除已死代码 `frontend/src/components/MagicCanvas/SimpleTableViewer.tsx`
+
+**`frontend/src/components/FieldConfig/AddFieldPopover.tsx` 接受 `clientId?: string` prop**：
+- TableArtifactSurface 把 `instanceClientId` 透传过来
+- 内部 `handleConfirm` 的 createField / updateField 调用通过 `withClientId(clientId, () => ...)` 包装
+
+#### 多 block 同表同步链路（验证通过）
+
+```
+Block A (instanceA)              Backend                Block B (instanceB)
+  edit cell ─X-Client-Id:A──→  emitChange(clientId:A)
+  受 useTableSync 过滤            ┌─────fanout──────────┐
+  (event.clientId === A) skip ←──┘                      │
+  本地已乐观更新 ✓                                        ↓
+                                                  收到 event(A ≠ B)
+                                                  applyRecordUpdate ✓
+                                                  UI 实时刷新
+```
+
+#### 自验收（本地双 block 同表场景）
+全部通过：
+- ✅ Wire-level SSE multi-clientId 测试 6/6 assertions（A 创 / B 改 / A 删 三种 mutation 的 event.clientId 携带正确）
+- ✅ 左 block 加 record → 右 block 即时显示（1 records 同步）
+- ✅ 右 block 加 2 records → 左 block 即时显示（都变 3 records）
+- ✅ 外部 API 第三方 clientId 改 cell → 两 block 都即时显示新值
+- ✅ 外部 API 删 record → 两 block 都即时移除
+- ✅ 外部 API 加 field → 两 block 都即时显示新列
+- ✅ Console 无错误（仅 React Router v7 future-flag warning，与本次改动无关）
+- ✅ `npm run build` 通过
+
+#### 已知保留事项
+- N/A——这次完全去掉了"V2 限制"的脏标签
+
+#### 文件总结
+- **新建**: `frontend/src/components/TableArtifactSurface/index.tsx`
+- **删除**: `frontend/src/components/MagicCanvas/SimpleTableViewer.tsx`
+- **修改**: `frontend/src/api.ts` · `frontend/src/components/MagicCanvas/ArtifactBlock.tsx` · `frontend/src/components/FieldConfig/AddFieldPopover.tsx`
+
+---
+
 ## 2026-04-25 (下午)
 
 ### feat(topbar): 工作区指标 + Token 累计 + AI 摘要 + Slogan
