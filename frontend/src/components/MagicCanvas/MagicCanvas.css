@@ -1,0 +1,256 @@
+/* ─── Magic Canvas styles ─────────────────────────────────────────────── */
+
+.mc-canvas {
+  flex: 1;
+  display: flex;
+  position: relative;
+  background: var(--surface-base, var(--color-bg, #F2F3F5));
+  overflow: hidden;
+}
+
+.mc-canvas-empty {
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+/* ─── Split / divider ─── */
+.mc-split {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.mc-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+.mc-pane > * { flex: 1; min-width: 0; min-height: 0; }
+
+.mc-divider {
+  flex: 0 0 6px;
+  background: transparent;
+  position: relative;
+  z-index: 1;
+}
+.mc-divider-h { cursor: col-resize; }
+.mc-divider-v { cursor: row-resize; }
+.mc-divider:hover::after,
+.mc-divider-dragging::after {
+  content: "";
+  position: absolute;
+  background: var(--primary, #1456F0);
+  opacity: 0.3;
+  border-radius: 2px;
+}
+.mc-divider-h:hover::after,
+.mc-divider-h.mc-divider-dragging::after {
+  top: 8px; bottom: 8px; left: 2px; right: 2px;
+}
+.mc-divider-v:hover::after,
+.mc-divider-v.mc-divider-dragging::after {
+  left: 8px; right: 8px; top: 2px; bottom: 2px;
+}
+
+/* ─── Block shell ─── */
+.mc-block-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--surface-2, #fff);
+  border: 1px solid var(--border-default, rgba(31, 35, 41, 0.08));
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  /* 圆角 / 直边 inline-style 控制 */
+  transition: border-radius 0.18s ease;
+}
+
+.mc-block-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.mc-block-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 10;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-s, 4px);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.mc-block-shell:hover .mc-block-close { opacity: 1; }
+.mc-block-close:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
+/* MoveBar —— 底部 hover 区,中央显现一个圆角条 */
+.mc-block-movebar-zone {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 14px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  cursor: grab;
+  z-index: 5;
+}
+.mc-block-movebar {
+  width: 80px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-strong, rgba(31, 35, 41, 0.18));
+  opacity: 0;
+  transition: opacity 0.18s;
+  margin-bottom: 4px;
+}
+.mc-block-movebar-zone:hover .mc-block-movebar { opacity: 1; }
+.mc-block-movebar-zone:active { cursor: grabbing; }
+
+/* 拖拽 ghost */
+.mc-drag-ghost {
+  position: fixed;
+  width: 120px;
+  height: 40px;
+  background: rgba(20, 86, 240, 0.18);
+  border: 1.5px dashed var(--primary, #1456F0);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 10000;
+  transition: transform 0.05s linear;
+}
+
+/* ─── ArtifactBlock 内部 sidebar 区域 ─── */
+.mc-artifact-block {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  min-width: 0;
+}
+.mc-artifact-sidebar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border-default);
+  background: var(--surface-1);
+  overflow: hidden;
+}
+.mc-artifact-sidebar > .sidebar { width: 100% !important; min-height: 0; }
+.mc-artifact-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ─── ChatBlock 内部 ─── */
+.mc-chat-block-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-2);
+}
+/* 在 magic canvas 内部的 .chat-part —— 去掉原本的 border / 圆角(由 BlockShell
+   提供),仍保留 .chat-part 自带的 padding-bottom 给 chat input 留余地。 */
+.mc-chat-part-canvas {
+  flex: 1;
+  border: none !important;
+  border-radius: 0 !important;
+  position: static;
+  order: unset;
+}
+
+/* ─── System placeholder ─── */
+.mc-system-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* ─── Add block menu ─── */
+.mc-add-block-menu {
+  z-index: 1100;
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-dropdown, 0 4px 16px rgba(0,0,0,0.12));
+  padding: 4px;
+  min-width: 160px;
+}
+.mc-add-block-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  font-family: inherit;
+}
+.mc-add-block-item:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+.mc-add-block-item:disabled,
+.mc-add-block-item.mc-add-block-item-disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+.mc-add-block-item-soon {
+  margin-left: auto;
+  font-size: 10px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.mc-add-block-foot {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-light);
+  margin-top: 4px;
+}
+
+/* ─── 移动端 fallback (P7) —— < 768px 单列堆叠,关 canvas 编辑 ─── */
+@media (max-width: 768px) {
+  .mc-canvas .mc-split { flex-direction: column !important; }
+  .mc-canvas .mc-pane { flex: 1 !important; }
+  .mc-canvas .mc-divider-h { cursor: row-resize; }
+  /* 移动端禁拖 */
+  .mc-block-movebar-zone { display: none; }
+  .mc-divider:hover::after { display: none; }
+  /* artifact block 改纵向(sidebar 顶部) */
+  .mc-artifact-block { flex-direction: column; }
+  .mc-artifact-sidebar { width: 100% !important; max-height: 200px; border-right: none; border-bottom: 1px solid var(--border-default); }
+}

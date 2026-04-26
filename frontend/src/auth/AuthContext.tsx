@@ -38,6 +38,10 @@ export interface UserPreferences {
   theme?: "light" | "dark" | "system";
   locale?: "zh" | "en";
   deleteProtection?: boolean;
+  /** Magic Canvas 布局快照(blocks + layout 树 + per-block state) */
+  canvasLayout?: unknown;
+  /** 预留:Magic Canvas 布局预设(将来支持) */
+  canvasPresets?: unknown;
 }
 
 interface MeResponse {

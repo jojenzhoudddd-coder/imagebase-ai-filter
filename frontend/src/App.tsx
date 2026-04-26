@@ -1,9 +1,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import Toolbar from "./components/Toolbar";
 import { SidebarToggleProvider } from "./contexts/sidebarToggleContext";
+import { WorkspaceProvider } from "./contexts/workspaceContext";
+import { ArtifactViewProvider } from "./contexts/artifactViewContext";
+import { ChatBlockProvider } from "./contexts/chatBlockContext";
+import { CanvasProvider } from "./contexts/canvasContext";
+import MagicCanvas from "./components/MagicCanvas/index";
+import type { CanvasState } from "./canvas/types";
 import TableView, { TableViewHandle } from "./components/TableView/index";
 import FilterPanel from "./components/FilterPanel/index";
 import FieldConfigPanel from "./components/FieldConfigPanel/index";
@@ -96,7 +101,7 @@ export default function App() {
   // when URL is missing (e.g. deep links that dropped the segment).
   // A guard effect below kicks any user off URLs targeting a workspace
   // they don't actually own.
-  const { workspaces: userWorkspaces, workspaceId: authWorkspaceId, agentId: authAgentId } = useAuth();
+  const { workspaces: userWorkspaces, workspaceId: authWorkspaceId, agentId: authAgentId, preferences: authPreferences } = useAuth();
   const WORKSPACE_ID = urlParams.workspaceId || authWorkspaceId || "";
   // Agent id 跟登录用户绑定（后端 /me 返回）。空字符串保护：未加载完成时
   // 不应触发 agent-scoped 请求。所有用到它的地方都是在 RequireAuth 之后，
@@ -1913,12 +1918,202 @@ export default function App() {
     onFullSync: handleFullSync,
   });
 
+  // ── Magic Canvas: 把 artifact 区域和 chat 区域抽成 render 函数注入 context,
+  // canvas 内的 ArtifactBlock / ChatBlock 直接调 render() 拿到完整 JSX。
+  // V1: 多 artifact block 共享 global activeTableId(在 sidebar 内点击切换)
+  const renderArtifactView = useCallback(() => {
+    return (
+      <div className="app-main">
+        {/* ↓ 此处保留原 artifact 渲染逻辑 (SvgCanvas / IdeaEditor / DemoPreviewPanel / Toolbar+TableView) */}
+        {renderActiveArtifact()}
+      </div>
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTableId, activeItemType, /* 其它依赖通过 closure 隐式捕获 */]);
+
+  // 把原 artifact 渲染拆成独立的内部函数(避免一个超长的 JSX 表达式)
+  function renderActiveArtifact() {
+    if (activeItemType === "design") {
+      const d = documentDesigns.find((x) => x.id === activeTableId);
+      if (!d) return null;
+      return (
+        <SvgCanvas
+          key={activeTableId}
+          designId={activeTableId}
+          designName={d.name}
+          workspaceId={WORKSPACE_ID}
+          onRename={(name) => handleRenameSidebarItemExtended(activeTableId, name)}
+        />
+      );
+    }
+    if (activeItemType === "idea") {
+      const idea = documentIdeas.find((x) => x.id === activeTableId);
+      if (!idea) return null;
+      return (
+        <IdeaEditor
+          key={activeTableId}
+          ideaId={activeTableId}
+          ideaName={idea.name}
+          workspaceId={WORKSPACE_ID}
+          clientId={CLIENT_ID}
+          onRename={(name) => handleRenameSidebarItemExtended(activeTableId, name)}
+          onNavigate={handleNavigateToEntity}
+        />
+      );
+    }
+    if (activeItemType === "demo") {
+      const demo = documentDemos.find((x) => x.id === activeTableId);
+      if (!demo) return null;
+      return <DemoPreviewPanel key={activeTableId} demoId={activeTableId} workspaceId={WORKSPACE_ID} />;
+    }
+    return (
+      <>
+        <Toolbar
+          tableName={tableName}
+          onRenameTable={(name) => handleRenameSidebarItem(activeTableId, name)}
+          isFiltered={isFiltered}
+          isFilterDirty={isFilterDirty}
+          filterConditionCount={filter.conditions.length}
+          filterPanelOpen={filterPanelOpen}
+          onFilterClick={() => setFilterPanelOpen((o) => !o)}
+          onClearFilter={handleClearFilter}
+          onSaveView={handleSaveView}
+          filterBtnRef={filterBtnRef}
+          fieldConfigOpen={fieldConfigOpen}
+          onCustomizeFieldClick={() => setFieldConfigOpen((o) => !o)}
+          customizeFieldBtnRef={customizeFieldBtnRef}
+          canUndo={canUndo}
+          onUndo={performUndo}
+          onAddRecord={() => {
+            void tableViewRef.current?.addRecord("start");
+          }}
+        />
+        <div className="app-content">
+          <TableView
+            ref={tableViewRef}
+            fields={visibleOrderedFields}
+            records={displayRecords}
+            onCellChange={handleCellChange}
+            onDeleteField={handleDeleteField}
+            onDeleteFields={handleDeleteFields}
+            onFieldOrderChange={handleFieldOrderChange}
+            onHideField={handleHideField}
+            onHideFields={handleHideFields}
+            fieldOrder={viewFieldOrder}
+            onDeleteRecords={handleDeleteRecords}
+            onClearCells={handleClearCells}
+            onClearRowCells={handleClearRowCells}
+            onAddField={handleOpenAddField}
+            onEditField={handleEditField}
+            onAddRecord={handleAddRecord}
+          />
+          {filterPanelOpen && (
+            <FilterPanel
+              ref={filterPanelRef}
+              tableId={activeTableId}
+              fields={visibleOrderedFields}
+              filter={filter}
+              onFilterChange={handleFilterChange}
+              onClose={() => setFilterPanelOpen(false)}
+              anchorRef={filterBtnRef}
+            />
+          )}
+          {fieldConfigOpen && (
+            <FieldConfigPanel
+              fields={allOrderedFields}
+              hiddenFields={viewHiddenFields}
+              onFieldOrderChange={handleFieldOrderChange}
+              onToggleVisibility={handleToggleFieldVisibility}
+              onSelectField={handleSelectField}
+              onClose={() => setFieldConfigOpen(false)}
+              anchorRef={customizeFieldBtnRef}
+            />
+          )}
+          {addFieldAnchor && (
+            <AddFieldPopover
+              currentTableId={activeTableIdRef.current}
+              currentFields={fields}
+              anchorRect={addFieldAnchor}
+              onCancel={() => setAddFieldAnchor(null)}
+              onConfirm={handleCreateFieldConfirm}
+              fieldSuggestions={fieldSuggestions}
+            />
+          )}
+          {editFieldState && (
+            <AddFieldPopover
+              key={editFieldState.fieldId}
+              currentTableId={activeTableId}
+              currentFields={fields}
+              anchorRect={editFieldState.anchorRect}
+              onCancel={() => setEditFieldState(null)}
+              onConfirm={handleEditFieldConfirm}
+              fieldSuggestions={fieldSuggestions}
+              editingField={fields.find((f) => f.id === editFieldState.fieldId)}
+            />
+          )}
+        </div>
+      </>
+    );
+  }
+
+  // Chat block 渲染:每个 chat block 都 mount 一份 ChatSidebar(共享同一个 agent
+  // 当前 active conversation)。多 chat block 显示同一对话(等同浏览器多 tab)。
+  // V2 加多会话时,block.id 可作为 key 让每个 ChatSidebar 选不同会话。
+  const renderChatBlock = useCallback(
+    (blockId: string) => (
+      // 保留 .chat-part 类名 —— ChatSidebar.css 里的 padding / 内部 layout 依赖
+      // 这层 wrapper(否则 input 贴底边)。在 magic canvas 里 .chat-part 没有
+      // 圆角/border(走 BlockShell 提供),flex 行为仍 ok。
+      <div className="chat-part mc-chat-part-canvas" key={blockId}>
+        <ChatSidebar
+          open={true}
+          workspaceId={WORKSPACE_ID}
+          agentId={AGENT_ID}
+          onClose={() => { /* canvas 层用 BlockShell 的 X 按钮关 block,这里不需要 */ }}
+          onActiveTableChange={(tableId) => {
+            setActiveItemType("table");
+            void switchTable(tableId);
+          }}
+        />
+      </div>
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [WORKSPACE_ID, AGENT_ID],
+  );
+
   return (
-    <SidebarToggleProvider value={{
-      collapsed: sidebarCollapsed,
-      onToggle: () => setSidebarCollapsed((v) => !v),
-      expandTitle: t("sidebar.expand"),
-    }}>
+    <SidebarToggleProvider
+      value={{
+        collapsed: sidebarCollapsed,
+        onToggle: () => setSidebarCollapsed((v) => !v),
+        expandTitle: t("sidebar.expand"),
+      }}
+    >
+    <WorkspaceProvider
+      value={{
+        workspaceId: WORKSPACE_ID,
+        sidebarItems,
+        folders: documentFolders,
+        designs: documentDesigns,
+        ideas: documentIdeas,
+        demos: documentDemos,
+        tableCount: documentTables.length,
+        onRenameItem: handleRenameSidebarItemExtended,
+        onDeleteTable: handleDeleteTable,
+        onDeleteItem: handleDeleteItem,
+        onCreateBlank: handleCreateBlankTable,
+        onCreateWithAI: handleCreateWithAI,
+        onResetToDefault: handleResetToDefault,
+        onCreateFolder: handleCreateFolder,
+        onCreateDesign: handleCreateDesign,
+        onCreateIdea: handleCreateIdea,
+        onMoveItem: handleMoveItem,
+        onReorderItems: handleReorderItems,
+      }}
+    >
+    <ArtifactViewProvider value={{ render: renderArtifactView }}>
+    <ChatBlockProvider value={{ render: renderChatBlock }}>
+    <CanvasProvider initial={(authPreferences?.canvasLayout as CanvasState | null | undefined) ?? null}>
     <div className="app">
       <TopBar
         tableName={tableName}
@@ -1932,223 +2127,12 @@ export default function App() {
         chatAgentOpen={chatAgentOpen}
         agentUnreadCount={agentUnread}
       />
-      <div className={`workspace${chatAgentOpen ? " chat-open" : ""}${chatAgentOpen && chatSide === "left" ? " chat-left" : ""}${movingPart ? " moving" : ""}`} ref={workspaceRef}>
-        <div
-          className="artifact-part"
-          /* When chat is open, let artifact flex-grow into the remaining
-           * space (= 100% - chat% - 6px divider). */
-          style={chatAgentOpen ? { flex: "1 1 auto", minWidth: 0 } : undefined}
-        >
-        <div className="app-body">
-        {!sidebarCollapsed && (
-          <Sidebar
-            items={sidebarItems}
-            onRenameItem={handleRenameSidebarItemExtended}
-            activeItemId={activeTableId}
-            onSelectItem={handleSelectItem}
-            onReorderItems={handleReorderItems}
-            onDeleteTable={handleDeleteTable}
-            tableCount={documentTables.length}
-            onCreateWithAI={handleCreateWithAI}
-            onResetToDefault={handleResetToDefault}
-            onCreateBlank={handleCreateBlankTable}
-            folders={documentFolders.map(f => ({ id: f.id, name: f.name }))}
-            onCreateFolder={handleCreateFolder}
-            onCreateDesign={handleCreateDesign}
-            onCreateIdea={handleCreateIdea}
-            onDeleteItem={handleDeleteItem}
-            onMoveItem={handleMoveItem}
-            scrollToItemId={scrollToItemId}
-            onCollapse={() => setSidebarCollapsed(true)}
-          />
-        )}
-        <div className="app-main">
-          {/* SVG Canvas — shown when a design is active */}
-          {activeItemType === "design" && (() => {
-            const d = documentDesigns.find(x => x.id === activeTableId);
-            if (!d) return null;
-            return (
-              <SvgCanvas
-                key={activeTableId}
-                designId={activeTableId}
-                designName={d.name}
-                workspaceId={WORKSPACE_ID}
-                onRename={(name) => handleRenameSidebarItemExtended(activeTableId, name)}
-              />
-            );
-          })()}
-          {/* Idea Editor — shown when an idea artifact is active */}
-          {activeItemType === "idea" && (() => {
-            const idea = documentIdeas.find(x => x.id === activeTableId);
-            if (!idea) return null;
-            return (
-              <IdeaEditor
-                key={activeTableId}
-                ideaId={activeTableId}
-                ideaName={idea.name}
-                workspaceId={WORKSPACE_ID}
-                clientId={CLIENT_ID}
-                onRename={(name) => handleRenameSidebarItemExtended(activeTableId, name)}
-                onNavigate={handleNavigateToEntity}
-              />
-            );
-          })()}
-          {/* Vibe Demo preview — shown when a demo artifact is active */}
-          {activeItemType === "demo" && (() => {
-            const demo = documentDemos.find((x) => x.id === activeTableId);
-            if (!demo) return null;
-            return (
-              <DemoPreviewPanel
-                key={activeTableId}
-                demoId={activeTableId}
-                workspaceId={WORKSPACE_ID}
-              />
-            );
-          })()}
-          {activeItemType !== "design" && activeItemType !== "idea" && activeItemType !== "demo" && (
-          <>
-          {/* ViewTabs 已废弃 —— 表名 + filter apply pill 全部进入 Toolbar 顶栏 */}
-          <Toolbar
-            tableName={tableName}
-            onRenameTable={(name) => handleRenameSidebarItem(activeTableId, name)}
-            isFiltered={isFiltered}
-            isFilterDirty={isFilterDirty}
-            filterConditionCount={filter.conditions.length}
-            filterPanelOpen={filterPanelOpen}
-            onFilterClick={() => setFilterPanelOpen((o) => !o)}
-            onClearFilter={handleClearFilter}
-            onSaveView={handleSaveView}
-            filterBtnRef={filterBtnRef}
-            fieldConfigOpen={fieldConfigOpen}
-            onCustomizeFieldClick={() => setFieldConfigOpen((o) => !o)}
-            customizeFieldBtnRef={customizeFieldBtnRef}
-            canUndo={canUndo}
-            onUndo={performUndo}
-            onAddRecord={() => { void tableViewRef.current?.addRecord("start"); }}
-          />
-          <div className="app-content">
-            <TableView
-              ref={tableViewRef}
-              fields={visibleOrderedFields}
-              records={displayRecords}
-              onCellChange={handleCellChange}
-              onDeleteField={handleDeleteField}
-              onDeleteFields={handleDeleteFields}
-              onFieldOrderChange={handleFieldOrderChange}
-              onHideField={handleHideField}
-              onHideFields={handleHideFields}
-              fieldOrder={viewFieldOrder}
-              onDeleteRecords={handleDeleteRecords}
-              onClearCells={handleClearCells}
-              onClearRowCells={handleClearRowCells}
-              onAddField={handleOpenAddField}
-              onEditField={handleEditField}
-              onAddRecord={handleAddRecord}
-            />
-            {filterPanelOpen && (
-              <FilterPanel
-                ref={filterPanelRef}
-                tableId={activeTableId}
-                fields={visibleOrderedFields}
-                filter={filter}
-                onFilterChange={handleFilterChange}
-                onClose={() => setFilterPanelOpen(false)}
-                anchorRef={filterBtnRef}
-              />
-            )}
-            {fieldConfigOpen && (
-              <FieldConfigPanel
-                fields={allOrderedFields}
-                hiddenFields={viewHiddenFields}
-                onFieldOrderChange={handleFieldOrderChange}
-                onToggleVisibility={handleToggleFieldVisibility}
-                onSelectField={handleSelectField}
-                onClose={() => setFieldConfigOpen(false)}
-                anchorRef={customizeFieldBtnRef}
-              />
-            )}
-            {addFieldAnchor && (
-              <AddFieldPopover
-                currentTableId={activeTableIdRef.current}
-                currentFields={fields}
-                anchorRect={addFieldAnchor}
-                onCancel={() => setAddFieldAnchor(null)}
-                onConfirm={handleCreateFieldConfirm}
-                fieldSuggestions={fieldSuggestions}
-              />
-            )}
-            {editFieldState && (
-              <AddFieldPopover
-                key={editFieldState.fieldId}
-                currentTableId={activeTableId}
-                currentFields={fields}
-                anchorRect={editFieldState.anchorRect}
-                onCancel={() => setEditFieldState(null)}
-                onConfirm={handleEditFieldConfirm}
-                fieldSuggestions={fieldSuggestions}
-                editingField={fields.find(f => f.id === editFieldState.fieldId)}
-              />
-            )}
-          </div>
-          </>
-          )}
-        </div>
-      </div>
-          {chatAgentOpen && (
-            <>
-              <div className="part-hover-zone" aria-hidden="true" />
-              <div
-                className={`part-move-bar${movingPart === "artifact" ? " dragging" : ""}`}
-                onMouseDown={onMoveBarMouseDown("artifact")}
-                title="拖动以切换左右位置"
-                role="button"
-                aria-label="Swap panel positions"
-              />
-            </>
-          )}
-        </div>
-        {chatAgentOpen && (
-          <>
-            <div
-              className={`split-divider${isSplitDragging ? " dragging" : ""}`}
-              onMouseDown={onSplitDragStart}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize chat panel"
-            />
-            <div
-              className="chat-part"
-              style={{ flex: `0 0 ${(chatRatio * 100).toFixed(3)}%` }}
-            >
-              <ChatSidebar
-                open={chatAgentOpen}
-                workspaceId={WORKSPACE_ID}
-                agentId={AGENT_ID}
-                onClose={() => setChatAgentOpen(false)}
-                onActiveTableChange={(tableId) => {
-                  // Virtual pointer: follow the Agent to whichever table it's
-                  // currently operating on. switchTable short-circuits when
-                  // the id is already active, so back-to-back tool calls
-                  // against the same table don't thrash the loader. For a
-                  // freshly-created table the workspace-level SSE may still
-                  // be en route — switchTable handles fetch itself, and the
-                  // sidebar row will light up once useWorkspaceSync arrives.
-                  setActiveItemType("table");
-                  void switchTable(tableId);
-                }}
-              />
-              <div className="part-hover-zone" aria-hidden="true" />
-              <div
-                className={`part-move-bar${movingPart === "chat" ? " dragging" : ""}`}
-                onMouseDown={onMoveBarMouseDown("chat")}
-                title="拖动以切换左右位置"
-                role="button"
-                aria-label="Swap panel positions"
-              />
-            </div>
-          </>
-        )}
-      </div>
+      <MagicCanvas
+        activeArtifactId={activeTableId}
+        onSelectArtifact={(id, type) => {
+          handleSelectItem(id, type);
+        }}
+      />
       <ConfirmDialog
         open={confirmDialog.open}
         title={
@@ -2191,6 +2175,10 @@ export default function App() {
         onCancel={() => setIdeaDeleteConfirm({ open: false, ideaId: null, refs: [], total: 0, loading: false })}
       />
     </div>
+    </CanvasProvider>
+    </ChatBlockProvider>
+    </ArtifactViewProvider>
+    </WorkspaceProvider>
     </SidebarToggleProvider>
   );
 }
