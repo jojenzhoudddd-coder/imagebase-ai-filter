@@ -42,15 +42,20 @@ export default function BlockShell({
    */
   const lastSwapTargetRef = useRef<string | null>(null);
 
-  // 圆角规则(用户最终定义):"若当前角的三个 90度方向都有其它 block 则圆角,否则直线"
-  // 等价表达:corner 的两条相邻边都是 neighbor(都贴另一 block 的 gap)→ 圆角。
-  //   推论:由于布局树完全 tile canvas,只要两条相邻边都是 neighbor,
-  //         对角方向那一格也必然是另一 block(canvas 内部点必属某 leaf)。
-  //         所以 "两边都 neighbor" 与 "三方向都有 block" 等价。
-  // 任一边贴 page(canvas 外缘 / 顶部 topbar 等)→ 直角。
+  // 圆角规则:"若 corner 的另外三个 90 度方向都有其它内容(block 或 topbar),
+  //              则圆角;若任一方向是真窗口外缘,则直角"
+  // 关键:topbar 不是窗口外缘,所以 top edge=page 在我们布局里总是贴 topbar,
+  //        视为"有内容"(soft edge)。仅 right/bottom/left 的 page 才是真 viewport
+  //        外缘(true outer)→ 此方向无内容。
+  // 简化推导:
+  //   - 顶部 corner(tl/tr):top edge 永远 soft(topbar 或 block),
+  //                          仅看 left/right 是不是 neighbor。
+  //   - 底部 corner(bl/br):bottom 必须是 neighbor(否则贴 viewport),
+  //                          且 left/right 是 neighbor。
+  // 对角方向那一格在两边都"有内容"时也必有内容(canvas 完全被 leaf 平铺)。
   const radius = "10px";
-  const tl = edges.top === "neighbor" && edges.left === "neighbor" ? radius : "0";
-  const tr = edges.top === "neighbor" && edges.right === "neighbor" ? radius : "0";
+  const tl = edges.left === "neighbor" ? radius : "0";
+  const tr = edges.right === "neighbor" ? radius : "0";
   const bl = edges.bottom === "neighbor" && edges.left === "neighbor" ? radius : "0";
   const br = edges.bottom === "neighbor" && edges.right === "neighbor" ? radius : "0";
 
