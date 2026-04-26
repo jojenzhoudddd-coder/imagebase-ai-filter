@@ -42,18 +42,17 @@ export default function BlockShell({
    */
   const lastSwapTargetRef = useRef<string | null>(null);
 
-  // 圆角规则:所有 corner 一律圆角(无论贴 topbar / 视口边 / 邻接块的 gap)。
-  // 这样每个 block 都是"卡片风格",视觉一致,与 infra topbar / 视口外缘 /
-  // 块间空隙都是圆角衔接 —— 用户偏好。
-  // (上一版"AND 规则"只在 gap 交叉处圆角,导致顶部贴 topbar 的 corner 是直角,
-  //  与产品想要的"卡片漂浮"感不符,已废弃。)
+  // 圆角规则(用户最终定义):"若当前角的三个 90度方向都有其它 block 则圆角,否则直线"
+  // 等价表达:corner 的两条相邻边都是 neighbor(都贴另一 block 的 gap)→ 圆角。
+  //   推论:由于布局树完全 tile canvas,只要两条相邻边都是 neighbor,
+  //         对角方向那一格也必然是另一 block(canvas 内部点必属某 leaf)。
+  //         所以 "两边都 neighbor" 与 "三方向都有 block" 等价。
+  // 任一边贴 page(canvas 外缘 / 顶部 topbar 等)→ 直角。
   const radius = "10px";
-  // edges 现在只用作类型保证,不影响圆角(后续如要"特定边直角"可在这里区分)
-  void edges;
-  const tl = radius;
-  const tr = radius;
-  const bl = radius;
-  const br = radius;
+  const tl = edges.top === "neighbor" && edges.left === "neighbor" ? radius : "0";
+  const tr = edges.top === "neighbor" && edges.right === "neighbor" ? radius : "0";
+  const bl = edges.bottom === "neighbor" && edges.left === "neighbor" ? radius : "0";
+  const br = edges.bottom === "neighbor" && edges.right === "neighbor" ? radius : "0";
 
   const onClose = useCallback(() => removeBlock(blockId), [blockId, removeBlock]);
   const shellCtx = useMemo(
