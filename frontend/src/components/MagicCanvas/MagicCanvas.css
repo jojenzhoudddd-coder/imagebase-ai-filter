@@ -4,7 +4,9 @@
   flex: 1;
   display: flex;
   position: relative;
-  background: var(--surface-base, var(--color-bg, #F2F3F5));
+  /* 与 TopBar(surface-2) 同色 —— block 之间 6px 缝隙透出来视觉与顶栏连贯,
+     不出现"灰色画布 + 白色 topbar"的色差断层。 */
+  background: var(--surface-2);
   overflow: hidden;
 }
 
@@ -153,7 +155,8 @@
   min-height: 0;
   /* 让 sidebar 占满父级 .mc-artifact-block 的高度 */
   height: 100%;
-  border-right: 1px solid var(--border-default);
+  /* border-right 由内嵌的 .sidebar 自己提供(原 sidebar.css 有),这里不再加,
+     避免双竖线 */
   background: var(--surface-1);
   overflow: hidden;
 }

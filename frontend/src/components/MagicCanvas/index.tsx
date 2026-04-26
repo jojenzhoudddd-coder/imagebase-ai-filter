@@ -13,12 +13,13 @@ import ChatBlock from "./ChatBlock";
 import "./MagicCanvas.css";
 
 interface Props {
-  /** 全局 active artifact id —— V1 多 artifact block 共享 */
-  activeArtifactId: string;
-  onSelectArtifact: (id: string, type?: import("../../types").TreeItemType) => void;
+  /** 全局 active table id —— 仅 table 类型的 block 共享(V2 限制),其它类型 per-block */
+  globalActiveTableId: string;
+  /** Block 内 sidebar 选中 table 时,把 global active 同步过去(table render 仍走全局) */
+  onPickGlobalTable: (id: string) => void;
 }
 
-export default function MagicCanvas({ activeArtifactId, onSelectArtifact }: Props) {
+export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: Props) {
   const { state, visibleBlockIds } = useCanvas();
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -48,8 +49,8 @@ export default function MagicCanvas({ activeArtifactId, onSelectArtifact }: Prop
         {block.type === "artifact" && (
           <ArtifactBlock
             blockId={blockId}
-            activeArtifactId={activeArtifactId}
-            onSelectArtifact={onSelectArtifact}
+            globalActiveTableId={globalActiveTableId}
+            onPickGlobalTable={onPickGlobalTable}
           />
         )}
         {block.type === "system" && (

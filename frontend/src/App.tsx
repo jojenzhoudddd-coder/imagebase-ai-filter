@@ -2128,9 +2128,10 @@ export default function App() {
         agentUnreadCount={agentUnread}
       />
       <MagicCanvas
-        activeArtifactId={activeTableId}
-        onSelectArtifact={(id, type) => {
-          handleSelectItem(id, type);
+        globalActiveTableId={activeTableId}
+        onPickGlobalTable={(id) => {
+          // table block 切换 → 同步 global activeTableId(让 ArtifactView 的 render 拉新表)
+          handleSelectItem(id, "table");
         }}
       />
       <ConfirmDialog

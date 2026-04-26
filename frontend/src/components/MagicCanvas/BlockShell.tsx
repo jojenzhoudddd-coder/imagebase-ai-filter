@@ -36,11 +36,14 @@ export default function BlockShell({
   const draggingRef = useRef(false);
   const dragStartRef = useRef<{ pointerX: number; pointerY: number; ghostX: number; ghostY: number } | null>(null);
 
+  // 圆角规则:仅当一个 corner 的"两条相邻边都是 neighbor"时才圆角
+  // (该 corner 真的落在 gap 与 gap 的十字交叉处)。任一边贴 page = 直线
+  // (page 边要无缝衔接主框架,不能有圆角导致视觉缝隙)。
   const radius = "10px";
-  const tl = edges.top === "neighbor" || edges.left === "neighbor" ? radius : "0";
-  const tr = edges.top === "neighbor" || edges.right === "neighbor" ? radius : "0";
-  const bl = edges.bottom === "neighbor" || edges.left === "neighbor" ? radius : "0";
-  const br = edges.bottom === "neighbor" || edges.right === "neighbor" ? radius : "0";
+  const tl = edges.top === "neighbor" && edges.left === "neighbor" ? radius : "0";
+  const tr = edges.top === "neighbor" && edges.right === "neighbor" ? radius : "0";
+  const bl = edges.bottom === "neighbor" && edges.left === "neighbor" ? radius : "0";
+  const br = edges.bottom === "neighbor" && edges.right === "neighbor" ? radius : "0";
 
   const onClose = useCallback(() => removeBlock(blockId), [blockId, removeBlock]);
   const shellCtx = useMemo(

@@ -1,36 +1,60 @@
 /**
- * ArtifactBlock —— sidebar(per-block) + artifact view(全局 active 共享 V1)。
+ * ArtifactBlock —— per-block sidebar + per-block 渲染。
  *
- * 内置 ResizeObserver 监听自己宽度,< 400px 时 sidebar 强制收起(覆盖用户偏好);
- * ≥ 400px 时尊重用户偏好(默认展开)。
+ * V2: 每个 block 有自己的 active artifact (在 blockState.active),sidebar 高亮独立。
  *
- * sidebar 数据从 WorkspaceContext 读;ActiveArtifact 切换走 onSelectItem
- * 回调,App.tsx 接住后改全局 activeTableId(V1 多 artifact block 共享)。
+ * 渲染策略:
+ *   - active.type ∈ {"idea","design","demo"} → 直接 mount 对应自包含组件
+ *     (IdeaEditor / SvgCanvas / DemoPreviewPanel),N 个 block 完全独立。
+ *   - active.type === "table" → 走 ArtifactViewContext 的 global render()
+ *     (V2 限制:table 的 fields/records/filter/undo state 仍住 App.tsx,
+ *     多 block 共享同一张表)。clicking table 在某 block 同时更新 global
+ *     activeTableId,确保该 block 渲染对应表内容。
+ *   - active null:空状态提示。
+ *
+ * sidebar:
+ *   - ResizeObserver 监听自己宽度,< 400px sidebar 强制收起(覆盖用户偏好)
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "../../contexts/workspaceContext";
 import { useArtifactView } from "../../contexts/artifactViewContext";
 import { useCanvas } from "../../contexts/canvasContext";
 import Sidebar from "../Sidebar";
-import type { ArtifactBlockState } from "../../canvas/types";
+import IdeaEditor from "../IdeaEditor/index";
+import SvgCanvas from "../SvgCanvas/index";
+import DemoPreviewPanel from "../DemoPreviewPanel/index";
+import { CLIENT_ID } from "../../api";
+import type { ArtifactBlockState, ArtifactKind } from "../../canvas/types";
+import type { TreeItemType } from "../../types";
 
 const AUTO_COLLAPSE_THRESHOLD_PX = 400;
 
 interface Props {
   blockId: string;
-  /** 全局 active artifact id,V1 共享 */
-  activeArtifactId: string;
-  /** 用户在 sidebar 点击时,回调到 App.tsx 切换全局 active */
-  onSelectArtifact: (id: string, type?: import("../../types").TreeItemType) => void;
+  /** 全局 active artifact id —— 仅用于 table 类型(V2 共享)。其它类型 block 走自己的 active。 */
+  globalActiveTableId: string;
+  /** 用户在 block 内 sidebar 点击 table 类型时,把 global active 同步过去 */
+  onPickGlobalTable: (id: string) => void;
 }
 
-export default function ArtifactBlock({ blockId, activeArtifactId, onSelectArtifact }: Props) {
+/** TreeItemType → ArtifactKind(只有 table/idea/design/demo 是有效 artifact) */
+function toArtifactKind(t: TreeItemType | undefined): ArtifactKind | null {
+  if (t === "table" || t === "idea" || t === "design" || t === "demo") return t;
+  return null;
+}
+
+export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlobalTable }: Props) {
   const ws = useWorkspace();
   const av = useArtifactView();
   const { state, patchBlockState } = useCanvas();
 
   const blockState = (state.blockStates[blockId] ?? {}) as ArtifactBlockState;
+  // 默认 active —— 第一次创建 block 时如果还没设置 active,用 global 作为初值。
+  const active = blockState.active ?? (globalActiveTableId
+    ? { type: "table" as const, id: globalActiveTableId }
+    : null);
+
   const userCollapsed = blockState.sidebarCollapsedPreference ?? false;
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -38,9 +62,7 @@ export default function ArtifactBlock({ blockId, activeArtifactId, onSelectArtif
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setWidth(el.clientWidth);
-    });
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
     ro.observe(el);
     setWidth(el.clientWidth);
     return () => ro.disconnect();
@@ -50,18 +72,70 @@ export default function ArtifactBlock({ blockId, activeArtifactId, onSelectArtif
   const effectiveCollapsed = userCollapsed || tooNarrow;
 
   const handleCollapse = () => {
-    // 用户主动点击收起按钮 → 写偏好
     patchBlockState(blockId, { sidebarCollapsedPreference: true });
   };
 
-  // 注:展开按钮在 artifact topbar 里 —— SidebarToggleProvider 的 onToggle
-  // 由 App 注入(对每个 block 不同)。这里通过 patchBlockState 实现。
-  // 为了不引入 per-block SidebarToggleProvider(否则每个 block 都得包一层),
-  // V1 简化:用户点 artifact 内的"展开 sidebar"按钮(目前只在 sidebar 收起
-  // 才显示)就改写偏好。展开按钮的实际逻辑见 ArtifactView 内的 SidebarExpandButton。
-  // (V1 因为多 artifact block 共享一个 SidebarToggleProvider,展开按钮全局
-  //  控制 —— 暂时让用户用每个 block 的 close-sidebar 按钮关,要展开就拖宽
-  //  block 或刷新。这是 V1 已知 limitation。)
+  const handleSelectItem = useCallback(
+    (id: string, type?: TreeItemType) => {
+      const kind = toArtifactKind(type);
+      if (!kind) return;
+      patchBlockState(blockId, { active: { type: kind, id } });
+      // 如果选的是 table,需要把 global activeTableId 同步过去 ——
+      // 因为 table 渲染层(Toolbar+TableView+Filter)的 fields/records 仍在 App.tsx 全局,
+      // 不同步会导致此 block 渲染的 table 不是用户刚选的那张。V2 lift table state 后可去掉。
+      if (kind === "table") {
+        onPickGlobalTable(id);
+      }
+    },
+    [blockId, patchBlockState, onPickGlobalTable],
+  );
+
+  // 渲染 artifact 内容 —— 按 active.type 选择独立 mount or fallback 到 global render()
+  const artifactContent = useMemo(() => {
+    if (!active) {
+      return (
+        <div className="mc-artifact-empty">
+          <p>请在左侧 sidebar 选择一个 artifact</p>
+        </div>
+      );
+    }
+    if (active.type === "idea") {
+      const idea = ws.ideas.find((x) => x.id === active.id);
+      if (!idea) return <div className="mc-artifact-empty">Idea 已不存在</div>;
+      return (
+        <IdeaEditor
+          key={active.id}
+          ideaId={active.id}
+          ideaName={idea.name}
+          workspaceId={ws.workspaceId}
+          clientId={CLIENT_ID}
+          onRename={(name) => ws.onRenameItem(active.id, name)}
+          onNavigate={() => { /* mention 跳转 V2 再接入 magic canvas focus 逻辑 */ }}
+        />
+      );
+    }
+    if (active.type === "design") {
+      const design = ws.designs.find((x) => x.id === active.id);
+      if (!design) return <div className="mc-artifact-empty">Design 已不存在</div>;
+      return (
+        <SvgCanvas
+          key={active.id}
+          designId={active.id}
+          designName={design.name}
+          workspaceId={ws.workspaceId}
+          onRename={(name) => ws.onRenameItem(active.id, name)}
+        />
+      );
+    }
+    if (active.type === "demo") {
+      const demo = ws.demos.find((x) => x.id === active.id);
+      if (!demo) return <div className="mc-artifact-empty">Demo 已不存在</div>;
+      return <DemoPreviewPanel key={active.id} demoId={active.id} workspaceId={ws.workspaceId} />;
+    }
+    // table —— V2 共享 global render(注释见组件头)
+    return av.render();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id, active?.type, ws.ideas, ws.designs, ws.demos, ws.workspaceId, av]);
 
   return (
     <div className="mc-artifact-block" ref={containerRef}>
@@ -70,8 +144,8 @@ export default function ArtifactBlock({ blockId, activeArtifactId, onSelectArtif
           <Sidebar
             items={ws.sidebarItems}
             onRenameItem={ws.onRenameItem}
-            activeItemId={activeArtifactId}
-            onSelectItem={onSelectArtifact}
+            activeItemId={active?.id ?? ""}
+            onSelectItem={handleSelectItem}
             onReorderItems={ws.onReorderItems}
             onDeleteTable={ws.onDeleteTable}
             tableCount={ws.tableCount}
@@ -88,7 +162,7 @@ export default function ArtifactBlock({ blockId, activeArtifactId, onSelectArtif
           />
         </div>
       )}
-      <div className="mc-artifact-content">{av.render()}</div>
+      <div className="mc-artifact-content">{artifactContent}</div>
     </div>
   );
 }
