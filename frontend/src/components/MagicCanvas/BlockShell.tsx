@@ -167,7 +167,21 @@ export default function BlockShell({
         // 落位 —— 仅在 release 时改 layout
         const t = computeDropTarget(ev.clientX, ev.clientY);
         if (t) {
-          moveBlock(blockId, t.blockId, t.side);
+          // 保持 source 原 size:把 source 当前 rect + target 当前 rect 传过去,
+          // 计算 split ratio 使 source 在新 split 中占的尺寸 = 原尺寸
+          const cont = canvasContainerRef.current;
+          const layout = stateRef.current.layout;
+          let preserveRatio: { sourceW: number; sourceH: number; targetW: number; targetH: number } | undefined;
+          if (cont && layout) {
+            const cr = cont.getBoundingClientRect();
+            const rects = computeRects(layout, cr.width, cr.height, cr.left, cr.top);
+            const sr = rects[blockId];
+            const tr = rects[t.blockId];
+            if (sr && tr) {
+              preserveRatio = { sourceW: sr.w, sourceH: sr.h, targetW: tr.w, targetH: tr.h };
+            }
+          }
+          moveBlock(blockId, t.blockId, t.side, preserveRatio);
           scheduleSave();
         }
         tearDownDrag();

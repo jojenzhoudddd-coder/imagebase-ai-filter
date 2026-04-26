@@ -45,6 +45,11 @@ interface Props {
   scrollToItemId?: string | null;
   /** 点击 sidebar 内"收起"按钮（搜索右侧）触发。父级把 sidebar 整体隐藏。 */
   onCollapse?: () => void;
+  /** 受控宽度 —— 由父级(magic canvas ArtifactBlock 的 blockState.sidebarWidth)
+   *  提供。设了就使用,不设走 localStorage 全局值。 */
+  width?: number;
+  /** 父级监听拖宽事件 —— 设了就由父级写 state(per-block),不写 localStorage */
+  onWidthChange?: (w: number) => void;
 }
 
 const DRAG_THRESHOLD = 4;
@@ -113,7 +118,7 @@ const SIDEBAR_MIN_W = 120;
 const SIDEBAR_MAX_W = 400;
 const SIDEBAR_DEFAULT_W = 190;
 
-export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onCreateIdea, onDeleteItem, onMoveItem, scrollToItemId, onCollapse }: Props) {
+export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onCreateIdea, onDeleteItem, onMoveItem, scrollToItemId, onCollapse, width: widthProp, onWidthChange }: Props) {
   const { t } = useTranslation();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
@@ -173,10 +178,13 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
       document.body.classList.remove("sidebar-resizing");
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
-      // Single React commit — persists width and keeps inline style in sync
-      // with the final DOM style we already applied during the drag.
-      setSidebarWidth(latestW);
-      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(latestW));
+      // 受控模式 —— 通知父级写 per-block state;否则走 localStorage 全局
+      if (onWidthChange) {
+        onWidthChange(latestW);
+      } else {
+        setSidebarWidth(latestW);
+        localStorage.setItem(SIDEBAR_WIDTH_KEY, String(latestW));
+      }
     };
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
@@ -411,7 +419,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
     ["generating", "creating"].includes(popoverHandleRef.current.getState());
 
   return (
-    <aside ref={asideRef} className="sidebar" style={{ width: sidebarWidth }}>
+    <aside ref={asideRef} className="sidebar" style={{ width: widthProp ?? sidebarWidth }}>
       <div className="sidebar-resize-handle" onMouseDown={handleResizeMouseDown} />
       <div className="sidebar-header sidebar-header-with-actions">
         <div className="sidebar-search-trigger">

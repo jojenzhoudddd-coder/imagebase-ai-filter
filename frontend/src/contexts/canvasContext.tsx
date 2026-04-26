@@ -128,7 +128,12 @@ export interface CanvasContextValue {
   /** 交换两个 block 在 layout 树中的位置(swap leaves) */
   swapBlocks: (idA: string, idB: string) => void;
   /** 把 source block 移动到 target 的指定边/中心 —— 拖拽 release 时调 */
-  moveBlock: (sourceId: string, targetId: string, side: DropSide) => void;
+  moveBlock: (
+    sourceId: string,
+    targetId: string,
+    side: DropSide,
+    preserveRatio?: { sourceW: number; sourceH: number; targetW: number; targetH: number },
+  ) => void;
   /** 改 split ratio(resize) */
   setRatioByPath: (path: ("L" | "R")[], ratio: number) => void;
   /** 更新某个 block 的 internal state(例:artifact 的 active / sidebar 折叠) */
@@ -191,13 +196,21 @@ export function CanvasProvider({
   const [dragSourceId, setDragSourceId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
-  const moveBlock = useCallback((sourceId: string, targetId: string, side: DropSide) => {
-    setState((prev) => {
-      if (!prev.layout) return prev;
-      const newLayout = moveBlockToTarget(prev.layout, sourceId, targetId, side);
-      return { ...prev, layout: newLayout };
-    });
-  }, []);
+  const moveBlock = useCallback(
+    (
+      sourceId: string,
+      targetId: string,
+      side: DropSide,
+      preserveRatio?: { sourceW: number; sourceH: number; targetW: number; targetH: number },
+    ) => {
+      setState((prev) => {
+        if (!prev.layout) return prev;
+        const newLayout = moveBlockToTarget(prev.layout, sourceId, targetId, side, preserveRatio);
+        return { ...prev, layout: newLayout };
+      });
+    },
+    [],
+  );
 
   const addBlock = useCallback(
     (type: BlockType): string | null => {

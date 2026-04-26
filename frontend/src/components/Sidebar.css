@@ -207,7 +207,7 @@
 /* Footer: "+ New" button */
 .sidebar-footer {
   flex-shrink: 0;
-  padding: 6px 8px 8px;
+  padding: 8px 8px 8px;
   border-top: 1px solid var(--color-border);
 }
 

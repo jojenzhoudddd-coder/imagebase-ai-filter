@@ -25,6 +25,7 @@ import Sidebar from "../Sidebar";
 import IdeaEditor from "../IdeaEditor/index";
 import SvgCanvas from "../SvgCanvas/index";
 import DemoPreviewPanel from "../DemoPreviewPanel/index";
+import SimpleTableViewer from "./SimpleTableViewer";
 import { CLIENT_ID } from "../../api";
 import type { ArtifactBlockState, ArtifactKind } from "../../canvas/types";
 import type { TreeItemType } from "../../types";
@@ -135,8 +136,15 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
       if (!demo) return <div className="mc-artifact-empty">Demo 已不存在</div>;
       return <DemoPreviewPanel key={active.id} demoId={active.id} workspaceId={ws.workspaceId} />;
     }
-    // table —— V2 共享 global render(注释见组件头)
-    return av.render();
+    // table V2:
+    //   - 主 block (active.id === globalActiveTableId) 走 ArtifactViewContext 的
+    //     global render —— 完整 UX (Toolbar/Filter/Undo/Customize/...)
+    //   - 其它 block 用 SimpleTableViewer 自包含 fetch + SSE,只读 + add record,
+    //     用户可以"同时看到不同的表"。编辑要切到主 block 操作。
+    if (active.id === globalActiveTableId) {
+      return av.render();
+    }
+    return <SimpleTableViewer key={active.id} tableId={active.id} />;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id, active?.type, ws.ideas, ws.designs, ws.demos, ws.workspaceId, av]);
 
@@ -159,7 +167,7 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
     <SidebarToggleProvider value={sidebarToggleValue}>
     <div className="mc-artifact-block" ref={containerRef}>
       {!effectiveCollapsed && (
-        <div className="mc-artifact-sidebar" style={{ width: blockState.sidebarWidth ?? 190 }}>
+        <div className="mc-artifact-sidebar">
           <Sidebar
             items={ws.sidebarItems}
             onRenameItem={ws.onRenameItem}
@@ -178,6 +186,8 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
             onDeleteItem={ws.onDeleteItem}
             onMoveItem={ws.onMoveItem}
             onCollapse={handleCollapse}
+            width={blockState.sidebarWidth ?? 190}
+            onWidthChange={(w) => patchBlockState(blockId, { sidebarWidth: w })}
           />
         </div>
       )}

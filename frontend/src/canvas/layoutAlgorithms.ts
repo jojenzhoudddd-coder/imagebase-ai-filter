@@ -53,12 +53,17 @@ export type DropSide = "top" | "right" | "bottom" | "left" | "center";
  *   - center → 与 target 交换位置(swap)
  *   - top/bottom/left/right → 在 target 的该边切一刀,source 落在该边一侧,
  *                              target 占另一侧,新 split 替代 target 的位置。
+ *
+ * `preserveRatio` 参数:source 落位时尽量保持原大小。传入 source 在拖拽前的矩形
+ * 和 target 矩形,用 source 与 target 的对应方向尺寸算出 split ratio。
+ * 不传则默认 0.5(对半分)。
  */
 export function moveBlockToTarget(
   layout: LayoutNode,
   sourceId: string,
   targetId: string,
   side: DropSide,
+  preserveRatio?: { sourceW: number; sourceH: number; targetW: number; targetH: number },
 ): LayoutNode {
   if (sourceId === targetId) return layout;
   if (side === "center") return swapLeaves(layout, sourceId, targetId);
@@ -70,11 +75,26 @@ export function moveBlockToTarget(
   // 2) 把 source 作为新 leaf 插到 target 的指定边
   const orientation: "h" | "v" = side === "top" || side === "bottom" ? "v" : "h";
   const sourceFirst = side === "top" || side === "left";
+
+  // ratio 计算 —— 优先保持 source 原尺寸:
+  //   - h-split(左右切): source 应占 target.w 的 source.w / target.w
+  //   - v-split(上下切): source 应占 target.h 的 source.h / target.h
+  //   sourceFirst 表示 source 在 first 位,ratio = source 占比;否则 ratio = target 占比 = 1 - source 占比。
+  let ratio = 0.5;
+  if (preserveRatio && preserveRatio.targetW > 0 && preserveRatio.targetH > 0) {
+    const sourceFraction =
+      orientation === "h"
+        ? preserveRatio.sourceW / preserveRatio.targetW
+        : preserveRatio.sourceH / preserveRatio.targetH;
+    const clamped = Math.max(0.15, Math.min(0.85, sourceFraction));
+    ratio = sourceFirst ? clamped : 1 - clamped;
+  }
+
   const sourceLeaf: LayoutNode = { kind: "leaf", blockId: sourceId };
   return replaceLeaf(without, targetId, (oldTarget) => ({
     kind: "split",
     orientation,
-    ratio: 0.5,
+    ratio,
     first: sourceFirst ? sourceLeaf : oldTarget,
     second: sourceFirst ? oldTarget : sourceLeaf,
   }));

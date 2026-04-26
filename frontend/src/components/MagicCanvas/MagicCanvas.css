@@ -175,6 +175,29 @@
   border-style: dashed;
 }
 
+/* SimpleTableViewer (V2 副本表格) —— 顶部一个细提示条 + 下方 TableView */
+.mc-simple-table-viewer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.mc-simple-table-viewer-hint {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.mc-simple-table-viewer-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* ─── ArtifactBlock 内部 sidebar 区域 ─── */
 .mc-artifact-block {
   flex: 1;
@@ -190,20 +213,20 @@
   min-height: 0;
   /* 让 sidebar 占满父级 .mc-artifact-block 的高度 */
   height: 100%;
-  /* border-right 由内嵌的 .sidebar 自己提供(原 sidebar.css 有),这里不再加,
-     避免双竖线 */
+  /* width 不在这里设 —— 内嵌的 .sidebar 自带 inline width(来自 ArtifactBlock
+     传 widthProp),wrapper auto 包它。这样拖动 sidebar 自己的 resize handle
+     时,width 通过 onWidthChange → blockState.sidebarWidth → widthProp 闭环更新。
+     border-right 由内嵌的 .sidebar 自己提供。 */
   background: var(--surface-1);
-  overflow: hidden;
 }
-/* 内嵌的 .sidebar (aside) 必须填满父级,否则被它自身固定高度截断 */
+/* 内嵌的 .sidebar (aside) —— 宽度由其自身 inline style(受控来自 ArtifactBlock
+   的 blockState.sidebarWidth)控制,所以不再 width:100% override。
+   高度填满父级。 */
 .mc-artifact-sidebar > .sidebar {
-  width: 100% !important;
   height: 100% !important;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
-  /* 关掉原 .sidebar 自带的拖宽手柄(画布外层 split-divider 已经能调) */
 }
-.mc-artifact-sidebar > .sidebar .sidebar-resize-handle { display: none; }
 .mc-artifact-content {
   flex: 1;
   display: flex;
