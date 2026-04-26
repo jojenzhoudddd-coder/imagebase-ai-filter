@@ -338,12 +338,17 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
         </span>
         <div className="demo-panel-topbar-actions">
           {statusLabel && (
-            <span
-              className={`demo-panel-status demo-panel-status-${demo.lastBuildStatus}`}
-              title={demo.lastBuildError || undefined}
-            >
-              {statusLabel}
-            </span>
+            <>
+              <span
+                className={`demo-panel-status demo-panel-status-${demo.lastBuildStatus}`}
+                title={demo.lastBuildError || undefined}
+              >
+                {statusLabel}
+              </span>
+              {/* V2.9.4: 竖线放在 build 状态和 Build/Rebuild 按钮之间,
+                  与 table (record↔Add) / idea (saved↔Switch) 的规则对齐。 */}
+              <span className="demo-panel-topbar-sep" aria-hidden="true" />
+            </>
           )}
           {/* Order: rebuild → source → export → publish/unpublish */}
           <button
@@ -354,8 +359,6 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
             {BuildIcon}
             {busy === "build" ? t("demo.building") : demo.lastBuildStatus === "success" ? t("demo.rebuild") : t("demo.build")}
           </button>
-          {/* V2.9.3: build / rebuild 与后续操作之间加竖线 */}
-          <span className="demo-panel-topbar-sep" aria-hidden="true" />
           {demo.files && demo.files.length > 0 && (
             <div className="demo-panel-files-wrap" ref={filesPopoverRef}>
               <button
