@@ -51,8 +51,8 @@ const SYSTEM_PROMPT = `# 角色
 { "summary": "...", "slogan": "..." }
 
 # 要求
-- summary：50 字以内的中文短语，一句话客观介绍这个工作区的内容主题，不夸张、不带情绪标签。
-- slogan：20 字以内的中文短句，富有创意但落地，能呼应实际内容（不要套用空话）。
+- summary：50 字以内（含标点）的中文短语，一句话客观介绍这个工作区的内容主题，不夸张、不带情绪标签。
+- slogan：**严格** 20 个字符以内（含标点）的中文短句，富有创意但落地，能呼应实际内容（不要套用空话）。超过 20 字会被强制截断。
 - 工作区为空时，summary 写"刚开始的空白工作区"，slogan 写"未来从一张空表开始"。
 - 严禁加 Markdown 代码块、严禁解释、严禁追问。`;
 
@@ -86,6 +86,17 @@ interface SummaryResult {
   slogan: string;
 }
 
+/** 按 Unicode code point 截断字符串到上限,过长时尾部省略号占 1 字符位。
+ *  CJK 字符按 1 char 计(Array.from 处理代理对,避免 emoji 拆半)。 */
+function truncateChars(s: string, max: number): string {
+  const chars = Array.from(s);
+  if (chars.length <= max) return s;
+  return chars.slice(0, Math.max(1, max - 1)).join("") + "…";
+}
+
+const MAX_SUMMARY_CHARS = 50;
+const MAX_SLOGAN_CHARS = 20;
+
 function tryParseSummary(raw: string): SummaryResult | null {
   let s = raw.trim();
   // Strip Markdown fence
@@ -96,9 +107,12 @@ function tryParseSummary(raw: string): SummaryResult | null {
   if (start < 0 || end <= start) return null;
   try {
     const obj = JSON.parse(s.slice(start, end + 1)) as Record<string, unknown>;
-    const summary = typeof obj.summary === "string" ? obj.summary.trim() : "";
-    const slogan = typeof obj.slogan === "string" ? obj.slogan.trim() : "";
+    let summary = typeof obj.summary === "string" ? obj.summary.trim() : "";
+    let slogan = typeof obj.slogan === "string" ? obj.slogan.trim() : "";
     if (!summary || !slogan) return null;
+    // 硬上限:即使 prompt 已经要求"20 字以内",模型偶尔会超,这里强制截。
+    summary = truncateChars(summary, MAX_SUMMARY_CHARS);
+    slogan = truncateChars(slogan, MAX_SLOGAN_CHARS);
     return { summary, slogan };
   } catch {
     return null;
