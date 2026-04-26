@@ -41,7 +41,7 @@ interface Token {
   pos: number;
 }
 
-const PUNCT = new Set(["(", ")", "[", "]", ",", "."]);
+const PUNCT = new Set(["(", ")", "[", "]", ",", ".", "?", ":"]);
 const SINGLE_OP = new Set(["+", "-", "*", "/"]);
 const KEYWORDS = new Set(["true", "false", "null"]);
 
@@ -159,7 +159,11 @@ type Node =
   | { type: "Member"; obj: Node; prop: string; computed: boolean }
   | { type: "Call"; callee: string; args: Node[] }
   | { type: "Unary"; op: "!" | "-"; arg: Node }
-  | { type: "Bin"; op: string; left: Node; right: Node };
+  | { type: "Bin"; op: string; left: Node; right: Node }
+  /** V2.5 B10: ternary `cond ? a : b` */
+  | { type: "Cond"; cond: Node; then: Node; else: Node }
+  /** V2.5 B10: array literal `[a, b, c]` (字面量列表 — 用于 includes / 多值匹配) */
+  | { type: "Arr"; items: Node[] };
 
 class Parser {
   i = 0;
@@ -180,9 +184,33 @@ class Parser {
   }
 
   parse(): Node {
-    const node = this.parseOr();
+    const node = this.parseTernary();
     this.expect("eof");
     return node;
+  }
+  /** V2.5 B10: ternary (lowest precedence above OR). */
+  parseTernary(): Node {
+    const cond = this.parseOr();
+    if (this.peek().type === "punct" && this.peek().value === "?") {
+      this.eat();
+      const thenN = this.parseTernary();
+      // expect ":" — punct token
+      const t = this.peek();
+      if (!(t.type === "punct" && (t.value === ":" || t.value === ":"))) {
+        // We didn't list ":" in PUNCT —— add via tokenizer is needed (see below).
+        // Fallback: use the special-cased read where ":" was tokenised as op.
+      }
+      // Tokeniser doesn't emit ":" yet. Special-case it: peek at ":"-like by
+      // looking at raw value of any single-char token.
+      if (this.peek().value === ":") {
+        this.eat();
+      } else {
+        throw new Error(`Expected ':' in ternary at ${this.peek().pos}`);
+      }
+      const elseN = this.parseTernary();
+      return { type: "Cond", cond, then: thenN, else: elseN };
+    }
+    return cond;
   }
   parseOr(): Node {
     let left = this.parseAnd();
@@ -302,9 +330,23 @@ class Parser {
     }
     if (t.type === "punct" && t.value === "(") {
       this.eat();
-      const inner = this.parseOr();
+      const inner = this.parseTernary();
       this.expect("punct", ")");
       return inner;
+    }
+    // V2.5 B10: array literal `[a, b, c]` (or `[]`)
+    if (t.type === "punct" && t.value === "[") {
+      this.eat();
+      const items: Node[] = [];
+      if (!(this.peek().type === "punct" && this.peek().value === "]")) {
+        items.push(this.parseTernary());
+        while (this.peek().type === "punct" && this.peek().value === ",") {
+          this.eat();
+          items.push(this.parseTernary());
+        }
+      }
+      this.expect("punct", "]");
+      return { type: "Arr", items };
     }
     throw new Error(`Unexpected token ${t.value} at ${t.pos}`);
   }
@@ -376,6 +418,10 @@ function evalNode(node: Node, env: Record<string, any>): any {
       if (node.op === "!") return !evalNode(node.arg, env);
       if (node.op === "-") return -evalNode(node.arg, env);
       throw new Error(`Unknown unary ${node.op}`);
+    case "Cond":
+      return evalNode(node.cond, env) ? evalNode(node.then, env) : evalNode(node.else, env);
+    case "Arr":
+      return node.items.map((i) => evalNode(i, env));
     case "Bin": {
       const l = evalNode(node.left, env);
       // && / || short-circuit

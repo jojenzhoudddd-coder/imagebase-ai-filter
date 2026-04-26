@@ -108,7 +108,8 @@ export type WorkflowTemplate =
   | "review"
   | "brainstorm"
   | "cowork"
-  | "concurrent-data";
+  | "concurrent-data"
+  | "custom";
 
 export interface WorkflowDoc {
   /** workflow run id (assigned at execute time). */
@@ -151,6 +152,9 @@ export type WorkflowEvent =
   | { kind: "workflow_node_end"; runId: string; nodeId: string; output?: any }
   | { kind: "workflow_loop_iteration"; runId: string; loopNodeId: string; iter: number; maxIter: number }
   | { kind: "workflow_branch_start"; runId: string; parentNodeId: string; branchIdx: number; totalBranches: number }
+  /** V2.5 C8 heartbeat: 长 running workflow 静默 15s 后送出 keepalive,
+   *  防止 nginx / 浏览器 SSE 连接被掐 */
+  | { kind: "workflow_heartbeat"; runId: string; elapsedMs: number }
   | { kind: "workflow_end"; runId: string; durationMs: number }
   | { kind: "workflow_error"; runId: string; error: string; nodeId?: string }
   | { kind: "workflow_aborted"; runId: string; reason: string };

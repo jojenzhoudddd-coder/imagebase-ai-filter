@@ -5,6 +5,90 @@
 
 ---
 
+## 2026-04-27 (Agent Workflow V2.5)
+
+### feat(workflow): 自由编排 + concurrent-data 真实现 + per-artifact 写串行化 + LLM condition + 安全表达式增强
+
+**分支**: `AIWorkBeta`
+
+V2.5 完成 B4 + B6 + B7 + B8 + B10 + C1 + C3 + C8 + C9。host agent 现在不再受限于 4 个内置模板,可以通过 `compose_workflow` 即兴生成 DSL 跑任意编排;并发改同 idea 不再丢更新;LLM 模式的 condition 让循环退出条件能表达更复杂的语义。
+
+#### B4 — `compose_workflow` 自由编排 MCP 工具
+
+- 新工具 `compose_workflow({doc, userMessage})`,host 给完整 DSL JSON 立即跑
+- 入口校验:`rootNodeId / nodes` 必填、每个 node 必有 `kind` ∈ trigger/logic/action
+- chatAgentService.executeWorkflow 接受 `templateId="custom"` + `params.customDoc`,绕过 buildTemplate 直接用 host 提供的 doc(只补 runId / hostAgentId / 时间戳)
+- TIER1_NAMES 加 `compose_workflow`(always-on)
+- 相比内置模板,host 现在能针对一次性需求即兴写 workflow,如"先跑 query_records → if 数量>50 → spawn_subagent 总结 / else 直接列表"
+
+#### B6 — `concurrent-data` 模板真实现
+
+- 替换 V1 的"fallback 到 brainstorm"
+- 新拓扑:trigger → splitter (host 模型, JSON 输出 N 任务) → parallel (3 worker, 各自从 splitter JSON 抽第 i 项) → merger (host 整合)
+- splitter prompt 强制 JSON 输出 `{tasks:[{title,brief},...]}`,worker 通过 `${scope.split.finalText}` 模板拿到 splitter 结果
+- V2.5 限制:并行分支固定 3(动态 parallel 节点 V2.6+ 引入,需要执行器内嵌 doc rewrite)
+
+#### B7 — `logic.condition.mode = "llm"` 实现
+
+- executor.ts 新增 `evalLlmCondition(prompt, scope, spawn, model?)`
+- LLM 系统 prompt 强制只输出 YES / NO 一个 token,startsWith("YES") → true
+- if / loop.exitCondition 都支持 expression 和 llm 两种模式
+- 默认用 gpt-5.4-mini(低延迟、低成本)。host 可在 condition.model 字段覆盖
+
+#### B8 — Per-artifact 写串行化
+
+- 新建 `services/artifactWriteQueue.ts` —— 用 `Map<key, Promise>` 维护"每个 artifact id 一条排队 Promise"
+- key = `${artifactType}:${artifactId}`,所以同 idea 串行 / 不同 idea 完全并发
+- API:`withArtifactWriteLock(type, id, fn)` 包裹整段 read-modify-write
+- ideaRoutes.ts `POST /:ideaId/write` 改用 `withArtifactWriteLock("idea", ideaId, ...)` 包整段 read+applyIdeaWrite+transaction;`PUT /:ideaId/content` 已经有 idea-stream lock 兜底,不动
+- 单进程(production 是 PM2 fork=1),多 backend 实例时 V3 改 Postgres advisory lock
+
+#### B10 — safeEval 加 ternary + array literal
+
+- Tokeniser PUNCT 加 `?` `:`
+- Parser 新增 `parseTernary()`(优先级仅高于 OR)→ 支持 `cond ? a : b`
+- parsePrimary 新增 `[a, b, c]` array literal 分支
+- 评估器新增 `Cond` / `Arr` AST 节点
+- 用例:`includes(["A","B","C"], scope.user.priority)` 多值匹配;`length(scope.draft.finalText) > 500 ? "long" : "short"` 三元
+
+#### C1 — `workflow-skill` 注册
+
+- 新建 `mcp-server/src/skills/workflowSkill.ts` 把 4 个 workflow 工具 + spawn_subagent 打包
+- triggers:让/审查/头脑风暴/集思广益/并行|并发/cowork/分.步骤/循环.直到 等中英关键词
+- softDeps:[table-skill, idea-skill, taste-skill, demo-skill] —— 跨工件操作时保活
+- promptFragment 决策树 + 5 条规则:何时 spawn_subagent / 何时模板 / 何时 compose / 危险动作上抛 / safeEval 语法 / 别为简单任务套 workflow
+
+#### C3 — Workflow summary 提取通用化
+
+- 替换 V1 hardcode `scope.summary || scope.draft`
+- 新策略:优先级 summary > final > draft > scope 里所有带 finalText 的 entry 中最长的
+- 兼容 host compose 的自由 DSL 任意 outputAlias
+
+#### C8 — Workflow heartbeat / SSE keepalive
+
+- executor.ts 在 walk 外面包一层 wrapper,15s 静默自动 push `workflow_heartbeat` 事件
+- 复用现有 `workflow_node_start` 通道(nodeId="_heartbeat")避免新 SSE 类型,FE 透明处理
+- `setInterval(.unref())` + clearInterval 在 end/error/aborted 三个出口
+
+#### C9 — Workflow abort 级联
+
+- ctx.abortSignal 已经从 chatRoutes /stop → runAgent → spawnSubagent → workflow ctx 链路完整透传
+- 验证 walkNode 入口的 `if (ctx.abortSignal?.aborted) throw "WORKFLOW_ABORTED"` 正确触发 aborted 事件,executor 退出 + clearInterval
+
+#### 自验收
+
+- ✅ Backend tsc clean(只剩 pre-existing dbStore JsonArray 警告,与本次改动无关)
+- ✅ Frontend build pass
+- ⚠️ 端到端验证留 V2.6+ 一起做:compose_workflow 生成 DSL 跑通 / concurrent-data 真拆 + merge / per-artifact 并发不丢 / LLM condition 在 review loop 退出准确
+
+#### 折进后续
+
+- 动态 parallel 节点(运行时 N 自定) → V2.6
+- 多 backend 实例的 cross-process artifact lock (Postgres advisory) → V3
+- compose_workflow 生成失败的 retry + zod 严格 schema → V2.6 polish
+
+---
+
 ## 2026-04-27 (Agent Workflow V2.4)
 
 ### feat(subagent): danger 三段决议 + nesting depth=2 + token 计量 + host-only 工具过滤

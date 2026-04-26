@@ -52,9 +52,7 @@ export function buildTemplate(
       // summarise). The "image-gen" branch needs nano-banana接入(PR4.1).
       return buildBrainstorm(params);
     case "concurrent-data":
-      // V1 falls back to brainstorm. Real "split + worker pool" needs PR4.1
-      // splitter prompt + dynamic branch creation.
-      return buildBrainstorm(params);
+      return buildConcurrentData(params);
     default:
       throw new Error(`unknown template: ${template}`);
   }
@@ -124,6 +122,106 @@ function buildReview(p: TemplateParams): WorkflowDoc {
         },
       },
     },
+  };
+}
+
+/**
+ * V2.5 B6 concurrent-data 真实现:
+ *   trigger
+ *     → action subagent (host model, "splitter") 把 userMessage 拆成 N 个独立子任务,
+ *       要求输出 JSON `{tasks: [{title, brief}, ...]}`
+ *     → action subagent (host model, "router") 读 splitter 的结果,逐项 dispatch
+ *       到 N 个 worker subagent (用 host 模型,因为我们不预知任务类型)
+ *     → action subagent (host model, "merger") 把所有 worker 的结果整合
+ *
+ * V2.5 限制:并行分支数固定 (默认 3) —— DSL workflow 不支持运行时动态创
+ * 建节点(那需要执行器内嵌"再 build doc"逻辑,太重)。改成:splitter 拆
+ * N 任务,workers 节点 fixed=3,每个 worker 取 splitter 结果中第 i 项跑。
+ * 用户希望任务数 != 3 时,后续 V2.6+ 引入 dynamic-parallel 节点。
+ */
+function buildConcurrentData(p: TemplateParams): WorkflowDoc {
+  const workerModel = p.hostModel || "claude-opus-4.7";
+  const PARALLEL_N = 3;
+  const branches: string[] = [];
+  const nodes: WorkflowDoc["nodes"] = {
+    n_trigger: {
+      id: "n_trigger",
+      kind: "trigger",
+      source: "chat-message",
+      payload: { userMessage: p.userMessage },
+      next: "n_split",
+    },
+    n_split: {
+      id: "n_split",
+      kind: "action",
+      type: "subagent",
+      subagentModel: workerModel,
+      outputAlias: "split",
+      inputBinding: {
+        systemPrompt:
+          "你是任务拆分器。把用户的复杂任务拆成最多 " +
+          PARALLEL_N +
+          " 个互相独立可并行的子任务。每个子任务要清晰、可独立完成、不依赖其它任务的结果。" +
+          "**只输出 JSON**,格式如下,不要解释:\n" +
+          '{ "tasks": [ { "title": "...", "brief": "..." }, ... ] }',
+        userPrompt: "${trigger.payload.userMessage}",
+      },
+      next: "n_parallel",
+    },
+    n_parallel: {
+      id: "n_parallel",
+      kind: "logic",
+      type: "parallel",
+      branches: [],
+      joinStrategy: "all",
+      next: "n_merge",
+    },
+    n_merge: {
+      id: "n_merge",
+      kind: "action",
+      type: "subagent",
+      subagentModel: workerModel,
+      outputAlias: "summary",
+      inputBinding: {
+        userPrompt:
+          "把以下并行 worker 的产出整合成一份连贯结果。要求:消除重复、关联交叉点、产出最终整体回复。\n\n" +
+          Array.from({ length: PARALLEL_N }, (_, i) =>
+            `### Worker ${i + 1}\n\${scope.worker_${i}.finalText}`,
+          ).join("\n\n"),
+      },
+    },
+  };
+  for (let i = 0; i < PARALLEL_N; i++) {
+    const id = `n_worker_${i}`;
+    nodes[id] = {
+      id,
+      kind: "action",
+      type: "subagent",
+      subagentModel: workerModel,
+      outputAlias: `worker_${i}`,
+      inputBinding: {
+        userPrompt:
+          "执行以下子任务(从总任务的拆分结果第 " +
+          (i + 1) +
+          " 项中抽取):\n\n${scope.split.finalText}\n\n" +
+          "只关注上面 JSON 里 tasks[" +
+          i +
+          "],按它的 brief 完成。如果该索引位无任务(总任务拆得少于 " +
+          PARALLEL_N +
+          " 个),回复 '无任务' 即可。",
+      },
+    };
+    branches.push(id);
+  }
+  (nodes.n_parallel as any).branches = branches;
+  return {
+    id: p.runId,
+    templateId: "concurrent-data",
+    rootNodeId: "n_trigger",
+    createdBy: p.hostAgentId,
+    createdAt: Date.now(),
+    variables: { userMessage: p.userMessage, parallelN: PARALLEL_N },
+    nodes,
   };
 }
 

@@ -1085,6 +1085,14 @@ function toWorkflowSseEvent(ev: WorkflowEvent): SseEvent {
       return { event: "workflow_error", data: { runId: ev.runId, error: ev.error, nodeId: ev.nodeId } };
     case "workflow_aborted":
       return { event: "workflow_aborted", data: { runId: ev.runId, reason: ev.reason } };
+    case "workflow_heartbeat":
+      // V2.5 C8: surface as a tool_heartbeat-style event (FE doesn't yet
+      // need a workflow-specific channel; the keepalive is for SSE
+      // pipeline only)
+      return {
+        event: "workflow_node_start", // re-use existing channel for now
+        data: { runId: ev.runId, nodeId: "_heartbeat", nodeKind: "logic", nodeType: "heartbeat", elapsedMs: ev.elapsedMs },
+      };
   }
 }
 
@@ -1685,20 +1693,36 @@ async function* runAgentImpl(
     // The handler returns the subagent's final text so the host's tool
     // result includes it (and the LLM can chain off it).
     /** PR4 + V2.1 execute workflow template — orchestrate multi-step subagent
-     *  calls + persist to workflow_runs table for history replay. */
+     *  calls + persist to workflow_runs table for history replay.
+     *  V2.5 B4: also supports `templateId="custom"` with params.customDoc 直接
+     *  跑 host 即兴生成的 DSL。 */
     executeWorkflow: async (opts: {
-      templateId: WorkflowTemplate;
+      templateId: string;
       userMessage: string;
       params?: Record<string, any>;
     }) => {
       const runId = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const doc = buildWorkflowTemplate(opts.templateId, {
-        userMessage: opts.userMessage,
-        hostModel: agentId,  // not the model id but agent id; templates rarely need the model directly
-        runId,
-        hostAgentId: agentId,
-        ...(opts.params ?? {}),
-      });
+      let doc;
+      if (opts.templateId === "custom" && opts.params?.customDoc) {
+        // V2.5 B4: custom 模式 — 用 host 提供的 doc,只补 runId + 时间戳
+        const cd = opts.params.customDoc as any;
+        doc = {
+          ...cd,
+          id: runId,
+          templateId: "custom" as any,
+          createdBy: agentId,
+          createdAt: Date.now(),
+          variables: { userMessage: opts.userMessage, ...(cd.variables ?? {}) },
+        };
+      } else {
+        doc = buildWorkflowTemplate(opts.templateId as WorkflowTemplate, {
+          userMessage: opts.userMessage,
+          hostModel: agentId,
+          runId,
+          hostAgentId: agentId,
+          ...(opts.params ?? {}),
+        });
+      }
       // V2.1 persist workflow run row at start. parentMessageId fallback to
       // synthetic since we don't have the real id yet (host msg persisted at
       // turn end). FE history replay can still join by parentConversationId.
@@ -1721,7 +1745,7 @@ async function* runAgentImpl(
       const collectedNodeEvents: Array<Record<string, any>> = [];
       const workflowCtx = {
         scope: { user: { message: opts.userMessage } },
-        workflow: { runId, templateId: opts.templateId },
+        workflow: { runId, templateId: opts.templateId as WorkflowTemplate },
         user: { message: opts.userMessage, hostModel: agentId },
         trigger: { payload: { userMessage: opts.userMessage } },
         abortSignal,
@@ -1794,13 +1818,25 @@ async function* runAgentImpl(
         queuedEvents.push({ event: "workflow_error", data: { runId, error: m } });
         signalQueue();
       }
-      // Pull a brief summary — prefer scope.summary.finalText (brainstorm) /
-      // scope.draft.finalText (review最后一轮 author 输出) / fallback to ""。
-      // V2.5 will replace this hardcode with "last action node's outputAlias"。
-      finalSummary =
-        (workflowCtx.scope as any).summary?.finalText ||
-        (workflowCtx.scope as any).draft?.finalText ||
-        "";
+      // V2.5 C3 generic summary picker: 找 scope 里所有"action 节点的 outputAlias"
+      // 中 finalText 最长的那个作为 summary。这避免了 hardcode `summary || draft`,
+      // 也兼容用户自己 compose 的 workflow 里使用任意 outputAlias。
+      // 优先级:scope.summary > scope.final > scope.draft > 最长的非空 finalText
+      const scopeAny = workflowCtx.scope as any;
+      const candidates: Array<{ key: string; text: string }> = [];
+      if (scopeAny.summary?.finalText) candidates.push({ key: "summary", text: scopeAny.summary.finalText });
+      if (scopeAny.final?.finalText) candidates.push({ key: "final", text: scopeAny.final.finalText });
+      if (scopeAny.draft?.finalText) candidates.push({ key: "draft", text: scopeAny.draft.finalText });
+      if (candidates.length === 0) {
+        // 兜底:遍历 scope 找所有带 finalText 的 entry,取最长的
+        for (const [k, v] of Object.entries(scopeAny)) {
+          if (v && typeof v === "object" && typeof (v as any).finalText === "string") {
+            candidates.push({ key: k, text: (v as any).finalText });
+          }
+        }
+      }
+      candidates.sort((a, b) => b.text.length - a.text.length);
+      finalSummary = candidates[0]?.text ?? "";
       if (finalSummary.length > 400) finalSummary = finalSummary.slice(0, 400) + "…";
       // V2.1 persist final workflow run state
       try {

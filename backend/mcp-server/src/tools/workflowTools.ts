@@ -124,4 +124,80 @@ export const workflowTools: ToolDefinition[] = [
       }
     },
   },
+  {
+    name: "compose_workflow",
+    description:
+      "由 host 即兴生成自由 workflow DSL JSON 然后立即执行,适合内置 4 模板覆盖不了的场景。" +
+      "你给一个 doc 对象 (节点树 + 起始节点),executor 会按你的 DSL 跑。" +
+      "DSL schema:\n" +
+      "  doc = { rootNodeId, nodes: { [id]: Node } }\n" +
+      "  Node = trigger | logic | action\n" +
+      "    trigger = { kind:'trigger', source:'chat-message', payload?, next }\n" +
+      "    logic   = { kind:'logic', type:'sequence|parallel|loop|if|switch', steps?|branches?|bodyNode?|maxIterations?|exitCondition?|condition?|thenNode?|elseNode?|switchOn?|cases?|defaultNode?, next? }\n" +
+      "    action  = { kind:'action', type:'subagent', subagentModel, userPrompt|inputBinding{userPrompt}, outputAlias?, allowedTools?, maxRounds?, next? }\n" +
+      "  Condition = { mode:'expression', expr:'...' } | { mode:'llm', prompt:'...', model? }\n" +
+      "  inputBinding 内的 ${alias.field} 会从 ctx.scope 取值。\n" +
+      "**安全 / 限制**: 总节点访问 ≤ 200, loop 最多 10, parallel ≤ 8 分支。subagent 危险动作走 V2.4 上抛协议。" +
+      "失败时(schema 不合法 / 找不到节点 / 工具 unknown)会立即返回 error,host 应改 DSL 重试。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        doc: {
+          type: "object",
+          description:
+            "WorkflowDoc 对象。必含 rootNodeId + nodes 字段。runId 由后端分配,不要自己填。",
+        },
+        userMessage: {
+          type: "string",
+          description: "用户原指令 (作为 trigger.payload.userMessage)。所有 ${trigger.payload.userMessage} 模板引用此值。",
+        },
+      },
+      required: ["doc", "userMessage"],
+    },
+    handler: async (args, ctx?: ToolContext): Promise<string> => {
+      if (!ctx?.executeWorkflow) {
+        return JSON.stringify({ error: "compose_workflow 在当前上下文不可用" });
+      }
+      const doc = args.doc as any;
+      const userMessage = String(args.userMessage ?? "").trim();
+      if (!doc || typeof doc !== "object" || !doc.rootNodeId || !doc.nodes) {
+        return JSON.stringify({ error: "doc 必含 rootNodeId + nodes" });
+      }
+      if (!userMessage) {
+        return JSON.stringify({ error: "userMessage 必填" });
+      }
+      // 简单 schema 校验:每个 node 必须有 id + kind
+      const ids = Object.keys(doc.nodes);
+      for (const id of ids) {
+        const n = doc.nodes[id];
+        if (!n || typeof n !== "object" || !n.kind) {
+          return JSON.stringify({ error: `node ${id} 缺 kind 字段` });
+        }
+        if (!["trigger", "logic", "action"].includes(n.kind)) {
+          return JSON.stringify({ error: `node ${id} kind 必须是 trigger/logic/action` });
+        }
+      }
+      if (!doc.nodes[doc.rootNodeId]) {
+        return JSON.stringify({ error: `rootNodeId ${doc.rootNodeId} 不在 nodes` });
+      }
+      try {
+        // executeWorkflow 内部会用 buildTemplate 包一层,这里我们直接传
+        // templateId="custom" + 在 params 里塞 doc。需要给 chatAgentService
+        // 加 customDoc 支持(下面 V2.5 修改 executeWorkflow 实现)。
+        const result = await ctx.executeWorkflow({
+          templateId: "custom" as any,
+          userMessage,
+          params: { customDoc: doc },
+        });
+        return JSON.stringify({
+          runId: result.runId,
+          success: result.success,
+          summary: result.summary,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return JSON.stringify({ error: `compose_workflow failed: ${msg}` });
+      }
+    },
+  },
 ];

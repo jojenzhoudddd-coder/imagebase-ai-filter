@@ -40,6 +40,40 @@ interface SpawnSubagentFn {
   }): Promise<{ runId: string; finalText: string; success: boolean }>;
 }
 
+/**
+ * V2.5 B7: LLM-decide condition. Used by `if` / `loop.exitCondition` /
+ * `switch` when expression mode can't capture the semantic check (e.g.
+ * "did the reviewer approve the design"). 用 cheap & fast model
+ * (gpt-5.4-mini fallback to doubao) 评估,要求 LLM 输出 YES / NO 单 token。
+ */
+async function evalLlmCondition(
+  prompt: string,
+  scope: Record<string, any>,
+  spawn: SpawnSubagentFn,
+  preferredModel?: string,
+): Promise<boolean> {
+  // Resolve `${...}` placeholders inside the prompt body so LLM sees real
+  // values not template syntax.
+  const resolved = (await import("./safeEval.js")).resolveTemplate(prompt, scope);
+  const sysPrompt =
+    "你是一个 boolean 判断器。读完用户给的 prompt 后,只回复 YES 或 NO 一个单词,不要解释,不要标点。" +
+    "如果 prompt 描述的条件成立 → YES;不成立 → NO;不确定时倾向 NO。";
+  const userMsg = resolved;
+  try {
+    const result = await spawn({
+      modelId: preferredModel ?? "gpt-5.4-mini",
+      systemPrompt: sysPrompt,
+      userPrompt: userMsg,
+      maxRounds: 1,
+      allowedTools: [], // 显式不让它调任何工具
+    });
+    const text = (result.finalText ?? "").trim().toUpperCase();
+    return text.startsWith("YES");
+  } catch {
+    return false;
+  }
+}
+
 interface WalkState {
   totalVisits: { count: number };
 }
@@ -54,18 +88,48 @@ export async function* executeWorkflow(
 
   const state: WalkState = { totalVisits: { count: 0 } };
 
+  // V2.5 C8 heartbeat: 每 15s 检查一次最后一次 yield 时间,过 15s 没动静
+  // 主动 push 一个 heartbeat 事件保活 SSE。完成 / 错误 / abort 时自动 cleanup。
+  let lastEmit = Date.now();
+  let stopped = false;
+  const heartbeatQueue: WorkflowEvent[] = [];
+  const heartbeatTimer = setInterval(() => {
+    if (stopped) return;
+    const idle = Date.now() - lastEmit;
+    if (idle >= 15_000) {
+      heartbeatQueue.push({ kind: "workflow_heartbeat", runId: doc.id, elapsedMs: Date.now() - startedAt });
+      lastEmit = Date.now();
+    }
+  }, 5_000).unref();
+
+  function* drainHeartbeat(): Generator<WorkflowEvent> {
+    while (heartbeatQueue.length > 0) yield heartbeatQueue.shift()!;
+  }
+
   try {
-    yield* walk(doc.rootNodeId, doc, ctx, spawn, state);
+    const inner = walk(doc.rootNodeId, doc, ctx, spawn, state);
+    for await (const ev of inner) {
+      yield ev;
+      lastEmit = Date.now();
+      yield* drainHeartbeat();
+    }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     if (errMsg === "WORKFLOW_ABORTED") {
+      stopped = true;
+      clearInterval(heartbeatTimer);
       yield { kind: "workflow_aborted", runId: doc.id, reason: "user-aborted" };
       return;
     }
+    stopped = true;
+    clearInterval(heartbeatTimer);
     yield { kind: "workflow_error", runId: doc.id, error: errMsg };
     return;
   }
 
+  stopped = true;
+  clearInterval(heartbeatTimer);
+  yield* drainHeartbeat();
   yield {
     kind: "workflow_end",
     runId: doc.id,
@@ -179,8 +243,15 @@ async function* walkLogic(
             const errMsg = err instanceof Error ? err.message : String(err);
             throw new Error(`loop exitCondition expression failed: ${errMsg}`);
           }
+        } else if (node.exitCondition.mode === "llm") {
+          // V2.5 B7: LLM judge. cond = LLM output startsWith "YES"
+          cond = await evalLlmCondition(
+            node.exitCondition.prompt,
+            env,
+            spawn,
+            node.exitCondition.model,
+          );
         }
-        // mode==="llm" deferred to PR4.1
         if (cond) break;
       }
     }
@@ -198,6 +269,8 @@ async function* walkLogic(
         const errMsg = err instanceof Error ? err.message : String(err);
         throw new Error(`if condition expression failed: ${errMsg}`);
       }
+    } else if (node.condition.mode === "llm") {
+      cond = await evalLlmCondition(node.condition.prompt, env, spawn, node.condition.model);
     }
     const target = cond ? node.thenNode : node.elseNode;
     if (target) yield* walk(target, doc, ctx, spawn, state);

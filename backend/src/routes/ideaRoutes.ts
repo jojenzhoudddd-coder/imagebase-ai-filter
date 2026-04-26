@@ -6,6 +6,7 @@ import { eventBus } from "../services/eventBus.js";
 import { extractIdeaSections } from "../services/ideaSections.js";
 import { buildMentionRows } from "../services/mentionIndex.js";
 import { applyIdeaWrite } from "../services/ideaWriteService.js";
+import { withArtifactWriteLock } from "../services/artifactWriteQueue.js";
 import * as ideaStream from "../services/ideaStreamSessionService.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -285,51 +286,67 @@ router.post("/:ideaId/write", asyncHandler(async (req: Request, res: Response) =
     return;
   }
 
-  const existing = await prisma.idea.findUnique({ where: { id: req.params.ideaId } });
-  if (!existing) {
-    res.status(404).json({ error: "Idea not found" });
-    return;
-  }
-
-  let write;
+  // V2.5 B8: per-idea write serialiser. 多个 subagent 并发改同一 idea 时,
+  // 各自的 read-modify-write 完整段串行化,避免基于过期 base content 的写
+  // 互相覆盖。同 idea 写排队;不同 idea 完全并发。
   try {
-    write = applyIdeaWrite(existing.content, anchor as any, payload);
-  } catch (err: any) {
-    // Bad anchor (missing section) is a 400, not a 500 — the agent can retry
-    // with a valid slug from get_idea.
-    res.status(400).json({ error: err?.message || "applyIdeaWrite failed" });
-    return;
-  }
+    const result = await withArtifactWriteLock("idea", req.params.ideaId, async () => {
+      const existing = await prisma.idea.findUnique({ where: { id: req.params.ideaId } });
+      if (!existing) {
+        return { kind: "404" as const };
+      }
 
-  const nextVersion = existing.version + 1;
-  const sections = extractIdeaSections(write.content);
-  const mentionRows = buildMentionRows(write.content, "idea", existing.id, existing.workspaceId);
-  const updated = await prisma.$transaction(async (tx) => {
-    const u = await tx.idea.update({
-      where: { id: existing.id },
-      data: { content: write.content, version: nextVersion, sections: sections as unknown as any },
+      let write;
+      try {
+        write = applyIdeaWrite(existing.content, anchor as any, payload);
+      } catch (err: any) {
+        return { kind: "400" as const, error: err?.message || "applyIdeaWrite failed" };
+      }
+
+      const nextVersion = existing.version + 1;
+      const sections = extractIdeaSections(write.content);
+      const mentionRows = buildMentionRows(write.content, "idea", existing.id, existing.workspaceId);
+      const updated = await prisma.$transaction(async (tx) => {
+        const u = await tx.idea.update({
+          where: { id: existing.id },
+          data: { content: write.content, version: nextVersion, sections: sections as unknown as any },
+        });
+        await tx.mention.deleteMany({ where: { sourceType: "idea", sourceId: existing.id } });
+        if (mentionRows.length > 0) {
+          await tx.mention.createMany({ data: mentionRows });
+        }
+        return u;
+      });
+      return { kind: "ok" as const, updated, write };
     });
-    await tx.mention.deleteMany({ where: { sourceType: "idea", sourceId: existing.id } });
-    if (mentionRows.length > 0) {
-      await tx.mention.createMany({ data: mentionRows });
+
+    if (result.kind === "404") {
+      res.status(404).json({ error: "Idea not found" });
+      return;
     }
-    return u;
-  });
+    if (result.kind === "400") {
+      res.status(400).json({ error: result.error });
+      return;
+    }
 
-  eventBus.emitIdeaChange({
-    type: "idea:content-change",
-    ideaId: updated.id,
-    clientId: getClientId(req),
-    timestamp: Date.now(),
-    payload: { content: updated.content, version: updated.version },
-  });
+    const { updated, write } = result;
+    eventBus.emitIdeaChange({
+      type: "idea:content-change",
+      ideaId: updated.id,
+      clientId: getClientId(req),
+      timestamp: Date.now(),
+      payload: { content: updated.content, version: updated.version },
+    });
 
-  res.json({
-    id: updated.id,
-    version: updated.version,
-    description: write.description,
-    range: write.range,
-  });
+    res.json({
+      id: updated.id,
+      version: updated.version,
+      description: write.description,
+      range: write.range,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "applyIdeaWrite failed unexpectedly" });
+  }
 }));
 
 // PATCH /api/ideas/:ideaId — rename (only)

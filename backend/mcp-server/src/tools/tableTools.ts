@@ -92,7 +92,8 @@ export interface ToolContext {
    * subagent runs are visible in the FE WorkflowBlock.
    */
   executeWorkflow?: (opts: {
-    templateId: "review" | "brainstorm" | "cowork" | "concurrent-data";
+    /** "review" / "brainstorm" / "cowork" / "concurrent-data" / "custom"(后者需 params.customDoc) */
+    templateId: string;
     userMessage: string;
     params?: Record<string, any>;
   }) => Promise<{ runId: string; success: boolean; summary: string }>;

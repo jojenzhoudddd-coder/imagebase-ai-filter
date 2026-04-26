@@ -90,6 +90,8 @@ const TIER1_NAMES = new Set([
   // host can list / run review / brainstorm without first activating skill.
   "list_workflow_templates",
   "execute_workflow_template",
+  // V2.5 B4 自由编排
+  "compose_workflow",
 ]);
 
 /** Tier 0 — identity + memory + skill routing + cron. Always loaded. */
