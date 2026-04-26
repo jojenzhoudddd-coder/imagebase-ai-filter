@@ -5,6 +5,69 @@
 
 ---
 
+## 2026-04-27 (Agent Workflow PR2)
+
+### feat(model-routing,chat): 模型路由表 + ChatInput @ + @ model 强约束
+
+**分支**: `AIWorkBeta` · **commits**: 待提交
+
+PR2: 给每个模型补 specialty / strengths / modality / costHint / parallelLimit 字段;Chat 输入框引入 MentionPicker(包含模型选项);用户在对话里 `@ GPT-5.5` 后,后端 host agent 在 Turn Context 看到"强约束 · 必须使用的模型"。为 PR3 的 subagent 路由 + PR4 的 workflow 调度做铺垫。
+
+#### 模型路由表扩展
+
+`backend/src/services/modelRegistry.ts` 新增类型 `ModelSpecialty / ModelStrength / ModelModality / ModelCostHint`,`ModelEntry` 多 5 个字段:
+
+| id | specialty | strengths | costHint | parallel |
+|---|---|---|---|---|
+| claude-opus-4.7 | code | code-review/structured/long-context/creative | premium | 3 |
+| claude-opus-4.6 | reasoning | code-review/structured/long-context | premium | 3 |
+| gpt-5.5 | reasoning | math/structured/code-review/data-analysis | premium | 5 |
+| gpt-5.4 | code | code-review/structured | mid | 5 |
+| gpt-5.4-mini | fast-cheap | low-latency/structured | cheap | 10 |
+| doubao-2.0 | general | low-latency/translation/creative | cheap | 10 |
+| nano-banana | image-gen | creative/ui-design | mid | 2 (stub: visible:false, available:false) |
+| gemini-flash | image-understand | low-latency/data-analysis/long-context | cheap | 8 (stub: visible:false, available:false) |
+
+`/api/agents/models` 回包带新字段。`stub` 模型 `visible:false` 不在 picker 露出,等 PR3+ 接入真 endpoint 后开启。
+
+#### Mention 加 model 类型 + ChatInput @
+
+- 后端 `mentionRoutes` types 接受 `model`,默认不返回(只有 chat input 显式 `?types=model,...` 才放行,避免 idea 里出现噪声)
+- 后端 hit 多 `modelId / modelSpecialty` 字段
+- 前端 `MentionType` 加 `model`,`mentionSyntax.parseMentionHref` 识别 `mention://model/{id}`
+- `MentionPicker` 接受 `types?` prop;ChatInput 传 `["model","table","design","taste","idea","idea-section"]`
+- 新增 `extractMentionPayloads(content)` 工具:在 send 时从原文 markdown 抽出结构化 `ChatMentionPayload[]`
+- ChatInput 输入 `@` → 检测 caret 上下文 → 调出 picker(锚定 textarea 底边而不是 caret,因为 chat input 窄,够用) → 选中后插入 `[@Label](mention://...) `
+
+#### Chat 消息 payload 升级
+
+- `streamChatMessage(opts)` 增加可选 `mentions?: ChatMentionPayload[]` 字段
+- POST body 在有 mention 时携带 `{message, mentions}`
+- 后端 `chatRoutes.ts` 接收 + 写到 `AgentContext.userMentions`
+- `chatAgentService` 新建 `buildUserMentionsLayer()` 在 Turn Context 拼出"## 用户 @ 引用"块,包含两段:
+  - **强约束 · 必须使用的模型**:host agent 必须在工作流里加调用此模型的步骤
+  - **软引用 · 用户聚焦的实体**:host bias 推理但不强制 tool 调用
+
+#### 自验收
+
+- ✅ `/api/agents/models` 返回的每个模型携带 specialty/strengths/modality/costHint/parallelLimit
+- ✅ `/mentions/search?types=model` 返回所有 6 个 visible 模型 + correct mentionUri
+- ✅ ChatInput 输 `@` 弹 picker, MODEL 组 在最上,TABLE 组紧随
+- ✅ 输 `@gpt` 过滤到 3 个 GPT,ArrowDown + Enter 选中 GPT-5.5,textarea 写入 `[@GPT-5.5](mention://model/gpt-5.5) `
+- ✅ 抽取正则在浏览器里能正确从原文识别 mention link
+- ✅ `npm run build` pass
+
+#### 文件总结
+
+- **修改**: `backend/src/services/modelRegistry.ts` · `backend/src/routes/agentRoutes.ts` · `backend/src/routes/mentionRoutes.ts` · `backend/src/services/chatAgentService.ts` · `backend/src/routes/chatRoutes.ts` · `frontend/src/api.ts` · `frontend/src/components/Mention/MentionPicker.tsx` · `frontend/src/components/Mention/mentionSyntax.ts` · `frontend/src/components/ChatSidebar/ChatInput.tsx` · `frontend/src/components/ChatSidebar/index.tsx`
+
+#### 已知保留事项
+
+- nano-banana / gemini-flash 当前 `available:false`,等用户给 key 接入。架构已就位,`visible:true` 即可启用 picker
+- Subagent 实际"forced model" 路由等 PR3 落地。PR2 仅完成"用户意图传递到后端 system prompt"
+
+---
+
 ## 2026-04-27 (Agent Workflow PR1)
 
 ### feat(mention): 共享化 + view→table 颗粒度调整 + 5 处 polish 修复

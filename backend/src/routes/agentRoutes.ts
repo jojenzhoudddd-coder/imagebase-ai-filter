@@ -112,6 +112,16 @@ router.get("/models", async (_req: Request, res: Response) => {
       // to false so the UI can unambiguously render a disabled state.
       available: m.available === true,
       capabilities: m.capabilities,
+      // PR2: model routing table fields. The UI uses these to render
+      //   - `@ model` mention picker grouped/labeled by specialty
+      //   - hover tooltip with strengths
+      //   - workflow-skill routing suggestions on the FE side (defensive
+      //     copy of what the backend will use authoritatively).
+      specialty: m.specialty,
+      strengths: m.strengths,
+      modality: m.modality,
+      costHint: m.costHint,
+      parallelLimit: m.parallelLimit ?? null,
     }));
     res.json({
       models,

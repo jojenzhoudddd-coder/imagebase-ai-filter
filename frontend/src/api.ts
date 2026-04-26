@@ -979,9 +979,30 @@ export interface ToolHeartbeatEvent {
   elapsedMs: number;
 }
 
+/**
+ * PR2: structured mention payload extracted from the raw `message` markdown.
+ * Lives on the wire so the backend host agent can apply strong constraints
+ * (e.g. `model` mentions become "force-use this model in workflow") without
+ * having to re-parse the markdown link syntax.
+ *
+ * Only types that carry actionable backend semantics are emitted:
+ *   - `model`         host agent forces a workflow node using this model
+ *   - `table` / `idea` / `idea-section` / `taste` / `design` are passed
+ *     through so the backend can inject a strong reference into Turn Context
+ *     (the prompt's "what the user is pointing at" section)
+ */
+export type ChatMentionPayload =
+  | { type: "model"; modelId: string }
+  | { type: "table"; tableId: string }
+  | { type: "idea"; ideaId: string }
+  | { type: "idea-section"; ideaId: string; section: string }
+  | { type: "design"; designId: string }
+  | { type: "taste"; tasteId: string; designId: string };
+
 export interface StreamChatOptions {
   conversationId: string;
   message: string;
+  mentions?: ChatMentionPayload[];
   onStart?: (messageId: string) => void;
   onThinking?: (delta: string) => void;
   onMessage?: (delta: string) => void;
@@ -1095,7 +1116,10 @@ export function streamChatMessage(opts: StreamChatOptions): () => void {
       const res = await mutationFetch(`${BASE}/chat/conversations/${encodeURIComponent(opts.conversationId)}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: opts.message }),
+        body: JSON.stringify({
+          message: opts.message,
+          ...(opts.mentions && opts.mentions.length > 0 ? { mentions: opts.mentions } : {}),
+        }),
         signal: controller.signal,
       });
       if (!res.ok) {

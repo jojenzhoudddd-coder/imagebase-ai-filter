@@ -21,6 +21,7 @@
  */
 
 import type { MentionHit, MentionType } from "../../types";
+import type { ChatMentionPayload } from "../../api";
 
 export interface ParsedMention {
   type: MentionType;
@@ -106,4 +107,61 @@ export function parseMentionHref(href: string, label: string): ParsedMention | n
     ideaId,
     modelId: rawType === "model" ? id : undefined,
   };
+}
+
+/**
+ * Extract structured `ChatMentionPayload[]` from raw user-typed markdown.
+ *
+ * Used by ChatInput on send: scans the message for `[@…](mention://…)`
+ * links, dedupes (per `<type>:<id>`), and emits the payload that backend
+ * uses for strong-typed routing (force model, inject reference into
+ * Turn Context, etc.). Idea source-mode roundtrip already preserves
+ * the raw markdown; backend sees both raw text + structured list.
+ *
+ * Lives in `mentionSyntax.ts` because it shares the URI parsing rules
+ * with the picker / preview chip and any divergence would break wire
+ * format.
+ */
+const MENTION_LINK_RE =
+  /\[(@[^\]]*)\]\((mention:\/\/[^)]+)\)/g;
+
+export function extractMentionPayloads(content: string): ChatMentionPayload[] {
+  if (!content) return [];
+  const seen = new Set<string>();
+  const out: ChatMentionPayload[] = [];
+
+  let m: RegExpExecArray | null;
+  MENTION_LINK_RE.lastIndex = 0;
+  while ((m = MENTION_LINK_RE.exec(content)) !== null) {
+    const [, label, href] = m;
+    const parsed = parseMentionHref(href, label);
+    if (!parsed) continue;
+
+    let payload: ChatMentionPayload | null = null;
+    if (parsed.type === "model") {
+      payload = { type: "model", modelId: parsed.id };
+    } else if (parsed.type === "table") {
+      payload = { type: "table", tableId: parsed.id };
+    } else if (parsed.type === "idea") {
+      payload = { type: "idea", ideaId: parsed.id };
+    } else if (parsed.type === "idea-section" && parsed.ideaId) {
+      payload = { type: "idea-section", ideaId: parsed.ideaId, section: parsed.id };
+    } else if (parsed.type === "design") {
+      payload = { type: "design", designId: parsed.id };
+    } else if (parsed.type === "taste" && parsed.designId) {
+      payload = { type: "taste", tasteId: parsed.id, designId: parsed.designId };
+    }
+    if (!payload) continue;
+
+    const key = `${payload.type}:${"modelId" in payload ? payload.modelId
+      : "tableId" in payload ? payload.tableId
+      : "ideaId" in payload ? `${payload.ideaId}#${"section" in payload ? payload.section : ""}`
+      : "designId" in payload && "tasteId" in payload ? `${payload.designId}/${payload.tasteId}`
+      : "designId" in payload ? payload.designId
+      : ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(payload);
+  }
+  return out;
 }

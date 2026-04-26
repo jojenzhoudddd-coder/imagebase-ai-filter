@@ -229,7 +229,21 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
       res.status(404).json({ error: "Conversation not found" });
       return;
     }
-    const { message } = req.body as { message?: string };
+    const { message, mentions } = req.body as {
+      message?: string;
+      // PR2: structured @ mentions extracted FE-side. Used by the host
+      // agent loop to apply strong typed routing — `model` mentions force
+      // the workflow to spawn a subagent on that model; `table` / `idea`
+      // mentions are injected into Turn Context as references.
+      mentions?: Array<
+        | { type: "model"; modelId: string }
+        | { type: "table"; tableId: string }
+        | { type: "idea"; ideaId: string }
+        | { type: "idea-section"; ideaId: string; section: string }
+        | { type: "design"; designId: string }
+        | { type: "taste"; tasteId: string; designId: string }
+      >;
+    };
     if (!message || typeof message !== "string" || !message.trim()) {
       res.status(400).json({ error: "message is required" });
       return;
@@ -254,6 +268,9 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
       pendingConfirmations: state.pendingConfirmations,
       // 透传 JWT cookie，让 MCP loopback 调用时仍然认得出原 user
       authToken: (req as any).cookies?.ibase_auth,
+      // PR2: passthrough — chatAgentService.runAgent reads this to compose
+      // routing hints into the system prompt's Turn Context block.
+      userMentions: Array.isArray(mentions) ? mentions : undefined,
     };
 
     try {

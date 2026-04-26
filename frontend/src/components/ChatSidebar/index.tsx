@@ -39,6 +39,7 @@ import {
   sendChatConfirmation,
   stopChatTurn,
 } from "../../api";
+import { extractMentionPayloads } from "../Mention/mentionSyntax";
 
 // Client-side message model (mutable during streaming)
 interface UiMessage {
@@ -440,9 +441,14 @@ export default function ChatSidebar({
     setStreaming(true);
     setError(null);
 
+    // PR2: extract structured mention payload (model / table / idea / ...)
+    // from the raw markdown so the host agent can apply strong-typed routing.
+    const mentions = extractMentionPayloads(text);
+
     cancelRef.current = streamChatMessage({
       conversationId: activeConv.id,
       message: text,
+      mentions,
       onStart: (serverId) => {
         // Replace pending id with the server-assigned one so subsequent
         // events can correlate.
@@ -850,6 +856,7 @@ export default function ChatSidebar({
         onStop={handleStop}
         streaming={streaming}
         disabled={!activeConv}
+        workspaceId={workspaceId}
       />
     </aside>
   );

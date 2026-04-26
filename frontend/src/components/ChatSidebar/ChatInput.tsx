@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AtIcon, MicIcon, SendIcon, StopIcon } from "./icons";
 import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
 import { useTranslation } from "../../i18n";
+import MentionPicker from "../Mention/MentionPicker";
+import { buildMentionLink } from "../Mention/mentionSyntax";
+import type { MentionHit } from "../../types";
 
 interface Props {
   value: string;
@@ -11,6 +14,23 @@ interface Props {
   disabled?: boolean;
   streaming: boolean;
   placeholder?: string;
+  /** Workspace id powering the @-mention picker. PR2: chat input gains the
+   *  same picker as IdeaEditor + adds `model` type for "force-use" hints. */
+  workspaceId: string;
+}
+
+/**
+ * Mention query state — open when user typed `@` and is editing the query
+ * suffix (until they hit space / Esc / pick). `triggerOffset` is the position
+ * of the `@` glyph in the textarea value;`anchorRect` is the textarea's
+ * bottom-left in viewport pixels (we anchor the picker to the textarea, not
+ * to the caret — caret-tracking in a `<textarea>` requires a mirror div and
+ * is overkill for chat input).
+ */
+interface MentionQueryState {
+  triggerOffset: number;
+  query: string;
+  anchorRect: { left: number; right: number; top: number; bottom: number };
 }
 
 /**
@@ -36,9 +56,70 @@ export default function ChatInput({
   disabled,
   streaming,
   placeholder,
+  workspaceId,
 }: Props) {
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // ── Mention picker state (PR2) ──
+  const [mentionState, setMentionState] = useState<MentionQueryState | null>(null);
+
+  // Picker is anchored to the textarea's bounding rect (not the caret) —
+  // chat input has limited width so a textarea-anchored picker is plenty
+  // findable without the cost of a mirror-div caret tracker.
+  const computeAnchorRect = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return { left: 0, right: 0, top: 0, bottom: 0 };
+    const r = el.getBoundingClientRect();
+    return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+  }, []);
+
+  /**
+   * Re-detect mention state from a new (value, caret) pair. Walks left from
+   * the caret looking for a recent `@`. Bails out when:
+   *   - caret is at start (no `@` to find)
+   *   - we hit whitespace before finding `@` (the `@` is not the active one)
+   *   - we hit a `]` (the `@` is part of a mention markdown link `[@x](…)`)
+   *   - we hit another `@` (the previous one is the active query, not this)
+   */
+  const recomputeMentionState = useCallback((newValue: string, caret: number) => {
+    if (caret === 0) {
+      setMentionState(null);
+      return;
+    }
+    let i = caret - 1;
+    while (i >= 0) {
+      const ch = newValue[i];
+      if (ch === "@") {
+        // Found candidate. Validate it's not the `@` inside a mention chip
+        // markdown (i.e. the char before isn't `[`).
+        const prev = i > 0 ? newValue[i - 1] : "";
+        if (prev === "[") {
+          setMentionState(null);
+          return;
+        }
+        const query = newValue.slice(i + 1, caret);
+        // Reject if the query contains whitespace (means user has moved past
+        // the @ context and is just typing prose).
+        if (/\s/.test(query)) {
+          setMentionState(null);
+          return;
+        }
+        setMentionState({
+          triggerOffset: i,
+          query,
+          anchorRect: computeAnchorRect(),
+        });
+        return;
+      }
+      // Bail-out characters
+      if (ch === "\n" || ch === " " || ch === "\t" || ch === "]") {
+        setMentionState(null);
+        return;
+      }
+      i--;
+    }
+    setMentionState(null);
+  }, [computeAnchorRect]);
 
   // ── Voice input (reused from FilterPanel) ──
   // We preserve whatever the user had typed before starting voice so the
@@ -167,8 +248,44 @@ export default function ChatInput({
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    onChange(e.target.value);
+    const newVal = e.target.value;
+    onChange(newVal);
+    const caret = e.target.selectionStart ?? newVal.length;
+    recomputeMentionState(newVal, caret);
   };
+
+  // Caret movement (arrow keys / click) without value change still affects
+  // mention state — re-evaluate after these too.
+  const handleSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    recomputeMentionState(el.value, el.selectionStart ?? el.value.length);
+  };
+
+  const handleMentionSelect = useCallback((hit: MentionHit) => {
+    const ms = mentionState;
+    if (!ms) return;
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? value.length;
+    // Replace the `@<query>` segment with the markdown mention link.
+    const before = value.slice(0, ms.triggerOffset);
+    const after = value.slice(caret);
+    const link = buildMentionLink(hit);
+    const next = `${before}${link} ${after}`;
+    onChange(next);
+    setMentionState(null);
+    // Restore caret AFTER the inserted link + trailing space.
+    const newCaret = before.length + link.length + 1;
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      try {
+        ta.setSelectionRange(newCaret, newCaret);
+      } catch { /* */ }
+    });
+  }, [mentionState, value, onChange]);
+
+  const handleMentionClose = useCallback(() => setMentionState(null), []);
 
   return (
     <div className="chat-input-wrap">
@@ -180,11 +297,22 @@ export default function ChatInput({
             rows={1}
             value={value}
             onChange={handleChange}
+            onSelect={handleSelect}
             onKeyDown={handleKeyDown}
             onKeyUp={handleKeyUp}
             placeholder={placeholder ?? t("chat.input.placeholder")}
             disabled={disabled}
           />
+          {mentionState && (
+            <MentionPicker
+              workspaceId={workspaceId}
+              query={mentionState.query}
+              atRect={mentionState.anchorRect}
+              types={["model", "table", "design", "taste", "idea", "idea-section"]}
+              onSelect={handleMentionSelect}
+              onClose={handleMentionClose}
+            />
+          )}
         </div>
         <div className="chat-input-toolbar">
           <div className="chat-input-tools-left">

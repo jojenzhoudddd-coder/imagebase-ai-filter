@@ -676,6 +676,48 @@ export interface PrebuiltSystemLayers {
     requestedId: string | null | undefined;
     usedFallback: boolean;
   };
+  /** PR2: Turn-Context block describing user's @ mentions in this turn. */
+  userMentions?: string | null;
+}
+
+/**
+ * PR2: Build the "user is pointing at" Turn-Context block from the structured
+ * @ mentions FE extracted at send time. Returns null when there are no
+ * mentions so the layer simply doesn't appear in the system prompt.
+ *
+ * Two flavours of hint:
+ *   - `model` mentions are STRONG ROUTING — the host agent must include a
+ *     workflow step on each mentioned model when designing its plan.
+ *   - artifact mentions (table/idea/idea-section/design/taste) are SOFT
+ *     REFERENCES — the agent should bias its reasoning toward those entities
+ *     but isn't forced to call any specific tool.
+ */
+function buildUserMentionsLayer(mentions?: UserMention[]): string | null {
+  if (!mentions || mentions.length === 0) return null;
+  const models = mentions.filter((m): m is Extract<UserMention, { type: "model" }> => m.type === "model");
+  const artifacts = mentions.filter((m) => m.type !== "model");
+
+  const parts: string[] = ["## 用户 @ 引用 (本回合用户在指令中显式 @ 的实体)"];
+  if (models.length > 0) {
+    parts.push(
+      `### 强约束 · 必须使用的模型 (${models.length} 个)\n` +
+        models.map((m) => `- ${m.modelId} —— 你必须在本回合的工作流中包含一个调用此模型的子任务步骤(可作为 host / subagent)`).join("\n"),
+    );
+  }
+  if (artifacts.length > 0) {
+    const lines = artifacts.map((m) => {
+      switch (m.type) {
+        case "table": return `- table ${m.tableId}`;
+        case "idea": return `- idea ${m.ideaId} (整篇)`;
+        case "idea-section": return `- idea-section ${m.ideaId}#${m.section}`;
+        case "design": return `- design ${m.designId} (整个画布)`;
+        case "taste": return `- taste ${m.tasteId} (design ${m.designId})`;
+        default: return null;
+      }
+    }).filter(Boolean) as string[];
+    parts.push(`### 软引用 · 用户聚焦的工作区实体 (${lines.length} 个)\n${lines.join("\n")}`);
+  }
+  return parts.join("\n\n");
 }
 
 /**
@@ -698,6 +740,7 @@ export function buildSystemText(
   layer3Parts.push(layers.snapshot);
   if (layers.recalled) layer3Parts.push(layers.recalled);
   if (layers.analystHandles) layer3Parts.push(layers.analystHandles);
+  if (layers.userMentions) layer3Parts.push(layers.userMentions);
 
   const skillCatalog = buildSkillCatalog(activeSkillNames);
   const systemParts = [META_SYSTEM_PROMPT, layers.identity];
@@ -728,7 +771,8 @@ async function assembleInput(
     model: ModelEntry;
     requestedId: string | null | undefined;
     usedFallback: boolean;
-  }
+  },
+  userMentions?: UserMention[]
 ): Promise<{ input: ArkInputItem[]; layers: PrebuiltSystemLayers }> {
   const [identity, snapshot, recalled, analystHandles] = await Promise.all([
     buildIdentityLayer(agentId),
@@ -738,6 +782,7 @@ async function assembleInput(
   ]);
   const layers: PrebuiltSystemLayers = {
     identity, snapshot, recalled, analystHandles, runtime,
+    userMentions: buildUserMentionsLayer(userMentions),
   };
   const systemText = buildSystemText(layers, activeSkillNames);
 
@@ -879,6 +924,22 @@ export interface SseEvent {
   data: Record<string, unknown>;
 }
 
+/**
+ * PR2: structured @ mentions extracted FE-side. Used by the host agent loop
+ * to apply strong-typed routing:
+ *   - `model` → workflow router will force a subagent step on this model
+ *   - `table` / `idea` / `idea-section` / `design` / `taste` → injected into
+ *     Turn Context's "user is pointing at" block so the agent biases its
+ *     reasoning toward those artifacts
+ */
+export type UserMention =
+  | { type: "model"; modelId: string }
+  | { type: "table"; tableId: string }
+  | { type: "idea"; ideaId: string }
+  | { type: "idea-section"; ideaId: string; section: string }
+  | { type: "design"; designId: string }
+  | { type: "taste"; tasteId: string; designId: string };
+
 export interface AgentContext {
   conversationId: string;
   workspaceId: string;
@@ -895,6 +956,8 @@ export interface AgentContext {
    * 让 backend 的 attachUser / artifact-access 守卫能识别原 user。
    * 缺失则 MCP 调用会变成 unauthenticated（兼容旧 stdio MCP 场景）。 */
   authToken?: string;
+  /** PR2: structured @ mentions extracted from the user's raw message. */
+  userMentions?: UserMention[];
 }
 
 const DEFAULT_AGENT_ID = "agent_default";
@@ -1106,7 +1169,8 @@ async function* runAgentImpl(
     agentId,
     userMessage,
     [...skillState.active],
-    { model, requestedId: storedModelId, usedFallback }
+    { model, requestedId: storedModelId, usedFallback },
+    ctx.userMentions,
   );
   // Track which skills the system prompt currently reflects so we only
   // rebuild when the set actually changes (cheap guard; string concat is

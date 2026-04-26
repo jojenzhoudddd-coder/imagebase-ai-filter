@@ -43,6 +43,46 @@ export interface ModelCapabilities {
   thinkingBudget?: number;
 }
 
+/**
+ * Specialty (PR2 of agent-workflow series) — 内置专长枚举,代码级维护,不开放
+ * 给用户改。host agent / workflow-skill 用这个做模型路由决策(e.g. "需要图像
+ * 生成 → 路由到 image-gen specialty 的模型")。
+ *
+ * 6 类映射:
+ *   - code               代码生成 / 审查 / 重构(claude-opus-4.7, gpt-5.5)
+ *   - reasoning          复杂推理 / 规划 / 数学(claude-opus thinking, gpt-5.5 reasoning)
+ *   - general            通用对话 / 总结(doubao-2.0, claude-opus-4.6)
+ *   - image-gen          文生图(nano-banana stub)
+ *   - image-understand   图像理解(gemini-flash stub)
+ *   - fast-cheap         高吞吐 / 低延迟分类(doubao-2.0, gpt-5.4-mini)
+ */
+export type ModelSpecialty =
+  | "code"
+  | "reasoning"
+  | "general"
+  | "image-gen"
+  | "image-understand"
+  | "fast-cheap";
+
+/**
+ * Strengths(PR2)—— 软标签集合,系统给定的固定枚举。FE 用作"擅长 XX,
+ * 推荐用 XX"的小气泡;workflow 路由时也作启发式参考。V1 read-only;V2 计划
+ * 让用户在固定枚举里选。
+ */
+export type ModelStrength =
+  | "long-context"
+  | "structured-output"
+  | "creative-writing"
+  | "translation"
+  | "math"
+  | "data-analysis"
+  | "ui-design"
+  | "code-review"
+  | "low-latency";
+
+export type ModelModality = "text" | "image" | "video" | "audio";
+export type ModelCostHint = "cheap" | "mid" | "premium";
+
 export interface ModelEntry {
   /** Stable app-side id. Stored in AgentConfig.model. Never changes across UI renames. */
   id: string;
@@ -62,6 +102,19 @@ export interface ModelEntry {
   visible: boolean;
   /** Set by probeModels(). `undefined` means "not yet probed". */
   available?: boolean;
+
+  // ─── PR2 routing fields ──────────────────────────────────────────────
+  /** Single primary specialty — drives workflow routing(image-gen 一定用 image-gen 模型)。 */
+  specialty: ModelSpecialty;
+  /** Soft tags shown on hover / used for "推荐"。 */
+  strengths: ModelStrength[];
+  /** Input/output modality. text-only models → ["text"]。 */
+  modality: ModelModality[];
+  /** Rough cost tier for budget-aware routing。 */
+  costHint: ModelCostHint;
+  /** Hint for max parallel requests in a concurrent workflow。Optional;
+   *  registry-default if omitted。 */
+  parallelLimit?: number;
 }
 
 // ─── Registry ────────────────────────────────────────────────────────────
@@ -72,8 +125,6 @@ export const MODELS: ModelEntry[] = [
     id: "doubao-2.0",
     displayName: "Doubao 2.0 pro",
     provider: "ark",
-    // Read at registry load time. Falls back to the existing prod endpoint id
-    // so a missing .env doesn't break the default path.
     providerModelId:
       process.env.SEED_MODEL ||
       process.env.ARK_MODEL ||
@@ -82,6 +133,11 @@ export const MODELS: ModelEntry[] = [
     defaults: { temperature: 0.1, maxOutputTokens: 32768 },
     group: "volcano",
     visible: true,
+    specialty: "general",
+    strengths: ["low-latency", "translation", "creative-writing"],
+    modality: ["text"],
+    costHint: "cheap",
+    parallelLimit: 10,
   },
 
   // ── Anthropic family (via OneAPI) ────────────────────────────────────
@@ -96,10 +152,14 @@ export const MODELS: ModelEntry[] = [
       contextWindow: 200000,
       thinkingBudget: 16000,
     },
-    // Claude extended thinking requires temperature=1.
     defaults: { temperature: 1.0, maxOutputTokens: 20000 },
     group: "anthropic",
     visible: true,
+    specialty: "code",
+    strengths: ["code-review", "structured-output", "long-context", "creative-writing"],
+    modality: ["text"],
+    costHint: "premium",
+    parallelLimit: 3,
   },
   {
     id: "claude-opus-4.6",
@@ -115,6 +175,11 @@ export const MODELS: ModelEntry[] = [
     defaults: { temperature: 1.0, maxOutputTokens: 20000 },
     group: "anthropic",
     visible: true,
+    specialty: "reasoning",
+    strengths: ["code-review", "structured-output", "long-context"],
+    modality: ["text"],
+    costHint: "premium",
+    parallelLimit: 3,
   },
   // ── OpenAI family (via OneAPI) ───────────────────────────────────────
   // Newer GPT-5.5 entries go first so they render near the top of the picker
@@ -130,6 +195,11 @@ export const MODELS: ModelEntry[] = [
     defaults: { temperature: 0.1, maxOutputTokens: 8000 },
     group: "openai",
     visible: true,
+    specialty: "reasoning",
+    strengths: ["math", "structured-output", "code-review", "data-analysis"],
+    modality: ["text"],
+    costHint: "premium",
+    parallelLimit: 5,
   },
   {
     id: "gpt-5.4",
@@ -140,6 +210,11 @@ export const MODELS: ModelEntry[] = [
     defaults: { temperature: 0.1, maxOutputTokens: 8000 },
     group: "openai",
     visible: true,
+    specialty: "code",
+    strengths: ["code-review", "structured-output"],
+    modality: ["text"],
+    costHint: "mid",
+    parallelLimit: 5,
   },
   {
     id: "gpt-5.4-mini",
@@ -150,6 +225,48 @@ export const MODELS: ModelEntry[] = [
     defaults: { temperature: 0.1, maxOutputTokens: 4000 },
     group: "openai",
     visible: true,
+    specialty: "fast-cheap",
+    strengths: ["low-latency", "structured-output"],
+    modality: ["text"],
+    costHint: "cheap",
+    parallelLimit: 10,
+  },
+
+  // ─── Multi-modal stubs (PR2)— available=false 直到实际接入 ───────────
+  // 留 entry 是为了让 specialty="image-gen"/"image-understand" 的 workflow
+  // routing 能在生成时找到候选模型,即使运行时还跑不通。设置 visible:false
+  // 不在 picker 里露出,避免用户主动选到一个跑不动的。
+  {
+    id: "nano-banana",
+    displayName: "Nano Banana (image-gen)",
+    provider: "oneapi",
+    providerModelId: "nano-banana",
+    capabilities: { thinking: false, toolUse: false, contextWindow: 8000 },
+    defaults: { temperature: 0.7, maxOutputTokens: 1000 },
+    group: "openai",
+    visible: false,
+    available: false,
+    specialty: "image-gen",
+    strengths: ["creative-writing", "ui-design"],
+    modality: ["text", "image"],
+    costHint: "mid",
+    parallelLimit: 2,
+  },
+  {
+    id: "gemini-flash",
+    displayName: "Gemini Flash (image-understand)",
+    provider: "oneapi",
+    providerModelId: "gemini-flash",
+    capabilities: { thinking: false, toolUse: true, contextWindow: 1000000 },
+    defaults: { temperature: 0.1, maxOutputTokens: 4000 },
+    group: "openai",
+    visible: false,
+    available: false,
+    specialty: "image-understand",
+    strengths: ["low-latency", "data-analysis", "long-context"],
+    modality: ["text", "image"],
+    costHint: "cheap",
+    parallelLimit: 8,
   },
 ];
 

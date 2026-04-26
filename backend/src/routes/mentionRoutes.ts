@@ -2,6 +2,7 @@ import { Router, Request, Response, RequestHandler } from "express";
 import { PrismaClient } from "../generated/prisma/client.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { listVisibleModels } from "../services/modelRegistry.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -29,7 +30,7 @@ const router = Router();
  *   - idea         → "<IdeaName>"
  *   - idea-section → "<IdeaName>.<HeadingText>"
  */
-type V4MentionType = "table" | "design" | "taste" | "idea" | "idea-section";
+type V4MentionType = "table" | "design" | "taste" | "idea" | "idea-section" | "model";
 
 interface MentionHit {
   type: V4MentionType;
@@ -39,6 +40,9 @@ interface MentionHit {
   designId?: string;  // for taste
   ideaId?: string;    // for idea-section
   headingText?: string; // raw heading body for idea-section
+  // Model-only fields
+  modelId?: string;
+  modelSpecialty?: string;
   /**
    * Canonical URI the frontend chip + MCP tools both emit into Markdown.
    * Mirrors exactly what `MentionPicker` inserts.
@@ -82,8 +86,7 @@ function normaliseTypesParam(raw: string): Set<V4MentionType> {
     else if (seg === "taste") out.add("taste");
     else if (seg === "idea") out.add("idea");
     else if (seg === "idea-section") out.add("idea-section");
-    // model is filtered server-side here — it's emitted via a separate
-    // route in PR2 (chat input only).
+    else if (seg === "model") out.add("model");
   }
   return out;
 }
@@ -107,6 +110,9 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
   const { workspaceId } = req.params;
   const qRaw = (req.query.q as string) || "";
   const q = qRaw.trim().toLowerCase();
+  // Default types intentionally exclude `model` — only the chat input
+  // explicitly asks for it (`?types=table,design,...,model`). Idea editor
+  // doesn't need model mentions and including them would add noise.
   const typesRaw = (req.query.types as string) || "table,design,taste,idea,idea-section";
   const types = normaliseTypesParam(typesRaw);
   const limit = Math.min(parseInt((req.query.limit as string) || "10", 10), 30);
@@ -122,6 +128,7 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
   const tasteHits: MentionHit[] = [];
   const ideaHits: MentionHit[] = [];
   const sectionHits: MentionHit[] = [];
+  const modelHits: MentionHit[] = [];
 
   // ── Tables (whole-table mention,not view-level) ──
   // Tables with 0 records are filtered out: an empty table has nothing
@@ -217,6 +224,26 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
     }
   }
 
+  // ── Models (chat input only) ──
+  // listVisibleModels() filters `visible:false` (e.g. nano-banana / gemini-flash
+  // stubs while available:false). We DO include `available:false` visible models
+  // so the user can still mention them as a "preferred but offline" hint;
+  // workflow-skill will route around availability at execution time.
+  if (types.has("model")) {
+    for (const m of listVisibleModels()) {
+      // Filter both displayName and id to be picker-friendly
+      if (matchesAny([m.displayName, m.id])) {
+        modelHits.push(decorate({
+          type: "model",
+          id: m.id,
+          label: m.displayName,
+          modelId: m.id,
+          modelSpecialty: m.specialty,
+        }));
+      }
+    }
+  }
+
   // ── Rank within each bucket ──
   const rankCmp = (a: MentionHit, b: MentionHit) => {
     if (!q) return a.label.localeCompare(b.label);
@@ -233,10 +260,13 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
   tasteHits.sort(rankCmp);
   ideaHits.sort(rankCmp);
   sectionHits.sort(rankCmp);
+  modelHits.sort(rankCmp);
 
-  // Order (table → design → taste → idea → idea-section) mirrors how the
-  // picker groups them visually.
-  const buckets = [tableHits, designHits, tasteHits, ideaHits, sectionHits];
+  // Order (model → table → design → taste → idea → idea-section). Models go
+  // first so they're easy to find in chat input where they're the most
+  // intentional cross-cutting mention. (Idea editor never asks for `model`
+  // so its order is unchanged.)
+  const buckets = [modelHits, tableHits, designHits, tasteHits, ideaHits, sectionHits];
   const hits: MentionHit[] = [];
   let progress = true;
   while (hits.length < limit && progress) {

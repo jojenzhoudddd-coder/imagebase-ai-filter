@@ -13,6 +13,12 @@ interface Props {
   atRect: { left: number; right: number; top: number; bottom: number };
   onSelect: (hit: MentionHit) => void;
   onClose: () => void;
+  /**
+   * Optional whitelist of mention types to surface. ChatInput passes
+   * `["model","table","design","taste","idea","idea-section"]` to opt into
+   * model mentions; IdeaEditor uses the default (no models) by omitting it.
+   */
+  types?: Array<MentionHit["type"]>;
 }
 
 /**
@@ -25,7 +31,7 @@ interface Props {
  * *visual* order (post-group, post-sort), not the raw backend hits array,
  * so ArrowDown always moves to the next row the user sees.
  */
-export default function MentionPicker({ workspaceId, query, atRect, onSelect, onClose }: Props) {
+export default function MentionPicker({ workspaceId, query, atRect, onSelect, onClose, types }: Props) {
   const { t } = useTranslation();
   const [hits, setHits] = useState<MentionHit[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -43,12 +49,18 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
 
   // Debounced fetch. A fresh query invalidates older in-flight responses via
   // the ref check, so we never paint stale hits.
+  // Stabilise types array in deps with a stringified key so a new array
+  // identity each render doesn't refire the effect.
+  const typesKey = types ? types.slice().sort().join(",") : "";
   useEffect(() => {
     lastQueryRef.current = query;
     setLoading(true);
     const id = window.setTimeout(async () => {
       try {
-        const results = await searchMentions(workspaceId, query, { limit: 10 });
+        const results = await searchMentions(workspaceId, query, {
+          limit: 10,
+          types: types && types.length > 0 ? types : undefined,
+        });
         if (lastQueryRef.current === query) {
           setHits(results);
           setActiveIdx(0);
@@ -60,7 +72,8 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
       }
     }, 150);
     return () => window.clearTimeout(id);
-  }, [workspaceId, query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, query, typesKey]);
 
   // Group hits into three buckets — 数据表 (view) / 创意 (taste) / 灵感
   // (idea + idea-section). Both idea types fold into the same "灵感" label,
