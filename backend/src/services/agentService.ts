@@ -205,6 +205,52 @@ export async function setSelectedModel(agentId: string, modelId: string): Promis
   await writeConfig(agentId, { model: modelId });
 }
 
+// ─── V2.7 B18: per-agent model strength overrides ─────────────────────────
+//
+// Agent 个性化:registry 给每个模型一组默认 strengths (code-review /
+// translation / data-analysis 等),但用户对自己的 agent 可能有独立认知 ——
+// "我觉得 doubao-2.0 翻译比 claude 好用" / "我不要 gpt 写代码" 之类。
+// 配置存在 agent config.json 的 modelStrengthOverrides 字段:
+//   { "doubao-2.0": ["translation", "low-latency"], ... }
+// 字段不存在 / 不在 override map 里 → 走 registry 默认。
+// 这只影响 routing recommendations 的 hover 标签 / 推荐排序,不影响
+// resolveModelForCall (那个仍只看 availability)。
+
+export type ModelStrengthOverrides = Record<string, string[]>;
+
+export async function getModelStrengthOverrides(agentId: string): Promise<ModelStrengthOverrides> {
+  const cfg = await readConfig(agentId);
+  const raw = cfg.modelStrengthOverrides;
+  if (!raw || typeof raw !== "object") return {};
+  const out: ModelStrengthOverrides = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(v)) {
+      out[k] = v.filter((s) => typeof s === "string").map((s) => String(s));
+    }
+  }
+  return out;
+}
+
+/**
+ * Replace overrides for one model id. Pass empty array to clear that
+ * model's override (then registry default applies).
+ */
+export async function setModelStrengthOverride(
+  agentId: string,
+  modelId: string,
+  strengths: string[],
+): Promise<ModelStrengthOverrides> {
+  const current = await getModelStrengthOverrides(agentId);
+  const next = { ...current };
+  if (strengths.length === 0) {
+    delete next[modelId];
+  } else {
+    next[modelId] = Array.from(new Set(strengths.map((s) => s.trim()).filter(Boolean)));
+  }
+  await writeConfig(agentId, { modelStrengthOverrides: next });
+  return next;
+}
+
 /** Shallow-merge patch into config.json. Unknown keys preserved. */
 export async function writeConfig(agentId: string, patch: Partial<AgentConfig>): Promise<AgentConfig> {
   const current = await readConfig(agentId);

@@ -11,6 +11,7 @@ import sseRoutes from "./routes/sseRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import folderRoutes from "./routes/folderRoutes.js";
 import agentRoutes from "./routes/agentRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
 import tasteRoutes from "./routes/tasteRoutes.js";
 import ideaRoutes from "./routes/ideaRoutes.js";
@@ -128,6 +129,9 @@ app.use("/api/sync", sseRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/folders", folderRoutes);
 app.use("/api/agents", agentRoutes);
+// V2.7 admin: SubagentRun / WorkflowRun list + aggregated metrics. Read-only.
+// Auth currently inherits from `attachUser` upstream; tighten before prod.
+app.use("/api/admin", adminRoutes);
 // designRoutes 和 tasteRoutes 都挂在 /api/designs 下：
 //  - designRoutes: 基础 CRUD (POST /, PUT /:designId, DELETE /:designId, PUT /reorder)
 //  - tasteRoutes : /:designId/tastes/* (upload / from-figma / batch-update / 单条 CRUD / source)

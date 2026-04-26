@@ -50,6 +50,8 @@ import {
   readHeartbeatLog,
   getSelectedModel,
   setSelectedModel,
+  getModelStrengthOverrides,
+  setModelStrengthOverride,
   type AgentConfig,
 } from "../services/agentService.js";
 import {
@@ -329,6 +331,57 @@ router.put("/:agentId/model", async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error("[agents] set model error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+// ─── V2.7 B18: per-agent model strength overrides ─────────────────────
+// GET 返回 { overrides: { modelId: ["strength", ...] } }
+// PUT 单条:body { modelId, strengths: string[] } (空数组 = 重置为 registry 默认)
+
+router.get("/:agentId/model-strengths", async (req: Request, res: Response) => {
+  try {
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    const overrides = await getModelStrengthOverrides(agent.id);
+    res.json({ overrides });
+  } catch (err: any) {
+    console.error("[agents] get model-strengths error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+router.put("/:agentId/model-strengths", async (req: Request, res: Response) => {
+  try {
+    const { modelId, strengths } = req.body ?? {};
+    if (typeof modelId !== "string" || !modelId) {
+      res.status(400).json({ error: "modelId is required" });
+      return;
+    }
+    if (!Array.isArray(strengths)) {
+      res.status(400).json({ error: "strengths must be an array" });
+      return;
+    }
+    if (!getModel(modelId)) {
+      res.status(400).json({ error: `unknown modelId: ${modelId}` });
+      return;
+    }
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    const next = await setModelStrengthOverride(
+      agent.id,
+      modelId,
+      strengths.map((s: any) => String(s)),
+    );
+    res.json({ overrides: next });
+  } catch (err: any) {
+    console.error("[agents] set model-strengths error:", err);
     res.status(500).json({ error: err.message ?? "internal error" });
   }
 });
