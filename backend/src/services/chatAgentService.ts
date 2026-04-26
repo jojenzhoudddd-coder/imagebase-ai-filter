@@ -55,6 +55,7 @@ import { createSubagentRun, updateSubagentRun } from "./subagentRunStore.js";
 import { executeWorkflow as runWorkflowExecutor } from "./workflow/executor.js";
 import { buildTemplate as buildWorkflowTemplate } from "./workflow/templates.js";
 import type { WorkflowEvent, WorkflowTemplate } from "./workflow/types.js";
+import * as wfStore from "./workflowRunStore.js";
 
 // Pushed up from 10 per user request. Seed can chain dozens of tool calls in
 // a single CRM-build turn; cap is only a last-resort runaway guard.
@@ -1541,7 +1542,8 @@ async function* runAgentImpl(
     // (interleaved with the host's tool_progress / tool_heartbeat).
     // The handler returns the subagent's final text so the host's tool
     // result includes it (and the LLM can chain off it).
-    /** PR4 execute workflow template — orchestrate multi-step subagent calls. */
+    /** PR4 + V2.1 execute workflow template — orchestrate multi-step subagent
+     *  calls + persist to workflow_runs table for history replay. */
     executeWorkflow: async (opts: {
       templateId: WorkflowTemplate;
       userMessage: string;
@@ -1555,6 +1557,26 @@ async function* runAgentImpl(
         hostAgentId: agentId,
         ...(opts.params ?? {}),
       });
+      // V2.1 persist workflow run row at start. parentMessageId fallback to
+      // synthetic since we don't have the real id yet (host msg persisted at
+      // turn end). FE history replay can still join by parentConversationId.
+      try {
+        await wfStore.createWorkflowRun({
+          id: runId,
+          parentMessageId: `pending_${conversationId}`,
+          parentConversationId: conversationId,
+          hostAgentId: agentId,
+          templateId: String(opts.templateId),
+          paramsJson: opts.params ?? {},
+          docJson: doc,
+        });
+      } catch (err) {
+        // 容忍 DB 写失败,不阻断执行(V1 内存路径仍工作)
+        console.error("[chatAgentService] createWorkflowRun failed:", err);
+      }
+      const startedAt = Date.now();
+      // 累计 nodeEvents 同步 push 到 array,完成后写一次 DB
+      const collectedNodeEvents: Array<Record<string, any>> = [];
       const workflowCtx = {
         scope: { user: { message: opts.userMessage } },
         workflow: { runId, templateId: opts.templateId },
@@ -1604,26 +1626,52 @@ async function* runAgentImpl(
       // Run the workflow generator, pump its events into queuedEvents.
       let finalSummary = "";
       let success = false;
+      let workflowError: string | null = null;
+      let aborted = false;
       try {
         for await (const ev of runWorkflowExecutor(doc, workflowCtx, spawnFn)) {
+          // V2.1 record event for FE timeline + DB persistence
+          collectedNodeEvents.push({ ...ev, ts: Date.now() });
           // Translate WorkflowEvent → SseEvent shape
           queuedEvents.push(toWorkflowSseEvent(ev));
           signalQueue();
           if (ev.kind === "workflow_end") success = true;
-          if (ev.kind === "workflow_aborted" || ev.kind === "workflow_error") success = false;
+          if (ev.kind === "workflow_aborted") {
+            aborted = true;
+            success = false;
+          }
+          if (ev.kind === "workflow_error") {
+            workflowError = ev.error;
+            success = false;
+          }
         }
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err);
+        workflowError = m;
         queuedEvents.push({ event: "workflow_error", data: { runId, error: m } });
         signalQueue();
       }
       // Pull a brief summary — prefer scope.summary.finalText (brainstorm) /
-      // scope.draft.finalText (review最后一轮 author 输出) / fallback to "".
+      // scope.draft.finalText (review最后一轮 author 输出) / fallback to ""。
+      // V2.5 will replace this hardcode with "last action node's outputAlias"。
       finalSummary =
         (workflowCtx.scope as any).summary?.finalText ||
         (workflowCtx.scope as any).draft?.finalText ||
         "";
       if (finalSummary.length > 400) finalSummary = finalSummary.slice(0, 400) + "…";
+      // V2.1 persist final workflow run state
+      try {
+        await wfStore.updateWorkflowRun(runId, {
+          status: aborted ? "aborted" : success ? "success" : "error",
+          errorMessage: workflowError ?? null,
+          finalSummary: finalSummary || null,
+          nodeEventsJson: collectedNodeEvents,
+          completedAt: new Date(),
+          durationMs: Date.now() - startedAt,
+        });
+      } catch (err) {
+        console.error("[chatAgentService] updateWorkflowRun failed:", err);
+      }
       return { runId, success, summary: finalSummary };
     },
     spawnSubagent: async (opts: {
@@ -2173,12 +2221,39 @@ async function* runAgentImpl(
   }
 
   // Persist the assistant message (aggregated text + thinking + tool calls).
-  await convStore.appendMessage(conversationId, {
+  const persistedAssistantMsg = await convStore.appendMessage(conversationId, {
     role: "assistant",
     content: accumulatedText,
     thinking: accumulatedThinking || undefined,
     toolCalls: accumulatedToolCalls,
   });
+
+  // V2.1: re-key any subagent_runs / workflow_runs that this turn created
+  // with the synthetic `pending_<convId>` parent → real assistant message id.
+  // Without this, history reload's "pending → last assistant" heuristic
+  // misattributes runs from earlier turns. Single SQL UPDATE per table.
+  if (persistedAssistantMsg?.id) {
+    const pendingKey = `pending_${conversationId}`;
+    try {
+      const { PrismaClient } = await import("../generated/prisma/client.js");
+      const pg = await import("pg");
+      const { PrismaPg } = await import("@prisma/adapter-pg");
+      const pool = new pg.default.Pool({ connectionString: process.env.DATABASE_URL });
+      const adapter = new PrismaPg(pool);
+      const p = new PrismaClient({ adapter });
+      await p.subagentRun.updateMany({
+        where: { parentMessageId: pendingKey },
+        data: { parentMessageId: persistedAssistantMsg.id },
+      });
+      await p.workflowRun.updateMany({
+        where: { parentMessageId: pendingKey },
+        data: { parentMessageId: persistedAssistantMsg.id },
+      });
+      await pool.end();
+    } catch (err) {
+      console.error("[chatAgentService] re-key pending runs failed:", err);
+    }
+  }
 
   // Day 4: append this turn to working-memory, and fire-and-forget a
   // compression pass if the buffer is big enough. Compression is

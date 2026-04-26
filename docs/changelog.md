@@ -5,6 +5,51 @@
 
 ---
 
+## 2026-04-27 (Agent Workflow V2.1)
+
+### feat(workflow,subagent): 持久化 + 历史回放 + refetch merge — V2.1 修复 V1 已知 bugs
+
+**分支**: `AIWorkBeta`
+
+V2.1: 把 V1 时期"内存 only"的 SubagentRun 历史回放 / WorkflowRun 持久化两个洞补上,顺手修了 PR3 自验证时观察到的 assistant 消息偶发消失 bug。V2 路线图第一批 5 个 bug/特性。
+
+#### 修复内容(A1-A3 + A5 + B9)
+
+**Backend**:
+- 新增 Prisma `WorkflowRun` 表 + migration `20260427100000_workflow_run`
+  - 字段:templateId / paramsJson / docJson / nodeEventsJson / status / finalSummary / durationMs / 时间戳
+  - 跨表关联 subagent_runs.workflowNodeId(应用层 join,无 FK 约束)
+- `services/workflowRunStore.ts` CRUD helpers
+- `chatAgentService.executeWorkflow` callback 在执行开始 / 结束写 workflow_runs 行,nodeEvents 完整持久化(WorkflowEvent kind + ts)
+- `chatRoutes.ts /messages` 路由扩展:join SubagentRun + WorkflowRun → message.subagentRuns / message.workflowRuns
+- 新加 turn 结束时 re-key 逻辑:`UPDATE subagent_runs / workflow_runs SET parentMessageId = <real msg id> WHERE parentMessageId = 'pending_<convId>'` —— 解决 V1 用 synthetic key 写入但历史 join 时无法精确归属的问题
+
+**Frontend**:
+- `serverToUi(message)` 转换函数读取 server 返回的 subagentRuns + workflowRuns,filter 还原成 `UiSubagentRun[]` + `UiWorkflowRun[]`
+- 新增 `normalizeServerNodeEvent(e)` 把 backend `WorkflowEvent.kind` 翻译成 FE `UiWorkflowRun.nodeEvents.kind`
+- 新增 `mergeServerWithLocal(server, local)` 合并函数:streaming-tail 期间 server 还没 join 上时优先保 local 的 subagentRuns / workflowRuns,否则用 server canonical 版本
+
+#### 自验收
+
+- ✅ 跑一次 brainstorm workflow → workflow_runs 表 INSERT 1 行(durationMs=51s, finalSummary 含完整对比表)
+- ✅ subagent_runs 4 行(3 brainstormers + 1 summary)
+- ✅ 刷新页面 → 5 个 SubagentBlock 完整重现(每个带 ✓ 完成 + 时长 + 模型名)
+- ✅ Re-key 逻辑:turn 结束后 pending_<conv> 自动被替换成真实 msg id,后续 turn 互不串
+- ✅ build pass
+
+#### V2.1 完成 → 进 V2.2 (ChatInput 重写)
+
+剩余 V2:
+- V2.2:D1 + D3 + C12-15(ChatInput textarea→contenteditable,mention 蓝字 chip,picker 改 caret-anchored 右上方)
+- V2.3:D2 + C2/C5/C6/C7/C10(SubagentBlock + WorkflowBlock 复用 ToolCallCard 样式)
+- V2.4:B1 + B2 + B3 + C11(subagent 危险动作上抛 host + nesting depth=2 + token 计量)
+- V2.5:Workflow 自由编排 + 写串行化
+- V2.6:Worktree e2e + multi-modal
+- V2.7:用户级 strengths + admin metrics
+- V2.8:收尾
+
+---
+
 ## 2026-04-27 (Agent Workflow PR5)
 
 ### feat(worktree): 真 git worktree 隔离 + worktree-skill + 8 个并发代码工具

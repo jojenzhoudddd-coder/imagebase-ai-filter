@@ -289,6 +289,42 @@ model SubagentRun {
   @@map("subagent_runs")
 }
 
+/// V2.1 Agent Workflow:Workflow 执行记录持久化。每次 host 调用
+/// `execute_workflow_template` 拉起一次 workflow 时建一行,timeline (节点
+/// 起止 / 循环迭代 / 分支启动) 全部沉到 nodeEventsJson。subagent runs 通过
+/// 各自的 `workflowNodeId` 关联回这里。
+///
+/// 历史回放:`getConversationMessages` 返回值 join `WorkflowRun` 表(按
+/// parentMessageId)填到 message.workflowRuns,FE 重新渲染 WorkflowBlock 时
+/// 间线和关联的 SubagentBlock。
+model WorkflowRun {
+  id                   String   @id @default(cuid())
+  parentMessageId      String   // host 消息 id
+  parentConversationId String
+  hostAgentId          String
+  templateId           String   // "review" | "brainstorm" | "cowork" | "concurrent-data" | (custom 时空)
+  /// 启动参数 (e.g. {authorModel, reviewerModel, maxIterations} for review)
+  paramsJson           Json?
+  /// DSL doc 完整 JSON 快照 (回放时不需要再 build template)
+  docJson              Json?
+  /// Linear timeline: workflow_start / node_start / node_end / loop_iter / branch_start / end
+  /// 与 FE UiWorkflowRun.nodeEvents 同结构
+  nodeEventsJson       Json?
+
+  status        String  // "running" | "success" | "error" | "aborted"
+  errorMessage  String? @db.Text
+  /// 取自 ctx.scope.summary.finalText / scope.draft.finalText 的简短结果
+  finalSummary  String? @db.Text
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  durationMs  Int?
+
+  @@index([parentMessageId])
+  @@index([parentConversationId, startedAt])
+  @@map("workflow_runs")
+}
+
 // ─── 设计稿（SVG 矢量画布） ───
 
 model Design {

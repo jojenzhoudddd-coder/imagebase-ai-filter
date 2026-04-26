@@ -304,7 +304,10 @@ export default function ChatSidebar({
             setActiveConv(conversation);
             setHasMoreHistory(hasMore);
             if (!streamingRef.current) {
-              setMessages(serverMsgs.map(serverToUi));
+              // V2.1 A5: 若本地 message 含 streaming 中累计的 subagentRuns /
+              // workflowRuns 而 server 还没 join 上(刚结束 turn 的极短窗口),
+              // 优先保留本地数据。否则用 server 版本(canonical)。
+              setMessages((prev) => mergeServerWithLocal(serverMsgs.map(serverToUi), prev));
             }
             return;
           } catch {
@@ -318,7 +321,7 @@ export default function ChatSidebar({
           setActiveConv(conv);
           setHasMoreHistory(hasMore);
           if (!streamingRef.current) {
-            setMessages(msgs.map(serverToUi));
+            setMessages((prev) => mergeServerWithLocal(msgs.map(serverToUi), prev));
           }
         } else {
           const conv = await createConversation(workspaceId, agentId);
@@ -1168,14 +1171,104 @@ function friendlyError(code: string, message: string): string {
 }
 
 function serverToUi(m: ChatMessage): UiMessage {
+  // V2.1 backend now joins subagent_runs + workflow_runs into the message
+  // payload so history reload re-renders SubagentBlock + WorkflowBlock.
+  const sRuns = (m as any).subagentRuns ?? [];
+  const wRuns = (m as any).workflowRuns ?? [];
   return {
     id: m.id,
     role: m.role === "user" ? "user" : "assistant",
     content: m.content,
     thinking: m.thinking,
     toolCalls: (m.toolCalls || []).map((tc) => ({ ...tc })),
+    subagentRuns: sRuns.length
+      ? sRuns.map((r: any): UiSubagentRun => ({
+          runId: r.id,
+          requestedModel: r.requestedModel ?? r.subagentModel,
+          resolvedModel: r.subagentModel,
+          usedFallback: r.requestedModel && r.requestedModel !== r.subagentModel,
+          userPrompt: r.userPrompt ?? "",
+          systemPrompt: r.systemPrompt ?? "",
+          thinking: r.thinkingText ?? "",
+          finalText: r.finalText ?? "",
+          toolCalls: Array.isArray(r.toolCallsJson) ? r.toolCallsJson : [],
+          status: r.status === "running"
+            ? "running"
+            : r.status === "success"
+            ? "success"
+            : "error",
+          durationMs: r.durationMs ?? undefined,
+          error: r.errorMessage ?? undefined,
+          startedAt: new Date(r.startedAt).getTime(),
+        }))
+      : undefined,
+    workflowRuns: wRuns.length
+      ? wRuns.map((r: any): UiWorkflowRun => ({
+          runId: r.id,
+          templateId: r.templateId,
+          status: r.status === "running"
+            ? "running"
+            : r.status === "success"
+            ? "success"
+            : r.status === "aborted"
+            ? "aborted"
+            : "error",
+          durationMs: r.durationMs ?? undefined,
+          nodeEvents: Array.isArray(r.nodeEventsJson)
+            ? (r.nodeEventsJson as any[]).map((e) => normalizeServerNodeEvent(e)).filter(Boolean) as UiWorkflowRun["nodeEvents"]
+            : [],
+          startedAt: new Date(r.startedAt).getTime(),
+          error: r.errorMessage ?? undefined,
+        }))
+      : undefined,
     streaming: false,
   };
+}
+
+/**
+ * V2.1 A5: merge server-fetched messages with local state. Server is the
+ * source of truth EXCEPT in two cases:
+ *   1) Local message marked `streaming: true` → keep local (server hasn't
+ *      persisted the final yet).
+ *   2) Local message has subagentRuns / workflowRuns that server doesn't
+ *      have yet (streaming-tail race window) → keep local for those fields.
+ *
+ * Pure: takes new (server) + old (local), returns merged array preserving
+ * server order.
+ */
+function mergeServerWithLocal(server: UiMessage[], local: UiMessage[]): UiMessage[] {
+  const localById = new Map(local.map((m) => [m.id, m]));
+  return server.map((s) => {
+    const l = localById.get(s.id);
+    if (!l) return s;
+    if (l.streaming) return l; // keep streaming local intact
+    // 保留 subagentRuns / workflowRuns 二者中"非空"的一方:
+    //   server 已 join 到 → 用 server (canonical)
+    //   server 没 → 用 local (streaming-tail race)
+    return {
+      ...s,
+      subagentRuns: (s.subagentRuns?.length ?? 0) > 0 ? s.subagentRuns : l.subagentRuns,
+      workflowRuns: (s.workflowRuns?.length ?? 0) > 0 ? s.workflowRuns : l.workflowRuns,
+    };
+  });
+}
+
+/** Backend WorkflowEvent kind names ↔ UI nodeEvent kind names. */
+function normalizeServerNodeEvent(e: any): UiWorkflowRun["nodeEvents"][number] | null {
+  const ts = typeof e.ts === "number" ? e.ts : Date.now();
+  if (e.kind === "workflow_node_start") {
+    return { kind: "node_start", nodeId: e.nodeId, nodeKind: e.nodeKind, nodeType: e.nodeType, ts };
+  }
+  if (e.kind === "workflow_node_end") {
+    return { kind: "node_end", nodeId: e.nodeId, output: e.output, ts };
+  }
+  if (e.kind === "workflow_loop_iteration") {
+    return { kind: "loop_iter", loopNodeId: e.loopNodeId, iter: e.iter, maxIter: e.maxIter, ts };
+  }
+  if (e.kind === "workflow_branch_start") {
+    return { kind: "branch_start", parentNodeId: e.parentNodeId, branchIdx: e.branchIdx, totalBranches: e.totalBranches, ts };
+  }
+  return null;
 }
 
 /**

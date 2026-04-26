@@ -17,6 +17,8 @@ import express, { type Request, type Response } from "express";
 import * as convStore from "../services/conversationStore.js";
 import { runAgent, resumeAfterConfirm, type AgentContext, type SseEvent } from "../services/chatAgentService.js";
 import * as store from "../services/dbStore.js";
+import { listSubagentRunsForConversation } from "../services/subagentRunStore.js";
+import { listWorkflowRunsForConversation } from "../services/workflowRunStore.js";
 import {
   getSuggestions,
   refreshSuggestions,
@@ -199,7 +201,56 @@ router.get("/conversations/:id/messages", async (req: Request, res: Response) =>
   const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : undefined;
   const before = typeof req.query.before === "string" ? req.query.before : undefined;
   const result = await convStore.getMessages(req.params.id, { limit, before });
-  res.json({ conversation: conv, messages: result.messages, hasMore: result.hasMore });
+  // V2.1 fetch + join SubagentRun + WorkflowRun for these messages so FE
+  // can re-render SubagentBlock + WorkflowBlock on history reload.
+  const messageIds = result.messages.map((m) => m.id);
+  const [subagentRuns, workflowRuns] = await Promise.all([
+    messageIds.length > 0
+      ? listSubagentRunsForConversation(req.params.id).catch(() => [])
+      : Promise.resolve([] as any[]),
+    messageIds.length > 0
+      ? listWorkflowRunsForConversation(req.params.id).catch(() => [])
+      : Promise.resolve([] as any[]),
+  ]);
+  // Group runs by parentMessageId for FE attachment.
+  const subagentByMsg: Record<string, any[]> = {};
+  for (const r of subagentRuns) {
+    const key = r.parentMessageId;
+    (subagentByMsg[key] = subagentByMsg[key] || []).push(r);
+  }
+  const workflowByMsg: Record<string, any[]> = {};
+  for (const r of workflowRuns) {
+    const key = r.parentMessageId;
+    (workflowByMsg[key] = workflowByMsg[key] || []).push(r);
+  }
+  // V1 PR3 used "pending_<conversationId>" as parentMessageId fallback (host
+  // user msg not persisted yet). Reattach those rows to the LAST assistant
+  // message of the conversation so they show up under the right turn.
+  const pendingKey = `pending_${req.params.id}`;
+  const lastAssistant = [...result.messages].reverse().find((m) => m.role === "assistant");
+  if (lastAssistant) {
+    if (subagentByMsg[pendingKey]) {
+      subagentByMsg[lastAssistant.id] = [
+        ...(subagentByMsg[lastAssistant.id] ?? []),
+        ...subagentByMsg[pendingKey],
+      ];
+      delete subagentByMsg[pendingKey];
+    }
+    if (workflowByMsg[pendingKey]) {
+      workflowByMsg[lastAssistant.id] = [
+        ...(workflowByMsg[lastAssistant.id] ?? []),
+        ...workflowByMsg[pendingKey],
+      ];
+      delete workflowByMsg[pendingKey];
+    }
+  }
+  // Attach to messages.
+  const enrichedMessages = result.messages.map((m) => ({
+    ...m,
+    subagentRuns: subagentByMsg[m.id] ?? [],
+    workflowRuns: workflowByMsg[m.id] ?? [],
+  }));
+  res.json({ conversation: conv, messages: enrichedMessages, hasMore: result.hasMore });
 });
 
 // DELETE /api/chat/conversations/:id
