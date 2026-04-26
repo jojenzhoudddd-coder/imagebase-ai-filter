@@ -35,6 +35,7 @@ import { tasteNavTools } from "./tasteTools.js";
 import { dictionaryTools } from "./dictionaryTools.js";
 import { demoNavTools } from "./demoTools.js";
 import { subagentTools } from "./subagentTools.js";
+import { workflowTools } from "./workflowTools.js";
 import { allSkills, skillsByName } from "../skills/index.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
@@ -77,9 +78,12 @@ const TIER1_NAMES = new Set([
   "list_demos",
   "get_demo",
   // PR3 Agent Workflow: subagent spawn always-on so the host doesn't need
-  // to activate workflow-skill just to fork a single sub-task. Workflow
-  // skill (PR4) layers DSL editing on top of this raw primitive.
+  // to activate workflow-skill just to fork a single sub-task.
   "spawn_subagent",
+  // PR4 Agent Workflow: workflow template orchestration. Always-on so any
+  // host can list / run review / brainstorm without first activating skill.
+  "list_workflow_templates",
+  "execute_workflow_template",
 ]);
 
 /** Tier 0 — identity + memory + skill routing + cron. Always loaded. */
@@ -100,6 +104,7 @@ export const tier1Tools: ToolDefinition[] = [
   ...dictionaryTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...demoNavTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...subagentTools.filter((t) => TIER1_NAMES.has(t.name)),
+  ...workflowTools.filter((t) => TIER1_NAMES.has(t.name)),
 ];
 
 /**

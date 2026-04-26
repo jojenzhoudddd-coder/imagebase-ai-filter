@@ -52,6 +52,9 @@ import type { ProviderInputItem, ProviderStreamEvent } from "./providers/types.j
 // MCP loopback 透传 JWT —— 见 dataStoreClient.ts 顶部注释
 import { authStorage } from "../../mcp-server/src/dataStoreClient.js";
 import { createSubagentRun, updateSubagentRun } from "./subagentRunStore.js";
+import { executeWorkflow as runWorkflowExecutor } from "./workflow/executor.js";
+import { buildTemplate as buildWorkflowTemplate } from "./workflow/templates.js";
+import type { WorkflowEvent, WorkflowTemplate } from "./workflow/types.js";
 
 // Pushed up from 10 per user request. Seed can chain dozens of tool calls in
 // a single CRM-build turn; cap is only a last-resort runaway guard.
@@ -933,7 +936,16 @@ export interface SseEvent {
     | "subagent_tool_progress"
     | "subagent_tool_result"
     | "subagent_done"
-    | "subagent_error";
+    | "subagent_error"
+    // PR4 workflow events
+    | "workflow_start"
+    | "workflow_node_start"
+    | "workflow_node_end"
+    | "workflow_loop_iteration"
+    | "workflow_branch_start"
+    | "workflow_end"
+    | "workflow_error"
+    | "workflow_aborted";
   data: Record<string, unknown>;
 }
 
@@ -1026,6 +1038,42 @@ export interface SpawnSubagentOptions {
   hostTools: ToolDefinition[];
   /** ToolContext to pass through to subagent tool handlers (workspaceId etc). */
   toolCtx: ToolContext;
+}
+
+/** Convert WorkflowEvent (executor) to SseEvent (chat stream). */
+function toWorkflowSseEvent(ev: WorkflowEvent): SseEvent {
+  switch (ev.kind) {
+    case "workflow_start":
+      return { event: "workflow_start", data: { runId: ev.runId, templateId: ev.templateId } };
+    case "workflow_node_start":
+      return {
+        event: "workflow_node_start",
+        data: { runId: ev.runId, nodeId: ev.nodeId, nodeKind: ev.nodeKind, nodeType: ev.nodeType },
+      };
+    case "workflow_node_end":
+      return { event: "workflow_node_end", data: { runId: ev.runId, nodeId: ev.nodeId, output: ev.output } };
+    case "workflow_loop_iteration":
+      return {
+        event: "workflow_loop_iteration",
+        data: { runId: ev.runId, loopNodeId: ev.loopNodeId, iter: ev.iter, maxIter: ev.maxIter },
+      };
+    case "workflow_branch_start":
+      return {
+        event: "workflow_branch_start",
+        data: {
+          runId: ev.runId,
+          parentNodeId: ev.parentNodeId,
+          branchIdx: ev.branchIdx,
+          totalBranches: ev.totalBranches,
+        },
+      };
+    case "workflow_end":
+      return { event: "workflow_end", data: { runId: ev.runId, durationMs: ev.durationMs } };
+    case "workflow_error":
+      return { event: "workflow_error", data: { runId: ev.runId, error: ev.error, nodeId: ev.nodeId } };
+    case "workflow_aborted":
+      return { event: "workflow_aborted", data: { runId: ev.runId, reason: ev.reason } };
+  }
 }
 
 const DEFAULT_SUBAGENT_SYSTEM = `你是一个聚焦任务的子 agent。
@@ -1493,6 +1541,91 @@ async function* runAgentImpl(
     // (interleaved with the host's tool_progress / tool_heartbeat).
     // The handler returns the subagent's final text so the host's tool
     // result includes it (and the LLM can chain off it).
+    /** PR4 execute workflow template — orchestrate multi-step subagent calls. */
+    executeWorkflow: async (opts: {
+      templateId: WorkflowTemplate;
+      userMessage: string;
+      params?: Record<string, any>;
+    }) => {
+      const runId = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const doc = buildWorkflowTemplate(opts.templateId, {
+        userMessage: opts.userMessage,
+        hostModel: agentId,  // not the model id but agent id; templates rarely need the model directly
+        runId,
+        hostAgentId: agentId,
+        ...(opts.params ?? {}),
+      });
+      const workflowCtx = {
+        scope: { user: { message: opts.userMessage } },
+        workflow: { runId, templateId: opts.templateId },
+        user: { message: opts.userMessage, hostModel: agentId },
+        trigger: { payload: { userMessage: opts.userMessage } },
+        abortSignal,
+      };
+      // Spawn callback the workflow executor uses for each subagent node:
+      // re-uses the same chatAgentService.spawnSubagent that toolCtx.spawnSubagent
+      // wraps. We can't recursively call the callback (that'd double-emit
+      // events) — instead re-invoke spawnSubagent directly here.
+      const spawnFn = async (sopts: {
+        modelId: string;
+        systemPrompt?: string;
+        userPrompt: string;
+        allowedTools?: string[];
+        maxRounds?: number;
+        workflowNodeId?: string | null;
+      }) => {
+        const activeTools = resolveActiveTools([...skillState.active]);
+        const stream = spawnSubagent(
+          {
+            modelId: sopts.modelId,
+            systemPrompt: sopts.systemPrompt,
+            userPrompt: sopts.userPrompt,
+            allowedTools: sopts.allowedTools,
+            maxRounds: sopts.maxRounds,
+            parentMessageId: `pending_${conversationId}`,
+            parentConversationId: conversationId,
+            hostAgentId: agentId,
+            workflowNodeId: sopts.workflowNodeId ?? null,
+            hostTools: activeTools,
+            toolCtx: toolCtx as ToolContext,
+          },
+          abortSignal,
+        );
+        let result = { runId: "spawn_failed", finalText: "", success: false };
+        let next = await stream.next();
+        while (!next.done) {
+          queuedEvents.push(next.value);
+          signalQueue();
+          next = await stream.next();
+        }
+        if (next.value) result = next.value as typeof result;
+        return result;
+      };
+      // Run the workflow generator, pump its events into queuedEvents.
+      let finalSummary = "";
+      let success = false;
+      try {
+        for await (const ev of runWorkflowExecutor(doc, workflowCtx, spawnFn)) {
+          // Translate WorkflowEvent → SseEvent shape
+          queuedEvents.push(toWorkflowSseEvent(ev));
+          signalQueue();
+          if (ev.kind === "workflow_end") success = true;
+          if (ev.kind === "workflow_aborted" || ev.kind === "workflow_error") success = false;
+        }
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        queuedEvents.push({ event: "workflow_error", data: { runId, error: m } });
+        signalQueue();
+      }
+      // Pull a brief summary — prefer scope.summary.finalText (brainstorm) /
+      // scope.draft.finalText (review最后一轮 author 输出) / fallback to "".
+      finalSummary =
+        (workflowCtx.scope as any).summary?.finalText ||
+        (workflowCtx.scope as any).draft?.finalText ||
+        "";
+      if (finalSummary.length > 400) finalSummary = finalSummary.slice(0, 400) + "…";
+      return { runId, success, summary: finalSummary };
+    },
     spawnSubagent: async (opts: {
       modelId: string;
       systemPrompt?: string;

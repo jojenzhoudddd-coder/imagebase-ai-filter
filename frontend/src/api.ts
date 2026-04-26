@@ -1021,6 +1021,26 @@ export interface StreamChatOptions {
   onSubagentToolResult?: (runId: string, callId: string, success: boolean, result: unknown) => void;
   onSubagentDone?: (ev: SubagentDoneEvent) => void;
   onSubagentError?: (runId: string, error: string) => void;
+  // ── PR4 Workflow SSE callbacks ──
+  onWorkflowStart?: (ev: WorkflowStartEvent) => void;
+  onWorkflowNodeStart?: (ev: WorkflowNodeStartEvent) => void;
+  onWorkflowNodeEnd?: (runId: string, nodeId: string, output?: any) => void;
+  onWorkflowLoopIteration?: (runId: string, loopNodeId: string, iter: number, maxIter: number) => void;
+  onWorkflowBranchStart?: (runId: string, parentNodeId: string, branchIdx: number, totalBranches: number) => void;
+  onWorkflowEnd?: (runId: string, durationMs: number) => void;
+  onWorkflowError?: (runId: string, error: string, nodeId?: string) => void;
+  onWorkflowAborted?: (runId: string, reason: string) => void;
+}
+
+export interface WorkflowStartEvent {
+  runId: string;
+  templateId?: string;
+}
+export interface WorkflowNodeStartEvent {
+  runId: string;
+  nodeId: string;
+  nodeKind: "trigger" | "logic" | "action";
+  nodeType?: string;
 }
 
 export interface SubagentStartEvent {
@@ -1167,6 +1187,36 @@ async function readChatSseStream(
             break;
           case "subagent_error":
             handlers.onSubagentError?.(data.runId, data.error || "subagent error");
+            break;
+          // ── PR4 Workflow events ──
+          case "workflow_start":
+            handlers.onWorkflowStart?.({ runId: data.runId, templateId: data.templateId });
+            break;
+          case "workflow_node_start":
+            handlers.onWorkflowNodeStart?.({
+              runId: data.runId,
+              nodeId: data.nodeId,
+              nodeKind: data.nodeKind,
+              nodeType: data.nodeType,
+            });
+            break;
+          case "workflow_node_end":
+            handlers.onWorkflowNodeEnd?.(data.runId, data.nodeId, data.output);
+            break;
+          case "workflow_loop_iteration":
+            handlers.onWorkflowLoopIteration?.(data.runId, data.loopNodeId, data.iter, data.maxIter);
+            break;
+          case "workflow_branch_start":
+            handlers.onWorkflowBranchStart?.(data.runId, data.parentNodeId, data.branchIdx, data.totalBranches);
+            break;
+          case "workflow_end":
+            handlers.onWorkflowEnd?.(data.runId, typeof data.durationMs === "number" ? data.durationMs : 0);
+            break;
+          case "workflow_error":
+            handlers.onWorkflowError?.(data.runId, data.error || "workflow error", data.nodeId);
+            break;
+          case "workflow_aborted":
+            handlers.onWorkflowAborted?.(data.runId, data.reason || "");
             break;
         }
       }

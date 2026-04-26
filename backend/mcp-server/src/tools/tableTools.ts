@@ -82,6 +82,20 @@ export interface ToolContext {
     maxRounds?: number;
     workflowNodeId?: string | null;
   }) => Promise<{ runId: string; finalText: string; success: boolean }>;
+  /**
+   * PR4 Agent Workflow: execute a built-in workflow template. Like
+   * spawnSubagent, this is set by the in-process host loop because it
+   * needs the privileged context (parentMessageId, hostTools, abortSignal).
+   * The loop emits workflow_* SSE events into the parent stream.
+   *
+   * Returns a brief summary so the host can chain off it. The detailed
+   * subagent runs are visible in the FE WorkflowBlock.
+   */
+  executeWorkflow?: (opts: {
+    templateId: "review" | "brainstorm" | "cowork" | "concurrent-data";
+    userMessage: string;
+    params?: Record<string, any>;
+  }) => Promise<{ runId: string; success: boolean; summary: string }>;
 }
 
 export interface ToolDefinition {

@@ -15,6 +15,7 @@ import AssistantText from "./ChatMessage/AssistantText";
 import ThinkingIndicator from "./ChatMessage/ThinkingIndicator";
 import ToolCallCard from "./ChatMessage/ToolCallCard";
 import SubagentBlock from "./ChatMessage/SubagentBlock";
+import WorkflowBlock from "./ChatMessage/WorkflowBlock";
 import ToolCallGroup from "./ChatMessage/ToolCallGroup";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
 import ChatModelPicker from "./ChatModelPicker";
@@ -54,8 +55,28 @@ interface UiMessage {
   // separately (not nested in toolCalls) because subagent UX needs its own
   // event stream + expand-the-whole-conversation pattern.
   subagentRuns?: UiSubagentRun[];
+  // PR4: workflow runs spawned via execute_workflow_template. Each run
+  // contains a node-tree progression and may itself reference SubagentRun
+  // rows (subagent action nodes).
+  workflowRuns?: UiWorkflowRun[];
   streaming?: boolean;
   error?: { code: string; message: string };
+}
+
+export interface UiWorkflowRun {
+  runId: string;
+  templateId?: string;
+  status: "running" | "success" | "error" | "aborted";
+  durationMs?: number;
+  /** Linear log of node events for the timeline panel. */
+  nodeEvents: Array<
+    | { kind: "node_start"; nodeId: string; nodeKind: string; nodeType?: string; ts: number }
+    | { kind: "node_end"; nodeId: string; output?: any; ts: number }
+    | { kind: "loop_iter"; loopNodeId: string; iter: number; maxIter: number; ts: number }
+    | { kind: "branch_start"; parentNodeId: string; branchIdx: number; totalBranches: number; ts: number }
+  >;
+  startedAt: number;
+  error?: string;
 }
 
 export interface UiSubagentRun {
@@ -467,6 +488,22 @@ export default function ChatSidebar({
     // from the raw markdown so the host agent can apply strong-typed routing.
     const mentions = extractMentionPayloads(text);
 
+    // PR4: small helper for workflow node-event accumulation
+    const appendWorkflowNodeEvent = (runId: string, evt: UiWorkflowRun["nodeEvents"][number]) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.role === "assistant" && m.workflowRuns?.some((r) => r.runId === runId)
+            ? {
+                ...m,
+                workflowRuns: m.workflowRuns!.map((r) =>
+                  r.runId === runId ? { ...r, nodeEvents: [...r.nodeEvents, evt] } : r,
+                ),
+              }
+            : m,
+        ),
+      );
+    };
+
     cancelRef.current = streamChatMessage({
       conversationId: activeConv.id,
       message: text,
@@ -729,6 +766,92 @@ export default function ChatSidebar({
                   ...m,
                   subagentRuns: m.subagentRuns!.map((r) =>
                     r.runId === runId ? { ...r, status: "error", error } : r,
+                  ),
+                }
+              : m,
+          ),
+        );
+      },
+      // ── PR4 Workflow event handlers ──
+      onWorkflowStart: (ev) => {
+        setMessages((prev) => {
+          for (let i = prev.length - 1; i >= 0; i--) {
+            if (prev[i].role === "assistant" && prev[i].streaming) {
+              const newRun: UiWorkflowRun = {
+                runId: ev.runId,
+                templateId: ev.templateId,
+                status: "running",
+                nodeEvents: [],
+                startedAt: Date.now(),
+              };
+              return prev.map((m, idx) =>
+                idx === i ? { ...m, workflowRuns: [...(m.workflowRuns ?? []), newRun] } : m,
+              );
+            }
+          }
+          return prev;
+        });
+      },
+      onWorkflowNodeStart: (ev) => {
+        appendWorkflowNodeEvent(ev.runId, {
+          kind: "node_start",
+          nodeId: ev.nodeId,
+          nodeKind: ev.nodeKind,
+          nodeType: ev.nodeType,
+          ts: Date.now(),
+        });
+      },
+      onWorkflowNodeEnd: (runId, nodeId, output) => {
+        appendWorkflowNodeEvent(runId, { kind: "node_end", nodeId, output, ts: Date.now() });
+      },
+      onWorkflowLoopIteration: (runId, loopNodeId, iter, maxIter) => {
+        appendWorkflowNodeEvent(runId, { kind: "loop_iter", loopNodeId, iter, maxIter, ts: Date.now() });
+      },
+      onWorkflowBranchStart: (runId, parentNodeId, branchIdx, totalBranches) => {
+        appendWorkflowNodeEvent(runId, {
+          kind: "branch_start",
+          parentNodeId,
+          branchIdx,
+          totalBranches,
+          ts: Date.now(),
+        });
+      },
+      onWorkflowEnd: (runId, durationMs) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant" && m.workflowRuns?.some((r) => r.runId === runId)
+              ? {
+                  ...m,
+                  workflowRuns: m.workflowRuns!.map((r) =>
+                    r.runId === runId ? { ...r, status: "success", durationMs } : r,
+                  ),
+                }
+              : m,
+          ),
+        );
+      },
+      onWorkflowError: (runId, error) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant" && m.workflowRuns?.some((r) => r.runId === runId)
+              ? {
+                  ...m,
+                  workflowRuns: m.workflowRuns!.map((r) =>
+                    r.runId === runId ? { ...r, status: "error", error } : r,
+                  ),
+                }
+              : m,
+          ),
+        );
+      },
+      onWorkflowAborted: (runId, reason) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant" && m.workflowRuns?.some((r) => r.runId === runId)
+              ? {
+                  ...m,
+                  workflowRuns: m.workflowRuns!.map((r) =>
+                    r.runId === runId ? { ...r, status: "aborted", error: reason } : r,
                   ),
                 }
               : m,
@@ -1113,6 +1236,12 @@ function MessageBlock({ msg }: { msg: UiMessage }) {
           <ToolCallGroup key={`tg-${msg.id}-${i}`} tool={g.tool} items={g.items} />
         )
       )}
+      {/* PR4 WorkflowBlock — render workflow timeline (orchestration view)
+          before the individual SubagentBlocks so users see the plan first
+          then the per-step details. */}
+      {msg.workflowRuns?.map((run) => (
+        <WorkflowBlock key={run.runId} run={run} />
+      ))}
       {/* PR3 SubagentBlock — render each subagent run after the toolCalls.
           Order is "all host tool calls, then subagent blocks" — V2 may
           interleave by start timestamp once we track per-call ordering. */}

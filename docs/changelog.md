@@ -5,6 +5,97 @@
 
 ---
 
+## 2026-04-27 (Agent Workflow PR4)
+
+### feat(workflow): DSL workflow 引擎 + brainstorm/review/cowork/concurrent-data 模板 + WorkflowBlock UI
+
+**分支**: `AIWorkBeta` · **commits**: 待提交
+
+PR4: Workflow 编排层。host agent 现在可以通过 MCP `execute_workflow_template` 一次性调起多步 subagent 协作 (review 循环 / brainstorm 多视角并行 / 等),前端实时显示 WorkflowBlock 节点级时间线 + 每个 subagent 自己的 SubagentBlock。
+
+#### Backend
+
+- **新建 `services/workflow/types.ts`** — DSL 数据结构:
+  - `TriggerNode` / `LogicNode` (sequence / parallel / loop / if / switch) / `ActionNode` (subagent / mcp_tool / skill)
+  - `WorkflowDoc { id, templateId, rootNodeId, nodes: Record<id, Node>, variables, ... }`
+  - `WorkflowContext { scope, workflow, user, trigger, abortSignal }`
+  - `WorkflowEvent` 9 种事件 (workflow_start/_node_start/_node_end/_loop_iteration/_branch_start/_end/_error/_aborted)
+  - `WORKFLOW_HARD_CAPS`:总节点访问 200 / loop 上限 10 / parallel 8 分支
+
+- **新建 `services/workflow/safeEval.ts`** — 安全表达式引擎:
+  - 手写 tokenizer + recursive-descent parser (避免 acorn 依赖)
+  - 白名单标识符 (ctx, scope, trigger, workflow, user, i)
+  - 白名单函数 (length / includes / match / starts_with / ends_with)
+  - 禁止 FunctionExpression / Assignment / This / New / Spread 等所有副作用形式
+  - `evalExpression(expr, env)` + `resolveTemplate(template, env)` 两个 API
+
+- **新建 `services/workflow/executor.ts`** — `executeWorkflow(doc, ctx, spawnFn)` async generator:
+  - walkNode → 根据 kind 分派到 walkLogic / walkAction
+  - sequence:依次跑 steps
+  - parallel:`mergeGenerators` 按 strategy ("all"/"any"/"race") 公平 race 多个 generator 的 next()
+  - loop:跑 bodyNode 后用 safeEval 检查 exitCondition
+  - if:eval condition 走 then/else
+  - switch:eval switchOn 配对 cases
+  - action.subagent:调 spawnFn 把结果写 ctx.scope[outputAlias]
+
+- **新建 `services/workflow/templates.ts`** — 4 个内置模板的工厂函数:
+  - **review**:trigger → loop(maxIter=3, exitCondition=`match(scope.review_result.finalText, '\\bPASS\\b')`)([sequence: author(claude) → reviewer(gpt-5.5)])
+  - **brainstorm**:trigger → parallel([3 个不同模型对同一问题],joinStrategy="all") → action(host 模型汇总)
+  - **cowork** / **concurrent-data**:V1 fallback 到 brainstorm(image-gen 接入 / split prompt 等 PR4.1 完善)
+
+- **`mcp-server/src/tools/workflowTools.ts`** — 2 个 Tier 1 工具:
+  - `list_workflow_templates`:返回模板清单 + 参数 + 适用场景
+  - `execute_workflow_template({templateId, userMessage, params?})`:host 调,backend 跑 executor,events 实时推到前端
+
+- **`mcp-server/src/tools/tableTools.ts ToolContext`** 加 `executeWorkflow?` callback
+
+- **`chatAgentService` 加 `executeWorkflow` callback 实现**:
+  - buildTemplate 拿 DSL doc
+  - 构造 WorkflowContext (scope/user/trigger 全填)
+  - 内嵌 spawnFn 调 spawnSubagent 把每个 subagent_* 事件 push 进 queuedEvents
+  - run executor → push workflow_* 事件
+  - 完成后从 scope.summary.finalText / scope.draft.finalText 拿 summary 返回 host
+
+- **`SseEvent.event` 加 8 种 workflow_*** 类型
+
+#### Frontend
+
+- **`api.ts` SSE reader 加 8 个 workflow_* case** + 8 个 onWorkflow* callbacks
+- **`UiMessage` 加 `workflowRuns?: UiWorkflowRun[]`**:每个 workflow run 维护一个 nodeEvents timeline
+- **8 个 onWorkflow* handlers** 在 ChatSidebar/index.tsx (start/nodeStart/nodeEnd/loopIter/branchStart/end/error/aborted)
+- **新建 `ChatMessage/WorkflowBlock.tsx`**:可折叠卡片
+  - Header:⚡ 图标 + templateId pill + runId 缩写
+  - Status:running pulse / success / error / aborted
+  - 展开后:linear timeline (node_start / node_end / loop_iter / branch_start) 每行带 dot + 标签 + nodeId
+- **`ChatSidebar.css` 加 ~120 行 `.chat-workflow-block / -header / -status / -body / -timeline / -tle`**:
+  - 三色 border-left (running 紫 / success 绿 / error 红 / aborted 橙)
+  - timeline max-height 240px + scroll
+  - loop_iter 用 primary 色 / branch_start 用 warning 色
+
+- **ChatMessage 渲染顺序**:host 自己的 toolCalls → WorkflowBlock (orchestration view) → SubagentBlock (各 subagent 的详细输出)
+
+#### 自验收 (本地登录跑过)
+
+- ✅ "调用 execute_workflow_template 执行 brainstorm 模板,让 3 个模型头脑风暴 'AI Agent 在未来5年会怎么变'"
+- ✅ host 调 `execute_workflow_template({templateId:"brainstorm", userMessage:"..."})`
+- ✅ FE WorkflowBlock 显示 brainstorm + running 状态
+- ✅ 3 个 SubagentBlock (claude / gpt-5.5 / doubao-2.0) 并行运行
+- ✅ workflow timeline 实时 append node_start / branch_start / node_end
+- ✅ 3 子完成后 host 模型 (claude-opus-4.7) 自动汇总 → 输出对比表 + 分受众建议
+- ✅ DB subagent_runs 表 INSERT 4 行 (3 brainstormers + 1 summary)
+- ✅ build pass
+
+#### V1 已知保留事项
+
+- **cowork / concurrent-data** 模板 V1 fallback 到 brainstorm 形态 — image-gen / dynamic split 等 PR4.1 完善
+- **compose_workflow** (LLM 自由生成 DSL) 未实现 — 模型容易给非法 DSL,先靠模板覆盖大部分场景
+- **workflow_runs 持久化**:V1 内存 only,刷新页面 timeline 丢失。final summary 写在 host message 里所以信息不丢
+- **logic.condition LLM 模式** (mode="llm") 类型已定义但 V1 未实现 — 复杂语义判断现在还是表达式 + LLM-decide 节点这种 workaround
+- **per-artifact write queue** (并发改同一 idea 不丢更新) PR3 涉及但 V1 用 prompt-level 约束 + idea-level 已有的 isIdeaLocked 互斥兜底
+- **PR3 V1 限制** subagent 不能调 danger / 不能再调 subagent;等 PR5 之后 polish
+
+---
+
 ## 2026-04-27 (Agent Workflow PR3)
 
 ### feat(subagent): host agent 可调用 spawn_subagent 拉起子 agent + 实时 SubagentBlock UI

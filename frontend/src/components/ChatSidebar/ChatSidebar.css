@@ -1846,3 +1846,118 @@
   overflow-y: auto;
   color: var(--text-secondary);
 }
+
+/* ─── PR4 Workflow Block ───────────────────────────────────────────────
+   Workflow 编排时间线卡片。视觉上比 SubagentBlock 更"宏观":左侧
+   3px 渐变条 (从橙到紫) + ⚡ 图标。展开后显示线性 timeline 列表,每个
+   节点 / 循环 / 分支事件一行。子 agent 调用单独由 SubagentBlock 显示。 */
+.chat-workflow-block {
+  margin: 8px 0;
+  border-left: 3px solid var(--primary);
+  background: var(--surface-1);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.chat-workflow-block.workflow-running {
+  border-left-color: var(--primary);
+  animation: chat-workflow-pulse 2s ease-in-out infinite;
+}
+.chat-workflow-block.workflow-success {
+  border-left-color: var(--success, #2ea043);
+}
+.chat-workflow-block.workflow-error {
+  border-left-color: var(--danger);
+}
+.chat-workflow-block.workflow-aborted {
+  border-left-color: var(--warning, #d4880a);
+}
+@keyframes chat-workflow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.78; }
+}
+.chat-workflow-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+}
+.chat-workflow-icon { font-size: 14px; }
+.chat-workflow-headtext {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+.chat-workflow-template {
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+.chat-workflow-runid {
+  color: var(--text-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+.chat-workflow-toggle {
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+.chat-workflow-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.chat-workflow-body {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-light);
+}
+.chat-workflow-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-height: 240px;
+  overflow-y: auto;
+}
+.chat-workflow-tle {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0;
+}
+.chat-workflow-tle-dot {
+  font-weight: 700;
+  width: 12px;
+  display: inline-block;
+  text-align: center;
+}
+.chat-workflow-tle-label {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.chat-workflow-tle-id {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  margin-left: auto;
+}
+.chat-workflow-tle-loop_iter .chat-workflow-tle-label {
+  color: var(--primary);
+}
+.chat-workflow-tle-branch_start .chat-workflow-tle-label {
+  color: var(--warning, #d4880a);
+}
