@@ -24,10 +24,12 @@ import {
   collectLeaves,
   countLeaves,
   insertNewBlock,
+  moveBlockToTarget,
   removeLeaf,
   swapLeaves,
   updateRatioByPath,
 } from "../canvas/layoutAlgorithms";
+import type { DropSide } from "../canvas/layoutAlgorithms";
 
 const MAX_BLOCKS = 16;
 const DEFAULT_SIDEBAR_WIDTH = 190;
@@ -98,6 +100,11 @@ async function persistToBackend(state: CanvasState): Promise<void> {
 
 // ─── Context ───────────────────────────────────────────────────────────
 
+export interface DropTarget {
+  blockId: string;
+  side: DropSide;
+}
+
 export interface CanvasContextValue {
   state: CanvasState;
   /** state 的最新 ref —— 给 pointermove 等 closure 用,避免读到 stale state */
@@ -107,12 +114,21 @@ export interface CanvasContextValue {
   /** 当前是否有 block 正在拖动 —— canvas 根据这个加 .mc-canvas--dragging class */
   dragging: boolean;
   setDragging: (v: boolean) => void;
+  /** 当前拖动的源 block id,落位时用 */
+  dragSourceId: string | null;
+  setDragSourceId: (id: string | null) => void;
+  /** 当前拖动悬停的落位目标(block + 边),用于实时高亮 drop indicator。
+   *  拖动期间一直有,松手时才执行落位。 */
+  dropTarget: DropTarget | null;
+  setDropTarget: (t: DropTarget | null) => void;
   /** 添加 block —— 默认插到面积最大的叶子旁 */
   addBlock: (type: BlockType) => string | null;
   /** 移除 block(数据保留 / layout 树移除) */
   removeBlock: (blockId: string) => void;
   /** 交换两个 block 在 layout 树中的位置(swap leaves) */
   swapBlocks: (idA: string, idB: string) => void;
+  /** 把 source block 移动到 target 的指定边/中心 —— 拖拽 release 时调 */
+  moveBlock: (sourceId: string, targetId: string, side: DropSide) => void;
   /** 改 split ratio(resize) */
   setRatioByPath: (path: ("L" | "R")[], ratio: number) => void;
   /** 更新某个 block 的 internal state(例:artifact 的 active / sidebar 折叠) */
@@ -172,6 +188,16 @@ export function CanvasProvider({
 
   // 全局 dragging 标志 —— canvas 根据它加 class 禁用其它 block 的 hover/click
   const [dragging, setDragging] = useState(false);
+  const [dragSourceId, setDragSourceId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+
+  const moveBlock = useCallback((sourceId: string, targetId: string, side: DropSide) => {
+    setState((prev) => {
+      if (!prev.layout) return prev;
+      const newLayout = moveBlockToTarget(prev.layout, sourceId, targetId, side);
+      return { ...prev, layout: newLayout };
+    });
+  }, []);
 
   const addBlock = useCallback(
     (type: BlockType): string | null => {
@@ -244,14 +270,19 @@ export function CanvasProvider({
       visibleBlockIds,
       dragging,
       setDragging,
+      dragSourceId,
+      setDragSourceId,
+      dropTarget,
+      setDropTarget,
       addBlock,
       removeBlock,
       swapBlocks,
+      moveBlock,
       setRatioByPath,
       patchBlockState,
       scheduleSave,
     }),
-    [state, stateRef, visibleBlockIds, dragging, setDragging, addBlock, removeBlock, swapBlocks, setRatioByPath, patchBlockState, scheduleSave],
+    [state, stateRef, visibleBlockIds, dragging, dragSourceId, dropTarget, addBlock, removeBlock, swapBlocks, moveBlock, setRatioByPath, patchBlockState, scheduleSave],
   );
 
   return <CanvasCtx.Provider value={value}>{children}</CanvasCtx.Provider>;

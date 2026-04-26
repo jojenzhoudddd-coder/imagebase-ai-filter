@@ -159,6 +159,22 @@
   will-change: transform;
 }
 
+/* DropIndicator —— 落位预览高亮。绝对定位在 canvas 容器内 */
+.mc-drop-indicator {
+  position: absolute;
+  pointer-events: none;
+  z-index: 9999;
+  background: rgba(20, 86, 240, 0.20);
+  border: 2px solid var(--primary, #1456F0);
+  border-radius: 8px;
+  transition: all 0.12s ease;
+}
+.mc-drop-indicator-center {
+  /* swap 时用更粗框线突出"两块交换"的语义 */
+  background: rgba(20, 86, 240, 0.10);
+  border-style: dashed;
+}
+
 /* ─── ArtifactBlock 内部 sidebar 区域 ─── */
 .mc-artifact-block {
   flex: 1;

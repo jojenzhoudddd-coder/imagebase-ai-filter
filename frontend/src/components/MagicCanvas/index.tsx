@@ -5,11 +5,12 @@
 
 import { useMemo, useRef } from "react";
 import { useCanvas } from "../../contexts/canvasContext";
-import { computeAdjacency } from "../../canvas/layoutAlgorithms";
+import { computeAdjacency, computeRects } from "../../canvas/layoutAlgorithms";
 import LayoutRenderer from "./LayoutRenderer";
 import BlockShell from "./BlockShell";
 import ArtifactBlock from "./ArtifactBlock";
 import ChatBlock from "./ChatBlock";
+import DropIndicator from "./DropIndicator";
 import "./MagicCanvas.css";
 
 interface Props {
@@ -20,10 +21,20 @@ interface Props {
 }
 
 export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: Props) {
-  const { state, visibleBlockIds, dragging } = useCanvas();
+  const { state, visibleBlockIds, dragging, dropTarget } = useCanvas();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const adjacency = useMemo(() => computeAdjacency(state.layout), [state.layout]);
+
+  // 计算 dropTarget 对应的目标 block 矩形,渲染一个高亮指示条
+  const dropIndicatorRect = useMemo(() => {
+    if (!dropTarget || !state.layout || !containerRef.current) return null;
+    const cr = containerRef.current.getBoundingClientRect();
+    const rects = computeRects(state.layout, cr.width, cr.height, 0, 0);
+    const r = rects[dropTarget.blockId];
+    if (!r) return null;
+    return { rect: r, side: dropTarget.side };
+  }, [dropTarget, state.layout]);
 
   if (!state.layout) {
     return (
@@ -63,6 +74,7 @@ export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: 
   return (
     <div ref={containerRef} className={`mc-canvas${dragging ? " mc-canvas--dragging" : ""}`}>
       <LayoutRenderer node={state.layout} renderLeaf={renderLeaf} />
+      {dropIndicatorRect && <DropIndicator rect={dropIndicatorRect.rect} side={dropIndicatorRect.side} />}
     </div>
   );
 }

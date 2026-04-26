@@ -30,17 +30,19 @@ export default function BlockShell({
   children,
   canvasContainerRef,
 }: Props) {
-  const { stateRef, swapBlocks, removeBlock, scheduleSave, setDragging } = useCanvas();
+  const {
+    stateRef,
+    removeBlock,
+    moveBlock,
+    scheduleSave,
+    setDragging,
+    setDragSourceId,
+    setDropTarget,
+  } = useCanvas();
   const shellRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
   const dragStartRef = useRef<{ pointerX: number; pointerY: number; ghostX: number; ghostY: number } | null>(null);
-  /** 跟踪当前正在 hover 的 block(从中线判定换位避免反复 swap)。
-   *  规则:进入新 block 区域 → 算一次"是否越过中线"。越过就 swap once,然后
-   *  把 lastHoveredId 设为 self(因为 swap 后此区域已是 self),pointer 不离开
-   *  此区域不再 swap。
-   */
-  const lastSwapTargetRef = useRef<string | null>(null);
 
   // 圆角规则:"若 corner 的另外三个 90 度方向都有其它内容(block 或 topbar),
   //              则圆角;若任一方向是真窗口外缘,则直角"
@@ -65,10 +67,16 @@ export default function BlockShell({
     [visibleCount, onClose],
   );
 
-  // ─── Drag 系统 (document 级监听 + 中线 swap) ───
+  // ─── Drag 系统(参考 Linear / Figma / Mosaic 的拖拽 UX) ───
+  // 1. mousedown 起 ghost,布局 unchanged
+  // 2. pointermove 仅更新 ghost 位置 + 计算落位目标(target block + side),
+  //    通过 setDropTarget 推到 context,由 MagicCanvas 渲染高亮 indicator
+  // 3. pointerup release 才执行 moveBlock(source → target side),否则取消
   const tearDownDrag = useCallback(() => {
     draggingRef.current = false;
     setDragging(false);
+    setDragSourceId(null);
+    setDropTarget(null);
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
     if (ghostRef.current) {
@@ -76,12 +84,41 @@ export default function BlockShell({
       ghostRef.current = null;
     }
     dragStartRef.current = null;
-    lastSwapTargetRef.current = null;
-  }, [setDragging]);
+  }, [setDragging, setDragSourceId, setDropTarget]);
 
   useEffect(() => {
     return () => tearDownDrag();
   }, [tearDownDrag]);
+
+  /** 计算 pointer 落在哪个 block 的哪一边(top/right/bottom/left/center) */
+  const computeDropTarget = useCallback(
+    (px: number, py: number): { blockId: string; side: "top" | "right" | "bottom" | "left" | "center" } | null => {
+      const cont = canvasContainerRef.current;
+      const layout = stateRef.current.layout;
+      if (!cont || !layout) return null;
+      const cr = cont.getBoundingClientRect();
+      const rects = computeRects(layout, cr.width, cr.height, cr.left, cr.top);
+      for (const [id, r] of Object.entries(rects)) {
+        if (id === blockId) continue;
+        if (px < r.x || px > r.x + r.w || py < r.y || py > r.y + r.h) continue;
+        // 命中 —— 算 4 边距离,最小者决定 side。center 阈值:pointer 距任意边
+        // 大于 ~25% 的 min(w,h) → center(交换)。
+        const dTop = py - r.y;
+        const dBottom = r.y + r.h - py;
+        const dLeft = px - r.x;
+        const dRight = r.x + r.w - px;
+        const minDist = Math.min(dTop, dBottom, dLeft, dRight);
+        const centerThreshold = Math.min(r.w, r.h) * 0.25;
+        if (minDist > centerThreshold) return { blockId: id, side: "center" };
+        if (minDist === dTop) return { blockId: id, side: "top" };
+        if (minDist === dBottom) return { blockId: id, side: "bottom" };
+        if (minDist === dLeft) return { blockId: id, side: "left" };
+        return { blockId: id, side: "right" };
+      }
+      return null;
+    },
+    [canvasContainerRef, stateRef, blockId],
+  );
 
   const handleMoveBarDown = useCallback(
     (e: React.PointerEvent) => {
@@ -91,7 +128,6 @@ export default function BlockShell({
       if (!shell) return;
       const rect = shell.getBoundingClientRect();
 
-      // ghost = block 真实大小 + 半透明虚线,跟随光标(transform translate)
       const ghost = document.createElement("div");
       ghost.className = "mc-drag-ghost";
       ghost.style.width = `${rect.width}px`;
@@ -105,9 +141,10 @@ export default function BlockShell({
       dragStartRef.current = { pointerX: e.clientX, pointerY: e.clientY, ghostX: initX, ghostY: initY };
       draggingRef.current = true;
       setDragging(true);
+      setDragSourceId(blockId);
+      setDropTarget(null);
       document.body.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
-      lastSwapTargetRef.current = null;
 
       const onMove = (ev: PointerEvent) => {
         if (!draggingRef.current) return;
@@ -117,45 +154,30 @@ export default function BlockShell({
         const dy = ev.clientY - start.pointerY;
         ghostRef.current.style.transform = `translate(${start.ghostX + dx}px, ${start.ghostY + dy}px)`;
 
-        // 中线 swap —— 实时检测 pointer 越过其它 block 的中线
-        const cont = canvasContainerRef.current;
-        const layout = stateRef.current.layout;
-        if (!cont || !layout) return;
-        const cr = cont.getBoundingClientRect();
-        const rects = computeRects(layout, cr.width, cr.height, cr.left, cr.top);
-        for (const [id, r] of Object.entries(rects)) {
-          if (id === blockId) continue;
-          // 命中此 block 的矩形
-          if (ev.clientX >= r.x && ev.clientX <= r.x + r.w && ev.clientY >= r.y && ev.clientY <= r.y + r.h) {
-            // 越过中线判定:pointer 在此 block 中线的"远侧"才 swap(简化:进入即触发,
-            // 避免边缘抖动)。lastSwapTargetRef 防 swap loop —— 只在进入新目标时 swap。
-            if (lastSwapTargetRef.current !== id) {
-              swapBlocks(blockId, id);
-              // swap 后 self 现在占了 id 的位置,所以这片区域的"逻辑 id"是 self。
-              // 标记 lastSwap = id 表示"这一区域不再触发 swap",直到 pointer 离开。
-              lastSwapTargetRef.current = id;
-            }
-            return;
-          }
-        }
-        // pointer 不在任何其它 block 范围内 —— 重置 lastSwapTarget,下次进入新目标时重新触发
-        lastSwapTargetRef.current = null;
+        // 仅更新 dropTarget,布局不变
+        const t = computeDropTarget(ev.clientX, ev.clientY);
+        setDropTarget(t);
       };
 
-      const onUp = () => {
+      const onUp = (ev: PointerEvent) => {
         if (!draggingRef.current) return;
         document.removeEventListener("pointermove", onMove);
         document.removeEventListener("pointerup", onUp);
         document.removeEventListener("pointercancel", onUp);
+        // 落位 —— 仅在 release 时改 layout
+        const t = computeDropTarget(ev.clientX, ev.clientY);
+        if (t) {
+          moveBlock(blockId, t.blockId, t.side);
+          scheduleSave();
+        }
         tearDownDrag();
-        scheduleSave();
       };
 
       document.addEventListener("pointermove", onMove);
       document.addEventListener("pointerup", onUp);
       document.addEventListener("pointercancel", onUp);
     },
-    [visibleCount, canvasContainerRef, stateRef, swapBlocks, scheduleSave, blockId, tearDownDrag, setDragging],
+    [visibleCount, blockId, computeDropTarget, moveBlock, scheduleSave, tearDownDrag, setDragging, setDragSourceId, setDropTarget],
   );
 
   // 边框规则:仅当边贴"窗口外缘"(viewport 真外缘)时才隐藏 border。

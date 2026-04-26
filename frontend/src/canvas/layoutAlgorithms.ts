@@ -45,6 +45,41 @@ export function swapLeaves(node: LayoutNode, idA: string, idB: string): LayoutNo
   return mapLeaves(node, (leafId) => (leafId === idA ? idB : leafId === idB ? idA : leafId));
 }
 
+/** drop side —— 拖拽落位时,源块要插到目标块的哪一边。center 表示与目标交换。 */
+export type DropSide = "top" | "right" | "bottom" | "left" | "center";
+
+/**
+ * 把 source block 从当前位置移动到 target block 指定边/中心。
+ *   - center → 与 target 交换位置(swap)
+ *   - top/bottom/left/right → 在 target 的该边切一刀,source 落在该边一侧,
+ *                              target 占另一侧,新 split 替代 target 的位置。
+ */
+export function moveBlockToTarget(
+  layout: LayoutNode,
+  sourceId: string,
+  targetId: string,
+  side: DropSide,
+): LayoutNode {
+  if (sourceId === targetId) return layout;
+  if (side === "center") return swapLeaves(layout, sourceId, targetId);
+
+  // 1) 从树里摘掉 source(兄弟提升)
+  const without = removeLeaf(layout, sourceId);
+  if (!without) return layout;
+
+  // 2) 把 source 作为新 leaf 插到 target 的指定边
+  const orientation: "h" | "v" = side === "top" || side === "bottom" ? "v" : "h";
+  const sourceFirst = side === "top" || side === "left";
+  const sourceLeaf: LayoutNode = { kind: "leaf", blockId: sourceId };
+  return replaceLeaf(without, targetId, (oldTarget) => ({
+    kind: "split",
+    orientation,
+    ratio: 0.5,
+    first: sourceFirst ? sourceLeaf : oldTarget,
+    second: sourceFirst ? oldTarget : sourceLeaf,
+  }));
+}
+
 function mapLeaves(node: LayoutNode, fn: (id: string) => string): LayoutNode {
   if (node.kind === "leaf") {
     const next = fn(node.blockId);
