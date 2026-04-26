@@ -153,12 +153,17 @@ export default function BlockShell({
     [visibleCount, canvasContainerRef, stateRef, swapBlocks, scheduleSave, blockId, tearDownDrag, setDragging],
   );
 
-  // 边框规则:边贴窗口/canvas 外缘(page)→ 隐藏该边的 border;
-  //          边贴另一 block(neighbor)→ 1px border。
-  const borderTop = edges.top === "page" ? "none" : "1px solid var(--border-default)";
-  const borderRight = edges.right === "page" ? "none" : "1px solid var(--border-default)";
-  const borderBottom = edges.bottom === "page" ? "none" : "1px solid var(--border-default)";
-  const borderLeft = edges.left === "page" ? "none" : "1px solid var(--border-default)";
+  // 边框规则:仅当边贴"窗口外缘"(viewport 边)时才隐藏 border。
+  //   - 在我们的布局里, MagicCanvas 永远在 TopBar 下方 ——
+  //     block 的 top edge=page 实际是贴 topbar(不是 viewport),需要 border
+  //     来与 topbar 视觉切割。
+  //   - right / bottom / left edge=page 才是真窗口边缘, 隐藏 border。
+  // 邻接其它 block(neighbor)永远保留 1px border。
+  const borderColor = "1px solid var(--border-default)";
+  const borderTop = borderColor;  // top 永远显示(贴 topbar 或邻接块都需要)
+  const borderRight = edges.right === "page" ? "none" : borderColor;
+  const borderBottom = edges.bottom === "page" ? "none" : borderColor;
+  const borderLeft = edges.left === "page" ? "none" : borderColor;
 
   return (
     <div
