@@ -78,6 +78,10 @@ export interface ActionNode extends BaseNode {
   userPrompt?: string;
   allowedTools?: string[];
   maxRounds?: number;
+  /** V2.6:concurrent-code 模板把 worktreeId 直接写在 action 节点上,
+   *  支持模板字符串(如 "${worktrees.idA}")。spawn 时透传给 subagent,
+   *  在 system prompt 末尾自动追加 worktree 约束。 */
+  worktreeId?: string;
 
   // mcp_tool
   tool?: string;
@@ -109,6 +113,7 @@ export type WorkflowTemplate =
   | "brainstorm"
   | "cowork"
   | "concurrent-data"
+  | "concurrent-code"
   | "custom";
 
 export interface WorkflowDoc {

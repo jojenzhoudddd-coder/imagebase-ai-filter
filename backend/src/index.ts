@@ -40,6 +40,7 @@ import { maybeRefreshDailySummaries, regenerateMissingSummaries } from "./servic
 import "./services/providers/index.js";
 import { evaluateCron } from "./services/cronScheduler.js";
 import { startAnalystCleanup, stopAnalystCleanup } from "./services/analyst/cleanupCron.js";
+import { startWorktreeCleanupCron, stopWorktreeCleanupCron } from "./services/worktreeManager.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -346,6 +347,8 @@ async function start() {
 
   // Analyst P1 — DuckDB session + snapshot cleanup cron.
   startAnalystCleanup();
+  // V2.6 B14 — worktree stale cleanup (no-op when WORKTREE_REPO_PATH unset)
+  startWorktreeCleanupCron();
 
   if (process.env.RUNTIME_DISABLED !== "1") {
     startHeartbeat({
@@ -397,6 +400,7 @@ async function start() {
       await stopHeartbeat();
       stopModelProbe();
       await stopAnalystCleanup();
+      stopWorktreeCleanupCron();
     } catch (err) {
       console.error("[runtime] error during shutdown:", err);
     }

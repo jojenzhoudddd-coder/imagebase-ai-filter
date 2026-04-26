@@ -1050,6 +1050,11 @@ export interface SpawnSubagentOptions {
   toolCtx: ToolContext;
   /** V2.4 B2 nesting depth. host = 0, host->sub = 1, sub->sub = 2 (max). */
   depth?: number;
+  /** V2.6 C17:并发代码场景下,host 把分配给该 subagent 的 worktreeId 注入,
+   *  subagent 系统 prompt 会显式告知它"你只能在这个 worktree 内工作"。
+   *  Subagent 调 read/write_worktree_file 等工具时仍由其自己负责传 worktreeId,
+   *  这里只做 prompt-level binding 提醒。 */
+  worktreeId?: string | null;
 }
 
 /** Convert WorkflowEvent (executor) to SseEvent (chat stream). */
@@ -1164,6 +1169,7 @@ export async function* spawnSubagent(
     hostTools,
     toolCtx,
     depth = 1, // 调用方未传 = host 直调,depth = 1
+    worktreeId,
   } = opts;
 
   // V2.4 B2: depth cap
@@ -1215,6 +1221,18 @@ export async function* spawnSubagent(
       ? filteredByHostOnly.filter((t) => allowedTools.includes(t.name))
       : filteredByHostOnly;
 
+  // V2.6 C17: 当 host 把 worktreeId 派给该 subagent 时,在 system prompt 末尾
+  // 追加显式 binding 提示,避免 subagent 错调到别的 worktree 或操作主仓库。
+  const effectiveSystemPrompt = worktreeId
+    ? `${systemPrompt}
+
+# Worktree 约束 (V2.6)
+你被分配到 worktree id = "${worktreeId}"。
+- 调 read_worktree_file / write_worktree_file / git_status_worktree / git_diff_worktree 时必须传 worktreeId="${worktreeId}",不要换。
+- 不要操作主仓库,也不要起新 worktree (host 已经创建好了)。
+- 完成后简短汇报你做了哪些修改 (host 后续会 merge)。`
+    : systemPrompt;
+
   // 3. Persist row
   const run = await createSubagentRun({
     parentMessageId,
@@ -1222,7 +1240,7 @@ export async function* spawnSubagent(
     hostAgentId,
     subagentModel: model.id,
     requestedModel: modelId,
-    systemPrompt,
+    systemPrompt: effectiveSystemPrompt,
     userPrompt,
     allowedTools,
     maxRounds,
@@ -1237,7 +1255,8 @@ export async function* spawnSubagent(
       resolvedModel: model.id,
       usedFallback: resolved.usedFallback,
       userPrompt,
-      systemPrompt,
+      systemPrompt: effectiveSystemPrompt,
+      worktreeId: worktreeId ?? null,
       allowedToolsCount: effectiveTools.length,
     },
   };
@@ -1260,7 +1279,7 @@ export async function* spawnSubagent(
 
   // 4. Build the input (subagent has its own conversation history starting empty)
   const input: ArkInputItem[] = [
-    { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
+    { role: "system", content: [{ type: "input_text", text: effectiveSystemPrompt }] },
     { role: "user", content: [{ type: "input_text", text: userPrompt }] },
   ];
 
@@ -1761,6 +1780,7 @@ async function* runAgentImpl(
         allowedTools?: string[];
         maxRounds?: number;
         workflowNodeId?: string | null;
+        worktreeId?: string | null;
       }) => {
         const activeTools = resolveActiveTools([...skillState.active]);
         const stream = spawnSubagent(
@@ -1774,6 +1794,7 @@ async function* runAgentImpl(
             parentConversationId: conversationId,
             hostAgentId: agentId,
             workflowNodeId: sopts.workflowNodeId ?? null,
+            worktreeId: sopts.worktreeId ?? null,
             hostTools: activeTools,
             toolCtx: toolCtx as ToolContext,
             depth: 1, // workflow 起的 subagent = 1 (host 调 workflow → workflow 调 sub)
@@ -1860,6 +1881,7 @@ async function* runAgentImpl(
       allowedTools?: string[];
       maxRounds?: number;
       workflowNodeId?: string | null;
+      worktreeId?: string | null;
       // V2.4 B2 (internal): depth override for nested subagent calls.
       // Host's first spawn → depth=1 (default); subagent's spawn → depth=2.
       _depth?: number;
@@ -1881,6 +1903,7 @@ async function* runAgentImpl(
           parentConversationId: conversationId,
           hostAgentId: agentId,
           workflowNodeId: opts.workflowNodeId ?? null,
+          worktreeId: opts.worktreeId ?? null,
           hostTools: activeTools,
           toolCtx: toolCtx as ToolContext,
           // V2.4 B2: 内部 _depth 走过来则用,否则 host 直调 = depth 1

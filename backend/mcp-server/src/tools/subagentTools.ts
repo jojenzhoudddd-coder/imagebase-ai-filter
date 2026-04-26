@@ -64,6 +64,14 @@ export const subagentTools: ToolDefinition[] = [
           type: "number",
           description: "subagent 内部 tool loop 上限。默认 10,够大多数场景。",
         },
+        worktreeId: {
+          type: "string",
+          description:
+            "(V2.6) 把 subagent 绑定到一个具体 worktree。" +
+            "用于 concurrent-code 模板:host 已经 create_worktree 拿到 N 个 id,然后给每个 worker " +
+            "spawn_subagent 时填上对应 id。subagent 的 system prompt 会自动追加约束,告诉它只能在这个 " +
+            "worktree 内 read/write_worktree_file,不要跨 worktree。普通 subagent 任务不用填。",
+        },
       },
       required: ["modelId", "userPrompt"],
     },
@@ -88,6 +96,7 @@ export const subagentTools: ToolDefinition[] = [
             ? (args.allowedTools as unknown[]).map((s) => String(s)).filter(Boolean)
             : [],
           maxRounds: typeof args.maxRounds === "number" ? args.maxRounds : undefined,
+          worktreeId: args.worktreeId ? String(args.worktreeId) : undefined,
         });
         return JSON.stringify({
           runId: result.runId,

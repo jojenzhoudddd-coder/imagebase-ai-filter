@@ -81,6 +81,9 @@ export interface ToolContext {
     allowedTools?: string[];
     maxRounds?: number;
     workflowNodeId?: string | null;
+    /** V2.6 C17:把 subagent 绑定到指定 worktree(只影响 system prompt 文案,
+     *  subagent 仍由自己负责传 worktreeId 给 read/write_worktree_file 等工具)。 */
+    worktreeId?: string | null;
   }) => Promise<{ runId: string; finalText: string; success: boolean }>;
   /**
    * PR4 Agent Workflow: execute a built-in workflow template. Like

@@ -37,6 +37,7 @@ interface SpawnSubagentFn {
     allowedTools?: string[];
     maxRounds?: number;
     workflowNodeId?: string | null;
+    worktreeId?: string | null;
   }): Promise<{ runId: string; finalText: string; success: boolean }>;
 }
 
@@ -319,6 +320,10 @@ async function* walkAction(
   const systemPromptRaw = node.inputBinding?.systemPrompt ?? node.systemPrompt;
   const systemPrompt = systemPromptRaw ? resolveTemplate(systemPromptRaw, env) : undefined;
 
+  // V2.6 C17: worktreeId 优先 inputBinding,然后 node 字段;字符串模板会被解析。
+  const worktreeIdRaw = node.inputBinding?.worktreeId ?? node.worktreeId;
+  const worktreeId = worktreeIdRaw ? resolveTemplate(worktreeIdRaw, env).trim() || undefined : undefined;
+
   const result = await spawn({
     modelId: modelId.trim() || "doubao-2.0",
     systemPrompt,
@@ -326,6 +331,7 @@ async function* walkAction(
     allowedTools: node.allowedTools,
     maxRounds: node.maxRounds,
     workflowNodeId: node.id,
+    worktreeId,
   });
 
   if (node.outputAlias) {

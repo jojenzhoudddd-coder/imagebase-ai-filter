@@ -295,3 +295,59 @@ export async function cleanupWorktree(userId: string, worktreeId: string): Promi
   userRegistries.set(userId, list);
   await saveRegistry(userId);
 }
+
+/**
+ * V2.6 B14 worktree cleanup cron —— 定时清理超过 7 天未更新的 worktree。
+ *
+ * 与 analyst cleanup cron 模式一致:
+ *   - 每 30 min 扫一次所有 user 的 registry
+ *   - createdAt > 7 天 (默认,可 WORKTREE_STALE_MS 覆盖) → cleanupWorktree
+ *   - .unref() 不阻塞 event loop;`RUNTIME_DISABLED=1` 跳过
+ *
+ * 不批量清理 backing repo 里的所有 stale branches —— 只处理 registry 内的,
+ * 减少误删用户手动建的同名分支的风险。
+ */
+const WORKTREE_CLEANUP_INTERVAL_MS = parseInt(
+  process.env.WORKTREE_CLEANUP_INTERVAL_MS || "1800000",
+  10,
+);
+const WORKTREE_STALE_MS = parseInt(process.env.WORKTREE_STALE_MS || `${7 * 24 * 60 * 60 * 1000}`, 10);
+
+let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startWorktreeCleanupCron(): void {
+  if (process.env.RUNTIME_DISABLED === "1") return;
+  if (cleanupTimer) return;
+  if (!BACKING_REPO) {
+    // No backing repo configured → nothing to cron over
+    return;
+  }
+  const tick = async () => {
+    const now = Date.now();
+    let purged = 0;
+    for (const [userId, list] of userRegistries.entries()) {
+      const stale = list.filter((w) => now - w.createdAt > WORKTREE_STALE_MS);
+      for (const w of stale) {
+        try {
+          await cleanupWorktree(userId, w.id);
+          purged++;
+        } catch (err) {
+          console.error("[worktree-cleanup] failed", userId, w.id, err);
+        }
+      }
+    }
+    if (purged > 0) {
+      console.log(`[worktree-cleanup] purged ${purged} stale worktrees`);
+    }
+  };
+  cleanupTimer = setInterval(() => {
+    tick().catch((err) => console.error("[worktree-cleanup] tick err", err));
+  }, WORKTREE_CLEANUP_INTERVAL_MS);
+  cleanupTimer.unref();
+  console.log(`[worktree-cleanup] scheduled every ${WORKTREE_CLEANUP_INTERVAL_MS}ms (stale ${WORKTREE_STALE_MS}ms)`);
+}
+
+export function stopWorktreeCleanupCron(): void {
+  if (cleanupTimer) clearInterval(cleanupTimer);
+  cleanupTimer = null;
+}

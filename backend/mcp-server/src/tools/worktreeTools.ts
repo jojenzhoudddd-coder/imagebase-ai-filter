@@ -189,4 +189,66 @@ export const worktreeTools: ToolDefinition[] = [
       }
     },
   },
+  {
+    // V2.6 B12 LLM auto-resolve conflicts.
+    // Host 在 merge_worktree_into_main 失败拿到 conflicts[] 后调这个工具:
+    // 内部 spawn_subagent 让 LLM 用 read/write_worktree_file 把每个冲突文件
+    // 写成干净版本。完成后 host 决定 retry merge 还是 escalate 用户。
+    name: "resolve_conflicts_with_llm",
+    description:
+      "用 LLM 自动解决 git merge 冲突。前置:刚 merge_worktree_into_main 返回 success=false + conflicts[]。" +
+      "工具内部 spawn 一个 subagent (默认 claude-opus-4.7),只允许它调 read_worktree_file / write_worktree_file。" +
+      "Subagent 读冲突文件 → 产出合并版本 → 写回(必须无 <<<<<<<<< 标记)。完成后 host 应再次 git_status_worktree 验证,然后重 commit/merge。" +
+      "若 LLM 判断不了某个文件应当如何合并,会跳过并报告;host 应 escalate 用户。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        worktreeId: { type: "string" },
+        conflicts: {
+          type: "array",
+          items: { type: "string" },
+          description: "冲突文件相对路径列表(merge 返回值的 conflicts 字段)",
+        },
+        model: { type: "string", description: "默认 claude-opus-4.7" },
+      },
+      required: ["worktreeId", "conflicts"],
+    },
+    handler: async (args, ctx?: ToolContext): Promise<string> => {
+      if (!ctx?.spawnSubagent) {
+        return JSON.stringify({ error: "spawn_subagent 不可用,无法用 LLM 解冲突" });
+      }
+      const conflicts = Array.isArray(args.conflicts) ? args.conflicts.map(String) : [];
+      if (conflicts.length === 0) {
+        return JSON.stringify({ error: "conflicts 为空" });
+      }
+      const model = String(args.model || "claude-opus-4.7");
+      const userPrompt =
+        `worktree ${String(args.worktreeId)} 有 git merge 冲突,需要你解决。\n\n` +
+        `冲突文件:${conflicts.join(", ")}\n\n` +
+        `严格流程,逐文件:\n` +
+        `1. read_worktree_file({worktreeId, filePath}) 读出含冲突标记的内容\n` +
+        `2. 分析两侧冲突 (HEAD vs branch),产出合理合并版本 (代码逻辑通顺、不丢双方修改、不引入破坏性 API 变更)\n` +
+        `3. write_worktree_file({worktreeId, filePath, content}) 写回干净版本 (不再有 <<<<<<< / ======= / >>>>>>> 标记)\n\n` +
+        `所有文件处理完后简短汇报。判断不了的文件跳过并指出原因。`;
+      try {
+        const r = await ctx.spawnSubagent({
+          modelId: model,
+          systemPrompt:
+            "你是代码合并专家。**只用 read_worktree_file / write_worktree_file 这两个工具完成任务**。" +
+            "写回时必须确保文件内不再有 git conflict 标记。完成后简短汇报。",
+          userPrompt,
+          allowedTools: ["read_worktree_file", "write_worktree_file"],
+          maxRounds: Math.max(conflicts.length * 3, 6),
+        });
+        return JSON.stringify({
+          subagentRunId: r.runId,
+          success: r.success,
+          summary: r.finalText,
+          note: "host 接下来应 git_status_worktree 验证,通过后再 merge_worktree_into_main",
+        });
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  },
 ];

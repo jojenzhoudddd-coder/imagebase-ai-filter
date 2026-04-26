@@ -53,6 +53,8 @@ export function buildTemplate(
       return buildBrainstorm(params);
     case "concurrent-data":
       return buildConcurrentData(params);
+    case "concurrent-code":
+      return buildConcurrentCode(params);
     default:
       throw new Error(`unknown template: ${template}`);
   }
@@ -222,6 +224,196 @@ function buildConcurrentData(p: TemplateParams): WorkflowDoc {
     createdAt: Date.now(),
     variables: { userMessage: p.userMessage, parallelN: PARALLEL_N },
     nodes,
+  };
+}
+
+/**
+ * V2.6 B15 concurrent-code 模板:并行多 worktree 写代码 + 严格 merge。
+ *
+ * 拓扑(逻辑层面 — 实际 worktree 创建/merge 由 host 在执行此 template 前/
+ * 后用 worktree-skill 工具完成,因为 DSL 不支持运行时动态分支数):
+ *   trigger
+ *     → action subagent(host, "splitter") 把任务拆成 N 模块,输出 JSON
+ *       `{modules:[{title, brief, files: [...], worktreeId: ""}, ...]}`
+ *       (host 在调 execute_workflow_template 之前就应该已经 create_worktree
+ *        N 次,把 worktreeId 写进 splitter 的 JSON;splitter 仅做模块分配)
+ *     → parallel(N=3 worker)各自在指定 worktreeId 内
+ *       (read/write_worktree_file)写代码
+ *     → action subagent(host, "merger")按 worktree 顺序 merge,冲突时
+ *       resolve_conflicts_with_llm
+ *
+ * V1 限制:N 固定 = 3 与 concurrent-data 一致。Host 想要 N≠3 时 V1 用
+ * compose_workflow 直接写 DSL。
+ */
+function buildConcurrentCode(p: TemplateParams): WorkflowDoc {
+  const workerModel = "claude-opus-4.7"; // 代码场景固定 claude
+  const PARALLEL_N = 3;
+  const branches: string[] = [];
+  const nodes: WorkflowDoc["nodes"] = {
+    n_trigger: {
+      id: "n_trigger",
+      kind: "trigger",
+      source: "chat-message",
+      payload: { userMessage: p.userMessage },
+      next: "n_split",
+    },
+    n_split: {
+      id: "n_split",
+      kind: "action",
+      type: "subagent",
+      subagentModel: p.hostModel,
+      outputAlias: "split",
+      inputBinding: {
+        systemPrompt:
+          "你是代码任务拆分器。把用户的代码任务拆成最多 " + PARALLEL_N +
+          " 个独立模块,每模块对应一个已创建的 worktree。" +
+          "**只输出 JSON**,格式:\n" +
+          '{ "modules": [ { "title": "...", "brief": "...", "files": ["..."], "worktreeId": "wt_xxx" }, ... ] }\n' +
+          "host 已在调用前 create_worktree 拿到 worktreeId 列表,你需要把它们公平分配给各模块。",
+        userPrompt:
+          "用户任务:${trigger.payload.userMessage}\n\n" +
+          "已创建的 worktreeId 列表:${trigger.payload.worktreeIds}",
+      },
+      next: "n_parallel",
+    },
+    n_parallel: {
+      id: "n_parallel",
+      kind: "logic",
+      type: "parallel",
+      branches: [],
+      joinStrategy: "all",
+      next: "n_merge",
+    },
+    n_merge: {
+      id: "n_merge",
+      kind: "action",
+      type: "subagent",
+      subagentModel: p.hostModel,
+      outputAlias: "merged",
+      inputBinding: {
+        systemPrompt:
+          "你是代码合并管理者。按顺序对 split.modules 里的每个 worktree 执行:" +
+          "git_status_worktree 验状态 → merge_worktree_into_main → 若 conflicts 则 resolve_conflicts_with_llm 后再次 merge → cleanup_worktree。" +
+          "汇报每个 worktree 的最终状态(merged sha / 解决冲突数)。",
+        userPrompt:
+          "split 结果:${scope.split.finalText}\n\n" +
+          "worker 结果:" +
+          Array.from({ length: PARALLEL_N }, (_, i) => `\n### Worker ${i + 1}\n\${scope.worker_${i}.finalText}`).join(""),
+      },
+    },
+  };
+  for (let i = 0; i < PARALLEL_N; i++) {
+    const id = `n_worker_${i}`;
+    nodes[id] = {
+      id,
+      kind: "action",
+      type: "subagent",
+      subagentModel: workerModel,
+      outputAlias: `worker_${i}`,
+      allowedTools: ["read_worktree_file", "write_worktree_file", "git_status_worktree", "git_diff_worktree"],
+      inputBinding: {
+        systemPrompt:
+          "你是代码 worker。在指派给你的 worktree 里完成模块。**只用 read/write_worktree_file/git_status_worktree/git_diff_worktree**,不要调其它工具。" +
+          "完成后用 git_status_worktree 验证 + git_diff_worktree 总结你改了什么。",
+        userPrompt:
+          "你负责 split.modules[" + i + "]:\n${scope.split.finalText}\n\n" +
+          "(从 JSON 里取 modules[" + i + "],用 worktreeId / files / brief 完成。" +
+          "若该索引位无任务,回复 '无任务' 即可。)",
+      },
+    };
+    branches.push(id);
+  }
+  (nodes.n_parallel as any).branches = branches;
+  return {
+    id: p.runId,
+    templateId: "concurrent-code",
+    rootNodeId: "n_trigger",
+    createdBy: p.hostAgentId,
+    createdAt: Date.now(),
+    variables: { userMessage: p.userMessage, parallelN: PARALLEL_N },
+    nodes,
+  };
+}
+
+/**
+ * V2.6 B5 cowork 真实现:多模态协作。
+ *
+ * 实际形态:
+ *   trigger
+ *     → parallel: text branch (claude/gpt 写文字) + image branch
+ *       (nano-banana 生成图,V2.6 nano-banana available:false 时此分支
+ *        会被 spawnSubagent fallback 到 doubao,生成"图像描述文本"作为
+ *        占位 — 不会让整个 workflow 卡住)
+ *     → host stitcher (host 模型) 拼装文字 + 图(占位)成多模态输出
+ *
+ * V2.6 限制:image-gen 真正可用要等 nano-banana 接入(B16);未接入前
+ * cowork 体感上 ≈ "text + image-description" 双视角 brainstorm。
+ */
+function buildCowork(p: TemplateParams): WorkflowDoc {
+  const textModel = "claude-opus-4.7";
+  const imageModel = "nano-banana"; // V2.6: stub 时 spawnSubagent fallback
+  return {
+    id: p.runId,
+    templateId: "cowork",
+    rootNodeId: "n_trigger",
+    createdBy: p.hostAgentId,
+    createdAt: Date.now(),
+    variables: { userMessage: p.userMessage },
+    nodes: {
+      n_trigger: {
+        id: "n_trigger",
+        kind: "trigger",
+        source: "chat-message",
+        payload: { userMessage: p.userMessage },
+        next: "n_parallel",
+      },
+      n_parallel: {
+        id: "n_parallel",
+        kind: "logic",
+        type: "parallel",
+        branches: ["n_text", "n_image"],
+        joinStrategy: "all",
+        next: "n_stitch",
+      },
+      n_text: {
+        id: "n_text",
+        kind: "action",
+        type: "subagent",
+        subagentModel: textModel,
+        outputAlias: "text",
+        inputBinding: {
+          systemPrompt:
+            "你负责文字部分。基于用户需求产出主体文字内容(标题 + 段落,清晰、简洁、有结构)。",
+          userPrompt: "${trigger.payload.userMessage}",
+        },
+      },
+      n_image: {
+        id: "n_image",
+        kind: "action",
+        type: "subagent",
+        subagentModel: imageModel,
+        outputAlias: "image",
+        inputBinding: {
+          systemPrompt:
+            "你负责图像/视觉部分。基于用户需求生成插图描述或图像。" +
+            "(nano-banana 暂未接入,fallback 到文字模型时,请输出『图像 prompt + 描述』,方便后续真生图替换)",
+          userPrompt: "${trigger.payload.userMessage}",
+        },
+      },
+      n_stitch: {
+        id: "n_stitch",
+        kind: "action",
+        type: "subagent",
+        subagentModel: p.hostModel,
+        outputAlias: "summary",
+        inputBinding: {
+          userPrompt:
+            "把以下文字部分和图像部分拼装成最终多模态产出。\n\n" +
+            "### 文字\n${scope.text.finalText}\n\n" +
+            "### 图像\n${scope.image.finalText}",
+        },
+      },
+    },
   };
 }
 
