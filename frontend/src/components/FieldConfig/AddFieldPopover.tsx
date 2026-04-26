@@ -102,16 +102,21 @@ const EMPTY_LOOKUP: LookupConfig = {
 
 const PAGE_SIZE = 8;
 
-// ─── AI Suggestions hook (used at App level for pre-loading) ───
+// ─── AI Suggestions hook ───
+// 默认 lazy:不自动 fetch,等 AddFieldPopover 实际打开时再调一次 LLM
+// (旧行为是每次 tableId 变化都立刻打 LLM,Magic Canvas 多 block + StrictMode
+// 双挂载会放大 N 倍;且 LLM 503 时还会拖慢整个 table 渲染)。
+// 用 `{autoFetch:true}` 可以恢复旧行为(目前没有调用方需要)。
 
-export function useFieldSuggestions(tableId: string) {
+export function useFieldSuggestions(tableId: string, opts?: { autoFetch?: boolean }) {
+  const autoFetch = opts?.autoFetch ?? false;
   const [cache, setCache] = useState<FieldSuggestion[]>([]);
   const [pageIndex, setPageIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const shownNamesRef = useRef<Set<string>>(new Set());
 
-  const fetchSuggestions = useCallback(async (opts?: { excludeNames?: string[]; forceRefresh?: boolean }) => {
+  const fetchSuggestions = useCallback(async (innerOpts?: { excludeNames?: string[]; forceRefresh?: boolean }) => {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -120,8 +125,8 @@ export function useFieldSuggestions(tableId: string) {
       const res = await suggestFields(
         tableId,
         {
-          excludeNames: opts?.excludeNames ?? [...shownNamesRef.current],
-          forceRefresh: opts?.forceRefresh,
+          excludeNames: innerOpts?.excludeNames ?? [...shownNamesRef.current],
+          forceRefresh: innerOpts?.forceRefresh,
         },
         ac.signal,
       );
@@ -137,15 +142,14 @@ export function useFieldSuggestions(tableId: string) {
     }
   }, [tableId]);
 
-  // Auto-fetch when tableId changes (cold start per table)
+  // Reset state when tableId changes; only auto-fetch if explicitly opted-in
   useEffect(() => {
-    // Reset cache for the new table
     setCache([]);
     setPageIndex(0);
     shownNamesRef.current = new Set();
-    fetchSuggestions({ excludeNames: [] });
+    if (autoFetch) fetchSuggestions({ excludeNames: [] });
     return () => { abortRef.current?.abort(); };
-  }, [tableId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tableId, autoFetch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Paginated view
   const currentPage = useMemo(() => {
@@ -169,13 +173,17 @@ export function useFieldSuggestions(tableId: string) {
     }
   }, [pageIndex, totalPages, fetchSuggestions]);
 
-  return { suggestions: currentPage, loading, refresh };
+  return { suggestions: currentPage, loading, refresh, fetchSuggestions, hasFetched: cache.length > 0 || loading };
 }
 
 export interface FieldSuggestionsState {
   suggestions: FieldSuggestion[];
   loading: boolean;
   refresh: () => void;
+  /** 触发首次 fetch —— AddFieldPopover 打开时会调一次,实现 lazy 加载 */
+  fetchSuggestions: (opts?: { excludeNames?: string[]; forceRefresh?: boolean }) => Promise<void>;
+  /** 是否已经至少 fetch 过一次(包含 loading 中)—— 用于决定是否需要 lazy 触发 */
+  hasFetched: boolean;
 }
 
 // ─── Main component ───
@@ -194,10 +202,20 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const popoverRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { suggestions, loading: sugLoading, refresh: sugRefresh } = fieldSuggestions;
+  const { suggestions, loading: sugLoading, refresh: sugRefresh, fetchSuggestions, hasFetched } = fieldSuggestions;
 
   useEffect(() => {
     fetchTables().then(setAllTables);
+  }, []);
+
+  // Lazy 触发 AI suggestions —— 仅在 popover 打开 (此组件 mount) 且尚未 fetch 时调一次。
+  // 这样 TableArtifactSurface 普通渲染不会产生 LLM 调用,直到用户真正点 "+ 加字段"。
+  // 编辑模式不需要 suggestions(只是改字段名/类型)。
+  useEffect(() => {
+    if (isEdit) return;
+    if (hasFetched) return;
+    fetchSuggestions({ excludeNames: [] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const cancelHideTimer = () => {

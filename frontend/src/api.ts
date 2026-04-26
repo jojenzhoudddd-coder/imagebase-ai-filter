@@ -55,14 +55,37 @@ export async function fetchTables(): Promise<TableBrief[]> {
   return res.json();
 }
 
+/**
+ * In-flight dedup for cheap GETs (fields / records / views).
+ *
+ * Magic Canvas 多 block + React Strict Mode dev double-render 会让同一张 table
+ * 在 ~10ms 内连续触发多次 fetchFields/fetchRecords/fetchViews。每次都打到 backend
+ * 浪费带宽 + 拖慢初始 paint。这里用 url-keyed Map 共享 in-flight Promise:
+ * 同一个 URL 在 promise 解析前的所有调用都拿到 同一个 Promise。
+ *
+ * 不缓存已解析的结果——只去重并发。SSE 仍然是数据 freshness 的唯一来源。
+ */
+const _inflightGets = new Map<string, Promise<any>>();
+
+function getDedup<T>(url: string): Promise<T> {
+  const existing = _inflightGets.get(url);
+  if (existing) return existing as Promise<T>;
+  const promise = fetch(url)
+    .then(res => res.json())
+    .finally(() => {
+      // 解析后清掉 entry,下次调用是真新鲜的请求
+      _inflightGets.delete(url);
+    });
+  _inflightGets.set(url, promise);
+  return promise as Promise<T>;
+}
+
 export async function fetchFields(tableId: string): Promise<Field[]> {
-  const res = await fetch(`${BASE}/tables/${tableId}/fields`);
-  return res.json();
+  return getDedup<Field[]>(`${BASE}/tables/${tableId}/fields`);
 }
 
 export async function fetchRecords(tableId: string): Promise<TableRecord[]> {
-  const res = await fetch(`${BASE}/tables/${tableId}/records`);
-  return res.json();
+  return getDedup<TableRecord[]>(`${BASE}/tables/${tableId}/records`);
 }
 
 export interface CreateFieldDTO {
@@ -127,8 +150,7 @@ export async function queryRecords(
 }
 
 export async function fetchViews(tableId: string): Promise<View[]> {
-  const res = await fetch(`${BASE}/tables/${tableId}/views`);
-  return res.json();
+  return getDedup<View[]>(`${BASE}/tables/${tableId}/views`);
 }
 
 export async function deleteField(

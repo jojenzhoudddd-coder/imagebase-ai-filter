@@ -5,6 +5,45 @@
 
 ---
 
+## 2026-04-26 (晚间 · 性能修)
+
+### perf(table): 取消每次 mount 都打 LLM + GET 去重,table 加载明显变快
+
+**分支**: `AIWorkBeta` · **commits**: 待提交
+
+紧跟着上一次的 TableArtifactSurface 抽出,用户报告 table 切换/打开变慢。网络面板诊断:
+- 每个 TableArtifactSurface mount 都立即触发 `useFieldSuggestions(tableId)` → POST `/api/ai/fields/suggest`(LLM 慢、且生产环境多次返回 503)。Magic Canvas 多 block + React StrictMode dev double-render 把这放大成 5 次 LLM 调用 / 1 次 reload,4 次 503,严重拖慢首屏
+- `fetchFields/fetchRecords/fetchViews` 在 StrictMode + 多 block 同时挂载下会被打 2~6 次,纯重复
+
+#### 修复
+
+**A. AI 字段建议改 lazy 加载** (`frontend/src/components/FieldConfig/AddFieldPopover.tsx`)
+- `useFieldSuggestions(tableId, opts?)` 增加 `autoFetch` 选项,默认 `false`(原来是隐式 true)
+- 旧的"tableId 一变就 LLM"的 `useEffect` 仅在 `autoFetch=true` 时触发
+- AddFieldPopover 内部新增 mount-once `useEffect`:仅当 popover 实际打开 + 且尚未 fetch 过时,主动调一次 `fetchSuggestions`。编辑模式不调
+- 暴露 `fetchSuggestions` + `hasFetched` 给消费方,FieldSuggestionsState 兼容老调用
+
+**B. 共享 in-flight Promise 去重 GET** (`frontend/src/api.ts`)
+- 新增 `getDedup<T>(url)` 工具:url 作 key 维护一张 `Map<string, Promise<any>>`;同一 URL 在 promise resolve 前的所有调用共享同一个 Promise(并发场景免重复网络往返)
+- `fetchFields / fetchRecords / fetchViews` 走 `getDedup`
+- promise resolve 后立刻删 entry —— 不缓存已解析结果,SSE 仍是 freshness 唯一来源
+
+#### 验证
+
+Chrome DevTools Network 对比:
+
+| 场景 | LLM `/ai/fields/suggest` | `fetchFields` | `fetchRecords` | `fetchViews` |
+|---|---|---|---|---|
+| 修复前(reload 一次) | **5 次**(4 次 503) | 2× per table | 2× per table | 2× per table |
+| 修复后(reload 一次) | **0 次** | 1× per table | 1× per table | 1× per table |
+
+Build pass · 无 console 错误 · 多 block 同表 SSE 实时同步功能不受影响(API call 行为不变,只是少触发了重复请求)
+
+#### 文件总结
+- 修改:`frontend/src/api.ts` · `frontend/src/components/FieldConfig/AddFieldPopover.tsx`
+
+---
+
 ## 2026-04-26 (晚间)
 
 ### feat(magic-canvas): TableArtifactSurface 抽出 + per-instance clientId 实现多 block 同表实时同步
