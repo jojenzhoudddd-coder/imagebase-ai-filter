@@ -93,6 +93,11 @@
   width: 100%;
   box-sizing: border-box;
   min-height: 100%;
+  /* P3 (PR1) defensive fix:首/末行偶发不显示。子级 textarea 的 scrollHeight
+     在快速输入或 stream-write 时可能比父 scroll 容器最新计算值滞后一帧;
+     在内容区显式留 1 行的"尾呼吸"+顶部 1 行避免 sub-pixel 边界裁切。 */
+  scroll-padding-top: 1.7em;
+  scroll-padding-bottom: 1.7em;
 }
 
 .idea-editor-loading {
@@ -185,8 +190,17 @@
 .idea-preview-body h2 { font-size: 22px; font-weight: 600; margin: 20px 0 10px; }
 .idea-preview-body h3 { font-size: 18px; font-weight: 600; margin: 16px 0 8px; }
 .idea-preview-body p  { margin: 8px 0; }
+/* P1 fix: 显式声明 list-style-type 保护无序/有序编号不被 page-level 样式
+   或 react-markdown HMR 链路某个环节意外吞掉。同时给出嵌套层级的层叠
+   字符 (• → ◦ → ▪ / 1. → a. → i.) 与 chat 区一致。 */
 .idea-preview-body ul,
 .idea-preview-body ol { padding-left: 24px; margin: 8px 0; }
+.idea-preview-body ul { list-style-type: disc; }
+.idea-preview-body ul ul { list-style-type: circle; }
+.idea-preview-body ul ul ul { list-style-type: square; }
+.idea-preview-body ol { list-style-type: decimal; }
+.idea-preview-body ol ol { list-style-type: lower-alpha; }
+.idea-preview-body ol ol ol { list-style-type: lower-roman; }
 .idea-preview-body li { margin: 4px 0; }
 .idea-preview-body code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -249,52 +263,42 @@
 }
 
 /* ─── Mention chip (rendered by MarkdownPreview) ───
- * Light-blue tag background with the entity name rendered in the primary
- * blue. Clicking navigates to the target entity (view / taste / idea).
- *
- * Sizing is fully em-based so the chip matches the typography of its
- * container. Inside a 28px h1 the chip reads as a 25px "@name"; inside a
- * 14px paragraph it reads as ~13px. Fixed px sizing would make chips look
- * pathetically small in headings. */
+ * P5 (PR1):标签样式 → 纯蓝色文字。原本的浅蓝底 + 圆角芯片视觉太重,
+ * 用户反馈"丑",改成 inline 蓝字下划线 hover。本质仍是 <button>,
+ * 仍然 contentEditable={false} (atomic) + 仍可点击导航,但视觉权重
+ * 与正文齐平,只在颜色上区分。 */
 .idea-mention-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15em;
-  height: auto;
-  padding: 0.05em 0.35em;
-  margin: 0 0.1em;
+  display: inline;
+  padding: 0;
+  margin: 0;
   border: none;
-  border-radius: 0.25em;
-  background: rgba(20, 86, 240, 0.1);
+  background: transparent;
   color: var(--color-primary, var(--primary));
-  font-size: 0.9em;
+  font: inherit;
   font-weight: 500;
-  line-height: 1.3;
   cursor: pointer;
-  font-family: inherit;
-  vertical-align: baseline;
-  transition: background 0.15s, color 0.15s;
   /* Chips are atomic: contentEditable={false} on the button already blocks
    * caret entry; this extra selector prevents the browser from lifting a
    * partial text selection out of a chip and into the surrounding block. */
   user-select: none;
 }
 
-/* Focused chip — for future keyboard-selection UX (e.g. left-arrow to chip).
- * Currently used only by the Backspace-to-delete flow which briefly
- * highlights the chip before removing it. */
+.idea-mention-chip:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Focused chip — used by the Backspace-to-delete flow to briefly highlight
+ * before removing. Light blue background ONLY in this transient focus state. */
 .idea-mention-chip.is-focused {
-  background: rgba(20, 86, 240, 0.24);
+  background: rgba(20, 86, 240, 0.18);
+  border-radius: 2px;
   outline: 1px solid var(--color-primary, var(--primary));
   outline-offset: 1px;
 }
 
-.idea-mention-chip:hover {
-  background: rgba(20, 86, 240, 0.18);
-}
-
 .idea-mention-chip:active {
-  background: rgba(20, 86, 240, 0.24);
+  opacity: 0.8;
 }
 
 /* ─── Mention picker ─── */

@@ -607,11 +607,15 @@
 }
 
 /* ─── ToolCallCard body (single & group share this) ─── */
-.chat-tool-card.error .chat-expand-card-header {
-  background: var(--danger-bg);
+/* P4 (PR1):错误态去掉满红 header + 满红 body 背景。改用左侧细红条
+   + result 文字红色作为"出错"信号即可,与 success/running 视觉对称
+   (它们也只改文字色)。原本满红卡片视觉过强,影响信息扫读。 */
+.chat-tool-card.error {
+  border-left: 2px solid var(--danger);
 }
 .chat-tool-card.error.expanded {
-  background: var(--danger-bg);
+  /* 与 success / running 一致:不填背景 */
+  background: transparent;
 }
 .chat-tool-body {
   display: flex;
@@ -1192,9 +1196,10 @@
   to { transform: rotate(360deg); }
 }
 
-/* Error row tint — subtle warm wash so failures stand out without shouting. */
+/* Error row — P4 (PR1):去掉整行红色背景,改与 normal row 一致,仅图标
+   和文字用 --danger 颜色提示。 */
 .chat-tool-row.error {
-  background: var(--danger-bg);
+  background: transparent;
 }
 
 /* Group header — clickable button variant of .chat-tool-row. */

@@ -416,9 +416,12 @@ export const zh: TranslationKeys = {
   "idea.empty": "在这里记录你的灵感。支持 Markdown、@ 提及和内嵌 SVG / HTML。",
   "idea.mentionEmpty": "未找到匹配项",
   "idea.mentionView": "数据表",
+  "idea.mentionTable": "数据表",
+  "idea.mentionDesign": "画布",
   "idea.mentionTaste": "创意",
   "idea.mentionIdea": "灵感",
   "idea.mentionSection": "灵感",
+  "idea.mentionModel": "模型",
 
   // Default view/field names
   "view.defaultGrid": "表格",

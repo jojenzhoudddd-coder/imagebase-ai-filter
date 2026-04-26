@@ -1698,17 +1698,22 @@ export default function App() {
   // for highlight (consumed by SvgCanvas on next render). Idea = open the
   // target idea document.
   const handleNavigateToEntity = useCallback((target:
-    | { type: "view";  tableId: string; viewId: string }
+    | { type: "table"; id: string }
+    | { type: "design"; id: string }
     | { type: "taste"; designId: string; tasteId: string }
     | { type: "idea";  id: string }
     | { type: "idea-section"; ideaId: string; headingSlug: string }
   ) => {
-    if (target.type === "view") {
+    if (target.type === "table") {
       setActiveItemType("table");
-      setFocusEntity({ type: "view", id: target.viewId });
-      setActiveViewId(target.viewId);
-      void switchTable(target.tableId);
-      navigateToArtifact("table", target.tableId);
+      setFocusEntity(null);
+      void switchTable(target.id);
+      navigateToArtifact("table", target.id);
+    } else if (target.type === "design") {
+      setActiveTableId(target.id);
+      setActiveItemType("design");
+      setFocusEntity(null);
+      navigateToArtifact("design", target.id);
     } else if (target.type === "taste") {
       setActiveTableId(target.designId);
       setActiveItemType("design");

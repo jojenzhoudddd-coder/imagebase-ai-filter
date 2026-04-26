@@ -6,11 +6,11 @@ import SidebarExpandButton from "../SidebarExpandButton";
 import BlockCloseButton from "../BlockCloseButton";
 import { fetchIdea, saveIdeaContent } from "../../api";
 import { useIdeaSync } from "../../hooks/useIdeaSync";
-import MentionPicker from "./MentionPicker";
+import MentionPicker from "../Mention/MentionPicker";
 import MarkdownPreview from "./MarkdownPreview";
 import type { MarkdownPreviewHandle, MentionQueryState } from "./MarkdownPreview";
-import { buildMentionLink } from "./mentionSyntax";
-import type { ParsedMention } from "./mentionSyntax";
+import { buildMentionLink } from "../Mention/mentionSyntax";
+import type { ParsedMention } from "../Mention/mentionSyntax";
 import type { MentionHit } from "../../types";
 import "./IdeaEditor.css";
 
@@ -21,7 +21,8 @@ interface Props {
   clientId: string;
   onRename: (name: string) => void;
   onNavigate: (target:
-    | { type: "view";  tableId: string; viewId: string }
+    | { type: "table"; id: string }
+    | { type: "design"; id: string }
     | { type: "taste"; designId: string; tasteId: string }
     | { type: "idea";  id: string }
     | { type: "idea-section"; ideaId: string; headingSlug: string }
@@ -1003,8 +1004,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   }, [content, mentionState, scheduleSave]);
 
   const handleMentionChipClick = useCallback((m: ParsedMention) => {
-    if (m.type === "view" && m.tableId) {
-      onNavigate({ type: "view", tableId: m.tableId, viewId: m.id });
+    if (m.type === "table") {
+      onNavigate({ type: "table", id: m.id });
+    } else if (m.type === "design") {
+      onNavigate({ type: "design", id: m.id });
     } else if (m.type === "taste" && m.designId) {
       onNavigate({ type: "taste", designId: m.designId, tasteId: m.id });
     } else if (m.type === "idea") {
@@ -1013,6 +1016,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       // id of an idea-section chip is the heading slug.
       onNavigate({ type: "idea-section", ideaId: m.ideaId, headingSlug: m.id });
     }
+    // model 类型在 idea 内不导航 (V1 chat 才有意义)
   }, [onNavigate]);
 
   // ── Scroll to heading when navigated via an idea-section mention ──

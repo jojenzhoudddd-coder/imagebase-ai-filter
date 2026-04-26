@@ -6,8 +6,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import { parseMentionHref } from "./mentionSyntax";
-import type { ParsedMention } from "./mentionSyntax";
+import { parseMentionHref } from "../Mention/mentionSyntax";
+import type { ParsedMention } from "../Mention/mentionSyntax";
 
 // Analyst P3: lazy-load the vega-lite chart block so Idea editor doesn't
 // pull ~400KB of vega into its bundle until a chart actually appears.
@@ -179,6 +179,20 @@ const schema: typeof defaultSchema = {
     a: [
       ...((defaultSchema.attributes?.a) || []),
       ["href", /^mention:\/\//, /^https?:\/\//, /^#/, /^\//, /^mailto:/, /^tel:/],
+    ],
+    // P1 fix: rehype-sanitize's defaultSchema strips `start` / `type` /
+    // `reversed` from <ol> and `value` from <li>, which is why preview was
+    // losing ordered list numbering when source had `1. … 2. … 3. …`. The
+    // numbers themselves render fine when present from index=1, but custom
+    // `start="3"` (e.g. continuing a list across a sub-paragraph) was lost.
+    // We allow them here so author-controlled numbering survives sanitisation.
+    ol: [
+      ...((defaultSchema.attributes?.ol) || []),
+      "start", "type", "reversed",
+    ],
+    li: [
+      ...((defaultSchema.attributes?.li) || []),
+      "value",
     ],
   },
   protocols: {
@@ -669,8 +683,31 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       const end = Number(endStr);
       if (!Number.isFinite(start) || !Number.isFinite(end)) return;
 
+      // P2 (PR1) — Skip blocks that contain wrapped descendants. For nested
+      // lists the OUTER `<li>` covers `2. two\n   - sub-a\n   - sub-b\n`
+      // but rebuildFromDom flattens children to plain text, losing the inner
+      // operator prefixes. The inner `<li>` blocks have their own data-md-*
+      // stamps and will be visited by this same forEach — let them handle
+      // their own slice. The outer block's mode-toggle no-op case is
+      // already covered by the boundary-stripped equality check below.
+      if (block.querySelector("[data-md-start]") !== null) return;
+
       const currentText = block.innerText.replace(/\u00A0/g, " ");
       if (currentText === origText) return;
+
+      // P2 (PR1) round-trip stabiliser:
+      //   Browsers serialise `<li>` innerText with a trailing `\n` for tight
+      //   lists and may add other block-level newlines that `origText` (the
+      //   flattened MDAST text) doesn't carry. Without this guard, a no-op
+      //   preview → source toggle triggers `rebuildFromDom` with stale-looking
+      //   `currentText`, which then writes back a slightly different srcSlice
+      //   (extra `\n`, lost original placement).
+      //   Compare with boundary whitespace stripped — a user's real edit
+      //   changes the body, not the boundary whitespace, so stripping doesn't
+      //   miss real edits.
+      if (currentText.replace(/^\s+|\s+$/g, "") === origText.replace(/^\s+|\s+$/g, "")) {
+        return;
+      }
 
       const srcSlice = sourceSnapshotRef.current.slice(start, end);
 

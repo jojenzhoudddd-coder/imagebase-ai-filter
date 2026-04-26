@@ -414,9 +414,12 @@ export const en = {
   "idea.empty": "Start writing your idea. Supports Markdown, @ mentions, and inline SVG / HTML.",
   "idea.mentionEmpty": "No matches",
   "idea.mentionView": "Table",
+  "idea.mentionTable": "Table",
+  "idea.mentionDesign": "Design",
   "idea.mentionTaste": "Design",
   "idea.mentionIdea": "Idea",
   "idea.mentionSection": "Idea",
+  "idea.mentionModel": "Model",
 
   // Default view/field names
   "view.defaultGrid": "Grid",

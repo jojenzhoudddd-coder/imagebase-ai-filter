@@ -5,6 +5,62 @@
 
 ---
 
+## 2026-04-27 (Agent Workflow PR1)
+
+### feat(mention): 共享化 + view→table 颗粒度调整 + 5 处 polish 修复
+
+**分支**: `AIWorkBeta` · **commits**: 待提交
+
+Agent Workflow 5-PR 系列的第一弹。把 MentionPicker 抽成共享组件,重新定义 mention 颗粒度,顺手修了 5 个用户反馈的 polish bug。**不引入新行为**,纯重构 + bugfix。
+
+#### Mention 颗粒度调整
+
+| 旧 | 新 |
+|---|---|
+| `view` (`mention://view/{vid}?table={tid}`) | **`table`** (`mention://table/{tid}`) — 整张表,不再到具体 view |
+| - | **`design`** (`mention://design/{did}`) — 整个画布 (PR2 用) |
+| `taste` | 保留(SVG 切片) |
+| `idea` / `idea-section` | 保留 |
+| - | **`model`** (PR2 加) |
+
+旧的 `mention://view/{vid}?table={tid}` URL 在 idea 历史 content 里通过 `parseMentionHref` lazy 迁移成 `table` 类型(查询字符串里的 `table=...` 取出来当新 id);后端 `mentionIndex.normalizeHref` 同步迁移,reverse-ref index 也跟着改。**不批量改写历史 content**,等下次自然保存才落新格式。
+
+#### Polish 修复(P1-P5)
+
+| ID | 问题 | 修复 |
+|---|---|---|
+| P1 | Idea preview 丢有序/无序编号 | (1) `rehype-sanitize` schema 显式白名单 `<ol start type reversed>` + `<li value>`;(2) `idea-preview-body` CSS 显式声明 `list-style-type: disc/decimal` 三层嵌套样式 |
+| P2 | source→preview→source roundtrip 后嵌套列表 `   - sub-a` 丢 indent + 加换行 | `commitEdits` 子块 forEach 增加 guard:**含 `data-md-start` 后代的外层 block 跳过 rebuildFromDom**(让内层自己处理),不再在外层把嵌套子项 flatten 成无算子前缀的纯文本 |
+| P3 | 偶发首/末行不显示 | `idea-editor-source` / `idea-preview-body` 加 `scroll-padding-top: 1.7em` + `scroll-padding-bottom: 1.7em` 防止 sub-pixel 边界裁切 |
+| P4 | Tool 卡片错误态满红背景 | `.chat-tool-card.error` 改成 `border-left: 2px solid var(--danger)` 细红条 + body 透明,与 success/running 视觉对称 |
+| P5 | Mention chip 标签样式过重 | `.idea-mention-chip` 改成纯蓝字 (no background, no border, no padding),hover 加下划线;原浅蓝底圆角 chip 视觉权重过强,用户反馈"丑" |
+
+#### MentionPicker 抽出
+
+`frontend/src/components/IdeaEditor/MentionPicker.tsx` + `mentionSyntax.ts` → `frontend/src/components/Mention/`。IdeaEditor 改 import 路径,功能不变。
+
+为 PR2(ChatInput 接 MentionPicker)铺路。
+
+#### 文件总结
+
+- **新建**: `frontend/src/components/Mention/MentionPicker.tsx` + `mentionSyntax.ts` (从 IdeaEditor 移入)
+- **修改**: `backend/src/routes/mentionRoutes.ts` (返回 table/design 类型) · `backend/src/services/mentionIndex.ts` (lazy migrate view→table) · `backend/mcp-server/src/tools/mentionTools.ts` (描述 + enum 更新) · `frontend/src/types.ts` (MentionType 加 table/design/model) · `frontend/src/components/IdeaEditor/index.tsx` (新 onNavigate 类型) · `frontend/src/components/IdeaEditor/MarkdownPreview.tsx` (sanitize schema + commitEdits 嵌套块 guard + P2 boundary-stripped 比较) · `frontend/src/components/IdeaEditor/IdeaEditor.css` (P1 list-style + P3 scroll-padding + P5 mention-link 样式) · `frontend/src/components/ChatSidebar/ChatSidebar.css` (P4 error 态去满红) · `frontend/src/App.tsx` (handleNavigateToEntity 新类型) · `frontend/src/i18n/{en,zh}.ts` (mentionTable/mentionDesign/mentionModel)
+
+#### 自验收
+
+本地登录 (canvas-1777194060@local.test) → 打开 idea + canvas 多 block 测试:
+- ✅ P1 — 写入 `1. 第一项 / 2. 第二项 / 3. 第三项 / - alpha / - beta / 1. one / 2. two /    - sub-a /    - sub-b / 3. three`,preview 全部正确显示编号 + bullets + 嵌套层级符号 (•/◦) + (1./a./i.)
+- ✅ P2 — 同样 markdown 走 source → preview → source 一遍,JS 读 textarea.value byte-equal
+- ✅ P5 — `[@Table](mention://table/...)` preview 显示纯蓝色 `@Table`,无 chip 框
+- ✅ P6 — mention 搜索接口返回 `type: "table"` + `mentionUri: mention://table/{tableId}`,picker 列表 TABLE 分组显示整张表
+- ✅ build pass · 无 production console 错误 (HMR 触发的 React fiber 错误属于开发期 hot-reload 假阳性,不影响生产)
+
+#### 已知保留事项
+
+- (无)
+
+---
+
 ## 2026-04-26 (晚间 · 性能修)
 
 ### perf(table): 取消每次 mount 都打 LLM + GET 去重,table 加载明显变快

@@ -197,32 +197,51 @@ export interface IdeaDetail extends IdeaBrief {
 
 // ─── Mention system ───
 // v3: four workspace-level targets. The label already carries the
-// fully-qualified "Parent.Child" form for view / taste / idea-section, so the
-// picker and chip render it directly — no need for a separate parentLabel.
+// fully-qualified "Parent.Child" form for taste / idea-section so the picker
+// and chip render it directly — no need for a separate parentLabel.
 //
-//   view          — a saved view inside a table  (label: "Table.View")
-//   taste         — an SVG inside a design       (label: "Design.Taste")
-//   idea          — a Markdown doc artifact      (label: "IdeaName")
-//   idea-section  — a heading inside an idea     (label: "IdeaName.Heading")
-export type MentionType = "view" | "taste" | "idea" | "idea-section";
+//   table         — a whole data table              (label: "Tablename")
+//   design        — a whole design canvas           (label: "Designname")
+//   taste         — an SVG inside a design          (label: "Design.Taste")
+//   idea          — a Markdown doc artifact         (label: "IdeaName")
+//   idea-section  — a heading inside an idea        (label: "IdeaName.Heading")
+//   model         — a chat model (PR2,只有 chat 输入框可用,引用是发送时携带 hint)
+//
+// PR1 change: removed `view` type. Tables now mention to the whole table.
+// Legacy `mention://view/{vid}?table={tid}` URLs in existing idea content are
+// parsed by `parseMentionHref` and lazy-migrated into `table` mentions on the
+// fly — original markdown is left intact in the source buffer and rewritten
+// only on next user save (graceful migration, no batch re-write).
+export type MentionType =
+  | "table"
+  | "design"
+  | "taste"
+  | "idea"
+  | "idea-section"
+  | "model";
 
 export interface MentionHit {
   type: MentionType;
   /** Primary identifier. For `idea-section` this is the heading slug (unique
    * within the parent idea); the parent idea's id lives in `ideaId`. */
   id: string;
-  /** Composite display label, e.g. "CRM.Kanban" (table.view),
+  /** Composite display label, e.g. "CRM" (table), "Logo" (design),
    * "Logo.Hero" (design.taste), "Launch plan" (idea), or
    * "Launch plan.Timeline" (idea-section). */
   label: string;
-  /** Navigation parent — set for view (tableId), taste (designId),
-   * idea-section (ideaId). */
+  /** Navigation parent — set for taste (designId), idea-section (ideaId).
+   * `tableId` may also be present on legacy `view`-encoded mentions during
+   * the migration grace period; readers should prefer `id` for the new
+   * `table` type and fall back to `tableId` only for legacy URIs. */
   tableId?: string;
   designId?: string;
   ideaId?: string;
   /** Raw heading text for idea-section hits — preserved so the chip can show
    * it verbatim if the label is truncated. */
   headingText?: string;
+  /** Model-only fields (PR2). */
+  modelId?: string;
+  modelSpecialty?: string;
 }
 
 export type FocusEntity =

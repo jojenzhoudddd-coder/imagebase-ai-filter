@@ -23,7 +23,18 @@
  * the content. Keeps the "content + mentions" write atomic.
  */
 
-export type MentionTargetType = "view" | "taste" | "idea" | "idea-section";
+export type MentionTargetType =
+  | "table"
+  | "design"
+  | "taste"
+  | "idea"
+  | "idea-section";
+
+/**
+ * Legacy v3 type "view" is normalised at parse time:
+ * `mention://view/{viewId}?table={tableId}` → `{targetType:"table", targetId:tableId}`.
+ * Idea content written before PR1 keeps working without a batch migration.
+ */
 
 /** One parsed mention, addressable by composite targetId. */
 export interface ParsedMention {
@@ -70,23 +81,40 @@ function normalizeHref(
   const qs = qsStart >= 0 ? rest.slice(qsStart + 1) : "";
   const slashIdx = pathPart.indexOf("/");
   if (slashIdx < 0) return null;
-  const type = pathPart.slice(0, slashIdx) as MentionTargetType;
+  const rawType = pathPart.slice(0, slashIdx);
   const id = pathPart.slice(slashIdx + 1);
   if (!id) return null;
 
   const query = queryToRecord(qs);
+
+  // v3 → v4 lazy migration: `mention://view/{viewId}?table={tableId}` is
+  // re-keyed as a table mention so reverse lookups index against the new
+  // canonical type.
+  if (rawType === "view") {
+    const tableId = query.table;
+    if (!tableId) return null;
+    return {
+      targetType: "table",
+      targetId: tableId,
+      rawLabel: label,
+      sourceOffset: offset,
+    };
+  }
+
+  let targetType: MentionTargetType;
   let targetId: string;
-  switch (type) {
-    case "view":
+  switch (rawType) {
+    case "table":
+    case "design":
     case "taste":
     case "idea":
+      targetType = rawType;
       targetId = id;
       break;
     case "idea-section": {
-      // Picker encodes section links as `mention://idea-section/<slug>?idea=<ideaId>`.
-      // We flatten to "<ideaId>#<slug>" so reverse lookups index one string.
       const ideaId = query.idea;
       if (!ideaId) return null;
+      targetType = "idea-section";
       targetId = `${ideaId}#${id}`;
       break;
     }
@@ -95,7 +123,7 @@ function normalizeHref(
   }
 
   return {
-    targetType: type,
+    targetType,
     targetId,
     rawLabel: label,
     sourceOffset: offset,

@@ -75,9 +75,11 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
   // order the user actually sees on screen.
   const { groups, visualHits } = useMemo(() => {
     const groupLabelOf = (hit: MentionHit) =>
-      hit.type === "view" ? t("idea.mentionView")
+      hit.type === "table" ? t("idea.mentionTable")
+      : hit.type === "design" ? t("idea.mentionDesign")
       : hit.type === "taste" ? t("idea.mentionTaste")
       : hit.type === "idea-section" ? t("idea.mentionSection")
+      : hit.type === "model" ? t("idea.mentionModel")
       : t("idea.mentionIdea");
 
     const groupsList: Array<{ label: string; items: MentionHit[] }> = [];

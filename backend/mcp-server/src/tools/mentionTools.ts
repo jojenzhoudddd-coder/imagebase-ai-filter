@@ -25,9 +25,9 @@ export const mentionTools: ToolDefinition[] = [
   {
     name: "find_mentionable",
     description:
-      "按关键字搜索工作空间内可被 @ 引用的实体：view（表视图）/taste（设计切片）/idea（灵感文档）/idea-section（灵感章节）。" +
+      "按关键字搜索工作空间内可被 @ 引用的实体：table（整张数据表）/design（整个画布）/taste（设计切片 SVG）/idea（灵感文档）/idea-section（灵感章节）。" +
       "返回命中的 label + 完整的 mentionUri + 可直接嵌入 Markdown 的 markdown 字段——" +
-      "写入 idea 时把 markdown 原样拼进 payload 即可形成可点击的 chip。" +
+      "写入 idea 时把 markdown 原样拼进 payload 即可形成可点击的链接。" +
       "空查询时返回按类型均衡的前 N 条热门候选。",
     inputSchema: {
       type: "object",
@@ -36,7 +36,7 @@ export const mentionTools: ToolDefinition[] = [
         q: { type: "string", description: "搜索关键字（支持中文、大小写不敏感）" },
         types: {
           type: "string",
-          description: "逗号分隔的类型过滤：view,taste,idea,idea-section（默认全开）",
+          description: "逗号分隔的类型过滤：table,design,taste,idea,idea-section（默认全开）。legacy 'view' 会自动转 'table'。",
         },
         limit: {
           type: "number",
@@ -60,7 +60,7 @@ export const mentionTools: ToolDefinition[] = [
     name: "list_incoming_mentions",
     description:
       "列出工作空间内有哪些实体（目前仅灵感文档）引用了给定 target。常用于删除前弹出二次确认，让用户看清影响范围。" +
-      "targetType ∈ {view,taste,idea,idea-section}；" +
+      "targetType ∈ {table,design,taste,idea,idea-section}；" +
       "idea-section 的 targetId 使用 '<ideaId>#<slug>' 复合键。",
     inputSchema: {
       type: "object",
@@ -68,7 +68,7 @@ export const mentionTools: ToolDefinition[] = [
         workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
         targetType: {
           type: "string",
-          enum: ["view", "taste", "idea", "idea-section"],
+          enum: ["table", "design", "taste", "idea", "idea-section"],
         },
         targetId: {
           type: "string",
