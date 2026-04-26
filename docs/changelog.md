@@ -5,6 +5,56 @@
 
 ---
 
+## 2026-04-27 (Agent Workflow PR5)
+
+### feat(worktree): 真 git worktree 隔离 + worktree-skill + 8 个并发代码工具
+
+**分支**: `AIWorkBeta` · **commits**: 待提交
+
+PR5: concurrent-code 场景的最后一块 —— host agent 通过 git worktree 把多个 subagent 隔离到不同 working dir + branch,各自改代码,host 最后挨个 merge 回主分支,冲突时返回结构化 conflicts 让 host 决定 (LLM auto-resolve / 询问用户 / 放弃)。
+
+#### Backend
+
+- **新建 `services/worktreeManager.ts`**:
+  - 沙箱根 `~/.imagebase/agent-worktrees/<userId>/<wtId>/`
+  - 8 个 API:`createWorktree / listWorktrees / getWorktree / readWorktreeFile / writeWorktreeFile / gitDiffWorktree / gitStatusWorktree / commitAndMergeWorktree / cleanupWorktree`
+  - `isInsideSandbox()` 防路径越界(`path.resolve` + 前缀比对)
+  - 所有 git 命令走 `execFile(['git', '-C', ...])`,**no shell**,无注入
+  - registry per-user JSON 文件持久化 (`<root>/<userId>/registry.json`)
+  - 硬上限:per-user 最多 10 个 active worktree
+  - merge 冲突策略:halt-and-report —— `git merge --abort` 后返回 `{success:false, conflicts:[{file, preview}]}`
+  - 后端环境变量:`WORKTREE_REPO_PATH` 必填(指向用户预先 checkout 的本地 git repo)。**安全考量**:不允许 clone 任意 URL(否则攻击者可以用恶意 remote 注入)
+
+- **新建 `mcp-server/src/tools/worktreeTools.ts`** — 8 个工具:
+  - `create_worktree({runId, branchSuffix})` ⚠️ danger
+  - `list_worktrees`
+  - `read_worktree_file({worktreeId, path})`
+  - `write_worktree_file({worktreeId, path, content})`
+  - `git_diff_worktree({worktreeId})` — 含 untracked,truncate 50KB 防 OOM
+  - `git_status_worktree({worktreeId})`
+  - `merge_worktree_into_main({worktreeId, commitMessage?})` ⚠️ danger
+  - `cleanup_worktree({worktreeId})` ⚠️ danger
+  - 所有 danger 工具:V1 subagent 调会被 chatAgentService 现有的 "subagent 不允许 danger 工具" gate 拒绝;**只有 host 能调** —— 这是设计意图(host 负责 merge / cleanup,subagent 只负责在沙箱里改代码)
+
+- **新建 `mcp-server/src/skills/worktreeSkill.ts`** — Tier 2 skill:
+  - 触发关键词:`/并行.*开发/`, `/worktree/i`, `/concurrent.?code/i`, "并行实现"
+  - softDeps `["workflow-skill"]`(常和 workflow brainstorm/concurrent-data 模板配合)
+  - promptFragment 提供完整工作流指引(估算拆分 → create N worktree → spawn subagent 各自 read/write → diff review → 顺序 merge → cleanup)
+
+- **`skills/index.ts` 注册 worktreeSkill**
+
+- **生产部署默认 `WORKTREE_REPO_PATH` 未设**:工具调用会返回 "WORKTREE_REPO_PATH env var not set" 错误。**Admin 主动设环境变量**指向某个本地 git repo 才启用 — 这是 V1 的故意保守路线,等 V2 加 sandbox container 才扩大可用面
+
+#### V1 已知保留事项
+
+- **未做**:npm install / build inside worktree(只支持 text edits + git)
+- **未做**:auto-resolve conflicts via LLM tool — 当前冲突 returns 结构化数据,host 系统 prompt 指引用户决定
+- **未做**:跨用户 / 跨进程的 worktree 资源调度 — V1 单实例 in-memory + per-user registry 文件
+- **未做**:concurrent-code 端到端模板 —— 现在用 brainstorm fallback;真正的 concurrent-code 模板要 PR4.1 配合(splitter + dynamic branch creation)
+- **未做**:浏览器自动化 e2e 测试 — 需要环境配 WORKTREE_REPO_PATH + 本地 git repo,留 PR5.1
+
+---
+
 ## 2026-04-27 (Agent Workflow PR4)
 
 ### feat(workflow): DSL workflow 引擎 + brainstorm/review/cowork/concurrent-data 模板 + WorkflowBlock UI
