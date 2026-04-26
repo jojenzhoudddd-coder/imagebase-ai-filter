@@ -26,14 +26,30 @@ export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: 
 
   const adjacency = useMemo(() => computeAdjacency(state.layout), [state.layout]);
 
-  // 计算 dropTarget 对应的目标 block 矩形,渲染一个高亮指示条
+  // 计算 dropTarget 对应的高亮区域(block side 模式或 canvas edge 模式)
   const dropIndicatorRect = useMemo(() => {
     if (!dropTarget || !state.layout || !containerRef.current) return null;
     const cr = containerRef.current.getBoundingClientRect();
+    if (dropTarget.kind === "edge") {
+      // 整个 canvas 沿该边的一条 30% 厚带
+      const EDGE_RATIO = 0.3;
+      const w = cr.width;
+      const h = cr.height;
+      const thickness =
+        dropTarget.edge === "top" || dropTarget.edge === "bottom" ? h * EDGE_RATIO : w * EDGE_RATIO;
+      let rect: { x: number; y: number; w: number; h: number };
+      switch (dropTarget.edge) {
+        case "top": rect = { x: 0, y: 0, w, h: thickness }; break;
+        case "bottom": rect = { x: 0, y: h - thickness, w, h: thickness }; break;
+        case "left": rect = { x: 0, y: 0, w: thickness, h }; break;
+        case "right": rect = { x: w - thickness, y: 0, w: thickness, h }; break;
+      }
+      return { rect, side: "center" as const, isEdge: true };
+    }
     const rects = computeRects(state.layout, cr.width, cr.height, 0, 0);
     const r = rects[dropTarget.blockId];
     if (!r) return null;
-    return { rect: r, side: dropTarget.side };
+    return { rect: r, side: dropTarget.side, isEdge: false };
   }, [dropTarget, state.layout]);
 
   if (!state.layout) {
@@ -74,7 +90,12 @@ export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: 
   return (
     <div ref={containerRef} className={`mc-canvas${dragging ? " mc-canvas--dragging" : ""}`}>
       <LayoutRenderer node={state.layout} renderLeaf={renderLeaf} />
-      {dropIndicatorRect && <DropIndicator rect={dropIndicatorRect.rect} side={dropIndicatorRect.side} />}
+      {dropIndicatorRect && (
+        <DropIndicator
+          rect={dropIndicatorRect.rect}
+          side={dropIndicatorRect.isEdge ? "center" : dropIndicatorRect.side}
+        />
+      )}
     </div>
   );
 }

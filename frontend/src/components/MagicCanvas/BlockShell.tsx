@@ -34,6 +34,7 @@ export default function BlockShell({
     stateRef,
     removeBlock,
     moveBlock,
+    moveBlockToEdge,
     scheduleSave,
     setDragging,
     setDragSourceId,
@@ -90,30 +91,53 @@ export default function BlockShell({
     return () => tearDownDrag();
   }, [tearDownDrag]);
 
-  /** 计算 pointer 落在哪个 block 的哪一边(top/right/bottom/left/center) */
+  /** 计算 pointer 落点
+   *   - 如果靠近 canvas 外缘(< EDGE_BAND px),返回 edge target
+   *   - 否则在哪个 block 内部,按 4 边距离决定 side / center
+   */
   const computeDropTarget = useCallback(
-    (px: number, py: number): { blockId: string; side: "top" | "right" | "bottom" | "left" | "center" } | null => {
+    (px: number, py: number):
+      | { kind: "block"; blockId: string; side: "top" | "right" | "bottom" | "left" | "center" }
+      | { kind: "edge"; edge: "top" | "right" | "bottom" | "left" }
+      | null => {
       const cont = canvasContainerRef.current;
       const layout = stateRef.current.layout;
       if (!cont || !layout) return null;
       const cr = cont.getBoundingClientRect();
+
+      // 1) Canvas 外缘 drop band (顶/右/底/左 各 ~36px)
+      const EDGE_BAND = 36;
+      // 必须 pointer 落在 canvas 内才考虑 edge(防止漂在 topbar 上误触发)
+      if (px >= cr.left && px <= cr.right && py >= cr.top && py <= cr.bottom) {
+        const dTopCanvas = py - cr.top;
+        const dBottomCanvas = cr.bottom - py;
+        const dLeftCanvas = px - cr.left;
+        const dRightCanvas = cr.right - px;
+        const minEdge = Math.min(dTopCanvas, dBottomCanvas, dLeftCanvas, dRightCanvas);
+        if (minEdge < EDGE_BAND) {
+          if (minEdge === dTopCanvas) return { kind: "edge", edge: "top" };
+          if (minEdge === dBottomCanvas) return { kind: "edge", edge: "bottom" };
+          if (minEdge === dLeftCanvas) return { kind: "edge", edge: "left" };
+          return { kind: "edge", edge: "right" };
+        }
+      }
+
+      // 2) 落在某个 block 的内部 —— 算到该 block 4 边的距离
       const rects = computeRects(layout, cr.width, cr.height, cr.left, cr.top);
       for (const [id, r] of Object.entries(rects)) {
         if (id === blockId) continue;
         if (px < r.x || px > r.x + r.w || py < r.y || py > r.y + r.h) continue;
-        // 命中 —— 算 4 边距离,最小者决定 side。center 阈值:pointer 距任意边
-        // 大于 ~25% 的 min(w,h) → center(交换)。
         const dTop = py - r.y;
         const dBottom = r.y + r.h - py;
         const dLeft = px - r.x;
         const dRight = r.x + r.w - px;
         const minDist = Math.min(dTop, dBottom, dLeft, dRight);
         const centerThreshold = Math.min(r.w, r.h) * 0.25;
-        if (minDist > centerThreshold) return { blockId: id, side: "center" };
-        if (minDist === dTop) return { blockId: id, side: "top" };
-        if (minDist === dBottom) return { blockId: id, side: "bottom" };
-        if (minDist === dLeft) return { blockId: id, side: "left" };
-        return { blockId: id, side: "right" };
+        if (minDist > centerThreshold) return { kind: "block", blockId: id, side: "center" };
+        if (minDist === dTop) return { kind: "block", blockId: id, side: "top" };
+        if (minDist === dBottom) return { kind: "block", blockId: id, side: "bottom" };
+        if (minDist === dLeft) return { kind: "block", blockId: id, side: "left" };
+        return { kind: "block", blockId: id, side: "right" };
       }
       return null;
     },
@@ -167,21 +191,25 @@ export default function BlockShell({
         // 落位 —— 仅在 release 时改 layout
         const t = computeDropTarget(ev.clientX, ev.clientY);
         if (t) {
-          // 保持 source 原 size:把 source 当前 rect + target 当前 rect 传过去,
-          // 计算 split ratio 使 source 在新 split 中占的尺寸 = 原尺寸
-          const cont = canvasContainerRef.current;
-          const layout = stateRef.current.layout;
-          let preserveRatio: { sourceW: number; sourceH: number; targetW: number; targetH: number } | undefined;
-          if (cont && layout) {
-            const cr = cont.getBoundingClientRect();
-            const rects = computeRects(layout, cr.width, cr.height, cr.left, cr.top);
-            const sr = rects[blockId];
-            const tr = rects[t.blockId];
-            if (sr && tr) {
-              preserveRatio = { sourceW: sr.w, sourceH: sr.h, targetW: tr.w, targetH: tr.h };
+          if (t.kind === "edge") {
+            // 拖到 canvas 外缘:全宽/全高 block 贴边
+            moveBlockToEdge(blockId, t.edge);
+          } else {
+            // 落在某 block 的某边:保持 source 原 size
+            const cont = canvasContainerRef.current;
+            const layout = stateRef.current.layout;
+            let preserveRatio: { sourceW: number; sourceH: number; targetW: number; targetH: number } | undefined;
+            if (cont && layout) {
+              const cr = cont.getBoundingClientRect();
+              const rects = computeRects(layout, cr.width, cr.height, cr.left, cr.top);
+              const sr = rects[blockId];
+              const tr = rects[t.blockId];
+              if (sr && tr) {
+                preserveRatio = { sourceW: sr.w, sourceH: sr.h, targetW: tr.w, targetH: tr.h };
+              }
             }
+            moveBlock(blockId, t.blockId, t.side, preserveRatio);
           }
-          moveBlock(blockId, t.blockId, t.side, preserveRatio);
           scheduleSave();
         }
         tearDownDrag();

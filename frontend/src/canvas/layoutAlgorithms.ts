@@ -48,6 +48,35 @@ export function swapLeaves(node: LayoutNode, idA: string, idB: string): LayoutNo
 /** drop side —— 拖拽落位时,源块要插到目标块的哪一边。center 表示与目标交换。 */
 export type DropSide = "top" | "right" | "bottom" | "left" | "center";
 
+/** Canvas 外缘 drop —— 把 source 全宽/全高放在整个 layout 树的某一侧。 */
+export type CanvasEdge = "top" | "right" | "bottom" | "left";
+
+/**
+ * 在 layout 根的 canvas 外缘(top/right/bottom/left)插入 source。
+ * source 占 30%(top/left)或 70%(bottom/right 时新 source 占外侧 30%),
+ * 现有整棵树缩到剩余 70%。这样新 block 直观"贴边",占地不喧宾夺主。
+ */
+export function moveBlockToCanvasEdge(
+  layout: LayoutNode,
+  sourceId: string,
+  edge: CanvasEdge,
+): LayoutNode {
+  // 摘出 source
+  const without = removeLeaf(layout, sourceId);
+  if (!without) return layout;
+  const sourceLeaf: LayoutNode = { kind: "leaf", blockId: sourceId };
+  const orientation: "h" | "v" = edge === "top" || edge === "bottom" ? "v" : "h";
+  const sourceFirst = edge === "top" || edge === "left";
+  // ratio 默认 0.3 给 source(让现有树占 70%);一致 first 占比表示
+  return {
+    kind: "split",
+    orientation,
+    ratio: sourceFirst ? 0.3 : 0.7,
+    first: sourceFirst ? sourceLeaf : without,
+    second: sourceFirst ? without : sourceLeaf,
+  };
+}
+
 /**
  * 把 source block 从当前位置移动到 target block 指定边/中心。
  *   - center → 与 target 交换位置(swap)

@@ -24,12 +24,13 @@ import {
   collectLeaves,
   countLeaves,
   insertNewBlock,
+  moveBlockToCanvasEdge,
   moveBlockToTarget,
   removeLeaf,
   swapLeaves,
   updateRatioByPath,
 } from "../canvas/layoutAlgorithms";
-import type { DropSide } from "../canvas/layoutAlgorithms";
+import type { CanvasEdge, DropSide } from "../canvas/layoutAlgorithms";
 
 const MAX_BLOCKS = 16;
 const DEFAULT_SIDEBAR_WIDTH = 190;
@@ -100,10 +101,9 @@ async function persistToBackend(state: CanvasState): Promise<void> {
 
 // ─── Context ───────────────────────────────────────────────────────────
 
-export interface DropTarget {
-  blockId: string;
-  side: DropSide;
-}
+export type DropTarget =
+  | { kind: "block"; blockId: string; side: DropSide }
+  | { kind: "edge"; edge: CanvasEdge };
 
 export interface CanvasContextValue {
   state: CanvasState;
@@ -134,6 +134,8 @@ export interface CanvasContextValue {
     side: DropSide,
     preserveRatio?: { sourceW: number; sourceH: number; targetW: number; targetH: number },
   ) => void;
+  /** 把 source block 移动到 canvas 外缘(top/right/bottom/left) —— 拖到窗口边时用 */
+  moveBlockToEdge: (sourceId: string, edge: CanvasEdge) => void;
   /** 改 split ratio(resize) */
   setRatioByPath: (path: ("L" | "R")[], ratio: number) => void;
   /** 更新某个 block 的 internal state(例:artifact 的 active / sidebar 折叠) */
@@ -211,6 +213,14 @@ export function CanvasProvider({
     },
     [],
   );
+
+  const moveBlockToEdge = useCallback((sourceId: string, edge: CanvasEdge) => {
+    setState((prev) => {
+      if (!prev.layout) return prev;
+      const newLayout = moveBlockToCanvasEdge(prev.layout, sourceId, edge);
+      return { ...prev, layout: newLayout };
+    });
+  }, []);
 
   const addBlock = useCallback(
     (type: BlockType): string | null => {
@@ -291,11 +301,12 @@ export function CanvasProvider({
       removeBlock,
       swapBlocks,
       moveBlock,
+      moveBlockToEdge,
       setRatioByPath,
       patchBlockState,
       scheduleSave,
     }),
-    [state, stateRef, visibleBlockIds, dragging, dragSourceId, dropTarget, addBlock, removeBlock, swapBlocks, moveBlock, setRatioByPath, patchBlockState, scheduleSave],
+    [state, stateRef, visibleBlockIds, dragging, dragSourceId, dropTarget, addBlock, removeBlock, swapBlocks, moveBlock, moveBlockToEdge, setRatioByPath, patchBlockState, scheduleSave],
   );
 
   return <CanvasCtx.Provider value={value}>{children}</CanvasCtx.Provider>;
