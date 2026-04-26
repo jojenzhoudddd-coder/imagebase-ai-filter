@@ -613,10 +613,9 @@
 .chat-tool-card.error {
   /* no border-left strip */
 }
-.chat-tool-card.error.expanded {
-  /* 与 success / running 一致:不填背景 */
-  background: transparent;
-}
+/* V2.9.2 #3: error.expanded 与 success.expanded 一致 — 使用同一个 surface-inset
+   灰底,不再 transparent (之前 transparent 让 error 卡片展开后底色和外层 chat
+   背景同色,看起来"消失"了一块)。 */
 .chat-tool-body {
   display: flex;
   flex-direction: column;
@@ -1796,9 +1795,8 @@
 }
 
 .chat-subagent-body {
-  margin-top: 12px;
-  padding-top: 4px;
-  /* V2.9 #12: 去掉 header / body 之间的水平分隔线 */
+  /* V2.9.2 #2: padding-top 走 .chat-expand-card-body 的 8px,这里不再 override。
+     V2.9 #12: 去掉 header / body 之间的水平分隔线 */
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1971,9 +1969,8 @@
   color: var(--text-secondary);
 }
 .chat-workflow-body {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-light);
+  /* V2.9.2 #1: 去掉 workflow card 的 header/body 水平分隔线 (与 subagent 对齐)
+     V2.9.2 #2: 上 padding 走 .chat-expand-card-body 的 8px */
 }
 .chat-workflow-timeline {
   display: flex;
