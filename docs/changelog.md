@@ -5,6 +5,70 @@
 
 ---
 
+## 2026-04-27 (Agent Workflow V2.3)
+
+### feat(chat-cards): SubagentBlock + WorkflowBlock 与 ToolCallCard 同款骨架 + 时间戳 interleave + 自动折叠
+
+**分支**: `AIWorkBeta`
+
+V2.3 完成 D2 + C2 + C6 + C10。三类 card(tool / subagent / workflow)现在共享同一套 `chat-expand-card-*` 样式骨架,只换内容。Subagent + workflow 卡片按 startedAt 时间戳 interleave 渲染,与执行顺序一致。完成时自动折叠回 header,与 ToolCallCard 行为对齐。
+
+#### 改动详情
+
+**`ChatMessage/cardCommon.tsx` 新建**:抽出 3 个 card 共享的:
+- `StatusDot({status})`:running 旋转 / success ✓ / error ✗ / aborted ✗ / awaiting •
+- `Chevron({expanded})`:向下箭头,旋转动画
+- `formatElapsed(ms)`:`12.5s` / `1m20s` / `350ms` 格式
+- `SubagentGlyph()` / `WorkflowGlyph()` 14×14 SVG icon
+- `CardTitleParts({primary, secondary})`:title 主次分隔渲染
+- `CardStatus` 统一类型
+
+**SubagentBlock 重构** (V1 → V2.3):
+- 外层从 `<div className="chat-subagent-block">` 改成 `<div className="chat-expand-card chat-subagent-card running|success|error">`
+- header 用 `chat-expand-card-header` button + `chat-expand-card-icon / -title / -elapsed / Chevron`
+- body 用 `chat-expand-card-body chat-subagent-body` + 三段 section (思考 / 工具 / 最终输出)
+- C6 auto-collapse:`useEffect` 监听 status 由 running → success 时自动 `setExpanded(false)`,running → error/aborted 时自动展开
+- `data-runid` 属性留给 V2.8 的 click-to-scroll 用
+- usedFallback 显示 ↳ 小箭头(原 V1 的 "(用户请求 ...,已 fallback)" 文本)
+
+**WorkflowBlock 同样重构**:
+- 外层 `chat-expand-card chat-workflow-card`(3px 左侧条 vs subagent 2px,体现"orchestration > step" 层级)
+- title 主="workflow · brainstorm",次="N 个事件"
+- timeline (node_start / node_end / loop_iter / branch_start) 在 body 里
+- C6 auto-collapse 同上
+
+**C2 时间戳 interleave** (`ChatSidebar/index.tsx`):
+- 新增 `interleaveOrchestration(msg)`:把 `msg.workflowRuns` + `msg.subagentRuns` 合并成单数组,按 `startedAt` 升序排
+- 渲染时 map 出来,`kind === "workflow" ? <WorkflowBlock> : <SubagentBlock>`
+- V1 是固定 workflow 先 / subagent 后,看不出嵌套关系。V2.3 后:workflow card → 它派生的 subagent cards 天然按时间出现在它后面
+
+**C10 loop iteration**: WorkflowBlock 已经显示 "循环 1/3" 字样(V1 就有)+ 现在 timeline `chat-workflow-tle-loop_iter` 高亮 primary 色
+
+**CSS** (~80 行新加):
+- `.chat-expand-card-title-primary / -secondary`:title 主次配色
+- `.chat-expand-card-elapsed`:右侧 monospace 小字
+- `.chat-expand-card-fallback-hint`:↳ warning 色
+- `.chat-expand-card-section-label`:section 名 uppercase 灰小字(共享给 ToolCallCard 也可用)
+- `.chat-expand-card.chat-subagent-card.{success/error/aborted/running}`:状态色
+- `.chat-expand-card.chat-workflow-card.{...}`:workflow 3px 条 vs subagent 2px
+- 旧的 `.chat-subagent-block / -header / -status / ...` 样式仍保留(渐进切换),后续 V2.8 收尾时清理
+
+#### V2.3 已 fold 的项
+
+- **D2** ✓ 三类 card 同款骨架
+- **C2** ✓ workflow/subagent interleave by startedAt
+- **C6** ✓ streaming → expanded,success → 自动 collapse
+- **C10** ✓ loop iter inline 计数(已存在,样式微调)
+
+#### 折进后续批次
+
+- **C13** mention hover tooltip 显示 specialty + strengths → V2.7(strengths 数据本来就在那里集中处理)
+- **C15** history 消息 mention 带模型 logo + 专长标签 → V2.7
+- **C5** spawn_subagent 工具卡 ↔ SubagentBlock 视觉互链 → V2.8
+- **C7** WorkflowBlock 节点点击 → 滚到对应 SubagentBlock 高亮 → V2.8
+
+---
+
 ## 2026-04-27 (Agent Workflow V2.2)
 
 ### feat(chat-input): textarea → contenteditable + mention chip 蓝字 + picker 上方右锚

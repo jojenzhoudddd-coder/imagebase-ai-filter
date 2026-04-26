@@ -2012,3 +2012,81 @@
 .chat-workflow-tle-branch_start .chat-workflow-tle-label {
   color: var(--warning, #d4880a);
 }
+
+/* ─── V2.3 shared expand-card additions ────────────────────────────────
+   Subagent/Workflow cards reuse ToolCallCard's `chat-expand-card-*` skeleton.
+   These tiny additions cover the new title-parts (primary/secondary split)
+   and elapsed badge that all three card types now share. */
+.chat-expand-card-title-primary {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.chat-expand-card-title-secondary {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.chat-expand-card-elapsed {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  margin-right: 4px;
+}
+.chat-expand-card-fallback-hint {
+  flex: 0 0 auto;
+  color: var(--warning, #d4880a);
+  font-size: 10px;
+  margin-right: 4px;
+}
+.chat-expand-card-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
+
+/* V2.3 subagent-card adopts the shared skeleton.
+   Border-left tint by status (running pulse / success / error) keeps
+   subagent cards visually distinct from tool calls without duplicating
+   the entire skeleton. */
+.chat-expand-card.chat-subagent-card {
+  border-left: 2px solid var(--primary);
+}
+.chat-expand-card.chat-subagent-card.success {
+  border-left-color: var(--success, #2ea043);
+}
+.chat-expand-card.chat-subagent-card.error,
+.chat-expand-card.chat-subagent-card.aborted {
+  border-left-color: var(--danger);
+}
+.chat-expand-card.chat-subagent-card.running {
+  animation: chat-subagent-pulse 1.6s ease-in-out infinite;
+}
+
+/* Workflow gets a thicker (3px) accent so orchestration cards visually
+   "outrank" subagent cards in the same message. */
+.chat-expand-card.chat-workflow-card {
+  border-left: 3px solid var(--primary);
+}
+.chat-expand-card.chat-workflow-card.success { border-left-color: var(--success, #2ea043); }
+.chat-expand-card.chat-workflow-card.error { border-left-color: var(--danger); }
+.chat-expand-card.chat-workflow-card.aborted { border-left-color: var(--warning, #d4880a); }
+.chat-expand-card.chat-workflow-card.running {
+  animation: chat-subagent-pulse 2s ease-in-out infinite;
+}
+
+/* Body tweaks — keep section spacing consistent with ToolCallCard's
+   chat-tool-body:gap 6px between sections. */
+.chat-subagent-body,
+.chat-workflow-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-workflow-tle-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}

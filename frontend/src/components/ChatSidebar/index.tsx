@@ -1329,20 +1329,36 @@ function MessageBlock({ msg }: { msg: UiMessage }) {
           <ToolCallGroup key={`tg-${msg.id}-${i}`} tool={g.tool} items={g.items} />
         )
       )}
-      {/* PR4 WorkflowBlock — render workflow timeline (orchestration view)
-          before the individual SubagentBlocks so users see the plan first
-          then the per-step details. */}
-      {msg.workflowRuns?.map((run) => (
-        <WorkflowBlock key={run.runId} run={run} />
-      ))}
-      {/* PR3 SubagentBlock — render each subagent run after the toolCalls.
-          Order is "all host tool calls, then subagent blocks" — V2 may
-          interleave by start timestamp once we track per-call ordering. */}
-      {msg.subagentRuns?.map((run) => (
-        <SubagentBlock key={run.runId} run={run} />
-      ))}
+      {/* V2.3 C2: interleave WorkflowBlock + SubagentBlock by startedAt
+          so the timeline reads true to execution order (subagent runs
+          spawned BY a workflow appear after the workflow's own card). */}
+      {interleaveOrchestration(msg).map((entry) =>
+        entry.kind === "workflow"
+          ? <WorkflowBlock key={`wf-${entry.run.runId}`} run={entry.run} />
+          : <SubagentBlock key={`sa-${entry.run.runId}`} run={entry.run} />
+      )}
     </div>
   );
+}
+
+function interleaveOrchestration(
+  msg: UiMessage,
+): Array<
+  | { kind: "workflow"; run: UiWorkflowRun; ts: number }
+  | { kind: "subagent"; run: UiSubagentRun; ts: number }
+> {
+  const list: Array<
+    | { kind: "workflow"; run: UiWorkflowRun; ts: number }
+    | { kind: "subagent"; run: UiSubagentRun; ts: number }
+  > = [];
+  for (const r of msg.workflowRuns ?? []) {
+    list.push({ kind: "workflow", run: r, ts: r.startedAt ?? 0 });
+  }
+  for (const r of msg.subagentRuns ?? []) {
+    list.push({ kind: "subagent", run: r, ts: r.startedAt ?? 0 });
+  }
+  list.sort((a, b) => a.ts - b.ts);
+  return list;
 }
 
 /** Run-length grouping by tool name — keeps ordering stable so the transcript

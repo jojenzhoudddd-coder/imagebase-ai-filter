@@ -1,81 +1,91 @@
 /**
- * WorkflowBlock — PR4 Agent Workflow.
+ * WorkflowBlock — V2.3 重构。
  *
- * Renders one workflow run (a `UiWorkflowRun` from index.tsx) as a
- * collapsible card showing:
- *   - templateId pill (review / brainstorm / cowork / concurrent-data)
- *   - status (running / success / error / aborted) + duration
- *   - timeline of node events (start → end, with loop iterations + branch
- *     announcements interleaved)
+ * 与 ToolCallCard / SubagentBlock 共享 `chat-expand-card` 样式骨架(D2)。
+ * Workflow 特有内容是节点级 timeline(node_start / node_end / loop_iter /
+ * branch_start)+ 模板 id pill。
  *
- * Subagent runs spawned BY this workflow render as separate SubagentBlock
- * components on the same message (they're added to msg.subagentRuns by
- * the spawnSubagent → subagent_start path);WorkflowBlock just shows the
- * orchestration timeline.
+ * V2.3 C6: streaming 时自动展开,success 后自动折叠;error/aborted 保持展开。
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { UiWorkflowRun } from "../index";
+import {
+  StatusDot,
+  Chevron,
+  WorkflowGlyph,
+  CardTitleParts,
+  formatElapsed,
+  useCardTranslation,
+  type CardStatus,
+} from "./cardCommon";
 
 interface Props {
   run: UiWorkflowRun;
 }
 
 export default function WorkflowBlock({ run }: Props) {
+  const { t } = useCardTranslation();
   const [expanded, setExpanded] = useState(run.status === "running");
+  // V2.3 C6: auto-collapse on success
+  const prevStatusRef = useRef(run.status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    if (prev === "running" && run.status === "success") setExpanded(false);
+    if (prev === "running" && (run.status === "error" || run.status === "aborted"))
+      setExpanded(true);
+    prevStatusRef.current = run.status;
+  }, [run.status]);
 
-  const statusEmoji =
-    run.status === "running"
-      ? "⏳"
-      : run.status === "success"
-      ? "✓"
-      : run.status === "aborted"
-      ? "⊘"
-      : "✗";
-  const statusClass =
-    run.status === "running"
-      ? "workflow-running"
-      : run.status === "success"
-      ? "workflow-success"
-      : run.status === "aborted"
-      ? "workflow-aborted"
-      : "workflow-error";
-
-  const headerSubtitle =
-    run.status === "running"
-      ? "进行中…"
-      : run.status === "success"
-      ? `完成 · ${formatDuration(run.durationMs)} · ${run.nodeEvents.length} 个节点事件`
-      : run.status === "aborted"
-      ? `已中止 · ${run.error ?? ""}`
-      : `失败 · ${run.error ?? ""}`;
+  const status: CardStatus =
+    run.status === "running" ? "running"
+    : run.status === "success" ? "success"
+    : run.status === "aborted" ? "aborted"
+    : "error";
+  const statusTitle = t(`chat.workflow.status.${run.status}` as any) ?? run.status;
 
   return (
-    <div className={`chat-workflow-block ${statusClass}`}>
+    <div
+      className={`chat-expand-card chat-workflow-card ${run.status}${expanded ? " expanded" : ""}`}
+      data-runid={run.runId}
+    >
       <button
         type="button"
-        className="chat-workflow-header"
+        className="chat-expand-card-header"
         onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
       >
-        <span className="chat-workflow-icon">⚡</span>
-        <span className="chat-workflow-headtext">
-          <span className="chat-workflow-template">{run.templateId ?? "workflow"}</span>
-          <span className="chat-workflow-runid"> · {run.runId.slice(0, 12)}</span>
+        <span className="chat-expand-card-icon" aria-hidden="true">
+          <WorkflowGlyph />
         </span>
-        <span className="chat-workflow-toggle">{expanded ? "▾" : "▸"}</span>
+        <span className="chat-expand-card-title">
+          <CardTitleParts
+            primary={`workflow · ${run.templateId ?? "custom"}`}
+            secondary={`${run.nodeEvents.length} 个事件`}
+          />
+        </span>
+        <span className="chat-expand-card-elapsed">{formatElapsed(run.durationMs)}</span>
+        <StatusDot status={status} title={statusTitle} />
+        <Chevron expanded={expanded} />
       </button>
-      <div className="chat-workflow-status">
-        <span className="chat-workflow-status-dot">{statusEmoji}</span>
-        <span className="chat-workflow-status-text">{headerSubtitle}</span>
-      </div>
+
       {expanded && (
-        <div className="chat-workflow-body">
+        <div className="chat-expand-card-body chat-workflow-body">
+          {run.error && (
+            <div className="chat-subagent-error-section">
+              <div className="chat-expand-card-section-label">错误</div>
+              <div className="chat-subagent-error-text">{run.error}</div>
+            </div>
+          )}
           <div className="chat-workflow-timeline">
             {run.nodeEvents.map((ev, idx) => (
               <div key={idx} className={`chat-workflow-tle chat-workflow-tle-${ev.kind}`}>
                 {renderTimelineEvent(ev)}
               </div>
             ))}
+            {run.nodeEvents.length === 0 && (
+              <div className="chat-workflow-tle-empty">(尚无节点事件)</div>
+            )}
           </div>
         </div>
       )}
@@ -131,10 +141,4 @@ function renderTimelineEvent(ev: UiWorkflowRun["nodeEvents"][number]): React.Rea
     );
   }
   return null;
-}
-
-function formatDuration(ms?: number): string {
-  if (!ms || ms <= 0) return "—";
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
 }
