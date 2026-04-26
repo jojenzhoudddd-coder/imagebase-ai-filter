@@ -245,6 +245,50 @@ model Message {
   @@map("messages")
 }
 
+/// PR3 Agent Workflow:Subagent 嵌套调用记录。每次 host 通过 spawn_subagent 工具
+/// (或 PR4 workflow 的 subagent action 节点) 拉起子 agent loop,在这里建一行。
+/// 子 agent 自己的消息不写 Message 表(否则污染主 conversation 历史)——它们
+/// 沉到 toolCallsJson + finalText 里,host 的下一轮上下文只看到聚合后的
+/// finalText。前端展开 SubagentBlock 时按需加载完整 toolCallsJson。
+model SubagentRun {
+  id                   String   @id @default(cuid())
+  parentMessageId      String   // host 消息 id —— 标定这次 subagent 是哪一回合调起的
+  parentConversationId String
+  hostAgentId          String   // host agent (与父 conversation.agentId 同步)
+  subagentModel        String   // 实际跑这次的模型 id (resolveModelForCall 后的)
+  requestedModel       String   // 用户/host 指定的模型 id (可能 fallback 后不同)
+
+  // 输入
+  systemPrompt String  @db.Text
+  userPrompt   String  @db.Text
+  allowedTools String[] @default([]) // [] = 继承全部 (PR3 默认)
+  maxRounds    Int     @default(10)
+
+  // 嵌套
+  parentSubagentRunId String? // depth>0 时指向父 subagent
+  depth               Int     @default(0) // 0 = host 直接调,1 = subagent 调 subagent
+  workflowNodeId      String? // PR4 workflow 节点 id,触发于 workflow 的 subagent action
+
+  // 状态
+  status        String  // "pending" | "running" | "success" | "error" | "aborted" | "danger-paused"
+  finalText     String? @db.Text
+  thinkingText  String? @db.Text
+  toolCallsJson Json?   // 同 Message.toolCalls 结构,记录 subagent 自己用了什么工具
+  errorMessage  String? @db.Text
+
+  // 计量
+  startedAt        DateTime  @default(now())
+  completedAt      DateTime?
+  durationMs       Int?
+  promptTokens     Int?
+  completionTokens Int?
+
+  @@index([parentMessageId])
+  @@index([parentConversationId, startedAt])
+  @@index([parentSubagentRunId])
+  @@map("subagent_runs")
+}
+
 // ─── 设计稿（SVG 矢量画布） ───
 
 model Design {

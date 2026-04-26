@@ -1013,6 +1013,32 @@ export interface StreamChatOptions {
   onConfirm?: (pending: PendingConfirm) => void;
   onError?: (code: string, message: string) => void;
   onDone?: () => void;
+  // ── PR3 Subagent SSE callbacks ──
+  onSubagentStart?: (ev: SubagentStartEvent) => void;
+  onSubagentThinking?: (runId: string, text: string) => void;
+  onSubagentMessage?: (runId: string, text: string) => void;
+  onSubagentToolStart?: (runId: string, call: ChatToolCall) => void;
+  onSubagentToolResult?: (runId: string, callId: string, success: boolean, result: unknown) => void;
+  onSubagentDone?: (ev: SubagentDoneEvent) => void;
+  onSubagentError?: (runId: string, error: string) => void;
+}
+
+export interface SubagentStartEvent {
+  runId: string;
+  requestedModel: string;
+  resolvedModel: string;
+  usedFallback: boolean;
+  userPrompt: string;
+  systemPrompt: string;
+  allowedToolsCount: number;
+}
+
+export interface SubagentDoneEvent {
+  runId: string;
+  success: boolean;
+  durationMs: number;
+  finalText: string;
+  toolCallsCount: number;
 }
 
 /**
@@ -1100,6 +1126,47 @@ async function readChatSseStream(
             break;
           case "done":
             handlers.onDone?.();
+            break;
+          // ── PR3 Subagent events ──
+          case "subagent_start":
+            handlers.onSubagentStart?.({
+              runId: data.runId,
+              requestedModel: data.requestedModel,
+              resolvedModel: data.resolvedModel,
+              usedFallback: Boolean(data.usedFallback),
+              userPrompt: data.userPrompt || "",
+              systemPrompt: data.systemPrompt || "",
+              allowedToolsCount: typeof data.allowedToolsCount === "number" ? data.allowedToolsCount : 0,
+            });
+            break;
+          case "subagent_thinking":
+            handlers.onSubagentThinking?.(data.runId, data.text || "");
+            break;
+          case "subagent_message":
+            handlers.onSubagentMessage?.(data.runId, data.text || "");
+            break;
+          case "subagent_tool_start":
+            handlers.onSubagentToolStart?.(data.runId, {
+              callId: data.callId,
+              tool: data.tool,
+              args: data.args || {},
+              status: "running",
+            });
+            break;
+          case "subagent_tool_result":
+            handlers.onSubagentToolResult?.(data.runId, data.callId, Boolean(data.success), data.result);
+            break;
+          case "subagent_done":
+            handlers.onSubagentDone?.({
+              runId: data.runId,
+              success: Boolean(data.success),
+              durationMs: typeof data.durationMs === "number" ? data.durationMs : 0,
+              finalText: data.finalText || "",
+              toolCallsCount: typeof data.toolCallsCount === "number" ? data.toolCallsCount : 0,
+            });
+            break;
+          case "subagent_error":
+            handlers.onSubagentError?.(data.runId, data.error || "subagent error");
             break;
         }
       }

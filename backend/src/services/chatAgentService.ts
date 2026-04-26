@@ -51,6 +51,7 @@ import "./providers/index.js";
 import type { ProviderInputItem, ProviderStreamEvent } from "./providers/types.js";
 // MCP loopback 透传 JWT —— 见 dataStoreClient.ts 顶部注释
 import { authStorage } from "../../mcp-server/src/dataStoreClient.js";
+import { createSubagentRun, updateSubagentRun } from "./subagentRunStore.js";
 
 // Pushed up from 10 per user request. Seed can chain dozens of tool calls in
 // a single CRM-build turn; cap is only a last-resort runaway guard.
@@ -920,7 +921,19 @@ export interface SseEvent {
     | "tool_result"
     | "confirm"
     | "error"
-    | "done";
+    | "done"
+    // PR3 subagent events — emitted from spawnSubagent within tool execution.
+    // Each event carries the runId (subagent_runs.id) so the FE can de-mux
+    // multiple subagents running concurrently (V1 stays sequential, but
+    // PR4 workflow parallel branches will need this).
+    | "subagent_start"
+    | "subagent_thinking"
+    | "subagent_message"
+    | "subagent_tool_start"
+    | "subagent_tool_progress"
+    | "subagent_tool_result"
+    | "subagent_done"
+    | "subagent_error";
   data: Record<string, unknown>;
 }
 
@@ -971,6 +984,330 @@ const DEFAULT_AGENT_ID = "agent_default";
  * event. The route handler should then wait for the confirm POST and invoke
  * `resumeAfterConfirm()` to continue.
  */
+/**
+ * PR3 spawnSubagent —— host agent (或更深嵌套层) 通过 MCP 工具拉起的子
+ * agent 调用。**关键设计**:不复用 runAgentImpl,因为它假设了
+ *   1. 一个完整 ChatMessage 的写入 (subagent 不能污染 messages 表)
+ *   2. workspaceSchemaSnapshot / recall_memory 等重型上下文 (subagent 是
+ *      聚焦任务,prompt 来自 host 拼装,不需要再 build identity)
+ *   3. skill 状态管理 (subagent 默认继承 host 的 active skills,不自己管)
+ *
+ * 简化的 loop:
+ *   - 拼接 system + user prompt → callModelStream 一轮一轮跑直到 maxRounds 或 no-more-tools
+ *   - 累计 thinking + text + toolCalls 到 SubagentRun 行
+ *   - 每个增量 emit 成 subagent_* SSE 事件给前端实时展示
+ *
+ * V1 限制:
+ *   - depth ≤ 1 (host → subagent,不允许 subagent → subagent;PR4 放开)
+ *   - 默认继承 host 全部 active skills 的 tools (allowedTools=[] = inherit-all)
+ *   - 危险工具:V1 直接拒绝 (subagent 不能调 danger);PR4 实现完整的二段确认
+ *     上抛 host
+ */
+export interface SpawnSubagentOptions {
+  /** Override model to run subagent on. Resolved via resolveModelForCall —
+   *  fallback chain still applies if requested is offline. */
+  modelId: string;
+  /** Subagent system prompt — host crafts this. Default: a minimal worker prompt. */
+  systemPrompt?: string;
+  /** Subagent user message. */
+  userPrompt: string;
+  /** Tool name whitelist. Empty = inherit host's currently active tools. */
+  allowedTools?: string[];
+  /** Max rounds for the subagent's tool loop. Default 10. */
+  maxRounds?: number;
+  /** parent context (host conversation + agent + the message id this subagent
+   *  is attached to). */
+  parentMessageId: string;
+  parentConversationId: string;
+  hostAgentId: string;
+  /** PR4 workflow node binding. */
+  workflowNodeId?: string | null;
+  /** Tools available to the subagent (resolved from host's active skills). */
+  hostTools: ToolDefinition[];
+  /** ToolContext to pass through to subagent tool handlers (workspaceId etc). */
+  toolCtx: ToolContext;
+}
+
+const DEFAULT_SUBAGENT_SYSTEM = `你是一个聚焦任务的子 agent。
+
+# 行为准则
+- 只完成 host agent 通过 user prompt 派发给你的具体任务,不要展开发散
+- 不要尝试修改 host 的对话状态,不要假设你能跟用户直接对话
+- 任何危险操作 (删除/重置/批量改) 当前一律不允许 —— 直接报告"需要 host 处理"
+- 输出简洁:host 拿到你的 finalText 后会决定如何呈现给用户
+
+# 工具
+你可以使用 host 透传的工具 (具体清单见运行时)。优先用工具拿数据,而不是猜。`;
+
+const SUBAGENT_DANGER_DENY_MARKER = "__SUBAGENT_DANGER_DENIED__";
+
+export async function* spawnSubagent(
+  opts: SpawnSubagentOptions,
+  abortSignal?: AbortSignal,
+): AsyncGenerator<SseEvent, { runId: string; finalText: string; success: boolean }, undefined> {
+  const {
+    modelId,
+    systemPrompt = DEFAULT_SUBAGENT_SYSTEM,
+    userPrompt,
+    allowedTools = [],
+    maxRounds = 10,
+    parentMessageId,
+    parentConversationId,
+    hostAgentId,
+    workflowNodeId,
+    hostTools,
+    toolCtx,
+  } = opts;
+
+  // 1. Resolve model + handle fallback
+  const resolved = resolveModelForCall(modelId);
+  const model = resolved.resolved;
+
+  // 2. Filter tools by allowedTools (empty = inherit all)
+  const effectiveTools =
+    allowedTools.length > 0
+      ? hostTools.filter((t) => allowedTools.includes(t.name))
+      : hostTools;
+
+  // 3. Persist row
+  const run = await createSubagentRun({
+    parentMessageId,
+    parentConversationId,
+    hostAgentId,
+    subagentModel: model.id,
+    requestedModel: modelId,
+    systemPrompt,
+    userPrompt,
+    allowedTools,
+    maxRounds,
+    workflowNodeId,
+  });
+
+  yield {
+    event: "subagent_start",
+    data: {
+      runId: run.id,
+      requestedModel: modelId,
+      resolvedModel: model.id,
+      usedFallback: resolved.usedFallback,
+      userPrompt,
+      systemPrompt,
+      allowedToolsCount: effectiveTools.length,
+    },
+  };
+
+  const startedAt = Date.now();
+  const accThinking: string[] = [];
+  const accText: string[] = [];
+  const accToolCalls: Array<{
+    callId: string;
+    tool: string;
+    args: any;
+    result?: any;
+    error?: string;
+    status: "running" | "success" | "error";
+  }> = [];
+
+  // 4. Build the input (subagent has its own conversation history starting empty)
+  const input: ArkInputItem[] = [
+    { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
+    { role: "user", content: [{ type: "input_text", text: userPrompt }] },
+  ];
+
+  let success = false;
+  let errorMessage: string | null = null;
+
+  try {
+    for (let round = 0; round < maxRounds; round++) {
+      let sawToolCall = false;
+      let roundText = "";
+      let roundThinking = "";
+
+      const stream = callModelStream(model, input, abortSignal, effectiveTools, {
+        userId: null,
+        workspaceId: toolCtx.workspaceId ?? null,
+        feature: "chat-subagent",
+      });
+
+      // Will accumulate one round of text + thinking and execute any tool calls inline
+      const pendingToolCalls: Array<{ callId: string; name: string; args: any }> = [];
+
+      for await (const ev of stream) {
+        if (ev.kind === "thinking_delta") {
+          roundThinking += ev.text;
+          yield { event: "subagent_thinking", data: { runId: run.id, text: ev.text } };
+        } else if (ev.kind === "text_delta") {
+          roundText += ev.text;
+          yield { event: "subagent_message", data: { runId: run.id, text: ev.text } };
+        } else if (ev.kind === "tool_call_done") {
+          sawToolCall = true;
+          let parsedArgs: any;
+          try {
+            parsedArgs = ev.call.arguments ? JSON.parse(ev.call.arguments) : {};
+          } catch {
+            parsedArgs = {};
+          }
+          pendingToolCalls.push({
+            callId: ev.call.callId,
+            name: ev.call.name,
+            args: parsedArgs,
+          });
+        } else if (ev.kind === "error") {
+          throw new Error(ev.message ?? "subagent provider error");
+        }
+      }
+
+      if (roundText) accText.push(roundText);
+      if (roundThinking) accThinking.push(roundThinking);
+
+      // After the round, append the assistant turn to input (text + tool calls)
+      // and execute each pending tool call.
+      if (sawToolCall) {
+        for (const call of pendingToolCalls) {
+          const tool = effectiveTools.find((t) => t.name === call.name);
+
+          // Subagent danger-deny gate (V1 — PR4 will replace with upcall protocol)
+          if (tool && (tool as any).danger === true) {
+            const errMsg = "subagent 不允许调用危险工具 (delete/reset 等);请让 host 直接处理或在 PR4 workflow 用 escalate 流程";
+            const callRow = {
+              callId: call.callId,
+              tool: call.name,
+              args: call.args,
+              error: errMsg,
+              status: "error" as const,
+            };
+            accToolCalls.push(callRow);
+            yield {
+              event: "subagent_tool_start",
+              data: { runId: run.id, callId: call.callId, tool: call.name, args: call.args },
+            };
+            yield {
+              event: "subagent_tool_result",
+              data: { runId: run.id, callId: call.callId, success: false, result: { error: errMsg } },
+            };
+            // Inject the rejection back into the model input so it can recover
+            input.push({
+              type: "function_call",
+              call_id: call.callId,
+              name: call.name,
+              arguments: JSON.stringify(call.args ?? {}),
+            } as any);
+            input.push({
+              type: "function_call_output",
+              call_id: call.callId,
+              output: SUBAGENT_DANGER_DENY_MARKER + " " + errMsg,
+            } as any);
+            continue;
+          }
+
+          if (!tool) {
+            const errMsg = `tool ${call.name} not in subagent allowlist`;
+            const callRow = {
+              callId: call.callId,
+              tool: call.name,
+              args: call.args,
+              error: errMsg,
+              status: "error" as const,
+            };
+            accToolCalls.push(callRow);
+            yield { event: "subagent_tool_start", data: { runId: run.id, callId: call.callId, tool: call.name, args: call.args } };
+            yield { event: "subagent_tool_result", data: { runId: run.id, callId: call.callId, success: false, result: { error: errMsg } } };
+            input.push({
+              type: "function_call",
+              call_id: call.callId,
+              name: call.name,
+              arguments: JSON.stringify(call.args ?? {}),
+            } as any);
+            input.push({
+              type: "function_call_output",
+              call_id: call.callId,
+              output: errMsg,
+            } as any);
+            continue;
+          }
+
+          yield { event: "subagent_tool_start", data: { runId: run.id, callId: call.callId, tool: call.name, args: call.args } };
+          let toolResult: any;
+          try {
+            toolResult = await tool.handler(call.args, toolCtx);
+            const callRow = {
+              callId: call.callId,
+              tool: call.name,
+              args: call.args,
+              result: toolResult,
+              status: "success" as const,
+            };
+            accToolCalls.push(callRow);
+            yield { event: "subagent_tool_result", data: { runId: run.id, callId: call.callId, success: true, result: toolResult } };
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            const callRow = {
+              callId: call.callId,
+              tool: call.name,
+              args: call.args,
+              error: errMsg,
+              status: "error" as const,
+            };
+            accToolCalls.push(callRow);
+            yield { event: "subagent_tool_result", data: { runId: run.id, callId: call.callId, success: false, result: { error: errMsg } } };
+            toolResult = { error: errMsg };
+          }
+
+          // Append the function_call + output back into input for the next round
+          input.push({
+            type: "function_call",
+            call_id: call.callId,
+            name: call.name,
+            arguments: JSON.stringify(call.args ?? {}),
+          } as any);
+          input.push({
+            type: "function_call_output",
+            call_id: call.callId,
+            output: typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult),
+          } as any);
+        }
+        // Continue the loop — model will see tool results next round
+        continue;
+      }
+
+      // No tool calls = final assistant text. End the loop.
+      break;
+    }
+
+    success = true;
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : String(err);
+    yield { event: "subagent_error", data: { runId: run.id, error: errorMessage } };
+  }
+
+  const finalText = accText.join("");
+  const thinkingText = accThinking.join("");
+  const durationMs = Date.now() - startedAt;
+
+  await updateSubagentRun(run.id, {
+    status: success ? "success" : "error",
+    finalText,
+    thinkingText,
+    toolCallsJson: accToolCalls,
+    errorMessage,
+    completedAt: new Date(),
+    durationMs,
+  });
+
+  yield {
+    event: "subagent_done",
+    data: {
+      runId: run.id,
+      success,
+      durationMs,
+      finalText,
+      toolCallsCount: accToolCalls.length,
+    },
+  };
+
+  return { runId: run.id, finalText, success };
+}
+
 /** Public entry —— 包一层 AsyncLocalStorage，把用户 JWT 透传给 MCP
  * loopback 用。所有真正的 agent loop 逻辑在下面的 *Impl 里。 */
 export async function* runAgent(
@@ -1149,6 +1486,58 @@ async function* runAgentImpl(
       skillState.active.delete(name);
       skillState.lastUsedTurn.delete(name);
       logAgent({ event: "skill_deactivated", conversationId, skill: name });
+    },
+    // PR3 spawn_subagent — host calls this from MCP tool handler. We run
+    // the subagent loop here and pump every yielded SSE event into the
+    // parent's queue so they reach the user's SSE stream in real time
+    // (interleaved with the host's tool_progress / tool_heartbeat).
+    // The handler returns the subagent's final text so the host's tool
+    // result includes it (and the LLM can chain off it).
+    spawnSubagent: async (opts: {
+      modelId: string;
+      systemPrompt?: string;
+      userPrompt: string;
+      allowedTools?: string[];
+      maxRounds?: number;
+      workflowNodeId?: string | null;
+    }) => {
+      const activeTools = resolveActiveTools([...skillState.active]);
+      // Resolve the parent-message id we'll attach the subagent run to.
+      // For PR3 V1 we don't have it yet (the host's user message is
+      // persisted at end-of-turn) — use the conversationId + a synthetic
+      // marker so SubagentRun rows are still queryable per conversation.
+      // PR4 will pass the real messageId after persistence reorders.
+      const stream = spawnSubagent(
+        {
+          modelId: opts.modelId,
+          systemPrompt: opts.systemPrompt,
+          userPrompt: opts.userPrompt,
+          allowedTools: opts.allowedTools,
+          maxRounds: opts.maxRounds,
+          parentMessageId: `pending_${conversationId}`,
+          parentConversationId: conversationId,
+          hostAgentId: agentId,
+          workflowNodeId: opts.workflowNodeId ?? null,
+          hostTools: activeTools,
+          toolCtx: toolCtx as ToolContext,
+        },
+        abortSignal,
+      );
+      let result: { runId: string; finalText: string; success: boolean } | null = null;
+      try {
+        let next = await stream.next();
+        while (!next.done) {
+          queuedEvents.push(next.value);
+          signalQueue();
+          next = await stream.next();
+        }
+        result = next.value as { runId: string; finalText: string; success: boolean };
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        // We still need to return SOMETHING so the tool handler can serialize.
+        return { runId: "spawn_failed", finalText: `subagent 启动失败: ${errMsg}`, success: false };
+      }
+      return result ?? { runId: "spawn_unknown", finalText: "", success: false };
     },
   };
 

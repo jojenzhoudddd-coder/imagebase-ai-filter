@@ -1657,3 +1657,192 @@
   border-radius: 50%;
   background: var(--success);
 }
+
+/* ─── PR3 Subagent Block ────────────────────────────────────────────────
+   每个 host 通过 spawn_subagent 拉起的子 agent 调用渲染成一个可折叠卡片。
+   视觉风格:
+   - 比 ToolCallCard 稍重(因为代表"另一个 AI 在工作"),用左侧 2px 紫线 +
+     淡背景区分
+   - running 时左线条 pulse 动画
+   - 折叠状态只看到模型 + task summary;展开后看到思考 / 工具 / 最终输出 */
+.chat-subagent-block {
+  margin: 8px 0;
+  border-left: 2px solid var(--primary);
+  background: var(--surface-1);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.chat-subagent-block.subagent-running {
+  border-left-color: var(--primary);
+  animation: chat-subagent-pulse 1.6s ease-in-out infinite;
+}
+.chat-subagent-block.subagent-success {
+  border-left-color: var(--success, #2ea043);
+}
+.chat-subagent-block.subagent-error {
+  border-left-color: var(--danger);
+}
+@keyframes chat-subagent-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.chat-subagent-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+}
+.chat-subagent-icon {
+  font-size: 14px;
+}
+.chat-subagent-headtext {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+.chat-subagent-model {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.chat-subagent-task {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-subagent-toggle {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.chat-subagent-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.chat-subagent-status-dot {
+  font-size: 11px;
+}
+.chat-subagent-fallback-hint {
+  color: var(--warning, #d4880a);
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+.chat-subagent-body {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chat-subagent-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chat-subagent-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+}
+.chat-subagent-thinking {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--surface-2);
+  padding: 6px 8px;
+  border-radius: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.chat-subagent-final {
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+.chat-subagent-toolcalls {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chat-subagent-toolcall {
+  /* Wrapper li,实际样式在 .chat-subagent-toolrow */
+}
+.chat-subagent-toolrow {
+  background: var(--surface-2);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+.chat-subagent-toolrow.error {
+  border-left: 2px solid var(--danger);
+}
+.chat-subagent-toolrow-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.chat-subagent-toolrow-dot {
+  font-size: 10px;
+}
+.chat-subagent-toolrow-name {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.chat-subagent-toolrow-toggle {
+  color: var(--text-tertiary);
+  font-size: 9px;
+}
+.chat-subagent-toolrow-body {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chat-subagent-toolrow-args,
+.chat-subagent-toolrow-result {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  background: var(--surface-1);
+  padding: 6px 8px;
+  border-radius: 3px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  color: var(--text-secondary);
+}

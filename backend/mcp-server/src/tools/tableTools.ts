@@ -62,6 +62,26 @@ export interface ToolContext {
    * Tools that do long DuckDB scans or HTTP requests should respect it.
    */
   abortSignal?: AbortSignal;
+  /**
+   * PR3 Agent Workflow: subagent spawn callback.
+   * Set by the host chat agent loop. Lets MCP tools (specifically
+   * `spawn_subagent`) request the loop to fork a subagent with a chosen
+   * model + prompt. The loop performs the actual spawn (because it has the
+   * privileged context: hostTools list, parentMessageId, abortSignal) and
+   * yields the resulting `subagent_*` SSE events into the parent stream.
+   * Returns a promise resolving to the subagent's finalText.
+   *
+   * `undefined` for stdio MCP callers — tools that depend on it should
+   * gracefully degrade (return error message).
+   */
+  spawnSubagent?: (opts: {
+    modelId: string;
+    systemPrompt?: string;
+    userPrompt: string;
+    allowedTools?: string[];
+    maxRounds?: number;
+    workflowNodeId?: string | null;
+  }) => Promise<{ runId: string; finalText: string; success: boolean }>;
 }
 
 export interface ToolDefinition {

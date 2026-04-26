@@ -5,6 +5,82 @@
 
 ---
 
+## 2026-04-27 (Agent Workflow PR3)
+
+### feat(subagent): host agent 可调用 spawn_subagent 拉起子 agent + 实时 SubagentBlock UI
+
+**分支**: `AIWorkBeta` · **commits**: 待提交
+
+PR3: Subagent 基础设施。host agent 现在可以通过 MCP 工具 `spawn_subagent` 拉起一次聚焦任务的子 agent (用指定模型),subagent 完整跑完(思考 + 工具 + 最终输出)后把 finalText 返回给 host,过程中实时通过 `subagent_*` SSE 事件推到前端,渲染为可折叠的 SubagentBlock。
+
+为 PR4 (workflow DSL) 提供原子构件 —— review/cowork/brainstorm 模板都将由这个 subagent 调用编排而成。
+
+#### Backend
+
+- **新建 `prisma/schema.prisma` SubagentRun 表 + migration `20260427000000_subagent_run`**:
+  - `parentMessageId / parentConversationId / hostAgentId` 关联到 host 的对话
+  - `subagentModel / requestedModel`(fallback 后可能不同)
+  - `systemPrompt / userPrompt / allowedTools[]`(空=继承全部)
+  - `status / finalText / thinkingText / toolCallsJson / errorMessage`
+  - 嵌套字段 `parentSubagentRunId / depth`(V1 仅支持 depth=0,即 host 直调;PR4 放开)
+  - 计量 `startedAt / completedAt / durationMs / promptTokens / completionTokens`
+  - 索引:`parentMessageId` / `(parentConversationId, startedAt)` / `parentSubagentRunId`
+
+- **新建 `services/subagentRunStore.ts`**:CRUD helpers (`createSubagentRun / updateSubagentRun / getSubagentRun / listSubagentRunsForMessage / listSubagentRunsForConversation`)
+
+- **`services/chatAgentService.ts` 新增 `spawnSubagent()` 函数**:
+  - 简化的 tool-loop(不复用 runAgentImpl,避免 conversation history 写入和重型 system prompt 构造)
+  - 调 `resolveModelForCall` 拿到实际模型 + fallback 状态
+  - 新建 SubagentRun 行,emit `subagent_start`
+  - 跑 callModelStream + tool 调用循环,逐增量 emit `subagent_thinking` / `subagent_message` / `subagent_tool_start` / `subagent_tool_result`
+  - V1 限制:subagent 不允许调 danger 工具(直接拒绝并把错误注入下一轮 input,让 LLM 知道自己不该调);PR4 替换为完整的"上抛 host 决议"协议
+  - 完成后 update SubagentRun 行,emit `subagent_done` 或 `subagent_error`
+
+- **`SseEvent.event` 类型增加 8 种 subagent_***:`subagent_start / subagent_thinking / subagent_message / subagent_tool_start / subagent_tool_progress / subagent_tool_result / subagent_done / subagent_error`
+
+- **新建 `mcp-server/src/tools/subagentTools.ts`**:`spawn_subagent` 工具定义。Tier 1 (always-on),所以 host 不需要先激活 workflow-skill 就能 fork 子任务。工具内部调 `ctx.spawnSubagent(...)` —— 这是 ToolContext 上新增的 callback,由 host loop 注入,负责把 spawnSubagent 生成的 SSE 事件 pump 进父级 queue。
+
+- **`mcp-server/src/tools/tableTools.ts ToolContext 扩展**:增 `spawnSubagent?: (opts) => Promise<{runId, finalText, success}>` callback。
+
+- **`mcp-server/src/tools/index.ts`**:`spawn_subagent` 加入 TIER1_NAMES;`subagentTools` 加入 tier1Tools 构建。
+
+- **chatRoutes 已经通过 setupSse + writeEvent 透传任意 event,无需改动**(SseEvent 的 event 字段是可扩展的字符串)。
+
+#### Frontend
+
+- **`api.ts` SSE reader 新增 8 个 subagent_* case**:转发到 StreamChatOptions 的 onSubagent* callbacks。
+- 新增 `SubagentStartEvent` / `SubagentDoneEvent` 类型导出。
+
+- **`ChatSidebar/index.tsx` UiMessage 加 `subagentRuns?: UiSubagentRun[]`**:每条 host 消息附带它拉起的所有 subagent。新加 6 个 onSubagent* handlers 维护 subagentRuns 数组(start 时 push,thinking/message 时累计 text,toolStart 加进 toolCalls,toolResult 更新对应 callId,done/error 设 status)。
+
+- **新建 `ChatSidebar/ChatMessage/SubagentBlock.tsx`**:可折叠卡片,左侧 2px 紫线 + running 状态 pulse 动画。Header 显示 `🤖 模型名 → task summary`,展开后分三段:思考(灰色等宽小字 + scroll)/ 工具调用列表(每条可再展开看 args/result)/ 最终输出。
+  - 内嵌 `<SubagentToolCallRow>` 子组件复用 ToolCallCard 样式(args + result 可单独折叠)
+  - `formatDuration()` helper 把 durationMs 渲染为 `12.5s`
+
+- **`ChatSidebar.css` 新增 ~150 行 `.chat-subagent-block / -header / -body / -section / -toolrow / ...`**:
+  - 三种状态色:running 紫 + pulse / success 绿 / error 红
+  - 思考区固定高度 120px + 滚动
+  - 工具调用 row 可点开 args + result(独立 max-height 200px + 滚动)
+
+#### 自验收 (本地登录跑过)
+
+- ✅ 用户输入 "请调用 spawn_subagent 工具,用 doubao-2.0 让子 agent 用一句话总结 'TypeScript 类型系统' 是什么"
+- ✅ host (Claude 4.7 Opus) 识别意图并调 `spawn_subagent({modelId:"doubao-2.0", userPrompt:"…"})`
+- ✅ FE 立即看到 `spawn_subagent` 工具卡 + 下方 SubagentBlock(🤖 doubao-2.0 → "..." ⏳进行中)
+- ✅ doubao-2.0 跑完返回长句解释,SSE event_done 把状态改 success,SubagentBlock 折叠头显示 "✓ 完成 · 12.5s · 0 个工具调用"
+- ✅ host 在自己的最终回复里引用了 subagent 的 finalText
+- ✅ DB `subagent_runs` 表 INSERT 成功,行内容齐全(model / status / finalText / durationMs)
+- ✅ build pass
+
+#### V1 已知保留事项
+
+- **历史回放**:`getConversationMessages` 还不返回 SubagentRun 行,所以刷新页面后只看到 host 消息(包含 spawn_subagent 工具卡)而 SubagentBlock 不再渲染。Live UX 完整,history 是 PR4 polish 项 —— 增加 `GET /api/chat/conversations/:id/messages` 的 join 即可
+- **嵌套**:V1 hardcap depth=1,subagent 不能再调 subagent。PR4 workflow 引擎放开
+- **危险工具**:V1 subagent 调 danger 工具直接拒绝。PR4 替换为完整上抛 host (用户选择 approve/reject/escalate)
+- **token usage 记账**:provider adapter 已经写 token_usage 表,SubagentRun.promptTokens/completionTokens 字段保留但 V1 未填充
+
+---
+
 ## 2026-04-27 (Agent Workflow PR2)
 
 ### feat(model-routing,chat): 模型路由表 + ChatInput @ + @ model 强约束

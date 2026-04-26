@@ -14,6 +14,7 @@ import UserBubble from "./ChatMessage/UserBubble";
 import AssistantText from "./ChatMessage/AssistantText";
 import ThinkingIndicator from "./ChatMessage/ThinkingIndicator";
 import ToolCallCard from "./ChatMessage/ToolCallCard";
+import SubagentBlock from "./ChatMessage/SubagentBlock";
 import ToolCallGroup from "./ChatMessage/ToolCallGroup";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
 import ChatModelPicker from "./ChatModelPicker";
@@ -48,8 +49,29 @@ interface UiMessage {
   content: string;
   thinking?: string;
   toolCalls: ChatToolCall[];
+  // PR3: subagent runs spawned from this message. Each run is rendered as
+  // a SubagentBlock in chronological order alongside toolCalls. We track them
+  // separately (not nested in toolCalls) because subagent UX needs its own
+  // event stream + expand-the-whole-conversation pattern.
+  subagentRuns?: UiSubagentRun[];
   streaming?: boolean;
   error?: { code: string; message: string };
+}
+
+export interface UiSubagentRun {
+  runId: string;
+  requestedModel: string;
+  resolvedModel: string;
+  usedFallback: boolean;
+  userPrompt: string;
+  systemPrompt: string;
+  thinking: string;
+  finalText: string;
+  toolCalls: ChatToolCall[];
+  status: "running" | "success" | "error";
+  durationMs?: number;
+  error?: string;
+  startedAt: number;
 }
 
 // ─── LocalStorage cache ──────────────────────────────────────────────
@@ -581,6 +603,138 @@ export default function ChatSidebar({
       onConfirm: (pending) => {
         setPendingConfirm(pending);
       },
+      // ── PR3 Subagent event handlers ──
+      // Each subagent run is a separate UI block under the assistant message
+      // that spawned it. We append/update by runId; events arrive interleaved
+      // with the host's own toolCalls but never collide because runId is
+      // unique (DB-generated cuid).
+      onSubagentStart: (ev) => {
+        setMessages((prev) => {
+          for (let i = prev.length - 1; i >= 0; i--) {
+            if (prev[i].role === "assistant" && prev[i].streaming) {
+              const newRun: UiSubagentRun = {
+                runId: ev.runId,
+                requestedModel: ev.requestedModel,
+                resolvedModel: ev.resolvedModel,
+                usedFallback: ev.usedFallback,
+                userPrompt: ev.userPrompt,
+                systemPrompt: ev.systemPrompt,
+                thinking: "",
+                finalText: "",
+                toolCalls: [],
+                status: "running",
+                startedAt: Date.now(),
+              };
+              return prev.map((m, idx) =>
+                idx === i ? { ...m, subagentRuns: [...(m.subagentRuns ?? []), newRun] } : m,
+              );
+            }
+          }
+          return prev;
+        });
+      },
+      onSubagentThinking: (runId, text) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant" && m.subagentRuns?.some((r) => r.runId === runId)
+              ? {
+                  ...m,
+                  subagentRuns: m.subagentRuns!.map((r) =>
+                    r.runId === runId ? { ...r, thinking: r.thinking + text } : r,
+                  ),
+                }
+              : m,
+          ),
+        );
+      },
+      onSubagentMessage: (runId, text) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant" && m.subagentRuns?.some((r) => r.runId === runId)
+              ? {
+                  ...m,
+                  subagentRuns: m.subagentRuns!.map((r) =>
+                    r.runId === runId ? { ...r, finalText: r.finalText + text } : r,
+                  ),
+                }
+              : m,
+          ),
+        );
+      },
+      onSubagentToolStart: (runId, call) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant" && m.subagentRuns?.some((r) => r.runId === runId)
+              ? {
+                  ...m,
+                  subagentRuns: m.subagentRuns!.map((r) =>
+                    r.runId === runId ? { ...r, toolCalls: [...r.toolCalls, call] } : r,
+                  ),
+                }
+              : m,
+          ),
+        );
+      },
+      onSubagentToolResult: (runId, callId, success, result) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant" && m.subagentRuns?.some((r) => r.runId === runId)
+              ? {
+                  ...m,
+                  subagentRuns: m.subagentRuns!.map((r) =>
+                    r.runId === runId
+                      ? {
+                          ...r,
+                          toolCalls: r.toolCalls.map((tc) =>
+                            tc.callId === callId
+                              ? { ...tc, status: success ? "success" : "error", result }
+                              : tc,
+                          ),
+                        }
+                      : r,
+                  ),
+                }
+              : m,
+          ),
+        );
+      },
+      onSubagentDone: (ev) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant" && m.subagentRuns?.some((r) => r.runId === ev.runId)
+              ? {
+                  ...m,
+                  subagentRuns: m.subagentRuns!.map((r) =>
+                    r.runId === ev.runId
+                      ? {
+                          ...r,
+                          status: ev.success ? "success" : "error",
+                          durationMs: ev.durationMs,
+                          // Replace finalText with authoritative final from server
+                          // (handles cases where streaming chunks were dropped)
+                          finalText: ev.finalText || r.finalText,
+                        }
+                      : r,
+                  ),
+                }
+              : m,
+          ),
+        );
+      },
+      onSubagentError: (runId, error) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant" && m.subagentRuns?.some((r) => r.runId === runId)
+              ? {
+                  ...m,
+                  subagentRuns: m.subagentRuns!.map((r) =>
+                    r.runId === runId ? { ...r, status: "error", error } : r,
+                  ),
+                }
+              : m,
+          ),
+        );
+      },
       onError: (code, message) => {
         setError(friendlyError(code, message));
       },
@@ -959,6 +1113,12 @@ function MessageBlock({ msg }: { msg: UiMessage }) {
           <ToolCallGroup key={`tg-${msg.id}-${i}`} tool={g.tool} items={g.items} />
         )
       )}
+      {/* PR3 SubagentBlock — render each subagent run after the toolCalls.
+          Order is "all host tool calls, then subagent blocks" — V2 may
+          interleave by start timestamp once we track per-call ordering. */}
+      {msg.subagentRuns?.map((run) => (
+        <SubagentBlock key={run.runId} run={run} />
+      ))}
     </div>
   );
 }
