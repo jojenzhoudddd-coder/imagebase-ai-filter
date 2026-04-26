@@ -71,12 +71,17 @@ function SplitNode({
     }
   }, []);
 
-  const firstFlex = `${node.ratio * 100}% 0 0`;
-  const secondFlex = `${(1 - node.ratio) * 100}% 0 0`;
+  // 用 CSS grid 而非 flex 做精确分配。grid-template 用 fr 单位 + 显式 6px
+  // divider 槽位,父级 100% 空间 = ratio*fr + 6px + (1-ratio)*fr,数学上无溢出。
+  // 之前用 flex `${ratio*100}% 0 0` 会让 2 块 50% 总和 + 6px divider = 106% 溢出,
+  // 容器 overflow:hidden 把右下角 block 切掉 ~6-12px。
+  const gridStyle: React.CSSProperties = orientation === "h"
+    ? { display: "grid", gridTemplateColumns: `${node.ratio}fr 6px ${1 - node.ratio}fr`, gridTemplateRows: "100%" }
+    : { display: "grid", gridTemplateRows: `${node.ratio}fr 6px ${1 - node.ratio}fr`, gridTemplateColumns: "100%" };
 
   return (
-    <div ref={containerRef} className="mc-split" style={dirStyle}>
-      <div className="mc-pane" style={{ flex: firstFlex, minWidth: 0, minHeight: 0 }}>
+    <div ref={containerRef} className="mc-split" style={gridStyle}>
+      <div className="mc-pane" style={{ minWidth: 0, minHeight: 0 }}>
         <LayoutRenderer node={node.first} path={[...path, "L"]} renderLeaf={renderLeaf} />
       </div>
       <div
@@ -86,7 +91,7 @@ function SplitNode({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       />
-      <div className="mc-pane" style={{ flex: secondFlex, minWidth: 0, minHeight: 0 }}>
+      <div className="mc-pane" style={{ minWidth: 0, minHeight: 0 }}>
         <LayoutRenderer node={node.second} path={[...path, "R"]} renderLeaf={renderLeaf} />
       </div>
     </div>

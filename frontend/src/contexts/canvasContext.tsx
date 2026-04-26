@@ -141,12 +141,20 @@ export function CanvasProvider({
     writeLocalCache(state);
   }, [state]);
 
-  // hydrate from initial when provided(/me 后 App 把 preferences.canvasLayout 传进来)
+  // hydrate from initial 仅一次。后续 authPreferences 因为别的字段(theme/locale)
+  // 变化而 re-render 不会复原 canvas state(否则用户拖了 block,patch 主题就回原)。
+  const hydratedRef = useRef(false);
   useEffect(() => {
+    if (hydratedRef.current) return;
     if (initial && initial.layout) {
       setState(initial);
+      hydratedRef.current = true;
+    } else if (initial === null || initial === undefined) {
+      // initial 还没就绪(/me 还没回来),不算 hydrate
+    } else {
+      // initial 是个对象但 layout=null —— 视作 hydrate 完成,state 走默认
+      hydratedRef.current = true;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
 
   const visibleBlockIds = useMemo(() => collectLeaves(state.layout), [state.layout]);

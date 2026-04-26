@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "../../contexts/workspaceContext";
 import { useArtifactView } from "../../contexts/artifactViewContext";
 import { useCanvas } from "../../contexts/canvasContext";
+import { SidebarToggleProvider } from "../../contexts/sidebarToggleContext";
 import Sidebar from "../Sidebar";
 import IdeaEditor from "../IdeaEditor/index";
 import SvgCanvas from "../SvgCanvas/index";
@@ -27,6 +28,7 @@ import DemoPreviewPanel from "../DemoPreviewPanel/index";
 import { CLIENT_ID } from "../../api";
 import type { ArtifactBlockState, ArtifactKind } from "../../canvas/types";
 import type { TreeItemType } from "../../types";
+import { useTranslation } from "../../i18n/index";
 
 const AUTO_COLLAPSE_THRESHOLD_PX = 400;
 
@@ -48,6 +50,7 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
   const ws = useWorkspace();
   const av = useArtifactView();
   const { state, patchBlockState } = useCanvas();
+  const { t } = useTranslation();
 
   const blockState = (state.blockStates[blockId] ?? {}) as ArtifactBlockState;
   // 默认 active —— 第一次创建 block 时如果还没设置 active,用 global 作为初值。
@@ -137,7 +140,23 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id, active?.type, ws.ideas, ws.designs, ws.demos, ws.workspaceId, av]);
 
+  // per-block SidebarToggleProvider —— 让 artifact topbar 里的 SidebarExpandButton
+  // 读取这个 block 的 collapsed 状态(原 App-level 全局 SidebarToggleProvider 不再
+  // 反映 per-block 状态)。effectiveCollapsed 既包含用户偏好也包含宽度阈值。
+  const sidebarToggleValue = useMemo(
+    () => ({
+      collapsed: effectiveCollapsed,
+      onToggle: () => {
+        // 用户主动 toggle —— 反转 sidebarCollapsedPreference
+        patchBlockState(blockId, { sidebarCollapsedPreference: !userCollapsed });
+      },
+      expandTitle: t("sidebar.expand"),
+    }),
+    [effectiveCollapsed, userCollapsed, blockId, patchBlockState, t],
+  );
+
   return (
+    <SidebarToggleProvider value={sidebarToggleValue}>
     <div className="mc-artifact-block" ref={containerRef}>
       {!effectiveCollapsed && (
         <div className="mc-artifact-sidebar" style={{ width: blockState.sidebarWidth ?? 190 }}>
@@ -164,5 +183,6 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
       )}
       <div className="mc-artifact-content">{artifactContent}</div>
     </div>
+    </SidebarToggleProvider>
   );
 }
