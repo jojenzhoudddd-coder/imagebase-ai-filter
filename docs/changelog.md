@@ -5,6 +5,65 @@
 
 ---
 
+## 2026-04-27 (Agent Workflow V2.2)
+
+### feat(chat-input): textarea → contenteditable + mention chip 蓝字 + picker 上方右锚
+
+**分支**: `AIWorkBeta`
+
+V2.2 完成 D1 + D3 + C12 + C14。按用户要求把 ChatInput 输入面从 textarea 升级成 contenteditable,mention 渲染为 inline 蓝字 chip,picker 改成挂在 caret 右上方。底层 markdown 序列化和 mention payload 链路完全保持不变。
+
+#### 改动详情
+
+**ChatInput.tsx 重写**:
+- `<textarea>` → `<div contentEditable>`
+- 内部状态 `htmlValue`(DOM HTML)与父级 `value`(markdown 源)双向同步:
+  - 父→子:`useLayoutEffect(value)` 用 `markdownToHtml()` 把 mention 链接转 chip span,渲染时设 `el.innerHTML`
+  - 子→父:每次 input 调 `htmlToMarkdown(el)` 把 chip 还原成 `[@label](mention://...)` 通知 onChange
+- mention chip = `<span class="chat-mention-chip" contenteditable="false" data-href="..." data-label="..." class="...">@Label</span>` —— atomic,Backspace 整块删
+- `measureCaretRect()` 用 `Range.getBoundingClientRect()` 测 caret 像素位置;空 rect 时 fallback 到 root 末尾矩形
+
+**MentionPicker.tsx 加 `placement` prop**:
+- `"below-right"`(默认,idea editor 用)
+- `"above-right"`(V2.2 新,chat input 用):picker bottom-left = atRect top-right
+- 溢出补救逻辑分两套:above-right 模式 `top<MARGIN` 时 fallback 到下方;below-right 模式 `top+height>vh` 时翻上方
+
+**ChatInput 用 `placement="above-right"`** —— 输入框靠近浏览器底部,picker 向上展开避免被裁
+
+**新 CSS**:
+- `.chat-input-editor` 替换 `.chat-input-textarea`(`contentEditable` + `white-space: pre-wrap` + `min-height: 22px / max-height: 140px / overflow-y: auto`)
+- `.chat-input-editor.is-empty::before` 用 `content: attr(data-placeholder)` 实现 placeholder
+- `.chat-mention-chip` 蓝字 + hover 下划线 + `user-select: none` + atomic
+
+**htmlToMarkdown 处理细节**:
+- 文本节点 → 原文
+- chip → `[data-label](data-href)` 还原
+- `<br>` → `\n`
+- `<div>`(浏览器 Enter 默认包) → 段落分隔 `\n`
+
+**textBeforeCaret 处理 chip-as-separator**:
+- 把 chip 视为 1 个空格,这样 `lastIndexOf("@")` 不会跨过前面的 chip 找到 chip 内的 `@`
+- 用 Range.cloneContents → tmp div → replace chip with " " → textContent
+
+**deleteCharsBeforeCaret 用 Selection.modify**:
+- 选中 mention 时整块删除(因为 selection 跨过 contenteditable=false 节点会一次性扩到节点外)
+
+#### 自验收
+
+- ✅ 输入 `test @gpt` → picker 在输入框**上方**显示 GPT 模型组(挂在 `@` 字符 caret 处)
+- ✅ ↓+Enter 选中 GPT-5.5 → 输入框显示 `test @GPT-5.5 |` 蓝字
+- ✅ DOM 检查:`innerHTML` 含 `<span class="chat-mention-chip" data-href="mention://model/gpt-5.5"...>` ✓
+- ✅ `innerText` 干净 = `test @GPT-5.5 `(无 markdown 噪声)
+- ✅ Backspace 删 chip → 整块原子删除
+- ✅ 发送时父级 `value` 仍为 markdown 形式 → `extractMentionPayloads()` 链路不变
+- ✅ build pass
+
+#### V2.2 内 C13 / C15 折进 V2.3
+
+C13 (mention hover 显示模型 specialty + strengths) + C15 (history 消息中 mention 加 logo + 专长标签) 都是 mention 渲染的进阶 polish,与 V2.3 的"卡片统一" 同源(都涉及 mention 视觉),整合进 V2.3 一起做。
+
+---
+
 ## 2026-04-27 (Agent Workflow V2.1)
 
 ### feat(workflow,subagent): 持久化 + 历史回放 + refetch merge — V2.1 修复 V1 已知 bugs

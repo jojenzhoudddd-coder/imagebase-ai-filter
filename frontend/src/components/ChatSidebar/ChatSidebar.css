@@ -1479,6 +1479,57 @@
   color: var(--text-muted);
 }
 
+/* V2.2 ChatInput contenteditable editor — replaces textarea.
+   Mentions render as inline chips (atomic, contentEditable=false). */
+.chat-input-editor {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  border: none;
+  outline: none;
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: var(--text-primary);
+  background: transparent;
+  min-height: 22px;
+  max-height: 140px;
+  overflow-y: auto;
+  /* contenteditable browsers default to white-space: normal which collapses
+     consecutive spaces. Preserve user's spacing like a textarea. */
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+/* Placeholder via :empty + ::before. data-placeholder attribute carries the
+   localised string from React. */
+.chat-input-editor.is-empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+  /* contenteditable browsers fight us if we use opacity 0 — color works. */
+}
+/* The chip itself: blue text, no background, atomic. Same look as the idea
+   editor's `.idea-mention-chip` from PR1, ensuring consistency across
+   chat / idea preview surfaces (D2 in V2.3 will go further). */
+.chat-mention-chip {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+}
+.chat-mention-chip:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Bottom action bar — h52 p12 gap16 items-end justify-end */
 .chat-input-toolbar {
   display: flex;

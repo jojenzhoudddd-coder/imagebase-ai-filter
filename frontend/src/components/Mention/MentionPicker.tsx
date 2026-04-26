@@ -19,6 +19,13 @@ interface Props {
    * model mentions; IdeaEditor uses the default (no models) by omitting it.
    */
   types?: Array<MentionHit["type"]>;
+  /**
+   * V2.2 (D1):picker 锚点角。
+   *  - "below-right" (default):picker top-left = atRect bottom-right
+   *  - "above-right" (新):picker bottom-left = atRect top-right —— ChatInput
+   *    用,因为输入框在底部,picker 向上展开避免被裁
+   */
+  placement?: "below-right" | "above-right";
 }
 
 /**
@@ -31,7 +38,7 @@ interface Props {
  * *visual* order (post-group, post-sort), not the raw backend hits array,
  * so ArrowDown always moves to the next row the user sees.
  */
-export default function MentionPicker({ workspaceId, query, atRect, onSelect, onClose, types }: Props) {
+export default function MentionPicker({ workspaceId, query, atRect, onSelect, onClose, types, placement: placementMode = "below-right" }: Props) {
   const { t } = useTranslation();
   const [hits, setHits] = useState<MentionHit[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -198,29 +205,44 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
     const width = el.offsetWidth;
     const height = el.offsetHeight;
 
-    // Default: picker top-left at `@`'s bottom-right — glued to the glyph.
-    let left = atRect.right;
-    let top = atRect.bottom;
+    // V2.2 D1: 两种基础锚:
+    //   - below-right (idea editor 默认):picker top-left = atRect bottom-right
+    //   - above-right (chat input):picker bottom-left = atRect top-right
+    let left: number;
+    let top: number;
+    if (placementMode === "above-right") {
+      left = atRect.right;
+      top = atRect.top - height; // picker bottom = atRect.top
+    } else {
+      left = atRect.right;
+      top = atRect.bottom;
+    }
 
+    // 横向溢出 → 翻到 atRect 左侧
     if (left + width > window.innerWidth - MARGIN) {
-      // Flip: picker top-right at `@`'s bottom-left — also glued, just on
-      // the other side. Fall back to pinning to the left viewport edge if
-      // even the flip wouldn't fit.
       const flipped = atRect.left - width;
       left = flipped >= MARGIN ? flipped : MARGIN;
     }
-
-    if (top + height > window.innerHeight - MARGIN) {
-      // Flip up: picker bottom at `@`'s top edge.
-      const flipped = atRect.top - height;
-      top = flipped >= MARGIN ? flipped : Math.max(MARGIN, window.innerHeight - height - MARGIN);
+    // 纵向溢出补救:
+    //   above-right 模式下 top<MARGIN,再翻回下方
+    //   below-right 模式下 top+height>vh,翻到上方
+    if (placementMode === "above-right") {
+      if (top < MARGIN) {
+        const fallbackBelow = atRect.bottom;
+        top = fallbackBelow + height < window.innerHeight - MARGIN ? fallbackBelow : MARGIN;
+      }
+    } else {
+      if (top + height > window.innerHeight - MARGIN) {
+        const flipped = atRect.top - height;
+        top = flipped >= MARGIN ? flipped : Math.max(MARGIN, window.innerHeight - height - MARGIN);
+      }
     }
 
     // Skip the setState if the result is unchanged — otherwise we'd churn
     // one extra render per keystroke (atRect reference changes even when
     // the pixel values don't).
     setPlacement(prev => (prev.left === left && prev.top === top ? prev : { left, top }));
-  }, [atRect.left, atRect.right, atRect.top, atRect.bottom, visualHits.length, loading]);
+  }, [atRect.left, atRect.right, atRect.top, atRect.bottom, visualHits.length, loading, placementMode]);
 
   // Visual-order counter used to compute activeIdx during render. We walk
   // groups → items in order so `visualIdx` matches the flat `visualHits`
