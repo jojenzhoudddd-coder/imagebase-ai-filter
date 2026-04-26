@@ -1372,6 +1372,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           workspaceId={workspaceId}
           query={mentionState.query}
           atRect={mentionState.atRect}
+          /* V2.9.5: 显式传 types 把 demo 加进 idea editor 的 @ list (默认
+             types 只到 idea-section,没有 demo)。Idea 不需要 model。 */
+          types={["table", "taste", "idea", "idea-section", "demo"]}
           onSelect={handleMentionSelect}
           onClose={() => setMentionState(null)}
         />

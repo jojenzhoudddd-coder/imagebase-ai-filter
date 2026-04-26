@@ -147,13 +147,15 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
         e.preventDefault();
         e.stopImmediatePropagation();
         if (visualHits.length > 0) {
-          setActiveIdx(i => Math.min(i + 1, visualHits.length - 1));
+          // V2.9.5: 走到底部时 wrap 回 0,而不是 clamp 卡在末尾
+          setActiveIdx(i => (i + 1) % visualHits.length);
         }
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         e.stopImmediatePropagation();
         if (visualHits.length > 0) {
-          setActiveIdx(i => Math.max(i - 1, 0));
+          // V2.9.5: 走到顶部时 wrap 到末尾
+          setActiveIdx(i => (i - 1 + visualHits.length) % visualHits.length);
         }
       } else if (e.key === "Enter" || e.key === "Tab") {
         const pick = visualHits[activeIdx];
