@@ -235,6 +235,16 @@ app.get("/api/workspaces/:workspaceId/stats", async (req, res) => {
   }
 });
 
+// Admin endpoint —— 手动触发 boot-time 那一遍 regenerateMissingSummaries。
+// 用于运营 / 调试,把 aiSummary 仍为 null 的 workspace 全部补一遍。fire-and-forget,
+// 立即返回(LLM 调用很慢,等会刷新就能看到结果)。
+app.post("/api/admin/regenerate-summaries", async (_req, res) => {
+  void regenerateMissingSummaries().catch((err) =>
+    console.warn("[admin] regenerate-summaries failed:", err),
+  );
+  res.json({ ok: true, note: "kicked off; check logs / stats after a minute" });
+});
+
 // GET /api/workspaces/:workspaceId/tree — full tree (folders + tables + designs + ideas)
 app.get("/api/workspaces/:workspaceId/tree", async (req, res) => {
   try {

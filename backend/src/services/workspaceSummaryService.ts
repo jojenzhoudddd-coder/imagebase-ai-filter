@@ -136,6 +136,8 @@ async function generateForWorkspace(workspaceId: string): Promise<void> {
   const provider = resolveAdapter(resolved);
 
   let raw = "";
+  let thinking = "";
+  let evtCount = 0;
   try {
     for await (const ev of provider.stream({
       model: resolved,
@@ -143,13 +145,15 @@ async function generateForWorkspace(workspaceId: string): Promise<void> {
         { role: "system", content: [{ type: "input_text", text: SYSTEM_PROMPT }] },
         { role: "user", content: [{ type: "input_text", text: userPrompt }] },
       ],
-      recordContext: {
+      recordContext: ws.createdById ? {
         userId: ws.createdById,
         workspaceId: ws.id,
         feature: "workspace-summary",
-      },
+      } : undefined,
     })) {
+      evtCount++;
       if (ev.kind === "text_delta") raw += ev.text;
+      else if (ev.kind === "thinking_delta") thinking += ev.text;
       else if (ev.kind === "error") {
         console.warn(`[workspaceSummary] ${workspaceId}: error event ${ev.message}`);
         return;
@@ -162,9 +166,17 @@ async function generateForWorkspace(workspaceId: string): Promise<void> {
     return;
   }
 
-  const parsed = tryParseSummary(raw);
+  // 1. 模型可能把 JSON 写在了 thinking block 里(Doubao 2.0 thinking 模式偶发)
+  // 2. raw 也可能空字符串(模型完全无输出);打日志包含 evtCount + thinking
+  //    片段方便排查
+  const candidate = raw.trim() || thinking.trim();
+  const parsed = candidate ? tryParseSummary(candidate) : null;
   if (!parsed) {
-    console.warn(`[workspaceSummary] ${workspaceId}: parse failed; raw=${raw.slice(0, 200)}`);
+    console.warn(
+      `[workspaceSummary] ${workspaceId}: parse failed; ` +
+      `model=${resolved.id} evtCount=${evtCount} ` +
+      `raw="${raw.slice(0, 200)}" thinking="${thinking.slice(0, 200)}"`,
+    );
     return;
   }
 
@@ -251,13 +263,17 @@ export async function generateInitialSummary(workspaceId: string): Promise<void>
  * 失败不抛,顺序串行（避免一次性打太多模型请求）。
  */
 export async function regenerateMissingSummaries(): Promise<void> {
-  if (inflight) return;
+  if (inflight) {
+    console.log("[workspaceSummary] missing-fill skipped — another pass in flight");
+    return;
+  }
   inflight = true;
   try {
     const workspaces = await prisma.workspace.findMany({
       where: { aiSummary: null },
       select: { id: true },
     });
+    console.log(`[workspaceSummary] missing-fill scanning ${workspaces.length} workspaces with null summary`);
     if (workspaces.length === 0) return;
     let done = 0;
     for (const ws of workspaces) {
