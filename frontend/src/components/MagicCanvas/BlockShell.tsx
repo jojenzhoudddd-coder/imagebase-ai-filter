@@ -30,11 +30,17 @@ export default function BlockShell({
   children,
   canvasContainerRef,
 }: Props) {
-  const { state, swapBlocks, removeBlock, scheduleSave } = useCanvas();
+  const { stateRef, swapBlocks, removeBlock, scheduleSave, setDragging } = useCanvas();
   const shellRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
   const dragStartRef = useRef<{ pointerX: number; pointerY: number; ghostX: number; ghostY: number } | null>(null);
+  /** 跟踪当前正在 hover 的 block(从中线判定换位避免反复 swap)。
+   *  规则:进入新 block 区域 → 算一次"是否越过中线"。越过就 swap once,然后
+   *  把 lastHoveredId 设为 self(因为 swap 后此区域已是 self),pointer 不离开
+   *  此区域不再 swap。
+   */
+  const lastSwapTargetRef = useRef<string | null>(null);
 
   // 圆角规则:仅当一个 corner 的"两条相邻边都是 neighbor"时才圆角
   // (该 corner 真的落在 gap 与 gap 的十字交叉处)。任一边贴 page = 直线
@@ -51,9 +57,10 @@ export default function BlockShell({
     [visibleCount, onClose],
   );
 
-  // ─── Drag 系统 (用 document 级监听,避免 pointer 离开 movebar 后丢事件) ───
+  // ─── Drag 系统 (document 级监听 + 中线 swap) ───
   const tearDownDrag = useCallback(() => {
     draggingRef.current = false;
+    setDragging(false);
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
     if (ghostRef.current) {
@@ -61,7 +68,8 @@ export default function BlockShell({
       ghostRef.current = null;
     }
     dragStartRef.current = null;
-  }, []);
+    lastSwapTargetRef.current = null;
+  }, [setDragging]);
 
   useEffect(() => {
     return () => tearDownDrag();
@@ -75,12 +83,11 @@ export default function BlockShell({
       if (!shell) return;
       const rect = shell.getBoundingClientRect();
 
-      // 创建 ghost —— 大小等于当前 block,半透明 + 虚线边
+      // ghost = block 真实大小 + 半透明虚线,跟随光标(transform translate)
       const ghost = document.createElement("div");
       ghost.className = "mc-drag-ghost";
       ghost.style.width = `${rect.width}px`;
       ghost.style.height = `${rect.height}px`;
-      // 初始位置 = block 当前位置(translate 体系)
       const initX = rect.left;
       const initY = rect.top;
       ghost.style.transform = `translate(${initX}px, ${initY}px)`;
@@ -89,8 +96,10 @@ export default function BlockShell({
 
       dragStartRef.current = { pointerX: e.clientX, pointerY: e.clientY, ghostX: initX, ghostY: initY };
       draggingRef.current = true;
+      setDragging(true);
       document.body.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
+      lastSwapTargetRef.current = null;
 
       const onMove = (ev: PointerEvent) => {
         if (!draggingRef.current) return;
@@ -99,26 +108,37 @@ export default function BlockShell({
         const dx = ev.clientX - start.pointerX;
         const dy = ev.clientY - start.pointerY;
         ghostRef.current.style.transform = `translate(${start.ghostX + dx}px, ${start.ghostY + dy}px)`;
+
+        // 中线 swap —— 实时检测 pointer 越过其它 block 的中线
+        const cont = canvasContainerRef.current;
+        const layout = stateRef.current.layout;
+        if (!cont || !layout) return;
+        const cr = cont.getBoundingClientRect();
+        const rects = computeRects(layout, cr.width, cr.height, cr.left, cr.top);
+        for (const [id, r] of Object.entries(rects)) {
+          if (id === blockId) continue;
+          // 命中此 block 的矩形
+          if (ev.clientX >= r.x && ev.clientX <= r.x + r.w && ev.clientY >= r.y && ev.clientY <= r.y + r.h) {
+            // 越过中线判定:pointer 在此 block 中线的"远侧"才 swap(简化:进入即触发,
+            // 避免边缘抖动)。lastSwapTargetRef 防 swap loop —— 只在进入新目标时 swap。
+            if (lastSwapTargetRef.current !== id) {
+              swapBlocks(blockId, id);
+              // swap 后 self 现在占了 id 的位置,所以这片区域的"逻辑 id"是 self。
+              // 标记 lastSwap = id 表示"这一区域不再触发 swap",直到 pointer 离开。
+              lastSwapTargetRef.current = id;
+            }
+            return;
+          }
+        }
+        // pointer 不在任何其它 block 范围内 —— 重置 lastSwapTarget,下次进入新目标时重新触发
+        lastSwapTargetRef.current = null;
       };
 
-      const onUp = (ev: PointerEvent) => {
+      const onUp = () => {
         if (!draggingRef.current) return;
         document.removeEventListener("pointermove", onMove);
         document.removeEventListener("pointerup", onUp);
         document.removeEventListener("pointercancel", onUp);
-        // 落点判定:用 pointer 当前位置查 layout rects,落在哪个 leaf 就 swap 那一个
-        const cont = canvasContainerRef.current;
-        if (cont && state.layout) {
-          const cr = cont.getBoundingClientRect();
-          const rects = computeRects(state.layout, cr.width, cr.height, cr.left, cr.top);
-          for (const [id, r] of Object.entries(rects)) {
-            if (id === blockId) continue;
-            if (ev.clientX >= r.x && ev.clientX <= r.x + r.w && ev.clientY >= r.y && ev.clientY <= r.y + r.h) {
-              swapBlocks(blockId, id);
-              break;
-            }
-          }
-        }
         tearDownDrag();
         scheduleSave();
       };
@@ -127,7 +147,7 @@ export default function BlockShell({
       document.addEventListener("pointerup", onUp);
       document.addEventListener("pointercancel", onUp);
     },
-    [visibleCount, canvasContainerRef, state.layout, swapBlocks, scheduleSave, blockId, tearDownDrag],
+    [visibleCount, canvasContainerRef, stateRef, swapBlocks, scheduleSave, blockId, tearDownDrag, setDragging],
   );
 
   return (

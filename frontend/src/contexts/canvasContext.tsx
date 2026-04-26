@@ -100,8 +100,13 @@ async function persistToBackend(state: CanvasState): Promise<void> {
 
 export interface CanvasContextValue {
   state: CanvasState;
+  /** state 的最新 ref —— 给 pointermove 等 closure 用,避免读到 stale state */
+  stateRef: React.MutableRefObject<CanvasState>;
   /** 当前可见的 block id 列表(layout 树上的所有叶子) */
   visibleBlockIds: string[];
+  /** 当前是否有 block 正在拖动 —— canvas 根据这个加 .mc-canvas--dragging class */
+  dragging: boolean;
+  setDragging: (v: boolean) => void;
   /** 添加 block —— 默认插到面积最大的叶子旁 */
   addBlock: (type: BlockType) => string | null;
   /** 移除 block(数据保留 / layout 树移除) */
@@ -158,6 +163,15 @@ export function CanvasProvider({
   }, [initial]);
 
   const visibleBlockIds = useMemo(() => collectLeaves(state.layout), [state.layout]);
+
+  // state ref 给 closure(BlockShell pointermove 中实时查 layout)使用
+  const stateRef = useRef<CanvasState>(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  // 全局 dragging 标志 —— canvas 根据它加 class 禁用其它 block 的 hover/click
+  const [dragging, setDragging] = useState(false);
 
   const addBlock = useCallback(
     (type: BlockType): string | null => {
@@ -226,7 +240,10 @@ export function CanvasProvider({
   const value = useMemo<CanvasContextValue>(
     () => ({
       state,
+      stateRef,
       visibleBlockIds,
+      dragging,
+      setDragging,
       addBlock,
       removeBlock,
       swapBlocks,
@@ -234,7 +251,7 @@ export function CanvasProvider({
       patchBlockState,
       scheduleSave,
     }),
-    [state, visibleBlockIds, addBlock, removeBlock, swapBlocks, setRatioByPath, patchBlockState, scheduleSave],
+    [state, stateRef, visibleBlockIds, dragging, setDragging, addBlock, removeBlock, swapBlocks, setRatioByPath, patchBlockState, scheduleSave],
   );
 
   return <CanvasCtx.Provider value={value}>{children}</CanvasCtx.Provider>;

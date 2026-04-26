@@ -16,6 +16,22 @@
   color: var(--text-muted);
 }
 
+/* 拖动期间禁用所有 block 内部交互(table hover / 链接点击 / 输入框 focus 等),
+   光标统一 grabbing,文本 unselectable。move-bar 区不受影响,仍能接收 pointer 事件
+   (我们用 document.addEventListener,不依赖元素 pointer-events)。 */
+.mc-canvas--dragging .mc-block-body {
+  pointer-events: none;
+  user-select: none;
+}
+.mc-canvas--dragging .mc-block-shell {
+  /* 平滑 layout 切换 —— 当 swap 发生,新位置的 block 的 grid 区域变,加 transition */
+  transition: all 0.18s ease;
+}
+.mc-canvas--dragging,
+.mc-canvas--dragging * {
+  cursor: grabbing !important;
+}
+
 /* ─── Split / divider —— grid 模式,见 LayoutRenderer 注释 ─── */
 .mc-split {
   width: 100%;

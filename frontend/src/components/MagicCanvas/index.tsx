@@ -20,7 +20,7 @@ interface Props {
 }
 
 export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: Props) {
-  const { state, visibleBlockIds } = useCanvas();
+  const { state, visibleBlockIds, dragging } = useCanvas();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const adjacency = useMemo(() => computeAdjacency(state.layout), [state.layout]);
@@ -61,7 +61,7 @@ export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: 
   };
 
   return (
-    <div ref={containerRef} className="mc-canvas">
+    <div ref={containerRef} className={`mc-canvas${dragging ? " mc-canvas--dragging" : ""}`}>
       <LayoutRenderer node={state.layout} renderLeaf={renderLeaf} />
     </div>
   );
