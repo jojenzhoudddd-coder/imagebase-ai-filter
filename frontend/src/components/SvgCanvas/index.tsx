@@ -3,6 +3,7 @@ import { useTranslation } from "../../i18n/index";
 import { useToast } from "../Toast/index";
 import InlineEdit from "../InlineEdit";
 import SidebarExpandButton from "../SidebarExpandButton";
+import BlockCloseButton from "../BlockCloseButton";
 import ConfirmDialog from "../ConfirmDialog/index";
 import {
   fetchTastes,
@@ -1171,6 +1172,7 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
             {LAYOUT_ICON}
             {t("design.autoLayout")}
           </button>
+          <BlockCloseButton />
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { useTranslation } from "../../i18n/index";
 import { useToast } from "../Toast/index";
 import InlineEdit from "../InlineEdit";
 import SidebarExpandButton from "../SidebarExpandButton";
+import BlockCloseButton from "../BlockCloseButton";
 import { fetchIdea, saveIdeaContent } from "../../api";
 import { useIdeaSync } from "../../hooks/useIdeaSync";
 import MentionPicker from "./MentionPicker";
@@ -1113,6 +1114,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             {mode === "source" ? PREVIEW_ICON : SOURCE_ICON}
             {mode === "source" ? t("idea.preview") : t("idea.source")}
           </button>
+          <BlockCloseButton />
         </div>
       </div>
 

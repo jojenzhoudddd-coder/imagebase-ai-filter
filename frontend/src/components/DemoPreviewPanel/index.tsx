@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import InlineEdit from "../InlineEdit";
 import SidebarExpandButton from "../SidebarExpandButton";
+import BlockCloseButton from "../BlockCloseButton";
 import ConfirmDialog from "../ConfirmDialog/index";
 import { useTranslation } from "../../i18n/index";
 import {
@@ -507,6 +508,7 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
               </div>
             )}
           </div>
+          <BlockCloseButton />
         </div>
       </div>
 

@@ -1,29 +1,40 @@
 /**
  * BlockShell —— 每个 block 的外壳:
  *   - 邻接圆角(top/right/bottom/left = "page" → 直边 / "neighbor" → 圆角)
- *   - 关闭按钮(右上角,仅 >1 block 时显示)
- *   - 移动条(底部 hover 显现) —— 拖动触发 swap-on-midline-cross
- *   - hover 半透明边框,无负担
+ *   - close 按钮通过 BlockShellProvider 暴露给内部 artifact/chat 的 topbar 渲染,
+ *     视觉与其他 topbar 按钮一致(不再外挂 absolute 按钮)
+ *   - 移动条(底部 hover 显现)—— 拖动时:
+ *       · 在 document.body 创建 ghost,大小 = 当前 block bounding rect
+ *       · 用 transform translate 跟随鼠标(不是 left/top,避免布局抖动)
+ *       · 仅在 pointerup 时确定落点 → 一次性 swap(避免拖动中反复 swap "颠簸")
  */
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { AdjacencyEdges } from "../../canvas/types";
 import { useCanvas } from "../../contexts/canvasContext";
 import { computeRects } from "../../canvas/layoutAlgorithms";
+import { BlockShellProvider } from "../../contexts/blockShellContext";
 
 interface Props {
   blockId: string;
   edges: AdjacencyEdges;
   visibleCount: number;
   children: React.ReactNode;
-  /** 容器 element ref(用于拖拽时计算其它 block 的 rect) */
   canvasContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
-export default function BlockShell({ blockId, edges, visibleCount, children, canvasContainerRef }: Props) {
+export default function BlockShell({
+  blockId,
+  edges,
+  visibleCount,
+  children,
+  canvasContainerRef,
+}: Props) {
   const { state, swapBlocks, removeBlock, scheduleSave } = useCanvas();
-  const dragGhostRef = useRef<HTMLDivElement | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const ghostRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
+  const dragStartRef = useRef<{ pointerX: number; pointerY: number; ghostX: number; ghostY: number } | null>(null);
 
   const radius = "10px";
   const tl = edges.top === "neighbor" || edges.left === "neighbor" ? radius : "0";
@@ -31,102 +42,107 @@ export default function BlockShell({ blockId, edges, visibleCount, children, can
   const bl = edges.bottom === "neighbor" || edges.left === "neighbor" ? radius : "0";
   const br = edges.bottom === "neighbor" || edges.right === "neighbor" ? radius : "0";
 
-  const onMoveBarPointerDown = useCallback(
+  const onClose = useCallback(() => removeBlock(blockId), [blockId, removeBlock]);
+  const shellCtx = useMemo(
+    () => ({ canClose: visibleCount > 1, onClose }),
+    [visibleCount, onClose],
+  );
+
+  // ─── Drag 系统 (用 document 级监听,避免 pointer 离开 movebar 后丢事件) ───
+  const tearDownDrag = useCallback(() => {
+    draggingRef.current = false;
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    if (ghostRef.current) {
+      ghostRef.current.remove();
+      ghostRef.current = null;
+    }
+    dragStartRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => tearDownDrag();
+  }, [tearDownDrag]);
+
+  const handleMoveBarDown = useCallback(
     (e: React.PointerEvent) => {
       if (visibleCount <= 1) return;
       e.preventDefault();
-      draggingRef.current = true;
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
-      document.body.style.cursor = "grabbing";
+      const shell = shellRef.current;
+      if (!shell) return;
+      const rect = shell.getBoundingClientRect();
 
-      // 创建 ghost
+      // 创建 ghost —— 大小等于当前 block,半透明 + 虚线边
       const ghost = document.createElement("div");
       ghost.className = "mc-drag-ghost";
-      ghost.style.left = `${e.clientX - 60}px`;
-      ghost.style.top = `${e.clientY - 20}px`;
+      ghost.style.width = `${rect.width}px`;
+      ghost.style.height = `${rect.height}px`;
+      // 初始位置 = block 当前位置(translate 体系)
+      const initX = rect.left;
+      const initY = rect.top;
+      ghost.style.transform = `translate(${initX}px, ${initY}px)`;
       document.body.appendChild(ghost);
-      dragGhostRef.current = ghost;
-    },
-    [visibleCount],
-  );
+      ghostRef.current = ghost;
 
-  const onMoveBarPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (!draggingRef.current) return;
-      const ghost = dragGhostRef.current;
-      if (ghost) {
-        ghost.style.left = `${e.clientX - 60}px`;
-        ghost.style.top = `${e.clientY - 20}px`;
-      }
-      // 实时检测落点 → 越过其他 block 中轴线就 swap
-      const cont = canvasContainerRef.current;
-      if (!cont || !state.layout) return;
-      const rect = cont.getBoundingClientRect();
-      const rects = computeRects(state.layout, rect.width, rect.height, rect.left, rect.top);
-      const px = e.clientX;
-      const py = e.clientY;
-      for (const [id, r] of Object.entries(rects)) {
-        if (id === blockId) continue;
-        if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
-          // 在中轴线哪一侧?对 h-split 看 X 轴中线;对 v-split 看 Y 轴中线
-          // 简化:任何越过即触发(只 swap 一次,然后 dragging 期间忽略 — 通过
-          // ref 标记防抖)
-          swapBlocks(blockId, id);
-          // 防止持续触发 swap loop:swap 后让光标已经在原 block 范围内
-          break;
+      dragStartRef.current = { pointerX: e.clientX, pointerY: e.clientY, ghostX: initX, ghostY: initY };
+      draggingRef.current = true;
+      document.body.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+
+      const onMove = (ev: PointerEvent) => {
+        if (!draggingRef.current) return;
+        const start = dragStartRef.current;
+        if (!start || !ghostRef.current) return;
+        const dx = ev.clientX - start.pointerX;
+        const dy = ev.clientY - start.pointerY;
+        ghostRef.current.style.transform = `translate(${start.ghostX + dx}px, ${start.ghostY + dy}px)`;
+      };
+
+      const onUp = (ev: PointerEvent) => {
+        if (!draggingRef.current) return;
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
+        // 落点判定:用 pointer 当前位置查 layout rects,落在哪个 leaf 就 swap 那一个
+        const cont = canvasContainerRef.current;
+        if (cont && state.layout) {
+          const cr = cont.getBoundingClientRect();
+          const rects = computeRects(state.layout, cr.width, cr.height, cr.left, cr.top);
+          for (const [id, r] of Object.entries(rects)) {
+            if (id === blockId) continue;
+            if (ev.clientX >= r.x && ev.clientX <= r.x + r.w && ev.clientY >= r.y && ev.clientY <= r.y + r.h) {
+              swapBlocks(blockId, id);
+              break;
+            }
+          }
         }
-      }
+        tearDownDrag();
+        scheduleSave();
+      };
+
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
     },
-    [blockId, state.layout, canvasContainerRef, swapBlocks],
+    [visibleCount, canvasContainerRef, state.layout, swapBlocks, scheduleSave, blockId, tearDownDrag],
   );
-
-  const onMoveBarPointerUp = useCallback(
-    (e: React.PointerEvent) => {
-      if (!draggingRef.current) return;
-      draggingRef.current = false;
-      try {
-        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {
-        /* noop */
-      }
-      document.body.style.cursor = "";
-      const ghost = dragGhostRef.current;
-      if (ghost) {
-        ghost.remove();
-        dragGhostRef.current = null;
-      }
-      scheduleSave();
-    },
-    [scheduleSave],
-  );
-
-  const onClose = useCallback(() => {
-    removeBlock(blockId);
-  }, [blockId, removeBlock]);
-
-  const showClose = visibleCount > 1;
 
   return (
     <div
+      ref={shellRef}
       className="mc-block-shell"
-      style={{ borderTopLeftRadius: tl, borderTopRightRadius: tr, borderBottomLeftRadius: bl, borderBottomRightRadius: br }}
+      style={{
+        borderTopLeftRadius: tl,
+        borderTopRightRadius: tr,
+        borderBottomLeftRadius: bl,
+        borderBottomRightRadius: br,
+      }}
     >
-      {showClose && (
-        <button className="mc-block-close" onClick={onClose} title="关闭" aria-label="关闭">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </button>
-      )}
-      <div className="mc-block-body">{children}</div>
+      <BlockShellProvider value={shellCtx}>
+        <div className="mc-block-body">{children}</div>
+      </BlockShellProvider>
       {visibleCount > 1 && (
-        <div
-          className="mc-block-movebar-zone"
-          onPointerDown={onMoveBarPointerDown}
-          onPointerMove={onMoveBarPointerMove}
-          onPointerUp={onMoveBarPointerUp}
-          onPointerCancel={onMoveBarPointerUp}
-        >
+        <div className="mc-block-movebar-zone" onPointerDown={handleMoveBarDown}>
           <div className="mc-block-movebar" />
         </div>
       )}

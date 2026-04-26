@@ -17,6 +17,7 @@ import ToolCallCard from "./ChatMessage/ToolCallCard";
 import ToolCallGroup from "./ChatMessage/ToolCallGroup";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
 import ChatModelPicker from "./ChatModelPicker";
+import BlockCloseButton from "../BlockCloseButton";
 import AgentNamePill from "./AgentNamePill";
 import { MoreIcon, RefreshIcon } from "./icons";
 import DropdownMenu from "../DropdownMenu";
@@ -772,6 +773,7 @@ export default function ChatSidebar({
               <MoreIcon size={16} />
             </button>
           )}
+          <BlockCloseButton />
         </div>
       </header>
       {menuOpen && moreBtnRef.current && (

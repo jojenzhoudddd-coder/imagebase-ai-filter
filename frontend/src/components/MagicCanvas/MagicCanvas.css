@@ -80,26 +80,22 @@
   overflow: hidden;
 }
 
-.mc-block-close {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 10;
-  width: 22px;
-  height: 22px;
+/* close 按钮已迁到各 artifact / chat topbar 内部,见 components/BlockCloseButton.tsx */
+.block-close-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 28px;
+  height: 28px;
   border: none;
   background: transparent;
-  color: var(--text-muted);
-  border-radius: var(--radius-s, 4px);
+  color: var(--text-secondary);
+  border-radius: var(--radius-s);
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s, background 0.12s, color 0.12s;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
 }
-.mc-block-shell:hover .mc-block-close { opacity: 1; }
-.mc-block-close:hover {
+.block-close-btn:hover {
   background: var(--surface-3);
   color: var(--text-primary);
 }
@@ -127,17 +123,19 @@
 .mc-block-movebar-zone:hover .mc-block-movebar { opacity: 1; }
 .mc-block-movebar-zone:active { cursor: grabbing; }
 
-/* 拖拽 ghost */
+/* 拖拽 ghost —— 大小等于被拖 block 的 bounding rect,用 transform translate
+   跟随光标(避免 left/top 触发 layout)。半透明 + primary 虚线边 */
 .mc-drag-ghost {
   position: fixed;
-  width: 120px;
-  height: 40px;
-  background: rgba(20, 86, 240, 0.18);
+  top: 0;
+  left: 0;
+  background: rgba(20, 86, 240, 0.12);
   border: 1.5px dashed var(--primary, #1456F0);
-  border-radius: 8px;
+  border-radius: 10px;
   pointer-events: none;
   z-index: 10000;
-  transition: transform 0.05s linear;
+  box-shadow: 0 12px 40px rgba(20, 86, 240, 0.25);
+  will-change: transform;
 }
 
 /* ─── ArtifactBlock 内部 sidebar 区域 ─── */
@@ -153,11 +151,21 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* 让 sidebar 占满父级 .mc-artifact-block 的高度 */
+  height: 100%;
   border-right: 1px solid var(--border-default);
   background: var(--surface-1);
   overflow: hidden;
 }
-.mc-artifact-sidebar > .sidebar { width: 100% !important; min-height: 0; }
+/* 内嵌的 .sidebar (aside) 必须填满父级,否则被它自身固定高度截断 */
+.mc-artifact-sidebar > .sidebar {
+  width: 100% !important;
+  height: 100% !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* 关掉原 .sidebar 自带的拖宽手柄(画布外层 split-divider 已经能调) */
+}
+.mc-artifact-sidebar > .sidebar .sidebar-resize-handle { display: none; }
 .mc-artifact-content {
   flex: 1;
   display: flex;

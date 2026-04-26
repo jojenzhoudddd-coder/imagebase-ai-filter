@@ -16,6 +16,7 @@ import { RefObject, useState } from "react";
 import { useTranslation } from "../i18n/index";
 import InlineEdit from "./InlineEdit";
 import SidebarExpandButton from "./SidebarExpandButton";
+import BlockCloseButton from "./BlockCloseButton";
 import "./Toolbar.css";
 
 interface Props {
@@ -137,6 +138,8 @@ export default function Toolbar({
           onClick={() => canUndo && onUndo?.()}
           disabled={!canUndo}
         />
+        {/* Magic Canvas 关闭 block 按钮 —— BlockShell 不在时自动 noop */}
+        <BlockCloseButton />
       </div>
     </div>
   );
