@@ -78,11 +78,31 @@ export default function WorkflowBlock({ run }: Props) {
             </div>
           )}
           <div className="chat-workflow-timeline">
-            {run.nodeEvents.map((ev, idx) => (
-              <div key={idx} className={`chat-workflow-tle chat-workflow-tle-${ev.kind}`}>
-                {renderTimelineEvent(ev)}
-              </div>
-            ))}
+            {run.nodeEvents.map((ev, idx) => {
+              const targetNodeId = extractNodeId(ev);
+              const clickable = !!targetNodeId;
+              return (
+                <div
+                  key={idx}
+                  className={`chat-workflow-tle chat-workflow-tle-${ev.kind}${clickable ? " chat-workflow-tle-clickable" : ""}`}
+                  role={clickable ? "button" : undefined}
+                  tabIndex={clickable ? 0 : undefined}
+                  onClick={clickable ? () => scrollToSubagentNode(targetNodeId) : undefined}
+                  onKeyDown={
+                    clickable
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            scrollToSubagentNode(targetNodeId);
+                          }
+                        }
+                      : undefined
+                  }
+                >
+                  {renderTimelineEvent(ev)}
+                </div>
+              );
+            })}
             {run.nodeEvents.length === 0 && (
               <div className="chat-workflow-tle-empty">(尚无节点事件)</div>
             )}
@@ -141,4 +161,28 @@ function renderTimelineEvent(ev: UiWorkflowRun["nodeEvents"][number]): React.Rea
     );
   }
   return null;
+}
+
+/** V2.8 C7:从 nodeEvent 中抽取 nodeId(用于点击查找对应 SubagentBlock)。
+ *  trigger / 工作流虚拟节点(_heartbeat 等)无效;仅 logic / action 才有可定位的目标。 */
+function extractNodeId(ev: UiWorkflowRun["nodeEvents"][number]): string | null {
+  if (ev.kind === "node_start" || ev.kind === "node_end") {
+    if (!ev.nodeId || ev.nodeId.startsWith("_")) return null;
+    return ev.nodeId;
+  }
+  return null;
+}
+
+/** Scroll the matching SubagentBlock (data-workflownodeid=…) into view + flash 1.4s. */
+function scrollToSubagentNode(nodeId: string) {
+  const el = document.querySelector<HTMLElement>(`[data-workflownodeid="${cssEscape(nodeId)}"]`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.add("chat-expand-card-flash");
+  window.setTimeout(() => el.classList.remove("chat-expand-card-flash"), 1400);
+}
+
+function cssEscape(v: string): string {
+  // Modern browsers expose CSS.escape; fallback for older + tests
+  return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(v) : v.replace(/["\\]/g, "\\$&");
 }

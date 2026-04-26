@@ -33,6 +33,19 @@ export default function SubagentBlock({ run }: Props) {
   const [expanded, setExpanded] = useState(run.status === "running");
   // V2.3 C6: auto-collapse on success (but not on error — keep error visible)
   const prevStatusRef = useRef(run.status);
+  // V2.8 C5: 首次 mount 且 status==="running" 时,卡片闪一下提醒用户
+  // "宿主 spawn 出了一个新 subagent",视觉上把 spawn 时刻和卡片绑起来。
+  // 历史回放时 status 已经 success/error,不再闪。
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (run.status !== "running") return;
+    const el = cardRef.current;
+    if (!el) return;
+    el.classList.add("chat-expand-card-flash");
+    const t = window.setTimeout(() => el.classList.remove("chat-expand-card-flash"), 1400);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     const prev = prevStatusRef.current;
     if (prev === "running" && run.status === "success") {
@@ -49,12 +62,14 @@ export default function SubagentBlock({ run }: Props) {
     run.userPrompt.length > 60 ? run.userPrompt.slice(0, 60) + "…" : run.userPrompt;
   const statusTitle = t(`chat.subagent.status.${status}` as any) ?? status;
 
-  // V2.5 placeholder: data-runid will let WorkflowBlock node-click scroll
-  // here (C7). Already in DOM so V2.5/V2.8 can wire up scroll-to.
+  // V2.8 C7: WorkflowBlock 节点点击通过 data-workflownodeid 定位本卡片
+  // (V2.5 时只有 data-runid,不知道哪个 subagent 对应哪个 workflow node)。
   return (
     <div
+      ref={cardRef}
       className={`chat-expand-card chat-subagent-card ${status}${expanded ? " expanded" : ""}`}
       data-runid={run.runId}
+      data-workflownodeid={run.workflowNodeId ?? undefined}
     >
       <button
         type="button"

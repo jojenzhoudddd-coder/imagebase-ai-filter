@@ -93,6 +93,9 @@ export interface UiSubagentRun {
   durationMs?: number;
   error?: string;
   startedAt: number;
+  /** V2.8 C7: 由 workflow 节点派出的 subagent 携带此字段;WorkflowBlock 节点
+   *  点击会查找匹配的 SubagentBlock 并滚动定位。 */
+  workflowNodeId?: string | null;
 }
 
 // ─── LocalStorage cache ──────────────────────────────────────────────
@@ -664,6 +667,7 @@ export default function ChatSidebar({
                 toolCalls: [],
                 status: "running",
                 startedAt: Date.now(),
+                workflowNodeId: (ev as any).workflowNodeId ?? null,
               };
               return prev.map((m, idx) =>
                 idx === i ? { ...m, subagentRuns: [...(m.subagentRuns ?? []), newRun] } : m,
@@ -1200,6 +1204,7 @@ function serverToUi(m: ChatMessage): UiMessage {
           durationMs: r.durationMs ?? undefined,
           error: r.errorMessage ?? undefined,
           startedAt: new Date(r.startedAt).getTime(),
+          workflowNodeId: r.workflowNodeId ?? null,
         }))
       : undefined,
     workflowRuns: wRuns.length
