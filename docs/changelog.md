@@ -5,6 +5,67 @@
 
 ---
 
+## 2026-04-27 (Agent Workflow V2.4)
+
+### feat(subagent): danger 三段决议 + nesting depth=2 + token 计量 + host-only 工具过滤
+
+**分支**: `AIWorkBeta`
+
+V2.4 完成 B1 + B2 + B3 + C11。把 V1 时期"subagent 调 danger 直接拒绝"的简化实现替换为完整的 host approve/reject/escalate 三段决议;subagent 嵌套深度从 1 升到 2;SubagentRun 持久化 token usage;subagent 工具继承自动过滤 host-only(身份 / skill router / cron / workflow 顶层 / danger 决议自身)。
+
+#### B1 — Danger upcall 协议
+
+- `chatAgentService` 新增 `subagentDangerPending: Map<callId, {resolve}>` in-memory promise registry
+- 新 SSE 事件 `subagent_danger_request`:`{runId, callId, tool, args, summary}`
+- subagent loop 内部:工具执行前若 tool.danger=true → emit `subagent_danger_request`,然后 `await new Promise(...)` 等 host 决议;30s timeout 默认 reject
+- 新 host-only MCP 工具 (3 个,Tier 1 always-on):
+  - `approve_subagent_danger({runId, callId})` → resolve("approved") → subagent 继续执行该工具
+  - `reject_subagent_danger({runId, callId})` → resolve("rejected") → subagent 收到 error,可改路径
+  - `escalate_subagent_danger({runId, callId, message})` → V2.4 简化等同 reject + host 应在最终回复里告诉用户。完整 user-confirm 跨进程链路留 V2.5
+
+- 系统 prompt (`TOOL_GUIDANCE_ZH`) 新增"V2.4 Subagent danger 上抛决议"章节,告诉 host 何时选哪个分支
+- 默认 subagent system prompt 改写:从"任何危险操作一律不允许"改成"你可以调任何工具,host 会决议"
+
+- `frontend/src/api.ts` 加 `onSubagentDangerRequest` callback + `SubagentDangerRequestEvent` 类型,FE 可在未来加可视化通知(V2.5+)
+
+#### B2 — Nesting depth=2
+
+- 新常量 `MAX_SUBAGENT_DEPTH = 2`(host=0,host→sub=1,sub→sub=2)
+- `SpawnSubagentOptions` 加 `depth?: number`(默认 1)
+- spawnSubagent 入口检查 `depth > MAX_SUBAGENT_DEPTH` → throw
+- subagent loop 内部:当工具是 `spawn_subagent` 时,wrap toolCtx.spawnSubagent → 注入 `_depth: depth+1`,这样 subagent (depth=1) 调 spawn_subagent 时会变成 depth=2 的递归 spawn
+- host 顶层的 spawnSubagent callback 接收 `_depth?: number` 内部参数,默认 1
+
+#### B3 — Token 计量持久化
+
+- subagent loop 累计 `accPromptTokens / accCompletionTokens` 跨多轮
+- provider adapter 在 `done` 事件附 usage,subagent 监听写到累加器
+- 完成时 `updateSubagentRun` 写入 `promptTokens / completionTokens` 字段(原本字段就在 schema 里只是没填)
+
+#### C11 — Host-only tool 自动过滤
+
+- `SUBAGENT_HOST_ONLY_TOOLS` set 列出 16 个工具:
+  - 自我身份:update_profile / update_soul / create_memory / read_memory / recall_memory
+  - Skill router:find_skill / activate_skill / deactivate_skill
+  - Cron:schedule_task / list_scheduled_tasks / cancel_task
+  - Danger 决议:approve/reject/escalate_subagent_danger(subagent 不能批准自己)
+  - Workflow 顶层:execute_workflow_template / list_workflow_templates(避免 subagent 起 workflow 导致无限嵌套;V2.5 视情况放开)
+- spawnSubagent 第 2 步 `effectiveTools` 计算时先按 `SUBAGENT_HOST_ONLY_TOOLS` 过滤,再走 `allowedTools` 白名单。`spawn_subagent` 仍透给 subagent 用以支持 B2 nesting
+
+#### 自验收
+
+- ✅ Backend tsc clean(只剩 pre-existing dbStore JsonArray 警告,与本次改动无关)
+- ✅ Frontend build pass
+- ✅ 单元上 host system prompt 已含决议规则
+- ⚠️ 实测端到端 (host approve subagent 删 record) 需要走完整 chat 对话,留 V2.5 一起验证
+
+#### 折进后续
+
+- escalate → user → confirm → subagent 完整链路 → V2.5
+- danger 决议过程的前端可视化通知 → V2.7 admin metrics 时一并
+
+---
+
 ## 2026-04-27 (Agent Workflow V2.3)
 
 ### feat(chat-cards): SubagentBlock + WorkflowBlock 与 ToolCallCard 同款骨架 + 时间戳 interleave + 自动折叠

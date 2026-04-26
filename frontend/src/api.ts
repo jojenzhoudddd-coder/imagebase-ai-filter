@@ -1021,6 +1021,7 @@ export interface StreamChatOptions {
   onSubagentToolResult?: (runId: string, callId: string, success: boolean, result: unknown) => void;
   onSubagentDone?: (ev: SubagentDoneEvent) => void;
   onSubagentError?: (runId: string, error: string) => void;
+  onSubagentDangerRequest?: (ev: SubagentDangerRequestEvent) => void;
   // ── PR4 Workflow SSE callbacks ──
   onWorkflowStart?: (ev: WorkflowStartEvent) => void;
   onWorkflowNodeStart?: (ev: WorkflowNodeStartEvent) => void;
@@ -1059,6 +1060,14 @@ export interface SubagentDoneEvent {
   durationMs: number;
   finalText: string;
   toolCallsCount: number;
+}
+
+export interface SubagentDangerRequestEvent {
+  runId: string;
+  callId: string;
+  tool: string;
+  args: Record<string, unknown>;
+  summary: string;
 }
 
 /**
@@ -1187,6 +1196,15 @@ async function readChatSseStream(
             break;
           case "subagent_error":
             handlers.onSubagentError?.(data.runId, data.error || "subagent error");
+            break;
+          case "subagent_danger_request":
+            handlers.onSubagentDangerRequest?.({
+              runId: data.runId,
+              callId: data.callId,
+              tool: data.tool,
+              args: data.args || {},
+              summary: data.summary || "",
+            });
             break;
           // ── PR4 Workflow events ──
           case "workflow_start":

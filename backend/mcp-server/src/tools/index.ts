@@ -80,6 +80,12 @@ const TIER1_NAMES = new Set([
   // PR3 Agent Workflow: subagent spawn always-on so the host doesn't need
   // to activate workflow-skill just to fork a single sub-task.
   "spawn_subagent",
+  // V2.4 B1 subagent danger upcall — host-only resolution tools, always-on
+  // so host can react to subagent_danger_request events without activating
+  // any skill mid-flight.
+  "approve_subagent_danger",
+  "reject_subagent_danger",
+  "escalate_subagent_danger",
   // PR4 Agent Workflow: workflow template orchestration. Always-on so any
   // host can list / run review / brainstorm without first activating skill.
   "list_workflow_templates",

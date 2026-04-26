@@ -341,7 +341,15 @@ const TOOL_GUIDANCE_ZH = `# 当前工具使用指南（Tier 1 Core MCP）
 - 当你即将调用带 ⚠️ 的删除工具（如 \`delete_idea\`、\`delete_table\`）时：
   1. 先用自然语言说明"即将删除 X，现有 N 处引用来自 …"，把影响面列清。
   2. 等用户在 UI 的确认卡片上点"确认"后，才会带 \`confirmed:true\` 重新触发同一个工具调用并真正执行。
-  3. 如果 \`list_incoming_mentions\` 返回非空但用户仍坚持删除，执行删除后记得在自然语言总结里提醒"对应的 @ 链接将变成死链"，方便用户后续修复。`;
+  3. 如果 \`list_incoming_mentions\` 返回非空但用户仍坚持删除，执行删除后记得在自然语言总结里提醒"对应的 @ 链接将变成死链"，方便用户后续修复。
+
+## V2.4 Subagent danger 上抛决议
+当你 (host) 看到 \`subagent_danger_request\` 事件 (data 含 runId / callId / tool / args / summary):
+- **该动作在用户原指令明确授权 + 当前 workflow 节点设计内** → 调 \`approve_subagent_danger({runId, callId})\`
+- **subagent 越界** (review 阶段突然要写 / 与 workflow 当前阶段不符) → 调 \`reject_subagent_danger({runId, callId})\`
+- **涉及 table/idea/design 的删除/重置/批量改 + 你拿不准** → 调 \`escalate_subagent_danger({runId, callId, message:"用户请确认..."})\`,然后在最后的回复里 explicit 告诉用户该动作需要单独确认
+- 决议必须在 30 秒内做出,否则 subagent 自动超时拒绝
+- 收到 \`subagent_danger_request\` 时不要先恢复闲聊,先决议;subagent 在等你`;
 
 // ─── Layer 2 · Agent Identity ────────────────────────────────────────────
 
@@ -936,6 +944,7 @@ export interface SseEvent {
     | "subagent_tool_start"
     | "subagent_tool_progress"
     | "subagent_tool_result"
+    | "subagent_danger_request"
     | "subagent_done"
     | "subagent_error"
     // PR4 workflow events
@@ -1011,10 +1020,10 @@ const DEFAULT_AGENT_ID = "agent_default";
  *   - 每个增量 emit 成 subagent_* SSE 事件给前端实时展示
  *
  * V1 限制:
- *   - depth ≤ 1 (host → subagent,不允许 subagent → subagent;PR4 放开)
- *   - 默认继承 host 全部 active skills 的 tools (allowedTools=[] = inherit-all)
- *   - 危险工具:V1 直接拒绝 (subagent 不能调 danger);PR4 实现完整的二段确认
- *     上抛 host
+ *   - depth ≤ 2 (V2.4 B2 升级:host → sub1 → sub2,sub2 不能再 spawn)
+ *   - 默认继承 host 全部 active skills 的 tools(host-only 工具自动过滤,见 V2.4 C11)
+ *   - 危险工具:V2.4 B1 完整 upcall 协议 — emit subagent_danger_request,
+ *     等 host approve/reject/escalate 决议 (30s timeout 默认 reject)
  */
 export interface SpawnSubagentOptions {
   /** Override model to run subagent on. Resolved via resolveModelForCall —
@@ -1039,6 +1048,8 @@ export interface SpawnSubagentOptions {
   hostTools: ToolDefinition[];
   /** ToolContext to pass through to subagent tool handlers (workspaceId etc). */
   toolCtx: ToolContext;
+  /** V2.4 B2 nesting depth. host = 0, host->sub = 1, sub->sub = 2 (max). */
+  depth?: number;
 }
 
 /** Convert WorkflowEvent (executor) to SseEvent (chat stream). */
@@ -1082,13 +1093,51 @@ const DEFAULT_SUBAGENT_SYSTEM = `你是一个聚焦任务的子 agent。
 # 行为准则
 - 只完成 host agent 通过 user prompt 派发给你的具体任务,不要展开发散
 - 不要尝试修改 host 的对话状态,不要假设你能跟用户直接对话
-- 任何危险操作 (删除/重置/批量改) 当前一律不允许 —— 直接报告"需要 host 处理"
 - 输出简洁:host 拿到你的 finalText 后会决定如何呈现给用户
 
-# 工具
-你可以使用 host 透传的工具 (具体清单见运行时)。优先用工具拿数据,而不是猜。`;
+# 危险动作处理 (V2.4)
+你**可以**调用任何工具,包括删除/重置类危险工具。但调用前会被自动拦截上抛
+host agent 决定:host 会基于当前 workflow 上下文判断 approve / reject /
+escalate 给用户。你只需照常调,host 不批准时你会收到 error,然后改路径。
 
-const SUBAGENT_DANGER_DENY_MARKER = "__SUBAGENT_DANGER_DENIED__";
+# 工具
+你可以使用 host 透传的工具(具体清单见运行时)。优先用工具拿数据,而不是猜。`;
+
+/**
+ * V2.4 B2 nesting:depth hard-cap. host = 0,host 调 subagent = 1,
+ * subagent 调 subagent = 2。V2.4 V1 上限 2,V2.5+ 视实际场景决定是否放开。
+ */
+const MAX_SUBAGENT_DEPTH = 2;
+
+/**
+ * V2.4 B1: subagent danger upcall in-memory promise registry.
+ * key = `${runId}:${callId}` → { resolve, reject } pending decision.
+ * Host's MCP tools `approve_subagent_danger / reject_subagent_danger /
+ * escalate_subagent_danger` resolve these via shared module.
+ */
+const subagentDangerPending = new Map<
+  string,
+  {
+    resolve: (decision: "approved" | "rejected") => void;
+  }
+>();
+
+function dangerKey(runId: string, callId: string): string {
+  return `${runId}:${callId}`;
+}
+
+export function resolveSubagentDanger(
+  runId: string,
+  callId: string,
+  decision: "approved" | "rejected",
+): boolean {
+  const key = dangerKey(runId, callId);
+  const entry = subagentDangerPending.get(key);
+  if (!entry) return false;
+  subagentDangerPending.delete(key);
+  entry.resolve(decision);
+  return true;
+}
 
 export async function* spawnSubagent(
   opts: SpawnSubagentOptions,
@@ -1106,17 +1155,57 @@ export async function* spawnSubagent(
     workflowNodeId,
     hostTools,
     toolCtx,
+    depth = 1, // 调用方未传 = host 直调,depth = 1
   } = opts;
+
+  // V2.4 B2: depth cap
+  if (depth > MAX_SUBAGENT_DEPTH) {
+    throw new Error(`subagent nesting depth (${depth}) exceeds cap ${MAX_SUBAGENT_DEPTH}`);
+  }
 
   // 1. Resolve model + handle fallback
   const resolved = resolveModelForCall(modelId);
   const model = resolved.resolved;
 
   // 2. Filter tools by allowedTools (empty = inherit all)
+  // V2.4 C11 host-only filter:无论 allowedTools 是否指定,以下"host-only"
+  // 工具永远从 subagent 视图里删:
+  //   - 自我身份编辑 (update_profile / update_soul / create_memory):
+  //     subagent 是聚焦任务,不应改 host 的人格
+  //   - skill router (find_skill / activate_skill / deactivate_skill):
+  //     skill 状态属于 host 的对话,subagent 不该 mutate
+  //   - cron (schedule_task / list_scheduled_tasks / cancel_task):
+  //     全 host 级
+  //   - host 决议 (approve/reject/escalate_subagent_danger):
+  //     subagent 不能批准自己的 danger
+  //   - workflow 顶层编排 (execute_workflow_template / list_workflow_templates):
+  //     V2.4 V1 暂禁 subagent 起 workflow,避免无限嵌套(V2.5 放开)
+  // V2.4 B2 nesting:spawn_subagent 仍在 subagent 工具列表中,所以 depth=1
+  // 的 subagent 可以再 spawn 一个 depth=2 的 subagent。但 nesting 上限由
+  // depth 检查,而不是工具屏蔽。
+  const SUBAGENT_HOST_ONLY_TOOLS = new Set([
+    "update_profile",
+    "update_soul",
+    "create_memory",
+    "read_memory",
+    "recall_memory",
+    "find_skill",
+    "activate_skill",
+    "deactivate_skill",
+    "schedule_task",
+    "list_scheduled_tasks",
+    "cancel_task",
+    "approve_subagent_danger",
+    "reject_subagent_danger",
+    "escalate_subagent_danger",
+    "execute_workflow_template",
+    "list_workflow_templates",
+  ]);
+  const filteredByHostOnly = hostTools.filter((t) => !SUBAGENT_HOST_ONLY_TOOLS.has(t.name));
   const effectiveTools =
     allowedTools.length > 0
-      ? hostTools.filter((t) => allowedTools.includes(t.name))
-      : hostTools;
+      ? filteredByHostOnly.filter((t) => allowedTools.includes(t.name))
+      : filteredByHostOnly;
 
   // 3. Persist row
   const run = await createSubagentRun({
@@ -1156,6 +1245,10 @@ export async function* spawnSubagent(
     error?: string;
     status: "running" | "success" | "error";
   }> = [];
+  // V2.4 B3 token usage 累计 across rounds.provider adapter 在 done 事件
+  // 里附 usage,subagent 跑多轮就累加各轮值。
+  let accPromptTokens = 0;
+  let accCompletionTokens = 0;
 
   // 4. Build the input (subagent has its own conversation history starting empty)
   const input: ArkInputItem[] = [
@@ -1203,6 +1296,12 @@ export async function* spawnSubagent(
           });
         } else if (ev.kind === "error") {
           throw new Error(ev.message ?? "subagent provider error");
+        } else if (ev.kind === "done") {
+          // V2.4 B3: provider adapter attaches usage on the done event.
+          if (ev.usage) {
+            accPromptTokens += ev.usage.promptTokens ?? 0;
+            accCompletionTokens += ev.usage.completionTokens ?? 0;
+          }
         }
       }
 
@@ -1215,38 +1314,66 @@ export async function* spawnSubagent(
         for (const call of pendingToolCalls) {
           const tool = effectiveTools.find((t) => t.name === call.name);
 
-          // Subagent danger-deny gate (V1 — PR4 will replace with upcall protocol)
+          // V2.4 B1 subagent danger upcall:
+          // 不再直接拒绝。emit `subagent_danger_request` 给 host,然后阻塞
+          // 等 host 调 approve / reject / escalate 工具决议(in-memory promise)。
+          // 30 秒无决议默认 reject(避免永久 hang)。
           if (tool && (tool as any).danger === true) {
-            const errMsg = "subagent 不允许调用危险工具 (delete/reset 等);请让 host 直接处理或在 PR4 workflow 用 escalate 流程";
-            const callRow = {
-              callId: call.callId,
-              tool: call.name,
-              args: call.args,
-              error: errMsg,
-              status: "error" as const,
-            };
-            accToolCalls.push(callRow);
             yield {
-              event: "subagent_tool_start",
-              data: { runId: run.id, callId: call.callId, tool: call.name, args: call.args },
+              event: "subagent_danger_request",
+              data: {
+                runId: run.id,
+                callId: call.callId,
+                tool: call.name,
+                args: call.args,
+                summary: `subagent ${run.id.slice(0, 8)} 申请调用危险工具 ${call.name}`,
+              },
             };
-            yield {
-              event: "subagent_tool_result",
-              data: { runId: run.id, callId: call.callId, success: false, result: { error: errMsg } },
-            };
-            // Inject the rejection back into the model input so it can recover
-            input.push({
-              type: "function_call",
-              call_id: call.callId,
-              name: call.name,
-              arguments: JSON.stringify(call.args ?? {}),
-            } as any);
-            input.push({
-              type: "function_call_output",
-              call_id: call.callId,
-              output: SUBAGENT_DANGER_DENY_MARKER + " " + errMsg,
-            } as any);
-            continue;
+            // 等 host 决议
+            const dangerKey_ = `${run.id}:${call.callId}`;
+            const decision = await new Promise<"approved" | "rejected">((resolve) => {
+              const timer = setTimeout(() => {
+                if (subagentDangerPending.delete(dangerKey_)) resolve("rejected");
+              }, 30_000);
+              subagentDangerPending.set(dangerKey_, {
+                resolve: (d) => {
+                  clearTimeout(timer);
+                  resolve(d);
+                },
+              });
+            });
+            if (decision === "rejected") {
+              const errMsg = "host 拒绝了此次危险动作";
+              const callRow = {
+                callId: call.callId,
+                tool: call.name,
+                args: call.args,
+                error: errMsg,
+                status: "error" as const,
+              };
+              accToolCalls.push(callRow);
+              yield {
+                event: "subagent_tool_start",
+                data: { runId: run.id, callId: call.callId, tool: call.name, args: call.args },
+              };
+              yield {
+                event: "subagent_tool_result",
+                data: { runId: run.id, callId: call.callId, success: false, result: { error: errMsg } },
+              };
+              input.push({
+                type: "function_call",
+                call_id: call.callId,
+                name: call.name,
+                arguments: JSON.stringify(call.args ?? {}),
+              } as any);
+              input.push({
+                type: "function_call_output",
+                call_id: call.callId,
+                output: errMsg,
+              } as any);
+              continue;
+            }
+            // approved → fall through to normal tool execution below
           }
 
           if (!tool) {
@@ -1278,7 +1405,19 @@ export async function* spawnSubagent(
           yield { event: "subagent_tool_start", data: { runId: run.id, callId: call.callId, tool: call.name, args: call.args } };
           let toolResult: any;
           try {
-            toolResult = await tool.handler(call.args, toolCtx);
+            // V2.4 B2: 若 subagent 调 spawn_subagent (depth=1 → 调出 depth=2),
+            // 给 subagent 看到的 toolCtx.spawnSubagent 增加 depth+1 注入。
+            // 顶层 toolCtx (host loop 注入) 的 spawnSubagent 不知道 depth,需要包一层。
+            const subToolCtx = call.name === "spawn_subagent"
+              ? {
+                  ...toolCtx,
+                  spawnSubagent: toolCtx.spawnSubagent
+                    ? (innerOpts: Parameters<NonNullable<typeof toolCtx.spawnSubagent>>[0]) =>
+                        toolCtx.spawnSubagent!({ ...innerOpts, ...({ _depth: depth + 1 } as any) })
+                    : undefined,
+                }
+              : toolCtx;
+            toolResult = await tool.handler(call.args, subToolCtx);
             const callRow = {
               callId: call.callId,
               tool: call.name,
@@ -1341,6 +1480,9 @@ export async function* spawnSubagent(
     errorMessage,
     completedAt: new Date(),
     durationMs,
+    // V2.4 B3 token accounting (会随轮次累加)
+    promptTokens: accPromptTokens || null,
+    completionTokens: accCompletionTokens || null,
   });
 
   yield {
@@ -1610,6 +1752,7 @@ async function* runAgentImpl(
             workflowNodeId: sopts.workflowNodeId ?? null,
             hostTools: activeTools,
             toolCtx: toolCtx as ToolContext,
+            depth: 1, // workflow 起的 subagent = 1 (host 调 workflow → workflow 调 sub)
           },
           abortSignal,
         );
@@ -1681,6 +1824,9 @@ async function* runAgentImpl(
       allowedTools?: string[];
       maxRounds?: number;
       workflowNodeId?: string | null;
+      // V2.4 B2 (internal): depth override for nested subagent calls.
+      // Host's first spawn → depth=1 (default); subagent's spawn → depth=2.
+      _depth?: number;
     }) => {
       const activeTools = resolveActiveTools([...skillState.active]);
       // Resolve the parent-message id we'll attach the subagent run to.
@@ -1701,6 +1847,8 @@ async function* runAgentImpl(
           workflowNodeId: opts.workflowNodeId ?? null,
           hostTools: activeTools,
           toolCtx: toolCtx as ToolContext,
+          // V2.4 B2: 内部 _depth 走过来则用,否则 host 直调 = depth 1
+          depth: typeof opts._depth === "number" ? opts._depth : 1,
         },
         abortSignal,
       );

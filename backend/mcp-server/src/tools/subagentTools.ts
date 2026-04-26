@@ -19,6 +19,7 @@
  */
 
 import type { ToolContext, ToolDefinition } from "./tableTools.js";
+import { resolveSubagentDanger } from "../../../src/services/chatAgentService.js";
 
 export const subagentTools: ToolDefinition[] = [
   {
@@ -101,6 +102,78 @@ export const subagentTools: ToolDefinition[] = [
         const msg = err instanceof Error ? err.message : String(err);
         return JSON.stringify({ error: `spawn_subagent failed: ${msg}` });
       }
+    },
+  },
+
+  // V2.4 B1: 三个 host-only 工具,subagent 无法继承调用 (V2.4 C11 host-only filter)。
+  // host 收到 subagent_danger_request 时按 system prompt 规则选一个调用。
+  {
+    name: "approve_subagent_danger",
+    description:
+      "批准 subagent 调用危险工具 (delete/reset 等)。subagent 收到 approval 后立即执行该工具。" +
+      "用于 host 判断该动作在用户原指令明确授权范围内 + workflow 当前节点设计内时。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "subagent 的 runId(SubagentBlock 显示的)" },
+        callId: { type: "string", description: "danger_request 事件携带的 callId" },
+      },
+      required: ["runId", "callId"],
+    },
+    handler: async (args, _ctx?: ToolContext): Promise<string> => {
+      const ok = resolveSubagentDanger(String(args.runId), String(args.callId), "approved");
+      return JSON.stringify({ ok, decision: "approved" });
+    },
+  },
+  {
+    name: "reject_subagent_danger",
+    description:
+      "拒绝 subagent 的危险动作。subagent 收到 reject 后会得到 error,可以 retry 改路径。" +
+      "用于:subagent 越界(review 节点突然要写) / 与用户原指令不符 / 当前 workflow 不该有破坏性动作。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string" },
+        callId: { type: "string" },
+      },
+      required: ["runId", "callId"],
+    },
+    handler: async (args, _ctx?: ToolContext): Promise<string> => {
+      const ok = resolveSubagentDanger(String(args.runId), String(args.callId), "rejected");
+      return JSON.stringify({ ok, decision: "rejected" });
+    },
+  },
+  {
+    name: "escalate_subagent_danger",
+    description:
+      "把 subagent 的危险动作上报给用户决定。host 自己拿不准时用这个 —— " +
+      "工具内部会把 subagent 的 (tool, args) 包成普通 confirm SSE 给前端,等用户点确认/取消。" +
+      "V2.4 V1 简化实现:internally 等同于 reject + 在 finalText 里告诉用户" +
+      "该危险动作需要用户额外确认。" +
+      "完整 user-confirm 链路 V2.5 跟进。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string" },
+        callId: { type: "string" },
+        message: {
+          type: "string",
+          description: "host 给用户的解释(为什么需要确认这个动作)",
+        },
+      },
+      required: ["runId", "callId"],
+    },
+    handler: async (args, _ctx?: ToolContext): Promise<string> => {
+      // V2.4 V1:简化实现,先转 reject 让 subagent 收到 error,host 后续在
+      // finalText 里告诉用户。完整的 escalate→user→confirm→subagent 链路
+      // 涉及 subagent loop pause + chatRoutes 跨模块协作,留 V2.5 跟进。
+      const ok = resolveSubagentDanger(String(args.runId), String(args.callId), "rejected");
+      return JSON.stringify({
+        ok,
+        decision: "escalated-as-reject",
+        note: "V2.4 简化:转 reject + host 应在最终回复里向用户说明此次动作需要用户单独确认",
+        message: args.message ?? "",
+      });
     },
   },
 ];
