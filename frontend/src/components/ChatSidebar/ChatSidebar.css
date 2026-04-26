@@ -125,7 +125,8 @@
 .chat-header-actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  /* V2.9 #10: 统一 8px 间距 */
+  gap: 8px;
   /* 8px 右距 由 .chat-header 的 padding-right:8px 提供 —— 不再用负 margin */
 }
 .chat-header-btn {
@@ -607,11 +608,10 @@
 }
 
 /* ─── ToolCallCard body (single & group share this) ─── */
-/* P4 (PR1):错误态去掉满红 header + 满红 body 背景。改用左侧细红条
-   + result 文字红色作为"出错"信号即可,与 success/running 视觉对称
-   (它们也只改文字色)。原本满红卡片视觉过强,影响信息扫读。 */
+/* V2.9 #12:错误态去掉左侧红色装饰线,只靠 header 的 status dot (红色 ●)
+   + result 文字红色作为"出错"信号。装饰线视觉过强且与四芒星 / pulse 重复。 */
 .chat-tool-card.error {
-  border-left: 2px solid var(--danger);
+  /* no border-left strip */
 }
 .chat-tool-card.error.expanded {
   /* 与 success / running 一致:不填背景 */
@@ -1797,8 +1797,8 @@
 
 .chat-subagent-body {
   margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-light);
+  padding-top: 4px;
+  /* V2.9 #12: 去掉 header / body 之间的水平分隔线 */
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -2070,32 +2070,12 @@
   margin-bottom: 4px;
 }
 
-/* V2.3 subagent-card adopts the shared skeleton.
-   Border-left tint by status (running pulse / success / error) keeps
-   subagent cards visually distinct from tool calls without duplicating
-   the entire skeleton. */
-.chat-expand-card.chat-subagent-card {
-  border-left: 2px solid var(--primary);
-}
-.chat-expand-card.chat-subagent-card.success {
-  border-left-color: var(--success, #2ea043);
-}
-.chat-expand-card.chat-subagent-card.error,
-.chat-expand-card.chat-subagent-card.aborted {
-  border-left-color: var(--danger);
-}
+/* V2.9 #12: subagent / workflow 卡片去掉左侧 border 装饰线 (绿色 / 蓝色 / 红色),
+   状态信息全部靠右上角 StatusDot + 进度文字传达,与 ToolCallCard 视觉一致。
+   running 时仍保留 pulse animation 来表达"正在跑",但不再叠加左侧色条。 */
 .chat-expand-card.chat-subagent-card.running {
   animation: chat-subagent-pulse 1.6s ease-in-out infinite;
 }
-
-/* Workflow gets a thicker (3px) accent so orchestration cards visually
-   "outrank" subagent cards in the same message. */
-.chat-expand-card.chat-workflow-card {
-  border-left: 3px solid var(--primary);
-}
-.chat-expand-card.chat-workflow-card.success { border-left-color: var(--success, #2ea043); }
-.chat-expand-card.chat-workflow-card.error { border-left-color: var(--danger); }
-.chat-expand-card.chat-workflow-card.aborted { border-left-color: var(--warning, #d4880a); }
 .chat-expand-card.chat-workflow-card.running {
   animation: chat-subagent-pulse 2s ease-in-out infinite;
 }

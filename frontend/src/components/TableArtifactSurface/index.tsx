@@ -785,6 +785,7 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
         canUndo={canUndo}
         onUndo={performUndo}
         onAddRecord={() => { void tableViewRef.current?.addRecord("start"); }}
+        recordCount={displayRecords.length}
       />
       <div className="app-content">
         <TableView

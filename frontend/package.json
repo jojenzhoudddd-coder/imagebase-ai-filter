@@ -16,6 +16,7 @@
     "react-zoom-pan-pinch": "^4.0.3",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
+    "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
     "vega": "^6.2.0",
     "vega-embed": "^7.1.0",

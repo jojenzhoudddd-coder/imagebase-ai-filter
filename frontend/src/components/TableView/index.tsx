@@ -141,6 +141,24 @@ function UserAvatar({ userId, users, showName = true }: { userId: string; users:
   );
 }
 
+// V2.9 #1: 把 cell value 序列化成 plain text(用于 clipboard TSV 导出)。
+// 数组 (MultiSelect/User/Group) 用逗号串接;对象类型(DateTime parsed object)
+// 走 toString 兜底。
+function stringifyCellValue(v: CellValue): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "boolean") return v ? "true" : "";
+  if (Array.isArray(v)) return v.map((x) => stringifyCellValue(x as CellValue)).join(", ");
+  if (typeof v === "object") {
+    // DateTime / User object
+    const o = v as Record<string, any>;
+    if (typeof o.name === "string") return o.name;
+    if (typeof o.label === "string") return o.label;
+    if (typeof o.value === "string") return o.value;
+    try { return JSON.stringify(o); } catch { return String(o); }
+  }
+  return String(v);
+}
+
 // ─────────── Cell display (read-only) ───────────
 function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
   // Lookup sentinels first — error states surface as red labels
@@ -226,14 +244,21 @@ function TextEditor({
   value,
   onCommit,
   onCancel,
+  onNavigate,
 }: {
   field: Field;
   value: CellValue;
   onCommit: (v: CellValue) => void;
   onCancel: () => void;
+  /** V2.9 #3/#4: 提交后跳到 (dRow, dCol) 偏移的单元格继续编辑。
+   *  父级调用 setEditing 切换到目标 cell。 */
+  onNavigate?: (dRow: number, dCol: number) => void;
 }) {
   const [draft, setDraft] = useState(value === null ? "" : String(value));
   const inputRef = useRef<HTMLInputElement>(null);
+  // V2.9 #2: 退出编辑(blur 或导航)时只提交一次,避免 Enter→commit→onNavigate→
+  // setEditing(null) 后 React 还在 unmount 路径中再触发 onBlur 导致 double-commit。
+  const committedRef = useRef(false);
 
   // Focus without selecting all — preserve click position for cursor placement
   useEffect(() => {
@@ -248,6 +273,8 @@ function TextEditor({
   }, [field.type]);
 
   const commit = () => {
+    if (committedRef.current) return;
+    committedRef.current = true;
     const v = draft.trim();
     if (field.type === "Number") {
       onCommit(v === "" ? null : Number(v));
@@ -265,11 +292,41 @@ function TextEditor({
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
-        // Ignore Enter during IME composition (e.g. Chinese input confirming pinyin)
-        if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
-          e.preventDefault(); commit();
+        // Skip during IME composition (Chinese pinyin candidate confirm)
+        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit();
+          // V2.9 #4: Enter → 下一行同列;Shift+Enter 不导航(允许将来支持多行)
+          if (!e.shiftKey) onNavigate?.(1, 0);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          onCancel();
+        } else if (e.key === "Tab") {
+          // V2.9 #4: Tab → 下一列;Shift+Tab → 上一列
+          e.preventDefault();
+          commit();
+          onNavigate?.(0, e.shiftKey ? -1 : 1);
+        } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          // V2.9 #3: 上下箭头 → 上下行同列
+          e.preventDefault();
+          commit();
+          onNavigate?.(e.key === "ArrowUp" ? -1 : 1, 0);
+        } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          // V2.9 #3: 仅在 caret 已经在行首/行尾才切换列;否则保留默认 caret 移动行为
+          const el = e.currentTarget as HTMLInputElement;
+          const isAtStart = el.selectionStart === 0 && el.selectionEnd === 0;
+          const isAtEnd = el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
+          if (e.key === "ArrowLeft" && isAtStart) {
+            e.preventDefault();
+            commit();
+            onNavigate?.(0, -1);
+          } else if (e.key === "ArrowRight" && isAtEnd) {
+            e.preventDefault();
+            commit();
+            onNavigate?.(0, 1);
+          }
         }
-        if (e.key === "Escape") { e.preventDefault(); onCancel(); }
       }}
     />
   );
@@ -534,6 +591,7 @@ function EditableCell({
   onStartEdit,
   onCommit,
   onCancel,
+  onNavigate,
 }: {
   field: Field;
   record: TableRecord;
@@ -541,6 +599,7 @@ function EditableCell({
   onStartEdit: () => void;
   onCommit: (v: CellValue) => void;
   onCancel: () => void;
+  onNavigate?: (dRow: number, dCol: number) => void;
 }) {
   const value = record.cells[field.id] ?? null;
   const isEditable = field.type !== "AutoNumber" && field.type !== "Lookup";
@@ -559,9 +618,9 @@ function EditableCell({
   const renderEditor = () => {
     switch (field.type) {
       case "Text":
-        return <TextEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} />;
+        return <TextEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />;
       case "Number":
-        return <TextEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} />;
+        return <TextEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />;
       case "SingleSelect":
         return (
           <div className="cell-editor-wrap">
@@ -852,6 +911,36 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     setEditing(null);
   }, []);
 
+  // V2.9 #3/#4: 编辑态下根据 (dRow, dCol) 跳到目标 cell 并继续编辑。
+  // 越界则停在边界(不 wrap),也不会创建新 record。
+  const navigateEdit = useCallback((curRowIdx: number, curColIdx: number, dRow: number, dCol: number) => {
+    const nextRowIdx = Math.max(0, Math.min(records.length - 1, curRowIdx + dRow));
+    const nextColIdx = Math.max(0, Math.min(visibleFields.length - 1, curColIdx + dCol));
+    if (nextRowIdx === curRowIdx && nextColIdx === curColIdx) {
+      // No movement possible — just exit edit mode
+      setEditing(null);
+      return;
+    }
+    const targetRecord = records[nextRowIdx];
+    const targetField = visibleFields[nextColIdx];
+    if (!targetRecord || !targetField) return;
+    // setEditing schedules a render; it'll mount the new TextEditor + autofocus.
+    setEditing({ recordId: targetRecord.id, fieldId: targetField.id });
+    setCellRange({
+      startRowIdx: nextRowIdx,
+      startColIdx: nextColIdx,
+      endRowIdx: nextRowIdx,
+      endColIdx: nextColIdx,
+    });
+    // Scroll target into view
+    requestAnimationFrame(() => {
+      const td = tableRef.current?.querySelector<HTMLElement>(
+        `td[data-row-idx="${nextRowIdx}"][data-col-idx="${nextColIdx}"]`
+      );
+      td?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+  }, [records, visibleFields]);
+
   // Click outside table = cancel edit & deselect column & close context menu
   const tableRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -868,6 +957,51 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [editing, selectedColIds]);
+
+  // V2.9 #1: 单元格复制 (Cmd/Ctrl+C 或浏览器原生 copy)。
+  // 当 cellRange 有值且当前不在 input 编辑态时,把范围内的值序列化成 TSV
+  // (不同行 \n,不同列 \t),写到 clipboardData。这样粘贴到 Excel/Sheets 会
+  // 还原成多行多列;粘贴到普通文本编辑器是带换行的纯文本。
+  useEffect(() => {
+    const handler = (e: ClipboardEvent) => {
+      if (!cellRangeRef.current) return;
+      const tableEl = tableRef.current;
+      if (!tableEl || !tableEl.contains(document.activeElement)) {
+        // 焦点不在 table 内,让浏览器走默认 copy(避免劫持别处的 ctrl+c)
+        return;
+      }
+      // 在 input/textarea 编辑态下,优先复制选中文本(浏览器默认),不劫持
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) {
+        return;
+      }
+      const range = cellRangeRef.current;
+      const minRow = Math.min(range.startRowIdx, range.endRowIdx);
+      const maxRow = Math.max(range.startRowIdx, range.endRowIdx);
+      const minCol = Math.min(range.startColIdx, range.endColIdx);
+      const maxCol = Math.max(range.startColIdx, range.endColIdx);
+      const rows: string[] = [];
+      for (let r = minRow; r <= maxRow; r++) {
+        const rec = records[r];
+        if (!rec) continue;
+        const cells: string[] = [];
+        for (let c = minCol; c <= maxCol; c++) {
+          const f = visibleFields[c];
+          if (!f) { cells.push(""); continue; }
+          const v = rec.cells[f.id];
+          cells.push(stringifyCellValue(v));
+        }
+        rows.push(cells.join("\t"));
+      }
+      const tsv = rows.join("\n");
+      if (e.clipboardData) {
+        e.clipboardData.setData("text/plain", tsv);
+        e.preventDefault();
+      }
+    };
+    document.addEventListener("copy", handler);
+    return () => document.removeEventListener("copy", handler);
+  }, [records, visibleFields]);
 
   // ── Cell range selection: drag to select ──
   const isCellInRange = useCallback((rowIdx: number, colIdx: number) => {
@@ -1351,6 +1485,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                           onStartEdit={() => startEdit(record.id, f.id)}
                           onCommit={(v) => commitEdit(record.id, f.id, v)}
                           onCancel={cancelEdit}
+                          onNavigate={(dRow, dCol) => navigateEdit(idx, fIdx, dRow, dCol)}
                         />
                       </td>
                     );
@@ -1376,12 +1511,8 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
           </tbody>
         </table>
       </div>
-      <div className="table-footer">
-        {records.length + " " + t("table.records")}
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ marginLeft: 2 }}>
-          <path d="M3 5l3 3 3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </div>
+      {/* V2.9 #5: 底部 record 计数已经移到 Toolbar 右上角 (Add Record 左边),
+          此处不再渲染 table-footer。 */}
 
       {/* Context menu for field headers */}
       {contextMenu && (

@@ -148,9 +148,13 @@ const CanvasCtx = createContext<CanvasContextValue | null>(null);
 
 export function CanvasProvider({
   initial,
+  authPreferencesLoaded,
   children,
 }: {
   initial?: CanvasState | null;
+  /** V2.9 #13: 显式告知"/me 已经返回",这样即使 initial=null(用户没保存过)
+   *  也能进入 hydrated 状态,后续状态变更才会自动持久化。 */
+  authPreferencesLoaded?: boolean;
   children: ReactNode;
 }) {
   const [state, setState] = useState<CanvasState>(() => initial ?? readLocalCache() ?? defaultLayout());
@@ -169,6 +173,20 @@ export function CanvasProvider({
     writeLocalCache(state);
   }, [state]);
 
+  // V2.9 #13: 任何 state 变化都自动 scheduleSave。之前只在 BlockShell 拖动落
+  // 位时手动调,导致 sidebar 宽度 / sidebar 折叠 / activeItemType 切换等
+  // patchBlockState 改的 state 永远没写到后端 → 刷新就丢失。这里加一个
+  // 全量 effect 把所有变化都覆盖,debounce 由 scheduleSave 内部 800ms 兜底。
+  // 只在 hydrate 之后才开始保存,避免 hydrate 阶段的初值把后端数据反向覆盖。
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void persistToBackend(state);
+    }, 800);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   // hydrate from initial 仅一次。后续 authPreferences 因为别的字段(theme/locale)
   // 变化而 re-render 不会复原 canvas state(否则用户拖了 block,patch 主题就回原)。
   const hydratedRef = useRef(false);
@@ -177,13 +195,13 @@ export function CanvasProvider({
     if (initial && initial.layout) {
       setState(initial);
       hydratedRef.current = true;
-    } else if (initial === null || initial === undefined) {
-      // initial 还没就绪(/me 还没回来),不算 hydrate
-    } else {
-      // initial 是个对象但 layout=null —— 视作 hydrate 完成,state 走默认
+    } else if (authPreferencesLoaded) {
+      // V2.9 #13: /me 已返回但用户没存过 canvasLayout → 视为 hydrate 完成,
+      // state 走默认(readLocalCache 或 defaultLayout)。后续变更需要持久化。
       hydratedRef.current = true;
     }
-  }, [initial]);
+    // 否则 initial 还在加载中,继续等待
+  }, [initial, authPreferencesLoaded]);
 
   const visibleBlockIds = useMemo(() => collectLeaves(state.layout), [state.layout]);
 

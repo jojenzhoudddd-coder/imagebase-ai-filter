@@ -42,7 +42,12 @@
 .sidebar-header-with-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  /* V2.9 #10: 8px 间距对齐 topbar 规范 */
+  gap: 8px;
+}
+/* V2.9 #7: header 中的 + (new) 按钮 — 复用 sidebar-collapse-btn 视觉规格 */
+.sidebar-header-new-btn {
+  /* same 26×26, transparent, hover surface-3, all inherited */
 }
 .sidebar-header-with-actions .sidebar-search-trigger {
   flex: 1;

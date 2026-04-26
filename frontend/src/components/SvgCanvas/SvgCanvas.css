@@ -44,8 +44,15 @@
 .svg-canvas-topbar-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  /* V2.9 #10: 8px gap 统一规范 */
+  gap: 8px;
   flex-shrink: 0;
+}
+
+/* V2.9 #8: 当 block 太窄时,svg-canvas topbar 隐藏文字标签,只留 icon */
+@media (max-width: 480px) {
+  .svg-canvas-topbar-btn-label { display: none; }
+  .svg-canvas-topbar-btn { padding: 0 4px; }
 }
 
 /* Toolbar-style buttons: no border, transparent bg, icon+text, hover fill */

@@ -54,13 +54,13 @@ export default function ToolCallCard({ call }: { call: ChatToolCall }) {
         <StatusDot status={status} title={statusTitle} />
         <Chevron expanded={expanded} />
       </button>
-      {/* Progress strip is outside the collapsible body on purpose: users
-          need to see live activity even when the card header is collapsed. */}
-      {status === "running" && (call.progress || call.heartbeat) && (
-        <ProgressStrip progress={call.progress} heartbeat={call.heartbeat} />
-      )}
       {expanded && (
         <div className="chat-expand-card-body chat-tool-body">
+          {/* V2.9 #12: 进度条移入展开 body,默认折叠不再露出。
+              live 状态由 header 的 spinner StatusDot 表达即可。 */}
+          {status === "running" && (call.progress || call.heartbeat) && (
+            <ProgressStrip progress={call.progress} heartbeat={call.heartbeat} />
+          )}
           <div className="chat-tool-body-step">
             <span className="chat-tool-body-step-marker">{t("chat.tool.stepStart")}</span>
             <span className="chat-tool-body-step-text">{label}</span>

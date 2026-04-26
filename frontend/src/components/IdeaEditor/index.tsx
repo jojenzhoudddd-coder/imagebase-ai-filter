@@ -267,7 +267,42 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const initialCache = ideaCache.get(ideaId);
   const initialView = initialCache ?? readViewState(ideaId);
   const [mode, setMode] = useState<"source" | "preview">(initialView?.mode ?? "source");
-  const [content, setContent] = useState<string>(initialCache?.content ?? "");
+  const [content, setContentRaw] = useState<string>(initialCache?.content ?? "");
+  // V2.9 #6: undo stack。每次 setContent 触发的"用户编辑"会 push 上一版本到
+  // 栈,Cmd+Z / topbar undo 按钮 pop 出来 setContent 回去。
+  // 几个特例:streaming 写入(ideaStream pushDelta)/ SSE 远端内容更新 / hydrate
+  // 不应进栈 —— 通过 setContentSilent 走旁路。
+  const undoStackRef = useRef<string[]>([]);
+  const REDO_PUSH_LIMIT = 100;
+  const [canUndo, setCanUndo] = useState(false);
+  const setContent = useCallback((next: string | ((prev: string) => string)) => {
+    setContentRaw((prev) => {
+      const computed = typeof next === "function" ? (next as (p: string) => string)(prev) : next;
+      if (computed === prev) return prev;
+      // push prev to undo stack (cap at REDO_PUSH_LIMIT)
+      const stk = undoStackRef.current;
+      stk.push(prev);
+      if (stk.length > REDO_PUSH_LIMIT) stk.shift();
+      setCanUndo(true);
+      return computed;
+    });
+  }, []);
+  // 旁路 setContent — 不入 undo 栈(用于 hydrate / SSE / stream)。
+  const setContentSilent = useCallback((next: string) => {
+    setContentRaw(next);
+  }, []);
+  // 真正执行 undo
+  const performUndo = useCallback(() => {
+    const stk = undoStackRef.current;
+    if (stk.length === 0) return;
+    const prev = stk.pop()!;
+    setContentRaw(prev);
+    setCanUndo(stk.length > 0);
+    // 把恢复后的内容也排进保存(让远端跟本地一致)
+    scheduleSaveRef.current?.(prev);
+  }, []);
+  // forward ref so scheduleSave can be referenced before its declaration
+  const scheduleSaveRef = useRef<((text: string) => void) | null>(null);
   const [loaded, setLoaded] = useState<boolean>(!!initialCache);
   const [isEditingName, setIsEditingName] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(initialCache ? "saved" : "idle");
@@ -371,7 +406,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       });
     } else {
       setLoaded(false);
-      setContent("");
+      setContentSilent("");
+      undoStackRef.current = [];
+      setCanUndo(false);
       // Cold mount: the useState initializer already read `persistedView.mode`
       // if present. Reset to "source" only when there's nothing to restore.
       if (!persistedView) setMode("source");
@@ -392,7 +429,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         // Only overwrite the editor if the server is ahead of what we have
         // cached / last saved — avoids clobbering in-flight local edits.
         if (serverVersion >= versionRef.current) {
-          setContent(idea.content || "");
+          setContentSilent(idea.content || "");
+          undoStackRef.current = [];
+          setCanUndo(false);
           versionRef.current = serverVersion;
         }
         setLoaded(true);
@@ -498,7 +537,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         // toast the user so they notice the switcheroo. Follow-up save will
         // carry the new version.
         versionRef.current = res.latest.version;
-        setContent(res.latest.content);
+        setContentSilent(res.latest.content);
         // Server state is now in hand — no local dirt remaining.
         dirtyRef.current = false;
         setSaveStatus("saved");
@@ -533,6 +572,28 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       void flushSave(text);
     }, AUTOSAVE_DEBOUNCE_MS);
   }, [flushSave]);
+
+  // V2.9 #6: undo handler 通过 ref 绑到 scheduleSave (declaration order)
+  useEffect(() => { scheduleSaveRef.current = scheduleSave; }, [scheduleSave]);
+
+  // Cmd/Ctrl+Z 快捷键 — 全局监听,但只在 idea editor 拥有焦点时才生效。
+  // textarea 自带 native undo,所以只在 contentEditable 模式 / 按下 Cmd+Shift+Z
+  // (redo 暂未实现) / textarea 已被 setContent 覆盖的场景下才走自定义栈。
+  // 简化:只要 cmd/ctrl+z 命中且本组件容器内有焦点,就 prefer 自定义栈。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isUndo = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !e.shiftKey;
+      if (!isUndo) return;
+      const root = bodyRef.current;
+      if (!root) return;
+      if (!root.contains(document.activeElement) && !document.activeElement?.classList.contains("idea-editor-topbar-btn")) return;
+      if (undoStackRef.current.length === 0) return;
+      e.preventDefault();
+      performUndo();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [performUndo]);
 
   // Flush any pending edits on unmount / idea switch. With `key={ideaId}` in
   // the parent, this effect runs exactly once per mount and its cleanup
@@ -572,7 +633,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       // when the timeout fires, but the in-flight save still counts as
       // "typing" from the remote-sync perspective.
       if (dirtyRef.current) return;
-      setContent(remoteContent);
+      // V2.9 #6: 远端 content 不进 undo 栈,避免 undo 跳到完全不相关的远端版本。
+      setContentSilent(remoteContent);
       versionRef.current = remoteVersion;
     }, []),
     onRename: useCallback((name: string) => {
@@ -615,7 +677,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       const base = streamBaseRef.current;
       const off = streamStartOffsetRef.current;
       const next = base.slice(0, off) + streamBufferRef.current + base.slice(off);
-      setContent(next);
+      // V2.9 #6: stream delta 不进 undo 栈
+      setContentSilent(next);
     }, []),
 
     onStreamFinalize: useCallback(
@@ -624,7 +687,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         // On commit we take the authoritative server content (which may have
         // surrounding newlines added by applyIdeaWrite that the naive splice
         // didn't); on discard we roll back to the pre-stream snapshot.
-        setContent(p.finalContent);
+        // V2.9 #6: stream finalize 不进 undo 栈
+        setContentSilent(p.finalContent);
         versionRef.current = p.newVersion;
         streamSessionIdRef.current = null;
         streamBaseRef.current = "";
@@ -1117,6 +1181,18 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           >
             {mode === "source" ? PREVIEW_ICON : SOURCE_ICON}
             {mode === "source" ? t("idea.preview") : t("idea.source")}
+          </button>
+          {/* V2.9 #6: Undo 按钮 — 与 Table topbar 一致(icon + 文字 + disabled 透明) */}
+          <button
+            className={`idea-editor-topbar-btn${canUndo ? "" : " disabled"}`}
+            onClick={() => canUndo && performUndo()}
+            disabled={!canUndo}
+            title={t("toolbar.undo")}
+          >
+            <svg width="14" height="14" viewBox="0 0 26 26" fill="none">
+              <path d="M10.8047 6.52876C11.065 6.78911 11.065 7.21122 10.8047 7.47157L8.60939 9.66683H14.6666C17.428 9.66683 19.6666 11.9054 19.6666 14.6668C19.6666 17.4283 17.428 19.6668 14.6666 19.6668H12.3333C11.9651 19.6668 11.6666 19.3684 11.6666 19.0002C11.6666 18.632 11.9651 18.3335 12.3333 18.3335H14.6666C16.6916 18.3335 18.3333 16.6919 18.3333 14.6668C18.3333 12.6418 16.6916 11.0002 14.6666 11.0002H8.60939L10.8047 13.1954C11.065 13.4558 11.065 13.8779 10.8047 14.1382C10.5443 14.3986 10.1222 14.3986 9.86185 14.1382L6.52851 10.8049C6.26816 10.5446 6.26816 10.1224 6.52851 9.86209L9.86185 6.52876C10.1222 6.26841 10.5443 6.26841 10.8047 6.52876Z" fill="currentColor"/>
+            </svg>
+            {t("toolbar.undo")}
           </button>
           <BlockCloseButton />
         </div>

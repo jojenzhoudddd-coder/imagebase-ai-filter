@@ -428,6 +428,26 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
           </svg>
           <span>{t("sidebar.search")}</span>
         </div>
+        {/* V2.9 #7: New 按钮移到 sidebar header,紧贴 collapse 左边。
+            点击展开 createMenuItems(复用底部原有的菜单) */}
+        <button
+          ref={newBtnRef}
+          className="sidebar-collapse-btn sidebar-header-new-btn"
+          onClick={() => {
+            if (newMenuOpen && !isPopoverBlocking) {
+              setNewMenuOpen(false);
+              setShowAIPopover(false);
+            } else if (!newMenuOpen) {
+              setNewMenuOpen(true);
+            }
+          }}
+          title={t("sidebar.new")}
+          aria-label={t("sidebar.new")}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M7.00006 1.16663C6.67789 1.16663 6.41672 1.4278 6.41672 1.74996V6.41666H1.75002C1.42786 6.41666 1.16669 6.67783 1.16669 7C1.16669 7.32217 1.42786 7.58334 1.75002 7.58334H6.41672V12.25C6.41672 12.5722 6.67789 12.8334 7.00006 12.8334C7.32223 12.8334 7.5834 12.5722 7.5834 12.25V7.58334H12.2501C12.5723 7.58334 12.8334 7.32217 12.8334 7C12.8334 6.67783 12.5723 6.41666 12.2501 6.41666H7.5834V1.74996C7.5834 1.4278 7.32223 1.16663 7.00006 1.16663Z" fill="currentColor"/>
+          </svg>
+        </button>
         {onCollapse && (
           <button
             className="sidebar-collapse-btn"
@@ -507,75 +527,59 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
           );
         })()}
       </div>
-      <div className="sidebar-footer">
-        <button
-          ref={newBtnRef}
-          className="sidebar-new-btn"
-          onClick={() => {
-            if (newMenuOpen && !isPopoverBlocking) {
-              setNewMenuOpen(false);
+      {/* V2.9 #7: 底部 New 按钮已移除,改用 sidebar-header 的 + icon。
+          DropdownMenu / CreateTablePopover 仍由 newBtnRef (header 中的 +) 锚定。
+          position="below" 让弹层在 + 按钮下方往左展开,水平左对齐 + icon hover 热区。 */}
+      {newMenuOpen && newBtnRef.current && (
+        <DropdownMenu
+          items={createMenuItems}
+          anchorEl={newBtnRef.current}
+          onSelect={(key) => {
+            if (key === "table") {
+              setShowAIPopover(true);
+            } else if (key === "design") {
+              if (onCreateDesign) {
+                onCreateDesign(t("createMenu.design"));
+              }
+              handleCloseAll();
+            } else if (key === "idea") {
+              if (onCreateIdea) {
+                onCreateIdea();
+              }
+              handleCloseAll();
+            } else if (key === "folder") {
+              if (onCreateFolder) onCreateFolder();
+              handleCloseAll();
+            } else {
               setShowAIPopover(false);
-            } else if (!newMenuOpen) {
-              setNewMenuOpen(true);
             }
           }}
-        >
-          <svg width="14" height="14" viewBox="97.5 861.5 13 13" fill="none">
-            <path d="M104 862.167C103.678 862.167 103.417 862.428 103.417 862.75V867.417H98.75C98.4278 867.417 98.1666 867.678 98.1666 868C98.1666 868.322 98.4278 868.583 98.75 868.583H103.417V873.25C103.417 873.572 103.678 873.833 104 873.833C104.322 873.833 104.583 873.572 104.583 873.25V868.583H109.25C109.572 868.583 109.833 868.322 109.833 868C109.833 867.678 109.572 867.417 109.25 867.417H104.583V862.75C104.583 862.428 104.322 862.167 104 862.167Z" fill="currentColor"/>
-          </svg>
-          {t("sidebar.new")}
-        </button>
-        {newMenuOpen && newBtnRef.current && (
-          <DropdownMenu
-            items={createMenuItems}
-            anchorEl={newBtnRef.current}
-            onSelect={(key) => {
-              if (key === "table") {
-                setShowAIPopover(true);
-              } else if (key === "design") {
-                if (onCreateDesign) {
-                  onCreateDesign(t("createMenu.design"));
-                }
-                handleCloseAll();
-              } else if (key === "idea") {
-                if (onCreateIdea) {
-                  onCreateIdea();
-                }
-                handleCloseAll();
-              } else if (key === "folder") {
-                if (onCreateFolder) onCreateFolder();
-                handleCloseAll();
-              } else {
-                setShowAIPopover(false);
-              }
-            }}
-            onClose={() => {
-              if (!isPopoverBlocking) {
-                setNewMenuOpen(false);
-                setShowAIPopover(false);
-              }
-            }}
-            position="above"
-            width={240}
-            activeSubMenuKey={showAIPopover ? "table" : null}
-            className="sidebar-new-menu"
-            onMenuRef={handleMenuRef}
-            onItemRef={handleItemRef}
-            extraContainers={[popoverContainerRef]}
-          />
-        )}
-        {showAIPopover && menuEl && tableItemEl && (
-          <CreateTablePopover
-            ref={(handle) => { popoverHandleRef.current = handle; }}
-            anchorItemEl={tableItemEl}
-            menuEl={menuEl}
-            onClose={() => setShowAIPopover(false)}
-            onCreateWithAI={onCreateWithAI}
-            onResetToDefault={onResetToDefault}
-            onCreateBlank={onCreateBlank}
-          />
-        )}
-      </div>
+          onClose={() => {
+            if (!isPopoverBlocking) {
+              setNewMenuOpen(false);
+              setShowAIPopover(false);
+            }
+          }}
+          position="below"
+          width={240}
+          activeSubMenuKey={showAIPopover ? "table" : null}
+          className="sidebar-new-menu"
+          onMenuRef={handleMenuRef}
+          onItemRef={handleItemRef}
+          extraContainers={[popoverContainerRef]}
+        />
+      )}
+      {showAIPopover && menuEl && tableItemEl && (
+        <CreateTablePopover
+          ref={(handle) => { popoverHandleRef.current = handle; }}
+          anchorItemEl={tableItemEl}
+          menuEl={menuEl}
+          onClose={() => setShowAIPopover(false)}
+          onCreateWithAI={onCreateWithAI}
+          onResetToDefault={onResetToDefault}
+          onCreateBlank={onCreateBlank}
+        />
+      )}
       <ConfirmDialog
         open={!!deleteConfirmId}
         title={t("app.deleteTable")}

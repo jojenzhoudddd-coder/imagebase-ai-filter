@@ -71,23 +71,31 @@ export function formatElapsed(ms?: number): string {
   return `${min}m${String(sec).padStart(2, "0")}s`;
 }
 
-/** Subagent icon — 14×14 humanoid silhouette. Reused by SubagentBlock. */
+/** V2.9 #12: Subagent + Workflow 卡片统一改用四芒星 (gradient) icon,
+ *  与 chat 入口按钮 / mention chip 视觉系统保持一致。 */
 export function SubagentGlyph() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <circle cx="7" cy="4.2" r="2.2" stroke="currentColor" strokeWidth="1.3" />
-      <path d="M2.5 12c.6-2.3 2.4-3.5 4.5-3.5s3.9 1.2 4.5 3.5"
-        stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  );
+  return <FourPointStarGlyph />;
+}
+export function WorkflowGlyph() {
+  return <FourPointStarGlyph />;
 }
 
-/** Workflow icon — 14×14 lightning bolt for orchestration semantics. */
-export function WorkflowGlyph() {
+function FourPointStarGlyph() {
+  // 每个 instance 有独立 gradient id,避免同 SVGDoc 内多个实例 mask 冲突
+  const id = "card_star_" + Math.random().toString(36).slice(2, 8);
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path d="M8 1L3 8h3l-1 5 5-7H7l1-5z"
-        stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <defs>
+        <linearGradient id={id} x1="2" y1="2" x2="14" y2="14" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#4D83F5" />
+          <stop offset="0.5" stopColor="#B463F2" />
+          <stop offset="1" stopColor="#F5406B" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M8 1c.2 0 .4.15.45.35l.9 3.16c.2.7.75 1.25 1.45 1.45l3.16.9c.35.1.35.6 0 .7l-3.16.9c-.7.2-1.25.75-1.45 1.45l-.9 3.16c-.1.35-.6.35-.7 0l-.9-3.16c-.2-.7-.75-1.25-1.45-1.45l-3.16-.9c-.35-.1-.35-.6 0-.7l3.16-.9c.7-.2 1.25-.75 1.45-1.45l.9-3.16c.05-.2.25-.35.45-.35z"
+        fill={`url(#${id})`}
+      />
     </svg>
   );
 }

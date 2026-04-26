@@ -104,10 +104,12 @@ export default function SubagentBlock({ run }: Props) {
               <div className="chat-subagent-error-text">{run.error}</div>
             </div>
           )}
-          {run.thinking && (
+          {run.thinking && run.thinking.trim() && (
             <div className="chat-subagent-section">
               <div className="chat-expand-card-section-label">思考</div>
-              <div className="chat-subagent-thinking">{run.thinking}</div>
+              {/* V2.9 #15: Doubao 经常在 thinking 起始送 \n\n,导致首行空白。
+                  trim 头部空白(尾部保留以保正在追加的视觉连贯)。 */}
+              <div className="chat-subagent-thinking">{run.thinking.replace(/^\s+/, "")}</div>
             </div>
           )}
           {run.toolCalls.length > 0 && (

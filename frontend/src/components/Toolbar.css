@@ -67,8 +67,28 @@
 .table-topbar-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  /* V2.9 #10: 所有按钮 + icon 间距 8px,统一规范 */
+  gap: 8px;
   flex-shrink: 0;
+}
+
+/* V2.9 #5: record 计数 — 紧贴 Add Record 左侧 */
+.table-topbar-record-count {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+/* V2.9 #8: 当 block 宽度不足以同时容纳左右两栏内容时,
+   table topbar 隐藏 ToolbarBtn 文字标签,只留 icon (仍保 8px 间距)。
+   断点 480 以下命中 (与 BlockShell 最小宽度配合)。 */
+@media (max-width: 480px) {
+  .table-topbar-btn-label,
+  .table-topbar-record-count {
+    display: none;
+  }
+  .table-topbar-btn { padding: 0 4px; }
 }
 
 /* "+ 新增记录" 主行动按钮 */
@@ -91,14 +111,8 @@
 .table-topbar-add-record:hover { background: var(--primary-bg); }
 .table-topbar-chevron { margin-left: 2px; opacity: 0.6; }
 
-/* 分隔条 */
-.table-topbar-sep {
-  width: 1px;
-  height: 16px;
-  background: var(--border-default);
-  margin: 0 4px;
-  flex-shrink: 0;
-}
+/* V2.9 #9: 竖分隔条已删除,保留 class 以防外部 leftover 引用,渲染成空 */
+.table-topbar-sep { display: none; }
 
 /* 视图相关按钮 —— 带文字标签（与原 .toolbar-btn 一致） */
 .table-topbar-btn {

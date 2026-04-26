@@ -4,6 +4,7 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { parseMentionHref } from "../Mention/mentionSyntax";
@@ -246,7 +247,10 @@ const InnerMarkdown = memo(function InnerMarkdown({
   editable: boolean;
   placeholder?: string;
 }) {
-  const remarkPlugins = useMemo(() => [remarkGfm], []);
+  // V2.9 #14: remark-breaks 让单个 \n 渲染成 <br>,有序列表 / 无序列表里
+  // 用户在两个序号之间敲的 newlines 在 preview 里得到保留(默认 CommonMark
+  // 会把 soft line break 折叠成空格 → 列表项视觉上"全连成一行")。
+  const remarkPlugins = useMemo(() => [remarkGfm, remarkBreaks], []);
   const rehypePlugins = useMemo(
     () => [rehypeRaw, [rehypeSanitize, schema]] as any,
     []

@@ -2118,7 +2118,10 @@ export default function App() {
     >
     <ArtifactViewProvider value={{ render: renderArtifactView }}>
     <ChatBlockProvider value={{ render: renderChatBlock }}>
-    <CanvasProvider initial={(authPreferences?.canvasLayout as CanvasState | null | undefined) ?? null}>
+    <CanvasProvider
+      initial={(authPreferences?.canvasLayout as CanvasState | null | undefined) ?? null}
+      authPreferencesLoaded={authPreferences !== undefined}
+    >
     <div className="app">
       <TopBar
         tableName={tableName}
