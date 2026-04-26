@@ -194,7 +194,13 @@ app.get("/api/workspaces/:workspaceId/stats", async (req, res) => {
   const { workspaceId } = req.params;
   try {
     const [ws, tables, ideas, designs, demos, published, tokenAgg] = await Promise.all([
-      getWorkspace(workspaceId),
+      // 直接查 workspace 拿 aiSummary / aiSlogan / aiSummaryAt 字段 ——
+      // dbStore.getWorkspace 只返回 {id, name},aiSummary 永远是 undefined,
+      // 之前 stats 端点读出来都是 null 就是这个原因。
+      prismaForStats.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { id: true, name: true, aiSummary: true, aiSlogan: true, aiSummaryAt: true },
+      }),
       prismaForStats.table.count({ where: { workspaceId } }),
       prismaForStats.idea.count({ where: { workspaceId } }),
       prismaForStats.design.count({ where: { workspaceId } }),
@@ -225,9 +231,9 @@ app.get("/api/workspaces/:workspaceId/stats", async (req, res) => {
       designs,
       demos,
       totalTokens: tokenAgg._sum.totalTokens ?? 0,
-      summary: (ws as any).aiSummary ?? null,
-      slogan: (ws as any).aiSlogan ?? null,
-      summaryAt: (ws as any).aiSummaryAt ?? null,
+      summary: ws.aiSummary ?? null,
+      slogan: ws.aiSlogan ?? null,
+      summaryAt: ws.aiSummaryAt ?? null,
     });
   } catch (err) {
     console.error("[/workspaces/:id/stats]", err);
