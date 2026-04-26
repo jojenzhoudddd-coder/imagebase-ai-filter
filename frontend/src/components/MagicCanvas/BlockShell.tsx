@@ -153,6 +153,13 @@ export default function BlockShell({
     [visibleCount, canvasContainerRef, stateRef, swapBlocks, scheduleSave, blockId, tearDownDrag, setDragging],
   );
 
+  // 边框规则:边贴窗口/canvas 外缘(page)→ 隐藏该边的 border;
+  //          边贴另一 block(neighbor)→ 1px border。
+  const borderTop = edges.top === "page" ? "none" : "1px solid var(--border-default)";
+  const borderRight = edges.right === "page" ? "none" : "1px solid var(--border-default)";
+  const borderBottom = edges.bottom === "page" ? "none" : "1px solid var(--border-default)";
+  const borderLeft = edges.left === "page" ? "none" : "1px solid var(--border-default)";
+
   return (
     <div
       ref={shellRef}
@@ -162,6 +169,10 @@ export default function BlockShell({
         borderTopRightRadius: tr,
         borderBottomLeftRadius: bl,
         borderBottomRightRadius: br,
+        borderTop,
+        borderRight,
+        borderBottom,
+        borderLeft,
       }}
     >
       <BlockShellProvider value={shellCtx}>
