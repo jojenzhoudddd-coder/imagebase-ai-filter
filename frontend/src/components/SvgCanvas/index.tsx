@@ -1161,7 +1161,8 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
             onChange={handleFileInput}
           />
 
-          <span className="svg-canvas-topbar-sep" />
+          {/* V2.9.3: 去掉 Upload / Layout 之间的多余竖线,
+              只保留 zoom% 和 Upload 之间的那道。 */}
 
           {/* Layout —— 之前 "Auto Layout",简化命名 */}
           <button

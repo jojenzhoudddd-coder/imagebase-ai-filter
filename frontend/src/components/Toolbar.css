@@ -111,8 +111,19 @@
 .table-topbar-add-record:hover { background: var(--primary-bg); }
 .table-topbar-chevron { margin-left: 2px; opacity: 0.6; }
 
-/* V2.9 #9: 竖分隔条已删除,保留 class 以防外部 leftover 引用,渲染成空 */
-.table-topbar-sep { display: none; }
+/* V2.9.3 topbar 竖分隔条规则:
+   - 1px 宽 × 16px 高,LM/DM 都用 var(--border-default)
+   - 因为 .table-topbar-actions 自带 8px gap,sep 占位置自动获得"距离左右两边
+     hover 热区都是 8px"的间距,无需额外 margin
+   - align-self:center 让 sep 在 28px 高的 topbar 行中垂直居中 */
+.table-topbar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: var(--border-default);
+  align-self: center;
+  flex-shrink: 0;
+}
 
 /* 视图相关按钮 —— 带文字标签（与原 .toolbar-btn 一致） */
 .table-topbar-btn {

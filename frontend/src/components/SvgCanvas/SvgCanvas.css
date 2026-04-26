@@ -100,11 +100,14 @@
   background: var(--color-primary-light, rgba(20, 86, 240, 0.08));
 }
 
+/* V2.9.3 unified: 1px × 16px,LM/DM border-default,8px gap 由父 actions
+   container gap:8px 提供,垂直居中 */
 .svg-canvas-topbar-sep {
+  display: inline-block;
   width: 1px;
   height: 16px;
-  background: var(--color-border);
-  margin: 0 4px;
+  background: var(--border-default, var(--color-border));
+  align-self: center;
   flex-shrink: 0;
 }
 

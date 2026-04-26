@@ -109,9 +109,12 @@ export default function Toolbar({
       <div className="table-topbar-actions">
         {/* V2.9.1: record 计数紧贴 Add Record 左侧,小字灰色 */}
         {typeof recordCount === "number" && (
-          <span className="table-topbar-record-count" title={t("table.records")}>
-            {recordCount} {t("table.records")}
-          </span>
+          <>
+            <span className="table-topbar-record-count" title={t("table.records")}>
+              {recordCount} {t("table.records")}
+            </span>
+            <span className="table-topbar-sep" aria-hidden="true" />
+          </>
         )}
         <button className="table-topbar-add-record" onClick={onAddRecord} title={t("toolbar.addRecord")}>
           <AddIcon />

@@ -969,9 +969,10 @@
 }
 
 /* ── Long-task progress strip (Analyst P1) ─────────────────────────── */
+/* V2.9.3: 去掉 progress 之上的水平分隔线;padding 对齐 .chat-expand-card-body
+   的 14/12 (左 14、右 12),让进度条与下方内容左右对齐而不超出 card 边界。 */
 .chat-tool-progress {
-  padding: 6px 12px 8px;
-  border-top: 1px solid var(--border-light);
+  padding: 6px 12px 8px 14px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -2003,13 +2004,15 @@
   outline-offset: 1px;
 }
 /* Flash highlight applied when WorkflowBlock node is clicked or
- * spawn_subagent has just emitted (V2.8 C5/C7). */
+ * spawn_subagent has just emitted (V2.8 C5/C7).
+ * V2.9.3: 改 inset box-shadow 避免在 card 外侧投影出 2px halo,叠加 running
+ * pulse 时会被误读为"超出 card 高度"的伪影。 */
 .chat-expand-card-flash {
   animation: chat-expand-card-flash-anim 1.4s ease-out;
 }
 @keyframes chat-expand-card-flash-anim {
-  0% { box-shadow: 0 0 0 2px rgba(20, 86, 240, 0.55); }
-  100% { box-shadow: 0 0 0 0 rgba(20, 86, 240, 0); }
+  0% { box-shadow: inset 0 0 0 2px rgba(20, 86, 240, 0.55); }
+  100% { box-shadow: inset 0 0 0 0 rgba(20, 86, 240, 0); }
 }
 .chat-workflow-tle-dot {
   font-weight: 700;

@@ -354,6 +354,8 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
             {BuildIcon}
             {busy === "build" ? t("demo.building") : demo.lastBuildStatus === "success" ? t("demo.rebuild") : t("demo.build")}
           </button>
+          {/* V2.9.3: build / rebuild 与后续操作之间加竖线 */}
+          <span className="demo-panel-topbar-sep" aria-hidden="true" />
           {demo.files && demo.files.length > 0 && (
             <div className="demo-panel-files-wrap" ref={filesPopoverRef}>
               <button

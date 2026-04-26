@@ -415,10 +415,11 @@ export const en = {
   "idea.mentionEmpty": "No matches",
   "idea.mentionView": "Table",
   "idea.mentionTable": "Table",
-  "idea.mentionDesign": "Design",
-  "idea.mentionTaste": "Design",
+  "idea.mentionDesign": "Taste",
+  "idea.mentionTaste": "Taste",
   "idea.mentionIdea": "Idea",
   "idea.mentionSection": "Idea",
+  "idea.mentionDemo": "Demo",
   "idea.mentionModel": "Model",
 
   // Default view/field names

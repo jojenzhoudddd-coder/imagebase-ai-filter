@@ -1172,6 +1172,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         </span>
         <div className="idea-editor-topbar-actions">
           {statusLabel && <span className="idea-editor-status">{statusLabel}</span>}
+          {/* V2.9.3: save status 和 Switch 之间加竖线 */}
+          {statusLabel && <span className="idea-editor-topbar-sep" aria-hidden="true" />}
           {/* Single view-bar toggle — shows only the destination mode.
            * In Source view, the button reads "Preview"; click to switch. */}
           <button

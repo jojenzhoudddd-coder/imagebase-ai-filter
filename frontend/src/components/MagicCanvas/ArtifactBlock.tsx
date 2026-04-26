@@ -119,7 +119,9 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
     }
     if (active.type === "idea") {
       const idea = ws.ideas.find((x) => x.id === active.id);
-      if (!idea) return <div className="mc-artifact-empty">Idea 已不存在</div>;
+      // V2.9.3: 不渲染"已不存在"文字,留空 div 占位即可。多数情况是删除后
+      // sidebar 切到下一个 artifact 就直接换走,留页面就一闪而过的现象就更轻量了。
+      if (!idea) return <div className="mc-artifact-empty" />;
       return (
         <IdeaEditor
           key={active.id}
@@ -134,7 +136,7 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
     }
     if (active.type === "design") {
       const design = ws.designs.find((x) => x.id === active.id);
-      if (!design) return <div className="mc-artifact-empty">Design 已不存在</div>;
+      if (!design) return <div className="mc-artifact-empty" />;
       return (
         <SvgCanvas
           key={active.id}
@@ -147,7 +149,7 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
     }
     if (active.type === "demo") {
       const demo = ws.demos.find((x) => x.id === active.id);
-      if (!demo) return <div className="mc-artifact-empty">Demo 已不存在</div>;
+      if (!demo) return <div className="mc-artifact-empty" />;
       return <DemoPreviewPanel key={active.id} demoId={active.id} workspaceId={ws.workspaceId} />;
     }
     // table V2:每个 block 使用一个独立的 TableArtifactSurface,自管 fields /

@@ -30,7 +30,7 @@ const router = Router();
  *   - idea         → "<IdeaName>"
  *   - idea-section → "<IdeaName>.<HeadingText>"
  */
-type V4MentionType = "table" | "design" | "taste" | "idea" | "idea-section" | "model";
+type V4MentionType = "table" | "design" | "taste" | "idea" | "idea-section" | "demo" | "model";
 
 interface MentionHit {
   type: V4MentionType;
@@ -86,6 +86,7 @@ function normaliseTypesParam(raw: string): Set<V4MentionType> {
     else if (seg === "taste") out.add("taste");
     else if (seg === "idea") out.add("idea");
     else if (seg === "idea-section") out.add("idea-section");
+    else if (seg === "demo") out.add("demo");
     else if (seg === "model") out.add("model");
   }
   return out;
@@ -115,7 +116,9 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
   // doesn't need model mentions and including them would add noise.
   const typesRaw = (req.query.types as string) || "table,design,taste,idea,idea-section";
   const types = normaliseTypesParam(typesRaw);
-  const limit = Math.min(parseInt((req.query.limit as string) || "10", 10), 30);
+  // V2.9.3: chat input 现在请求 model+table+taste+idea+demo,加上每类多 hit,
+  // 默认 10 太少 → 升到 20。caller 仍可用 ?limit= 覆盖,硬顶 50。
+  const limit = Math.min(parseInt((req.query.limit as string) || "20", 10), 50);
 
   const matchesAny = (facets: string[]) => {
     if (!q) return true;
@@ -128,6 +131,7 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
   const tasteHits: MentionHit[] = [];
   const ideaHits: MentionHit[] = [];
   const sectionHits: MentionHit[] = [];
+  const demoHits: MentionHit[] = [];
   const modelHits: MentionHit[] = [];
 
   // ── Tables (whole-table mention,not view-level) ──
@@ -224,6 +228,19 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
     }
   }
 
+  // ── Demos (Vibe Demo V1) ──
+  if (types.has("demo")) {
+    const demos = await prisma.demo.findMany({
+      where: { workspaceId },
+      select: { id: true, name: true },
+    });
+    for (const d of demos) {
+      if (matchesAny([d.name])) {
+        demoHits.push(decorate({ type: "demo", id: d.id, label: d.name }));
+      }
+    }
+  }
+
   // ── Models (chat input only) ──
   // listVisibleModels() filters `visible:false` (e.g. nano-banana / gemini-flash
   // stubs while available:false). We DO include `available:false` visible models
@@ -260,14 +277,22 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
   tasteHits.sort(rankCmp);
   ideaHits.sort(rankCmp);
   sectionHits.sort(rankCmp);
+  demoHits.sort(rankCmp);
   modelHits.sort(rankCmp);
 
-  // Order (model → table → design → taste → idea → idea-section). Models go
-  // first so they're easy to find in chat input where they're the most
-  // intentional cross-cutting mention. (Idea editor never asks for `model`
-  // so its order is unchanged.)
-  const buckets = [modelHits, tableHits, designHits, tasteHits, ideaHits, sectionHits];
+  // Order (model → table → taste/design → idea → idea-section → demo).
+  // Models go first so chat-input users always see them even when other
+  // buckets dominate.
+  // V2.9.3: 当 model 被请求时,给 modelHits 一个"前置 quota":先把全部 model
+  // 放进去,再做正常 round-robin 填剩余 slot。这样用户在 chat input 里 @
+  // 永远能看到所有可用模型,而不是被 100 张表稀释成 1-2 个。
+  const buckets = [tableHits, tasteHits, designHits, ideaHits, sectionHits, demoHits];
   const hits: MentionHit[] = [];
+  if (types.has("model")) {
+    while (modelHits.length > 0 && hits.length < limit) {
+      hits.push(modelHits.shift()!);
+    }
+  }
   let progress = true;
   while (hits.length < limit && progress) {
     progress = false;

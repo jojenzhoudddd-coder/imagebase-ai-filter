@@ -65,7 +65,8 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
     const id = window.setTimeout(async () => {
       try {
         const results = await searchMentions(workspaceId, query, {
-          limit: 10,
+          // V2.9.3: 拿 20 个 hit 才能塞下 5 model + tables + tastes + ideas + demos
+          limit: 20,
           types: types && types.length > 0 ? types : undefined,
         });
         if (lastQueryRef.current === query) {
@@ -99,6 +100,7 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
       : hit.type === "design" ? t("idea.mentionDesign")
       : hit.type === "taste" ? t("idea.mentionTaste")
       : hit.type === "idea-section" ? t("idea.mentionSection")
+      : hit.type === "demo" ? t("idea.mentionDemo")
       : hit.type === "model" ? t("idea.mentionModel")
       : t("idea.mentionIdea");
 

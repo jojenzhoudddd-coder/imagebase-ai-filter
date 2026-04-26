@@ -51,6 +51,16 @@
   flex-shrink: 0;
 }
 
+/* V2.9.3 demo topbar 竖分隔条 */
+.demo-panel-topbar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: var(--border-default, var(--color-border));
+  align-self: center;
+  flex-shrink: 0;
+}
+
 .demo-panel-status {
   font-size: 12px;
   color: var(--color-text-tertiary, var(--text-secondary));

@@ -218,6 +218,7 @@ export type MentionType =
   | "taste"
   | "idea"
   | "idea-section"
+  | "demo"
   | "model";
 
 export interface MentionHit {

@@ -336,6 +336,16 @@
   text-align: center;
 }
 
+/* V2.9.3 idea topbar 竖分隔条 */
+.idea-editor-topbar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: var(--border-default, var(--color-border));
+  align-self: center;
+  flex-shrink: 0;
+}
+
 .idea-mention-group + .idea-mention-group {
   border-top: 1px solid var(--color-border);
   margin-top: 4px;
@@ -347,8 +357,8 @@
   font-size: 11px;
   font-weight: 500;
   color: var(--color-text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  /* V2.9.3: 不再 uppercase,保留原 i18n 字符串 (Table / Taste / Idea / Demo / Model) */
+  letter-spacing: 0;
   user-select: none;
 }
 

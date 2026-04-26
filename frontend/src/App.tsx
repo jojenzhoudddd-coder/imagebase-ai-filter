@@ -1473,25 +1473,42 @@ export default function App() {
   }, [toast, t]);
 
   // ── Delete table ──
+  // V2.9.3: 删除 active artifact 后,默认跳到 sidebar 中下一个 artifact;
+  // 没有下一个就跳上一个;都没有就清空 active state。
+  // 顺序按 sidebarItems 渲染顺序一致 (folder 不算 artifact 跳过)。
+  const pickNextActiveAfterDelete = useCallback((deletedId: string): { id: string; type: TreeItemType } | null => {
+    const flat = sidebarItems.filter(s => s.type !== "folder");
+    const idx = flat.findIndex(s => s.id === deletedId);
+    if (idx < 0) return null;
+    const next = flat[idx + 1] ?? flat[idx - 1];
+    if (!next) return null;
+    return { id: next.id, type: next.type as TreeItemType };
+  }, [sidebarItems]);
+
+  const activateAfterDelete = useCallback((deletedId: string) => {
+    const next = pickNextActiveAfterDelete(deletedId);
+    if (!next) {
+      setActiveTableId("");
+      return;
+    }
+    setActiveTableId(next.id);
+    setActiveItemType(next.type);
+    setFocusEntity(null);
+    if (next.type === "table") {
+      void switchTable(next.id);
+    }
+    navigateToArtifact(next.type, next.id);
+  }, [pickNextActiveAfterDelete, switchTable]);
+
   const handleDeleteTable = useCallback(async (tableId: string) => {
     // Don't allow deleting the last table
     if (documentTables.length <= 1) return;
-    // Optimistic: remove from list
+    // V2.9.3: 跨 artifact 类型挑选下一个 active —— 不再固定回到 table。
+    // 在 setDocumentTables 之前先 snapshot pickNext (用最新的 sidebarItems);
+    // setDocumentTables 触发重渲染后,activateAfterDelete 自然走新列表。
     setDocumentTables(prev => prev.filter(t => t.id !== tableId));
-    // If deleting the active table, switch to the previous table (or next if first)
     if (tableId === activeTableIdRef.current) {
-      const idx = documentTables.findIndex(t => t.id === tableId);
-      const remaining = documentTables.filter(t => t.id !== tableId);
-      if (remaining.length > 0) {
-        const target = remaining[Math.max(0, idx - 1)];
-        setActiveTableId(target.id);
-        setTableName(target.name);
-        try {
-          const [f, r, v] = await Promise.all([fetchFields(target.id), fetchRecords(target.id), fetchViews(target.id)]);
-          setFields(f); setAllRecords(r); setViews(v);
-          if (v[0]) { setActiveViewId(v[0].id); setSavedFilter(v[0].filter ?? { logic: "and", conditions: [] }); setFilter(v[0].filter ?? { logic: "and", conditions: [] }); initFieldOrderFromView(v[0], f); }
-        } catch { /* ignore, table switch will handle */ }
-      }
+      activateAfterDelete(tableId);
     }
     try {
       await apiDeleteTable(tableId);
@@ -1499,7 +1516,7 @@ export default function App() {
       toast.error(t("toast.deleteFailed"));
       fetchWorkspaceTree(WORKSPACE_ID).then(tree => setDocumentTables(tree.tables.map(t => ({ ...t, parentId: t.parentId ?? null }))));
     }
-  }, [documentTables, initFieldOrderFromView, toast, t]);
+  }, [documentTables, activateAfterDelete, toast, t]);
 
   // ── Create folder ──
   const handleCreateFolder = useCallback(async () => {
@@ -1562,25 +1579,11 @@ export default function App() {
       } else if (type === "design") {
         await apiDeleteDesign(id);
         setDocumentDesigns(prev => prev.filter(d => d.id !== id));
-        if (id === activeTableId) {
-          const firstTable = documentTables[0];
-          if (firstTable) {
-            setActiveTableId(firstTable.id);
-            setActiveItemType("table");
-            switchTable(firstTable.id);
-          }
-        }
+        if (id === activeTableId) activateAfterDelete(id);
       } else if (type === "demo") {
         await apiDeleteDemo(id);
         setDocumentDemos(prev => prev.filter(d => d.id !== id));
-        if (id === activeTableId) {
-          const firstTable = documentTables[0];
-          if (firstTable) {
-            setActiveTableId(firstTable.id);
-            setActiveItemType("table");
-            switchTable(firstTable.id);
-          }
-        }
+        if (id === activeTableId) activateAfterDelete(id);
       } else if (type === "idea") {
         // Ideas can be targets of @mentions from other ideas. Delete is
         // destructive (those mentions become dead links), so we open the
@@ -1605,7 +1608,7 @@ export default function App() {
     } catch {
       toast.error(t("toast.deleteFailed"));
     }
-  }, [activeTableId, documentTables, switchTable, toast, t]);
+  }, [activeTableId, activateAfterDelete, toast, t]);
 
   // ── Confirm idea deletion (fires from the references-aware ConfirmDialog) ──
   const handleConfirmDeleteIdea = useCallback(async () => {
@@ -1615,18 +1618,11 @@ export default function App() {
     try {
       await apiDeleteIdea(id);
       setDocumentIdeas(prev => prev.filter(i => i.id !== id));
-      if (id === activeTableId) {
-        const firstTable = documentTables[0];
-        if (firstTable) {
-          setActiveTableId(firstTable.id);
-          setActiveItemType("table");
-          switchTable(firstTable.id);
-        }
-      }
+      if (id === activeTableId) activateAfterDelete(id);
     } catch {
       toast.error(t("toast.deleteFailed"));
     }
-  }, [ideaDeleteConfirm.ideaId, activeTableId, documentTables, switchTable, toast, t]);
+  }, [ideaDeleteConfirm.ideaId, activeTableId, activateAfterDelete, toast, t]);
 
   // ── Move item ──
   const handleMoveItem = useCallback(async (itemId: string, itemType: "table" | "folder" | "design" | "idea" | "demo", newParentId: string | null) => {
