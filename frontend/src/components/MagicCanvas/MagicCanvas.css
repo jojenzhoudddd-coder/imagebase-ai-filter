@@ -271,7 +271,8 @@
   border-radius: var(--radius-m);
   box-shadow: var(--shadow-dropdown, 0 4px 16px rgba(0,0,0,0.12));
   padding: 4px;
-  min-width: 160px;
+  width: 180px;
+  box-sizing: border-box;
 }
 .mc-add-block-item {
   display: flex;
