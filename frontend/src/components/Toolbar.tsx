@@ -107,6 +107,12 @@ export default function Toolbar({
 
       {/* Right: 视图相关多按钮（带文字标签）+ 末尾 Undo */}
       <div className="table-topbar-actions">
+        {/* V2.9.1: record 计数紧贴 Add Record 左侧,小字灰色 */}
+        {typeof recordCount === "number" && (
+          <span className="table-topbar-record-count" title={t("table.records")}>
+            {recordCount} {t("table.records")}
+          </span>
+        )}
         <button className="table-topbar-add-record" onClick={onAddRecord} title={t("toolbar.addRecord")}>
           <AddIcon />
           {t("toolbar.addRecord")}
@@ -129,12 +135,6 @@ export default function Toolbar({
           btnRef={filterBtnRef}
         />
         <ToolbarBtn icon={<SortIcon />} label={t("toolbar.sort")} />
-        {/* V2.9 #5: record 计数 — 紧贴 Add Record 左侧,小字灰色 */}
-        {typeof recordCount === "number" && (
-          <span className="table-topbar-record-count" title={t("table.records")}>
-            {recordCount} {t("table.records")}
-          </span>
-        )}
         {/* V2.9 #9: 去掉竖分隔线;V2.9 #10: 8px gap 由 .table-topbar-actions 统一控制 */}
         {/* Undo —— 与其它动作一致用 icon + 文字（"Undo" / "撤销"）,disabled
             状态走 ToolbarBtn 的内置态.  */}
