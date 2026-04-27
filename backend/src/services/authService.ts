@@ -279,39 +279,53 @@ export async function createUserWithWorkspace(input: {
     });
 
     // ── 注册时的 onboarding 数据：1 张含默认字段+5 行空记录的表 + 1 个空 taste + 1 个空 idea
-    // V2.9.9:
-    //   1) 三种类型 order 分开 (Table=0, Design=1, Idea=2) → sidebar 混排时
-    //      Table 稳定排第一,与 App init 选 first artifact 的逻辑配合,新用户
-    //      登入默认看到的就是这张表。
-    //   2) Table 不再是空表,默认带 1 个 Text 字段 + 5 行空记录,FE TableView
-    //      不会空白一片,用户可立即开始编辑。
-    const defaultFieldId = `fld_${randomBytes(8).toString("hex")}`;
-    const defaultViewId = "view_all";
+    // V2.9.11: 与 dbStore.createTable 完全对齐 —— 字段类型 "Text" (大写) +
+    //   isPrimary:true + 字段名 "文本" (i18n 默认中文,与新建 Table 一致),
+    //   view 名 "Grid" 不是 "全部",record cells 写 { [fieldId]: null } 不是 {}
+    //   这样新用户首次看到的表与他们手动 "+ 新建表" 看到的一模一样。
+    // 三种类型 order 分开 (Table=0, Design=1, Idea=2) 让 sidebar 混排时 Table
+    // 稳定排第一,配合 App init 选 first artifact 的逻辑。
+    const defaultFieldId = `fld_${Date.now().toString(36)}_${randomBytes(2).toString("hex")}`;
+    const defaultViewId = `viw_${Date.now().toString(36)}`;
+    const defaultField = {
+      id: defaultFieldId,
+      tableId: "", // populated after table.create
+      name: "文本",
+      type: "Text",
+      isPrimary: true,
+      config: {},
+    };
+    const defaultView = {
+      id: defaultViewId,
+      tableId: "",
+      name: "Grid",
+      type: "grid",
+      filter: { logic: "and", conditions: [] },
+      fieldOrder: [defaultFieldId],
+      hiddenFields: [],
+    };
     const tableRow = await tx.table.create({
       data: {
         workspaceId: ws.id,
         name: "Table",
-        fields: [
-          { id: defaultFieldId, name: "Name", type: "text", config: {} },
-        ] as any,
-        views: [{
-          id: defaultViewId,
-          name: "全部",
-          type: "grid",
-          fieldOrder: [defaultFieldId],
-          hiddenFields: [],
-          filter: { logic: "and", conditions: [] },
-        }] as any,
+        fields: [defaultField] as any,
+        views: [defaultView] as any,
+        autoNumberCounters: {},
         order: 0,
       },
     });
-    // 5 行空记录 — cells 留空,用户进来直接点击编辑即可
-    // V2.9.10: Record 模型没有 order 列,排序靠 createdAt;5 条 createMany 在
-    // 同一 tx 里写入,createdAt 同毫秒精度可能不稳定。用循环单条 create 保证
-    // createdAt 单调递增,顺序与 sidebar 显示一致。
+    // tableId 回填(与 createTable 流程一致)
+    defaultField.tableId = tableRow.id;
+    defaultView.tableId = tableRow.id;
+    await tx.table.update({
+      where: { id: tableRow.id },
+      data: { fields: [defaultField] as any, views: [defaultView] as any },
+    });
+    // 5 行空记录 —— cells:{[fieldId]: null} 与 createTable 完全一致;循环
+    // 单条 create 让 createdAt 单调递增(Record 无 order 列,靠 createdAt 排序)。
     for (let i = 0; i < 5; i++) {
       await tx.record.create({
-        data: { tableId: tableRow.id, cells: {} as any },
+        data: { tableId: tableRow.id, cells: { [defaultFieldId]: null } as any },
       });
     }
     await tx.design.create({
