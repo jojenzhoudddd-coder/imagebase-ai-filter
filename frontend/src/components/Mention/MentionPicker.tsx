@@ -259,8 +259,13 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
       className="idea-mention-picker"
       style={{ left: placement.left, top: placement.top }}
       onMouseDown={(e) => {
-        // Stop propagation so clicks inside the picker don't register as
-        // outside clicks in the editor's own handlers / close the picker.
+        // V2.9.13: preventDefault 阻止 mousedown 把 contentEditable 编辑器
+        // blur 掉 —— 否则用户点选 item 时编辑器先失焦,handleMentionSelect
+        // 在编辑器无焦点状态下插入 chip,Chrome contentEditable 重新获得焦点
+        // 时 IME state 没初始化好,下一个键盘按键直接被 commit 成 literal
+        // (拼音首字母被吞 bug)。stopPropagation 仍保留:不让 outside-click
+        // handler 触发 picker close。
+        e.preventDefault();
         e.stopPropagation();
       }}
     >
