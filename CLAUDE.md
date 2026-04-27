@@ -191,6 +191,7 @@ Domain: https://www.imagebase.cc
 - `docs/idea-artifact-plan.md` - Idea（灵感）Markdown doc artifact 方案（Prisma model / version 乐观并发 / SSE / @mention 语法 + 跳转）
 - `docs/analyst-skill-plan.md` - Analyst (AI 问数) 方案
 - `docs/vibe-demo-plan.md` - Vibe Demo (Vibe design + Vibe coding) 方案（Demo artifact / URL 路由改造 / ID 格式统一 / window.ImageBase SDK / capability 声明 / publish to /share/:slug / V1-V5 分期）（DuckDB 计算引擎 + parquet 快照 + softDeps 链式激活 + 长任务 SSE 协议 + 三层领域 skill + P1-P5 分期）
+- `docs/launch-checklist.md` - 上线 hardening checklist（DB managed 服务 + 跨区备份 + S3 文件存储 + Redis 限频/锁 + Sentry/pino + admin gate + CSRF/HSTS/CSP + Cloudflare + CI-CD + runbook + 多 region；Phase 0/1/2/3 分阶段，标注"你做"vs"我做"vs 月成本估算）
 
 ## Skills（自动加载的专业指令集）
 每个 Skill 在对应场景下会被 Claude Code 自动激活，无需手动引用。
