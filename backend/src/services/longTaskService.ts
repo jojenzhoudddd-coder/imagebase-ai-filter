@@ -67,26 +67,42 @@ export const DEFAULT_LONG_TASK_OPTIONS: Required<LongTaskOptions> = {
 };
 
 /**
- * V2.9.6: 工具粒度的超时覆盖 —— 部分工具内部要 spawn 一次完整 LLM 调用
- * (compose_workflow / execute_workflow_template / spawn_subagent / build_demo
- * / resolve_conflicts_with_llm 等),180s 默认值在 Opus + 长 prompt 下经常不
- * 够。这里把它们提到 600s,普通 CRUD 工具仍走默认 180s 防呆。
+ * V2.9.7: timeout 改为"idle timeout" —— 只在工具静默(无 progress)超过阈值
+ * 才中止。流式 LLM 工具会在每个 token chunk 调 emitProgress()，相当于不停
+ * 续命,只有真的卡死才会被掐。
+ *
+ * 各工具粒度阈值:
+ *   - LLM 流式工具: 60s 静默就 abort (token 卡 1 分钟必有问题)
+ *   - 同步工具 (CRUD): 180s 仍走默认值,因为它们没有 progress 流
+ *   - 慢同步工具 (build / run_sql): 300-600s
  */
-const TOOL_TIMEOUT_OVERRIDES_MS: Record<string, number> = {
-  compose_workflow: 600_000,
-  execute_workflow_template: 900_000,
-  spawn_subagent: 600_000,
-  resolve_conflicts_with_llm: 600_000,
+const STREAMING_LLM_TOOLS = new Set([
+  "compose_workflow",
+  "execute_workflow_template",
+  "spawn_subagent",
+  "resolve_conflicts_with_llm",
+]);
+
+const TOOL_IDLE_TIMEOUT_MS: Record<string, number> = {
+  // 流式 LLM:60s 静默就掐 (token 应每 1-2s 一次,60s = 30+ token gap)
+  compose_workflow: 60_000,
+  execute_workflow_template: 60_000,
+  spawn_subagent: 60_000,
+  resolve_conflicts_with_llm: 60_000,
+  // 慢同步:无 progress,所以 idle = total
   build_demo: 600_000,
   publish_demo: 600_000,
-  // Analyst long ops
   load_workspace_table: 600_000,
   run_sql: 300_000,
   generate_chart: 300_000,
 };
 
 export function timeoutMsForTool(tool: string, fallback = DEFAULT_LONG_TASK_OPTIONS.timeoutMs): number {
-  return TOOL_TIMEOUT_OVERRIDES_MS[tool] ?? fallback;
+  return TOOL_IDLE_TIMEOUT_MS[tool] ?? fallback;
+}
+
+export function isStreamingLLMTool(tool: string): boolean {
+  return STREAMING_LLM_TOOLS.has(tool);
 }
 
 /**
@@ -137,6 +153,13 @@ export class LongTaskTracker {
     const now = Date.now();
     this.active.lastProgressAt = now;
     this.active.lastHeartbeatAt = now;
+    // V2.9.7: 每次 progress 重置 idle timer —— 流式工具只要在 idle window
+    // 内有任何 token,就一直续命,不会被同步 wall-clock 切断。
+    if (this.timeoutTimer) {
+      clearTimeout(this.timeoutTimer);
+      const idleMs = timeoutMsForTool(this.active.tool, this.opts.timeoutMs);
+      this.timeoutTimer = setTimeout(() => this.onTimeout(), idleMs).unref();
+    }
     this.bus.onProgress({
       ...payload,
       callId,

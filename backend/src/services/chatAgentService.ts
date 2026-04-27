@@ -1823,6 +1823,15 @@ async function* runAgentImpl(
           // Translate WorkflowEvent → SseEvent shape
           queuedEvents.push(toWorkflowSseEvent(ev));
           signalQueue();
+          // V2.9.7: 工作流的每一个节点事件都重置 parent 工具的 idle timer。
+          // 这样 execute_workflow_template 即使总耗时很长,只要有节点在推进就
+          // 不会被掐 (子 agent 流式 token 已由 spawnSubagent 路径上报 progress)。
+          if (toolCtx.callId) {
+            longTask.emitProgress(toolCtx.callId, {
+              phase: ev.kind,
+              message: `workflow ${ev.kind}`,
+            });
+          }
           if (ev.kind === "workflow_end") success = true;
           if (ev.kind === "workflow_aborted") {
             aborted = true;
@@ -1915,8 +1924,20 @@ async function* runAgentImpl(
       try {
         let next = await stream.next();
         while (!next.done) {
-          queuedEvents.push(next.value);
+          const ev = next.value;
+          queuedEvents.push(ev);
           signalQueue();
+          // V2.9.7: 把 subagent 的流式 token 算作 parent 工具的 progress —— 这样
+          // 父工具的 idle timeout 在子 agent 持续吐字时不会被触发。即使 chat
+          // 前端不消费这条 progress (只 SSE forward),longTaskService 内部会
+          // 拿它重置 timer。仅对 text_delta / thinking_delta 这类有真实进展的
+          // 事件 reset,SSE 心跳/工具事件不算。
+          if (toolCtx.callId && (ev.event === "subagent_message" || ev.event === "subagent_thinking" || ev.event === "subagent_tool_result")) {
+            longTask.emitProgress(toolCtx.callId, {
+              phase: "streaming",
+              message: `subagent ${ev.event.replace("subagent_", "")} ...`,
+            });
+          }
           next = await stream.next();
         }
         result = next.value as { runId: string; finalText: string; success: boolean };
