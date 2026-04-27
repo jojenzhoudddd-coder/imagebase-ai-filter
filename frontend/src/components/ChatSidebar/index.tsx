@@ -1142,17 +1142,32 @@ export default function ChatSidebar({
   }, [activeConv?.id, t, toast, handleNewConversation]);
 
   // V3.0 PR1 打开 conversation 列表 (拉最新 list)
+  // V3.0.1 修复:
+  //   - 不按 agentId 过滤,workspace 已经做了 user 隔离;否则老对话
+  //     (e.g. agentId="agent_default" 或 null 的) 会被错误地隐藏
+  //   - openConvList 老实现读 closure 里的 convListOpen 判断是否要拉,
+  //     与 setConvListOpen 的 setState 异步性叠加导致"经常加载不出来" race。
+  //     改为:点开就总是 fetch,设 loading + 拿数据 + 取消 stale 响应。
+  const convFetchSeqRef = useRef(0);
   const openConvList = useCallback(async () => {
-    setConvListOpen((open) => !open);
-    if (convList.length === 0 || !convListOpen) {
-      setConvListLoading(true);
-      try {
-        const list = await listConversations(workspaceId, agentId);
-        setConvList(list);
-      } catch { /* swallow */ }
-      setConvListLoading(false);
+    const willOpen = !convListOpen;
+    setConvListOpen(willOpen);
+    if (!willOpen) return;  // 只在打开时拉
+    const seq = ++convFetchSeqRef.current;
+    setConvListLoading(true);
+    try {
+      const list = await listConversations(workspaceId);
+      // 如果期间又点过 → 用最新的 seq 覆盖,这次 stale 直接丢
+      if (seq !== convFetchSeqRef.current) return;
+      setConvList(list);
+    } catch (err) {
+      if (seq !== convFetchSeqRef.current) return;
+      console.warn("[chat] listConversations failed:", err);
+      setConvList([]); // 至少 popover 不卡 loading
+    } finally {
+      if (seq === convFetchSeqRef.current) setConvListLoading(false);
     }
-  }, [convList.length, convListOpen, workspaceId, agentId]);
+  }, [convListOpen, workspaceId]);
 
   // ─── Render ─────────────────────────────────────────────────────────
   // Header row re-added per Figma node 6:5309 "AI header": no title, just a

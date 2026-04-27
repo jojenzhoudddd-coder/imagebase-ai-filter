@@ -5,9 +5,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useCanvas, MAX_BLOCKS } from "../../contexts/canvasContext";
+import { useAuth } from "../../auth/AuthContext";
+import { createConversation } from "../../api";
 
 export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject<HTMLElement | null> }) {
-  const { addBlock, visibleBlockIds } = useCanvas();
+  const { addBlock, patchBlockState, visibleBlockIds } = useCanvas();
+  const { workspaceId, agentId } = useAuth();
   const [open, setOpen] = useState(false);
   const popRef = useRef<HTMLDivElement>(null);
 
@@ -52,9 +55,21 @@ export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject
       <button
         className="mc-add-block-item"
         disabled={reachedMax}
-        onClick={() => {
-          addBlock("chat");
+        onClick={async () => {
+          // V3.0.1 新增 chat block 时同步走 New Chat 链路:
+          // 1) addBlock 拿到 blockId
+          // 2) POST /conversations 起新对话
+          // 3) patchBlockState 把 conversationId 写进 BlockState (canvas 自动持久化)
+          const newBlockId = addBlock("chat");
           setOpen(false);
+          if (!newBlockId || !workspaceId) return;
+          try {
+            const conv = await createConversation(workspaceId, agentId || undefined);
+            patchBlockState(newBlockId, { conversationId: conv.id });
+          } catch (err) {
+            console.warn("[AddBlockMenu] create conversation failed:", err);
+            // block 已加,只是没绑定 conv —— ChatSidebar fallback 会自己挑/建一个
+          }
         }}
       >
         <SparkleIcon />
