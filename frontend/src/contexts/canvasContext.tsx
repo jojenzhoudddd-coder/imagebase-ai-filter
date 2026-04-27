@@ -54,7 +54,8 @@ function defaultLayout(): CanvasState {
     layout: {
       kind: "split",
       orientation: "h",
-      ratio: 0.5,
+      // V2.9.9: 默认 chat : artifact = 1 : 2 (chat 占 1/3,artifact 占 2/3)
+      ratio: 1 / 3,
       first: { kind: "leaf", blockId: chatId },
       second: { kind: "leaf", blockId: artId },
     },

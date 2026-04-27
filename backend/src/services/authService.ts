@@ -10,6 +10,7 @@
 
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { randomBytes } from "crypto";
 import type { Request, Response, NextFunction } from "express";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -277,31 +278,53 @@ export async function createUserWithWorkspace(input: {
       },
     });
 
-    // ── 注册时的 onboarding 数据：1 张空表 + 1 个空 taste（design）+ 1 个空 idea
-    // 这样新用户登入时 sidebar 不会空荡荡一片。默认视图内置一个 "view_all"
-    // 以保持和现有 UI 期望一致（FE TableView 依赖至少一个 view）。
-    // 名字保持简洁通用（不带 username 前缀），用户之后可自行改名。
-    await tx.table.create({
+    // ── 注册时的 onboarding 数据：1 张含默认字段+5 行空记录的表 + 1 个空 taste + 1 个空 idea
+    // V2.9.9:
+    //   1) 三种类型 order 分开 (Table=0, Design=1, Idea=2) → sidebar 混排时
+    //      Table 稳定排第一,与 App init 选 first artifact 的逻辑配合,新用户
+    //      登入默认看到的就是这张表。
+    //   2) Table 不再是空表,默认带 1 个 Text 字段 + 5 行空记录,FE TableView
+    //      不会空白一片,用户可立即开始编辑。
+    const defaultFieldId = `fld_${randomBytes(8).toString("hex")}`;
+    const defaultViewId = "view_all";
+    const tableRow = await tx.table.create({
       data: {
         workspaceId: ws.id,
         name: "Table",
-        fields: [] as any,
-        views: [{ id: "view_all", name: "全部", type: "grid" }] as any,
+        fields: [
+          { id: defaultFieldId, name: "Name", type: "text", config: {} },
+        ] as any,
+        views: [{
+          id: defaultViewId,
+          name: "全部",
+          type: "grid",
+          fieldOrder: [defaultFieldId],
+          hiddenFields: [],
+          filter: { logic: "and", conditions: [] },
+        }] as any,
         order: 0,
       },
+    });
+    // 5 行空记录 — cells 留空,用户进来直接点击编辑即可
+    await tx.record.createMany({
+      data: Array.from({ length: 5 }, (_, i) => ({
+        tableId: tableRow.id,
+        cells: {} as any,
+        order: i,
+      })),
     });
     await tx.design.create({
       data: {
         workspaceId: ws.id,
         name: "Taste",
-        order: 0,
+        order: 1,
       },
     });
     await tx.idea.create({
       data: {
         workspaceId: ws.id,
         name: "Idea",
-        order: 0,
+        order: 2,
       },
     });
 
