@@ -1501,13 +1501,27 @@
   word-break: break-word;
   cursor: text;
 }
-/* Placeholder via :empty + ::before. data-placeholder attribute carries the
-   localised string from React. */
-.chat-input-editor.is-empty::before {
+/* Placeholder via ::before. data-placeholder attribute carries the localised
+   string from React.
+   V2.9.15 修复"输入第一个字符时 placeholder 闪一下"现象:
+   - 之前用 React 控制的 .is-empty class → React 重渲染前 ::before 还在,
+     用户看到的是 "<placeholder><typed-char>" 在一行,然后 placeholder 才消失
+   - 改 1:用 :empty 选择器,浏览器同步判断是否真的没子节点,React 延迟无关
+     兼顾 contentEditable 偶尔留 <br> 的空态(:has() 兜底)
+   - 改 2:position:absolute 让 placeholder 不占 inline 流,即使那一帧 race
+     condition 也是"placeholder 透在 typed-char 后面"覆盖关系,不会换行 */
+.chat-input-editor {
+  position: relative;
+}
+.chat-input-editor:empty::before,
+.chat-input-editor:has(> br:only-child)::before {
   content: attr(data-placeholder);
   color: var(--text-muted);
   pointer-events: none;
-  /* contenteditable browsers fight us if we use opacity 0 — color works. */
+  position: absolute;
+  inset: 0 0 0 0;
+  /* 不再用 .is-empty class —— React 延迟会让 placeholder 残留一帧。
+     :empty + :has(>br:only-child) 是浏览器同步判断,DOM 一变 placeholder 立刻消失。 */
 }
 /* The chip itself: blue text, no background, atomic. Same look as the idea
    editor's `.idea-mention-chip` from PR1, ensuring consistency across
