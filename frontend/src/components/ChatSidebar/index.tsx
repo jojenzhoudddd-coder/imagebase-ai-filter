@@ -1305,7 +1305,7 @@ export default function ChatSidebar({
               key: "delete",
               label: t("chat.menu.deleteCurrent"),
               icon: <TrashIcon size={16} />,
-              danger: true,
+              // V4.1: 不用 danger 红色,默认配色即可(还有二次确认弹窗兜底)
             },
           ]}
           onSelect={(key) => {
@@ -1351,14 +1351,13 @@ export default function ChatSidebar({
           width={260}
         />
       )}
-      {/* Delete confirm */}
+      {/* Delete confirm — V4.1 不用 danger 红色按钮 */}
       <ConfirmDialog
         open={deleteConfirmOpen}
         title={t("chat.delete.confirm.title")}
         message={t("chat.delete.confirm.message")}
         confirmLabel={t("chat.delete.confirm.ok")}
         cancelLabel={t("chat.delete.confirm.cancel")}
-        variant="danger"
         onConfirm={() => void handleDeleteCurrentConversation()}
         onCancel={() => setDeleteConfirmOpen(false)}
       />

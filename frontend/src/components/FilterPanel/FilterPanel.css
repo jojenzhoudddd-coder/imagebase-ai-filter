@@ -6,11 +6,13 @@
  */
 
 /* ── Outer panel ──────────────────────────────────────────────── */
+/* V4.1:对齐 FieldConfigPanel:position:fixed,top = btn.bottom + 4,
+   480px 固定宽度 */
 .filter-panel {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
-  width: 520px;
+  width: 480px;
   background: var(--surface-2);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
@@ -18,7 +20,7 @@
     0 4px 8px -8px rgba(31, 35, 41, 0.06),
     0 6px 12px 0 rgba(31, 35, 41, 0.04),
     0 8px 24px 8px rgba(31, 35, 41, 0.04);
-  z-index: 100;
+  z-index: 120;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -128,43 +130,56 @@
   flex-shrink: 0;
 }
 
-/* Generic action button base */
+/* Generic action button base — V4.1 对齐 chat input 的 28×28 圆按钮族 */
 .fp-action-btn {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
+  border-radius: 100px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
   border: none;
   background: transparent;
-  color: var(--icon-secondary);
+  color: var(--icon-primary);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s, color 0.15s, opacity 0.15s;
+  transition: background 100ms ease, color 100ms ease, border-color 100ms ease, opacity 100ms ease;
   position: relative;
-}
-
-.fp-action-btn:hover {
-  background: var(--surface-3);
-  color: var(--text-primary);
 }
 
 .fp-action-btn:disabled {
   cursor: default;
 }
 
-/* Mic */
+/* Clear button — 普通无背景圆按钮 */
+.fp-action-clear {
+  color: var(--icon-secondary);
+}
+.fp-action-clear:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
+/* Mic — 对齐 chat-input-voice-btn:0.5px border-strong + 透明底 */
+.fp-action-mic {
+  border: 0.5px solid var(--border-strong);
+}
+.fp-action-mic:hover {
+  background: var(--surface-inset);
+}
 .fp-action-mic.listening {
   background: var(--primary);
-  color: white;
+  border-color: var(--primary);
+  color: var(--text-on-primary);
 }
 .fp-action-mic.listening:hover {
   background: var(--primary-hover);
 }
 .fp-action-mic.stopping {
   background: var(--primary);
-  color: white;
+  border-color: var(--primary);
+  color: var(--text-on-primary);
   opacity: 0.7;
 }
 
@@ -196,36 +211,27 @@
   100% { transform: scale(0.9); opacity: 0.2; }
 }
 
-/* Send button — Figma: 28x28 圆形,disabled 时浅灰底 + 白色 icon,
-   active 时主蓝底 + 白色 icon */
+/* Send button — V4.1 对齐 chat-input-send:rgba(20,86,240,0.35) disabled,
+   primary blue active */
 .fp-action-send {
-  background: rgba(31, 35, 41, 0.15);
-  color: white;
-}
-
-[data-theme="dark"] .fp-action-send {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(20, 86, 240, 0.35);
+  color: var(--text-on-primary);
 }
 
 .fp-action-send.active {
   background: var(--primary);
-  color: white;
 }
 
 .fp-action-send.active:hover {
-  background: var(--primary-hover);
+  background: var(--primary-pressed);
 }
 
-.fp-action-send:disabled {
-  /* keep灰色背景但视觉上不响应 */
+/* Stop variant during generating — 对齐 chat-input-send.stop */
+.fp-action-send.stop {
+  background: var(--text-muted);
 }
-
-.fp-action-send:disabled:hover {
-  background: rgba(31, 35, 41, 0.15);
-}
-
-[data-theme="dark"] .fp-action-send:disabled:hover {
-  background: rgba(255, 255, 255, 0.18);
+.fp-action-send.stop:hover {
+  background: var(--text-secondary);
 }
 
 .fp-action-clear {
@@ -252,7 +258,7 @@
   gap: 12px;
 }
 
-/* Title row */
+/* Title row — V4.1: title 左 + match logic 右对齐 同行 */
 .fp-section-title {
   display: flex;
   align-items: center;
@@ -261,6 +267,17 @@
   line-height: 22px;
   color: var(--text-secondary);
   height: 24px;
+  width: 100%;
+}
+
+.fp-section-title-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fp-section-title-spacer {
+  flex: 1 1 auto;
 }
 
 .fp-help-btn {
@@ -280,14 +297,15 @@
   color: var(--icon-secondary);
 }
 
-/* Logic row (when ≥ 2 conditions) */
+/* Logic row (when ≥ 2 conditions) — V4.1 inline 在 title 右侧 */
 .fp-logic-row {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 13px;
   color: var(--text-muted);
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fp-logic-label {

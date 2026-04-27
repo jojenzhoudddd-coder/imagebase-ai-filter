@@ -138,6 +138,7 @@ export const en = {
   "filter.voiceStop": "Stop recording",
   "filter.voiceInput": "Voice input",
   "filter.submit": "Submit",
+  "filter.stop": "Stop",
   "filter.conditionsGenerated": "Filter conditions generated",
   "filter.conditionsGeneratedNoMatch": "Filter conditions generated, but no match has been found",
   "filter.match": "Match",

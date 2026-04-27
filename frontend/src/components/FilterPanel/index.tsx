@@ -28,6 +28,8 @@ import { useTranslation } from "../../i18n/index";
 import FilterRow from "./FilterRow";
 import "./FilterPanel.css";
 import { v4 as uuidv4 } from "./uuid";
+// V4.1 复用 chat 同款 icon (mic/send/stop) 保证视觉一致
+import { MicIcon as ChatMicIcon, SendIcon as ChatSendIcon, StopIcon as ChatStopIcon } from "../ChatSidebar/icons";
 
 interface Props {
   tableId: string;
@@ -49,7 +51,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel(
   const [aiStatus, setAiStatus] = useState<AIGenerateStatus>("idle");
   const [aiThinking, setAiThinking] = useState("");
   const [aiError, setAiError] = useState("");
-  const [panelLeft, setPanelLeft] = useState<number | undefined>(undefined);
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number } | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
   const conditionsRef = useRef<HTMLDivElement>(null);
@@ -111,20 +113,33 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel(
     }
   };
 
-  // Right-align panel to anchor button
+  // V4.1 对齐 FieldConfigPanel:position fixed,top = btn.bottom + 4,
+  // right-align (panel 右边对齐 btn 右边)。viewport-clamp 防溢出。
   useEffect(() => {
     if (!anchorRef?.current) return;
     const btn = anchorRef.current;
-    const panel = (ref as React.RefObject<HTMLDivElement>)?.current;
-    const parent = panel?.offsetParent as HTMLElement | null;
-    if (!parent) return;
-    const btnRect = btn.getBoundingClientRect();
-    const parentRect = parent.getBoundingClientRect();
-    const panelW = 520;
-    const btnRightInParent = btnRect.right - parentRect.left;
-    const left = Math.max(0, Math.min(btnRightInParent - panelW, parentRect.width - panelW));
-    setPanelLeft(left);
-  }, [anchorRef, ref]);
+    const compute = () => {
+      const r = btn.getBoundingClientRect();
+      const panelW = 480;
+      const top = r.bottom + 4;
+      // 默认 panel 右边 = btn 右边
+      let left = r.right - panelW;
+      // 视口 clamp:右侧距右窗 ≥ 8px,左侧 ≥ 8px
+      const vw = window.innerWidth;
+      const maxLeft = vw - panelW - 8;
+      const minLeft = 8;
+      if (left > maxLeft) left = maxLeft;
+      if (left < minLeft) left = minLeft;
+      setPanelPos({ top, left });
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    window.addEventListener("scroll", compute, true);
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("scroll", compute, true);
+    };
+  }, [anchorRef]);
 
   const handleSubmit = useCallback(() => {
     if (!query.trim() || aiStatus === "generating") return;
@@ -221,8 +236,15 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel(
   const placeholder = t("filter.aiPlaceholder");
   const canSend = !!query.trim() && !showGenerating && !isListening && !isStopping;
 
+  // V4.1 对齐 chat input:streaming 时 send 按钮变 stop 样式,点击 abort 当前生成
+  const handleStop = useCallback(() => {
+    if (abortRef.current) abortRef.current();
+    abortRef.current = null;
+    setAiStatus("idle");
+  }, []);
+
   return (
-    <div className="filter-panel" ref={ref} style={panelLeft !== undefined ? { left: panelLeft } : undefined}>
+    <div className="filter-panel" ref={ref} style={panelPos ? { top: panelPos.top, left: panelPos.left } : undefined}>
       {/* ── Section 1: AI Input ── */}
       <div className={`fp-input-section ${showGenerating ? "generating" : ""} ${aiStatus === "error" ? "error" : ""}`}>
         <div className="fp-input-row">
@@ -248,7 +270,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel(
           )}
 
           <div className="fp-input-actions">
-            {/* Clear */}
+            {/* Clear (隐藏在 generating) */}
             {(query || echoQuery) && !showGenerating && (
               <button
                 className="fp-action-btn fp-action-clear"
@@ -259,7 +281,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel(
                 <ClearIcon />
               </button>
             )}
-            {/* Mic */}
+            {/* Mic (隐藏在 generating) — V4.1 对齐 chat MicIcon */}
             {speechSupported && !showGenerating && (
               <button
                 className={`fp-action-btn fp-action-mic ${isListening ? (isStopping ? "stopping" : "listening") : ""}`}
@@ -268,21 +290,32 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel(
                 disabled={isStopping}
                 aria-label={t("filter.voiceInput")}
               >
-                <MicIcon />
+                <ChatMicIcon size={14} />
                 {isListening && !isStopping && <span className="fp-mic-pulse" />}
                 {isStopping && <span className="fp-mic-stopping" />}
               </button>
             )}
-            {/* Send (always rendered; disabled when can't send) */}
-            <button
-              className={`fp-action-btn fp-action-send ${canSend ? "active" : ""}`}
-              onClick={handleSubmit}
-              disabled={!canSend}
-              title={t("filter.submit")}
-              aria-label={t("filter.submit")}
-            >
-              <SendIcon />
-            </button>
+            {/* Send / Stop — V4.1 对齐 chat input:generating 时显示 stop 样式 */}
+            {showGenerating ? (
+              <button
+                className="fp-action-btn fp-action-send stop"
+                onClick={handleStop}
+                title={t("filter.stop")}
+                aria-label={t("filter.stop")}
+              >
+                <ChatStopIcon size={12} />
+              </button>
+            ) : (
+              <button
+                className={`fp-action-btn fp-action-send ${canSend ? "active" : ""}`}
+                onClick={handleSubmit}
+                disabled={!canSend}
+                title={t("filter.submit")}
+                aria-label={t("filter.submit")}
+              >
+                <ChatSendIcon size={14} />
+              </button>
+            )}
           </div>
         </div>
         {/* AI error inline below input */}
@@ -296,32 +329,35 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel(
       {/* ── Section 2: Filter conditions ── */}
       <div className="fp-conditions-section">
         <div className="fp-section-title">
-          <span>{t("filter.title")}</span>
-          <button
-            type="button"
-            className="fp-help-btn"
-            title={t("filter.helpHint")}
-            aria-label={t("filter.helpHint")}
-          >
-            <HelpIcon />
-          </button>
+          <span className="fp-section-title-text">
+            <span>{t("filter.title")}</span>
+            <button
+              type="button"
+              className="fp-help-btn"
+              title={t("filter.helpHint")}
+              aria-label={t("filter.helpHint")}
+            >
+              <HelpIcon />
+            </button>
+          </span>
+          <span className="fp-section-title-spacer" />
+          {/* V4.1 match logic 与 title 同行,右对齐 */}
+          {filter.conditions.length >= 2 && (
+            <div className="fp-logic-row">
+              <span className="fp-logic-label">{t("filter.match")}</span>
+              <CustomSelect
+                value={filter.logic}
+                options={[
+                  { value: "and", label: t("filter.all") },
+                  { value: "or", label: t("filter.any") },
+                ]}
+                onChange={(v) => handleLogicChange(v as FilterLogic)}
+                className="fp-logic-select"
+              />
+              <span className="fp-logic-label">{t("filter.conditions")}</span>
+            </div>
+          )}
         </div>
-
-        {filter.conditions.length >= 2 && (
-          <div className="fp-logic-row">
-            <span className="fp-logic-label">{t("filter.match")}</span>
-            <CustomSelect
-              value={filter.logic}
-              options={[
-                { value: "and", label: t("filter.all") },
-                { value: "or", label: t("filter.any") },
-              ]}
-              onChange={(v) => handleLogicChange(v as FilterLogic)}
-              className="fp-logic-select"
-            />
-            <span className="fp-logic-label">{t("filter.conditions")}</span>
-          </div>
-        )}
 
         {filter.conditions.length > 0 && (
           <div className="fp-conditions" ref={conditionsRef} style={condMaxH ? { maxHeight: condMaxH } : undefined}>
@@ -349,24 +385,6 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel(
 export default FilterPanel;
 
 // ─── Icons ───────────────────────────────────────────────────────────
-
-function MicIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 1a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4Z" />
-      <path d="M19 11a7 7 0 0 1-14 0H3a9 9 0 0 0 8 8.94V22h2v-2.06A9 9 0 0 0 21 11h-2Z" />
-    </svg>
-  );
-}
-
-function SendIcon() {
-  // Right-pointing arrow inside circle (Figma: icon_send_colorful style — play triangle)
-  return (
-    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M3 2.5 9 6l-6 3.5V2.5Z" fill="currentColor" />
-    </svg>
-  );
-}
 
 function ClearIcon() {
   return (

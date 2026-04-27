@@ -140,6 +140,7 @@ export const zh: TranslationKeys = {
   "filter.voiceStop": "停止录音",
   "filter.voiceInput": "语音输入",
   "filter.submit": "提交",
+  "filter.stop": "停止生成",
   "filter.conditionsGenerated": "筛选条件已生成",
   "filter.conditionsGeneratedNoMatch": "筛选条件已生成，但没有匹配的记录",
   "filter.match": "匹配",
