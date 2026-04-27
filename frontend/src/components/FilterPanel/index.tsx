@@ -1,3 +1,23 @@
+/**
+ * FilterPanel — V4 redesign per Figma node 259:110958
+ *
+ * 视觉:单一面板,两段式布局
+ *   ┌──────────────────────────────────────────────┐
+ *   │ [告诉 AI 你想看到什么 ......]   🎙  ▶        │ ← Input (pl-16 pr-12 py-12)
+ *   ├──────────────────────────────────────────────┤
+ *   │ 设置筛选条件 ?                                │ ← Title (gap 12)
+ *   │ [filter row 1 ...]                           │
+ *   │ [filter row 2 ...]                           │
+ *   │ + 添加条件                                    │ ← Action
+ *   └──────────────────────────────────────────────┘
+ *
+ * 关键变化(对比 V3):
+ *   - 输入和条件设置合并到一个 floating panel,中间一条 0.5px divider 区隔
+ *   - Title 改回显示 ("设置筛选条件 ?"),含 help 图标
+ *   - Send 按钮从矩形改为圆形 (28×28),input 空时灰底禁用、有内容时蓝色激活
+ *   - "已生成筛选条件" 提示行去掉,取消重复
+ */
+
 import { useState, useRef, useCallback, useEffect, forwardRef } from "react";
 import CustomSelect from "./CustomSelect";
 import { Field, FilterCondition, FilterLogic, FilterOperator, FilterValue, ViewFilter, AIGenerateStatus } from "../../types";
@@ -18,7 +38,10 @@ interface Props {
   anchorRef?: React.RefObject<HTMLElement | null>;
 }
 
-const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tableId, fields, filter, onFilterChange, onClose, anchorRef }, ref) {
+const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel(
+  { tableId, fields, filter, onFilterChange, onClose, anchorRef },
+  ref,
+) {
   const { t } = useTranslation();
   const toast = useToast();
   const [query, setQuery] = useState("");
@@ -26,7 +49,6 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
   const [aiStatus, setAiStatus] = useState<AIGenerateStatus>("idle");
   const [aiThinking, setAiThinking] = useState("");
   const [aiError, setAiError] = useState("");
-  const [aiGenerated, setAiGenerated] = useState(false);
   const [panelLeft, setPanelLeft] = useState<number | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
@@ -50,6 +72,8 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
     }
   }, [isListening, query, startSpeech, stopSpeech]);
 
+  const showGenerating = aiStatus === "generating";
+
   // Long-press spacebar to enter voice input
   const spaceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spaceTriggeredRef = useRef(false);
@@ -57,7 +81,6 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
   const handleInputKeyDown = (e: React.KeyboardEvent) => {
     if (e.nativeEvent.isComposing) return;
 
-    // Long-press spacebar detection
     if (e.key === " " && speechSupported && !isListening && !showGenerating) {
       if (!spaceTimerRef.current) {
         spaceTimerRef.current = setTimeout(() => {
@@ -67,7 +90,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
           startSpeech();
         }, 500);
       }
-      return; // Don't process Enter/Escape while space is held
+      return;
     }
 
     if (e.key === "Enter") handleSubmit();
@@ -88,9 +111,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
     }
   };
 
-  // Right-align panel to anchor button：panel.right === btn.right。
-  // 之前是居中对齐，但因为 trigger 在 topbar 右侧，居中会让面板左侧贴边或溢出
-  // 视口；右对齐 trigger 的 hover 区域更符合视觉预期。
+  // Right-align panel to anchor button
   useEffect(() => {
     if (!anchorRef?.current) return;
     const btn = anchorRef.current;
@@ -100,7 +121,6 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
     const btnRect = btn.getBoundingClientRect();
     const parentRect = parent.getBoundingClientRect();
     const panelW = 520;
-    // panel 右边缘 = trigger 右边缘 → left = btn.right - panelW
     const btnRightInParent = btnRect.right - parentRect.left;
     const left = Math.max(0, Math.min(btnRightInParent - panelW, parentRect.width - panelW));
     setPanelLeft(left);
@@ -125,7 +145,6 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
       onResult(newFilter) {
         setAiStatus("done");
         setEchoQuery(q);
-        setAiGenerated(true);
         onFilterChange(newFilter);
         if (newFilter.conditions.length === 0) {
           toast.info(t("filter.conditionsGeneratedNoMatch"));
@@ -143,7 +162,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
         // Stream closed
       },
     });
-  }, [query, aiStatus, tableId, filter, onFilterChange]);
+  }, [query, aiStatus, tableId, filter, onFilterChange, t, toast]);
 
   const handleConditionChange = (id: string, updated: Partial<FilterCondition>) => {
     const conditions = filter.conditions.map((c) =>
@@ -191,7 +210,6 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
     if (!el) return;
     const compute = () => {
       const rect = el.getBoundingClientRect();
-      // Leave 80px bottom margin for add-condition + footer + spacing
       const available = window.innerHeight - rect.top - 80;
       setCondMaxH(available > 60 ? available : 60);
     };
@@ -200,19 +218,14 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
     return () => window.removeEventListener("resize", compute);
   }, [filter.conditions.length]);
 
-  const showGenerating = aiStatus === "generating";
   const placeholder = t("filter.aiPlaceholder");
+  const canSend = !!query.trim() && !showGenerating && !isListening && !isStopping;
 
   return (
     <div className="filter-panel" ref={ref} style={panelLeft !== undefined ? { left: panelLeft } : undefined}>
-      <div className="fp-title">{t("filter.title")}</div>
-
-      {/* AI Input: Figma h=32 with AI icon */}
-      <div className={`fp-ai-row ${showGenerating ? "generating" : ""} ${aiStatus === "error" ? "error" : ""}`}>
-        <span className="fp-ai-icon">
-          <SparkleIcon animated={showGenerating} />
-        </span>
-        <div className="fp-ai-input-wrap">
+      {/* ── Section 1: AI Input ── */}
+      <div className={`fp-input-section ${showGenerating ? "generating" : ""} ${aiStatus === "error" ? "error" : ""}`}>
+        <div className="fp-input-row">
           {showGenerating ? (
             <div className="fp-ai-loading">
               <span className="fp-ai-loading-text">
@@ -223,7 +236,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
           ) : (
             <input
               ref={inputRef}
-              className={`fp-ai-input ${echoQuery && !query ? "echo" : ""}`}
+              className={`fp-input ${echoQuery && !query ? "echo" : ""}`}
               type="text"
               value={query}
               readOnly={isListening || isStopping}
@@ -233,119 +246,168 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
               placeholder={echoQuery || placeholder}
             />
           )}
+
+          <div className="fp-input-actions">
+            {/* Clear */}
+            {(query || echoQuery) && !showGenerating && (
+              <button
+                className="fp-action-btn fp-action-clear"
+                onClick={() => { if (isListening) stopSpeech(); handleClearAi(); }}
+                title={t("filter.clear")}
+                aria-label={t("filter.clear")}
+              >
+                <ClearIcon />
+              </button>
+            )}
+            {/* Mic */}
+            {speechSupported && !showGenerating && (
+              <button
+                className={`fp-action-btn fp-action-mic ${isListening ? (isStopping ? "stopping" : "listening") : ""}`}
+                onClick={toggleVoice}
+                title={isStopping ? t("filter.voiceFinishing") : isListening ? t("filter.voiceStop") : t("filter.voiceInput")}
+                disabled={isStopping}
+                aria-label={t("filter.voiceInput")}
+              >
+                <MicIcon />
+                {isListening && !isStopping && <span className="fp-mic-pulse" />}
+                {isStopping && <span className="fp-mic-stopping" />}
+              </button>
+            )}
+            {/* Send (always rendered; disabled when can't send) */}
+            <button
+              className={`fp-action-btn fp-action-send ${canSend ? "active" : ""}`}
+              onClick={handleSubmit}
+              disabled={!canSend}
+              title={t("filter.submit")}
+              aria-label={t("filter.submit")}
+            >
+              <SendIcon />
+            </button>
+          </div>
         </div>
-        {(query || echoQuery) && !showGenerating && (
-          <button className="fp-ai-clear" onClick={() => { if (isListening) stopSpeech(); handleClearAi(); }} title={t("filter.clear")}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-              <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button>
-        )}
-        {speechSupported && !showGenerating && (
-          <button
-            className={`fp-ai-mic ${isListening ? (isStopping ? "stopping" : "listening") : ""}`}
-            onClick={toggleVoice}
-            title={isStopping ? t("filter.voiceFinishing") : isListening ? t("filter.voiceStop") : t("filter.voiceInput")}
-            disabled={isStopping}
-          >
-            <MicIcon />
-            {isListening && !isStopping && <span className="fp-mic-pulse" />}
-            {isStopping && <span className="fp-mic-stopping" />}
-          </button>
-        )}
-        {query.trim() && !showGenerating && !isListening && !isStopping && (
-          <button className="fp-ai-send" onClick={handleSubmit} title={t("filter.submit")}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path d="M12 20V4M5 11l7-7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+        {/* AI error inline below input */}
+        {aiStatus === "error" && aiError && (
+          <div className="fp-error">
+            <ErrorIcon /> <span>{aiError}</span>
+          </div>
         )}
       </div>
 
-      {/* AI Error */}
-      {aiStatus === "error" && aiError && (
-        <div className="fp-ai-error">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-            <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-          {aiError}
+      {/* ── Section 2: Filter conditions ── */}
+      <div className="fp-conditions-section">
+        <div className="fp-section-title">
+          <span>{t("filter.title")}</span>
+          <button
+            type="button"
+            className="fp-help-btn"
+            title={t("filter.helpHint")}
+            aria-label={t("filter.helpHint")}
+          >
+            <HelpIcon />
+          </button>
         </div>
-      )}
 
-      {(aiGenerated || filter.conditions.length >= 2) && (
-        <div className="fp-logic-row">
-          {aiGenerated && <span className="fp-logic-left">{t("filter.conditionsGenerated")}</span>}
-          {filter.conditions.length >= 2 && (
-            <div className="fp-logic-right">
-              <span className="fp-logic-label">{t("filter.match")}</span>
-              <CustomSelect
-                value={filter.logic}
-                options={[
-                  { value: "and", label: t("filter.all") },
-                  { value: "or", label: t("filter.any") },
-                ]}
-                onChange={(v) => handleLogicChange(v as FilterLogic)}
-                className="fp-logic-select"
-              />
-              <span className="fp-logic-label">{t("filter.conditions")}</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Filter Conditions: Figma gap=12 */}
-      {filter.conditions.length > 0 && (
-        <div className="fp-conditions" ref={conditionsRef} style={condMaxH ? { maxHeight: condMaxH } : undefined}>
-          {filter.conditions.map((cond) => (
-            <FilterRow
-              key={cond.id}
-              condition={cond}
-              fields={fields}
-              onChange={(updated) => handleConditionChange(cond.id, updated)}
-              onDelete={() => handleConditionDelete(cond.id)}
+        {filter.conditions.length >= 2 && (
+          <div className="fp-logic-row">
+            <span className="fp-logic-label">{t("filter.match")}</span>
+            <CustomSelect
+              value={filter.logic}
+              options={[
+                { value: "and", label: t("filter.all") },
+                { value: "or", label: t("filter.any") },
+              ]}
+              onChange={(v) => handleLogicChange(v as FilterLogic)}
+              className="fp-logic-select"
             />
-          ))}
-        </div>
-      )}
+            <span className="fp-logic-label">{t("filter.conditions")}</span>
+          </div>
+        )}
 
-      <div className="fp-actions">
+        {filter.conditions.length > 0 && (
+          <div className="fp-conditions" ref={conditionsRef} style={condMaxH ? { maxHeight: condMaxH } : undefined}>
+            {filter.conditions.map((cond) => (
+              <FilterRow
+                key={cond.id}
+                condition={cond}
+                fields={fields}
+                onChange={(updated) => handleConditionChange(cond.id, updated)}
+                onDelete={() => handleConditionDelete(cond.id)}
+              />
+            ))}
+          </div>
+        )}
+
         <button className="fp-add-btn" onClick={handleAddCondition}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-          {t("filter.addCondition")}
+          <PlusIcon />
+          <span>{t("filter.addCondition")}</span>
         </button>
       </div>
-
-      {/* "Save as new view" 按钮已移除（产品方向：filter 直接作用于当前 view，
-           不再支持另存为视图）。 */}
     </div>
   );
 });
 
 export default FilterPanel;
 
-function SparkleIcon({ animated }: { animated: boolean }) {
+// ─── Icons ───────────────────────────────────────────────────────────
+
+function MicIcon() {
   return (
-    <svg
-      className={`sparkle-icon ${animated ? "spinning" : ""}`}
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-    >
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 1a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4Z" />
+      <path d="M19 11a7 7 0 0 1-14 0H3a9 9 0 0 0 8 8.94V22h2v-2.06A9 9 0 0 0 21 11h-2Z" />
+    </svg>
+  );
+}
+
+function SendIcon() {
+  // Right-pointing arrow inside circle (Figma: icon_send_colorful style — play triangle)
+  return (
+    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M3 2.5 9 6l-6 3.5V2.5Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function ClearIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function HelpIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2" />
       <path
-        d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8L12 2Z"
-        fill={animated ? "url(#sparkle-grad)" : "var(--color-primary)"}
-        stroke="none"
+        d="M5.4 5.4a1.6 1.6 0 0 1 3.2 0c0 .8-.6 1.2-1.1 1.5-.4.2-.5.4-.5.7v.3M7 9.7v.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
       />
-      <defs>
-        <linearGradient id="sparkle-grad" x1="0" y1="0" x2="24" y2="24">
-          <stop offset="0%" stopColor="#3370FF" />
-          <stop offset="100%" stopColor="#A855F7" />
-        </linearGradient>
-      </defs>
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M7 1.75v10.5M1.75 7h10.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ErrorIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+      <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -355,14 +417,5 @@ function LoadingDots() {
     <span className="loading-dots">
       <span>.</span><span>.</span><span>.</span>
     </span>
-  );
-}
-
-function MicIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 1a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4Z" />
-      <path d="M19 11a7 7 0 0 1-14 0H3a9 9 0 0 0 8 8.94V22h2v-2.06A9 9 0 0 0 21 11h-2Z" />
-    </svg>
   );
 }

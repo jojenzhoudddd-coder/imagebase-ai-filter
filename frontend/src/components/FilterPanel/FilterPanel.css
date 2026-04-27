@@ -1,20 +1,27 @@
-/* FilterPanel: Figma w=520, border=1px var(--border-default), rounded=12px, shadow=3-layer */
+/**
+ * FilterPanel V4 — per Figma node 259:110958
+ *
+ * 容器:white bg, 1px border-default, radius 12px, drop shadow
+ * 两段式:Input 段 + Conditions 段,中间 0.5px divider
+ */
+
+/* ── Outer panel ──────────────────────────────────────────────── */
 .filter-panel {
   position: absolute;
   top: 0;
   left: 0;
   width: 520px;
-  background: var(--color-bg-float);
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-panel);
-  border: 1px solid var(--color-border);
+  box-shadow:
+    0 4px 8px -8px rgba(31, 35, 41, 0.06),
+    0 6px 12px 0 rgba(31, 35, 41, 0.04),
+    0 8px 24px 8px rgba(31, 35, 41, 0.04);
   z-index: 100;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  /* Figma: px=24, py=17, gap=16 */
-  padding: 17px 24px;
-  gap: 16px;
   animation: fp-enter 0.15s ease-out;
 }
 
@@ -23,122 +30,77 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Title: Figma "设置筛选条件" 14px/22px Medium var(--text-secondary) */
-.fp-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  line-height: 22px;
-}
-
-/* AI Input: Figma h=32, border=1px var(--border-strong), rounded=6px */
-.fp-ai-row {
+/* ── Section 1: Input (with bottom divider) ───────────────────── */
+.fp-input-section {
+  /* Figma: pl-16, pr-12, py-12 */
+  padding: 12px 12px 12px 16px;
+  border-bottom: 0.5px solid var(--border-default);
   display: flex;
-  align-items: center;
-  width: 100%;
-  height: 32px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-m);
-  /* 输入区与 FilterPanel 容器同色（--surface-2），不主动产生层次差，
-   * 视觉差异只靠 1px border 表达（DM 下 border 已提亮足够可见）。 */
-  background: var(--surface-2);
-  overflow: hidden;
-  transition: background 0.2s, border-color 0.2s;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.fp-ai-row:focus-within {
-  border-color: var(--primary);
-}
-
-.fp-ai-row.generating {
-  background: var(--surface-3);
-  border-color: var(--border-default);
-}
-
-.fp-ai-row.error {
-  border-color: var(--danger);
+.fp-input-section.error {
   background: var(--danger-bg);
 }
 
-/* Figma: AI icon at left x=4, y=4, 22x22 button */
-.fp-ai-icon {
+.fp-input-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin-left: 4px;
-  flex-shrink: 0;
-  color: var(--color-icon-n1);
+  gap: 8px;
+  width: 100%;
 }
 
-.sparkle-icon {
-  transition: transform 0.3s;
-}
-
-.sparkle-icon.spinning {
-  animation: sparkle-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes sparkle-pulse {
-  0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
-  50% { transform: scale(1.2) rotate(15deg); opacity: 0.8; }
-}
-
-/* Figma: input text area at x=31 */
-.fp-ai-input-wrap {
+/* Input — borderless,边距由父级 padding 提供 */
+.fp-input {
   flex: 1;
   min-width: 0;
-  margin-left: 3px;
-}
-
-.fp-ai-input {
-  width: 100%;
   border: none;
   background: transparent;
   outline: none;
+  font-family: var(--font-family);
   font-size: 14px;
   line-height: 22px;
-  color: var(--color-text-primary);
-  font-family: var(--font-family);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--text-primary);
+  /* Figma 输入区上下 3px 内边距(28px 行高与 14px 字 → 居中) */
+  padding: 3px 0;
+  /* 不要 ellipsis,长文本应该让滚动条管 */
 }
 
-.fp-ai-input::placeholder {
-  color: var(--color-text-placeholder);
+.fp-input::placeholder {
+  color: var(--text-placeholder);
 }
 
-.fp-ai-input.echo::placeholder {
-  color: var(--color-text-secondary);
+.fp-input.echo::placeholder {
+  color: var(--text-secondary);
 }
 
-/* Loading state */
+/* Generating loading state takes the input's slot */
 .fp-ai-loading {
-  display: flex;
-  align-items: center;
   flex: 1;
   min-width: 0;
-  margin-left: 3px;
+  display: flex;
+  align-items: center;
+  padding: 3px 0;
 }
 
 .fp-ai-loading-text {
-  font-size: 14px;
-  color: var(--color-primary);
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 2px;
+  font-size: 14px;
   line-height: 22px;
-  min-width: 0;
-  padding-right: 12px;
+  color: var(--primary);
 }
 
 .fp-ai-loading-query {
-  overflow: hidden;
-  white-space: nowrap;
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .loading-dots {
@@ -158,45 +120,59 @@
   40% { opacity: 1; }
 }
 
-/* Mic button */
-.fp-ai-mic {
-  position: relative;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-s);
+/* Right-side button group */
+.fp-input-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
   flex-shrink: 0;
-  margin-right: 4px;
-  color: var(--color-text-secondary);
-  transition: color 0.15s, background 0.15s;
 }
-.fp-ai-mic:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-}
-.fp-ai-mic.listening {
-  background: var(--color-primary);
-  color: white;
+
+/* Generic action button base */
+.fp-action-btn {
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--icon-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+  position: relative;
 }
-.fp-ai-mic.listening:hover {
-  background: var(--color-primary-hover);
+
+.fp-action-btn:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
 }
-.fp-ai-mic.stopping {
-  background: var(--color-primary);
+
+.fp-action-btn:disabled {
+  cursor: default;
+}
+
+/* Mic */
+.fp-action-mic.listening {
+  background: var(--primary);
   color: white;
-  border-radius: 50%;
+}
+.fp-action-mic.listening:hover {
+  background: var(--primary-hover);
+}
+.fp-action-mic.stopping {
+  background: var(--primary);
+  color: white;
   opacity: 0.7;
-  cursor: not-allowed;
 }
 
 .fp-mic-pulse {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 1.5px solid var(--color-primary);
+  border: 1.5px solid var(--primary);
   animation: mic-pulse 1.2s ease-out infinite;
   pointer-events: none;
 }
@@ -206,7 +182,6 @@
   100% { transform: scale(1.6); opacity: 0; }
 }
 
-/* Stopping: shrinking pulse to indicate winding down */
 .fp-mic-stopping {
   position: absolute;
   inset: 0;
@@ -221,87 +196,122 @@
   100% { transform: scale(0.9); opacity: 0.2; }
 }
 
-.fp-ai-clear,
-.fp-ai-send {
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-s);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-right: 4px;
-}
-
-.fp-ai-clear {
-  color: var(--color-text-secondary);
-}
-.fp-ai-clear:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-}
-
-.fp-ai-send {
-  background: var(--color-primary);
+/* Send button — Figma: 28x28 圆形,disabled 时浅灰底 + 白色 icon,
+   active 时主蓝底 + 白色 icon */
+.fp-action-send {
+  background: rgba(31, 35, 41, 0.15);
   color: white;
 }
-.fp-ai-send:hover {
-  background: var(--color-primary-hover);
+
+[data-theme="dark"] .fp-action-send {
+  background: rgba(255, 255, 255, 0.18);
 }
 
-/* AI Error */
-.fp-ai-error {
+.fp-action-send.active {
+  background: var(--primary);
+  color: white;
+}
+
+.fp-action-send.active:hover {
+  background: var(--primary-hover);
+}
+
+.fp-action-send:disabled {
+  /* keep灰色背景但视觉上不响应 */
+}
+
+.fp-action-send:disabled:hover {
+  background: rgba(31, 35, 41, 0.15);
+}
+
+[data-theme="dark"] .fp-action-send:disabled:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.fp-action-clear {
+  /* 默认 fp-action-btn 样式即可 */
+}
+
+/* ── Inline error below input ──────────────────────────────── */
+.fp-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--danger);
+  line-height: 18px;
+  padding: 0 4px;
+}
+
+/* ── Section 2: Filter conditions ─────────────────────────── */
+.fp-conditions-section {
+  /* Figma: pt-12, pb-16, px-16, gap-12 */
+  padding: 12px 16px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Title row */
+.fp-section-title {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 14px;
-  color: var(--danger);
   line-height: 22px;
+  color: var(--text-secondary);
+  height: 24px;
 }
 
-/* Logic row: Figma "已生成筛选条件" + "符合以下" [所有 ▾] "条件" */
+.fp-help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--icon-muted);
+  cursor: help;
+}
+
+.fp-help-btn:hover {
+  color: var(--icon-secondary);
+}
+
+/* Logic row (when ≥ 2 conditions) */
 .fp-logic-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  font-size: 14px;
-  color: var(--color-text-muted);
-  line-height: 22px;
-}
-
-.fp-logic-left {
-  white-space: nowrap;
-}
-
-.fp-logic-right {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  white-space: nowrap;
-  margin-left: auto;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 20px;
 }
 
 .fp-logic-label {
   white-space: nowrap;
 }
 
-/* Figma: logic select h=22, w=auto */
 .fp-logic-select {
-  margin: 0 4px;
+  margin: 0 2px;
 }
+
 .fp-logic-select .cs-trigger {
   height: 22px;
   padding: 0 4px 0 8px;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 20px;
   gap: 2px;
 }
+
 .fp-logic-select .cs-arrow {
   width: 10px;
   height: 10px;
 }
 
-/* Conditions list: scrollbar only when panel nears viewport bottom */
+/* Conditions list */
 .fp-conditions {
   display: flex;
   flex-direction: column;
@@ -314,52 +324,41 @@
 .fp-conditions::-webkit-scrollbar {
   width: 6px;
 }
+
 .fp-conditions::-webkit-scrollbar-thumb {
   background: rgba(31, 35, 41, 0.2);
   border-radius: 3px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
+
 .fp-conditions::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* Actions: "+ 添加条件" text button */
-.fp-actions {
-  display: flex;
-  align-items: center;
-}
-
+/* Add condition button */
 .fp-add-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
+  padding: 2px 8px 2px 4px;
+  height: 26px;
+  border: none;
+  background: transparent;
   font-size: 14px;
-  color: var(--color-text-primary);
-  padding: 2px 8px;
-  border-radius: var(--radius-s);
   line-height: 22px;
+  color: var(--text-primary);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  align-self: flex-start;
 }
 
 .fp-add-btn:hover {
-  background: var(--color-bg-hover);
+  background: var(--surface-3);
 }
 
-/* Footer: "另存为新视图" text button */
-.fp-footer {
-  display: flex;
-  align-items: center;
-}
-
-.fp-save-view {
-  font-size: 14px;
-  color: var(--color-primary);
-  padding: 2px 8px;
-  border-radius: var(--radius-s);
-  line-height: 22px;
-}
-
-.fp-save-view:hover {
-  background: var(--color-primary-light);
-}
-
-/* ─── No longer used sections from old design ─── */
-.fp-header { display: none; }
+/* ── Compatibility shim: 旧选择器仍在 dev cache 中,空声明避免 crash ─ */
+.fp-title { display: none; }
+.fp-ai-row { display: none; }
+.fp-ai-error { display: none; }
+.fp-footer { display: none; }

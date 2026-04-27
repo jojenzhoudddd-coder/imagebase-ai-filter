@@ -132,7 +132,8 @@ export const zh: TranslationKeys = {
 
   // FilterPanel
   "filter.title": "设置筛选条件",
-  "filter.aiPlaceholder": "告诉 AI 你想看什么，例如：与我相关的记录",
+  "filter.helpHint": "用自然语言描述你想看到的数据,AI 会帮你生成筛选条件;也可以手动添加。",
+  "filter.aiPlaceholder": "告诉 AI 你想看到什么",
   "filter.generatingBy": "正在生成筛选条件",
   "filter.clear": "清除",
   "filter.voiceFinishing": "正在完成...",

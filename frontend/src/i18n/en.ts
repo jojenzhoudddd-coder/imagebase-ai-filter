@@ -130,7 +130,8 @@ export const en = {
 
   // FilterPanel
   "filter.title": "Set Filter Conditions",
-  "filter.aiPlaceholder": "Tell AI what you want to see, e.g.: records related to me",
+  "filter.helpHint": "Describe what you want in natural language — AI will generate filter conditions. You can also add conditions manually.",
+  "filter.aiPlaceholder": "Tell AI what you want to see",
   "filter.generatingBy": "Generating filter by",
   "filter.clear": "Clear",
   "filter.voiceFinishing": "Finishing up...",
