@@ -466,8 +466,26 @@ export default function App() {
         if (legacy && tables.find(t => t.id === legacy)) target = { type: "table", id: legacy };
       }
 
-      // 4. First table fallback
-      if (!target && tables.length > 0) target = { type: "table", id: tables[0].id };
+      // 4. First-artifact fallback — V2.9.8 修复:之前用 tables[0] 直接选第一张
+      //    表,但 sidebar 把 table/design/idea/demo 全部按 order 混排,如果有 design
+      //    或 idea 的 order 小于第一张表,sidebar 的视觉首项 ≠ 当前激活的 artifact
+      //    导致用户看到"默认进来的 artifact 不是 sidebar 选中那一行"。
+      //    改:跟 sidebar 一样混排所有顶层 artifact (parentId === null,不含 folder),
+      //    取视觉第一项;若一行都没有再回到 tables[0] 兜底。
+      if (!target) {
+        type Candidate = { kind: "table" | "design" | "idea" | "demo"; id: string; order: number };
+        const allRoots: Candidate[] = [
+          ...tables.filter(t => !t.parentId).map(t => ({ kind: "table" as const, id: t.id, order: t.order })),
+          ...designs.filter(d => !d.parentId).map(d => ({ kind: "design" as const, id: d.id, order: d.order })),
+          ...ideas.filter(i => !i.parentId).map(i => ({ kind: "idea" as const, id: i.id, order: i.order })),
+          ...demos.filter(d => !d.parentId).map(d => ({ kind: "demo" as const, id: d.id, order: d.order })),
+        ];
+        // 与 Sidebar.tsx (a.order - b.order) 一致
+        allRoots.sort((a, b) => a.order - b.order);
+        const first = allRoots[0];
+        if (first) target = { type: first.kind, id: first.id };
+        else if (tables.length > 0) target = { type: "table", id: tables[0].id };
+      }
 
       if (!target) return; // empty workspace — nothing to select
 
