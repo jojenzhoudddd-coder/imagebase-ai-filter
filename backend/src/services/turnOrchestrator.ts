@@ -180,26 +180,13 @@ async function* startMainTurn(opts: {
   };
   setTurn(convId, turn);
 
-  // V3.0 PR5: 创建 WorkflowRun 行用于观测 (append-batch 模板)
-  const workflowRunId = `wf_${uuidv4().slice(0, 12)}`;
+  // V3.0.4 修复:WorkflowRun 不在主线开始时创建,只在确认有 batch (≥1 append
+  // branch) 后 lazy 创建。否则纯单 turn 会留下空 WorkflowRun → 历史回放出现
+  // 空 WorkflowBlock 卡片。
   const nodeEvents: any[] = [
     { kind: "trigger", nodeId: "n_trigger", ts: Date.now() },
     { kind: "main_started", branchId: turn.mainBranch.branchId, modelId, queryText: userMessage, ts: Date.now() },
   ];
-  try {
-    await createWorkflowRun({
-      id: workflowRunId,
-      parentMessageId: `pending_${convId}`,
-      parentConversationId: convId,
-      hostAgentId: agentId,
-      templateId: "append-batch",
-      paramsJson: { hostModel: modelId },
-      docJson: buildAppendBatchDoc(turn),
-    });
-    turn.workflowRunId = workflowRunId;
-  } catch (err) {
-    console.warn("[turnOrchestrator] createWorkflowRun failed:", err);
-  }
 
   // 运行主线 — runAgent 会 stream 完整事件,我们 capture finalText
   let mainAccText = "";
@@ -261,20 +248,28 @@ async function* startMainTurn(opts: {
     );
   }
 
-  // 如果只有主线没有 branch → 不需要 synth,直接 done
+  // 如果只有主线没有 branch → 不需要 synth,也不需要 WorkflowRun,直接 done
   if (turn.appendedBranches.length === 0) {
-    if (turn.workflowRunId) {
-      await updateWorkflowRun(turn.workflowRunId, {
-        status: mainSuccess ? "success" : "error",
-        finalSummary: mainAccText.slice(0, 400),
-        nodeEventsJson: nodeEvents,
-        completedAt: new Date(),
-        durationMs: Date.now() - turn.startedAt,
-      }).catch(() => undefined);
-    }
     deleteTurn(convId);
     yield { event: "done", data: { reason: "main-only" } };
     return;
+  }
+
+  // V3.0.4: 确认是 batch turn,现在再创建 WorkflowRun
+  const workflowRunId = `wf_${uuidv4().slice(0, 12)}`;
+  try {
+    await createWorkflowRun({
+      id: workflowRunId,
+      parentMessageId: `pending_${convId}`,
+      parentConversationId: convId,
+      hostAgentId: agentId,
+      templateId: "append-batch",
+      paramsJson: { hostModel: modelId },
+      docJson: buildAppendBatchDoc(turn),
+    });
+    turn.workflowRunId = workflowRunId;
+  } catch (err) {
+    console.warn("[turnOrchestrator] createWorkflowRun failed:", err);
   }
 
   // 收集所有 appended branches 的完成事件
