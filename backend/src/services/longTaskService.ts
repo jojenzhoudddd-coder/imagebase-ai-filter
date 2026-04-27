@@ -67,6 +67,29 @@ export const DEFAULT_LONG_TASK_OPTIONS: Required<LongTaskOptions> = {
 };
 
 /**
+ * V2.9.6: 工具粒度的超时覆盖 —— 部分工具内部要 spawn 一次完整 LLM 调用
+ * (compose_workflow / execute_workflow_template / spawn_subagent / build_demo
+ * / resolve_conflicts_with_llm 等),180s 默认值在 Opus + 长 prompt 下经常不
+ * 够。这里把它们提到 600s,普通 CRUD 工具仍走默认 180s 防呆。
+ */
+const TOOL_TIMEOUT_OVERRIDES_MS: Record<string, number> = {
+  compose_workflow: 600_000,
+  execute_workflow_template: 900_000,
+  spawn_subagent: 600_000,
+  resolve_conflicts_with_llm: 600_000,
+  build_demo: 600_000,
+  publish_demo: 600_000,
+  // Analyst long ops
+  load_workspace_table: 600_000,
+  run_sql: 300_000,
+  generate_chart: 300_000,
+};
+
+export function timeoutMsForTool(tool: string, fallback = DEFAULT_LONG_TASK_OPTIONS.timeoutMs): number {
+  return TOOL_TIMEOUT_OVERRIDES_MS[tool] ?? fallback;
+}
+
+/**
  * Manages long-task state for a single agent turn. One instance per runAgent
  * call. The `beginTool` method returns a controller the agent loop uses while
  * a tool is executing; `settleTool` clears the heartbeat.
@@ -102,7 +125,9 @@ export class LongTaskTracker {
       else parentSignal.addEventListener("abort", onParentAbort, { once: true });
     }
     this.heartbeatTimer = setInterval(() => this.maybeHeartbeat(), 2000).unref();
-    this.timeoutTimer = setTimeout(() => this.onTimeout(), this.opts.timeoutMs).unref();
+    // V2.9.6: 用 per-tool 覆盖,这样 compose_workflow 等慢任务有更宽松的上限。
+    const effectiveTimeout = timeoutMsForTool(tool, this.opts.timeoutMs);
+    this.timeoutTimer = setTimeout(() => this.onTimeout(), effectiveTimeout).unref();
     return this.abortController;
   }
 

@@ -2275,7 +2275,8 @@ async function* runAgentImpl(
           success = false;
           toolOutput = JSON.stringify({
             error: "TOOL_TIMEOUT_FORCED: handler did not respond to abort. " +
-              "Tool execution exceeded 180s and the handler ignored the abort signal.",
+              "Tool exceeded its timeout (per-tool override applies for slow tools, " +
+              "see longTaskService.TOOL_TIMEOUT_OVERRIDES_MS) and ignored the abort signal.",
           });
           toolSettled = true;
           break;

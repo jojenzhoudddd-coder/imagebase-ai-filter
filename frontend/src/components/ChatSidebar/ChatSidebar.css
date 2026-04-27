@@ -969,10 +969,9 @@
 }
 
 /* ── Long-task progress strip (Analyst P1) ─────────────────────────── */
-/* V2.9.3: 去掉 progress 之上的水平分隔线;padding 对齐 .chat-expand-card-body
-   的 14/12 (左 14、右 12),让进度条与下方内容左右对齐而不超出 card 边界。 */
+/* V2.9.6: 进度条只保留垂直 padding,左右 0 让 bar 横贯整个 body 宽度 */
 .chat-tool-progress {
-  padding: 6px 12px 8px 14px;
+  padding: 6px 0 8px;
   display: flex;
   flex-direction: column;
   gap: 4px;
