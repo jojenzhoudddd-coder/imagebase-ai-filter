@@ -122,8 +122,11 @@ export interface CanvasContextValue {
    *  拖动期间一直有,松手时才执行落位。 */
   dropTarget: DropTarget | null;
   setDropTarget: (t: DropTarget | null) => void;
-  /** 添加 block —— 默认插到面积最大的叶子旁 */
-  addBlock: (type: BlockType) => string | null;
+  /** 添加 block —— 默认插到面积最大的叶子旁。
+   *  V3.0.2: 可选 initialState 让 caller 把 BlockState 与 block 同时建好
+   *  (避免新 chat block 的 conversationId 在 patch 之前就被 ChatSidebar
+   *   读成 null 走 fallback)。 */
+  addBlock: (type: BlockType, initialState?: BlockState) => string | null;
   /** 移除 block(数据保留 / layout 树移除) */
   removeBlock: (blockId: string) => void;
   /** 交换两个 block 在 layout 树中的位置(swap leaves) */
@@ -245,11 +248,18 @@ export function CanvasProvider({
   }, []);
 
   const addBlock = useCallback(
-    (type: BlockType): string | null => {
+    // V3.0.2:新增可选 initialState 参数 — 让 caller 在 block 出生时就把
+    // BlockState 设好,避免 React 多帧再 patch 期间的"空状态闪现 + fallback
+    // 路径错跑"问题(典型:topbar new chat 创建新 conv 后再 patch,期间
+    // ChatSidebar 已经按 fallback 跑去挑别的 conv)。
+    (type: BlockType, initialState?: BlockState): string | null => {
       if (countLeaves(state.layout) >= MAX_BLOCKS) return null;
       const id = `blk_${cryptoId()}`;
       const block: Block = { id, type };
-      const blockState: BlockState = type === "artifact" ? defaultArtifactState() : {};
+      const defaultState: BlockState = type === "artifact" ? defaultArtifactState() : {};
+      const blockState: BlockState = initialState
+        ? { ...(defaultState as object), ...(initialState as object) } as BlockState
+        : defaultState;
       const newLayout = insertNewBlock(state.layout, id);
       const next: CanvasState = {
         blocks: { ...state.blocks, [id]: block },

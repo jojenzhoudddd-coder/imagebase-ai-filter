@@ -9,7 +9,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { createConversation } from "../../api";
 
 export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject<HTMLElement | null> }) {
-  const { addBlock, patchBlockState, visibleBlockIds } = useCanvas();
+  const { addBlock, visibleBlockIds } = useCanvas();
   const { workspaceId, agentId } = useAuth();
   const [open, setOpen] = useState(false);
   const popRef = useRef<HTMLDivElement>(null);
@@ -56,20 +56,22 @@ export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject
         className="mc-add-block-item"
         disabled={reachedMax}
         onClick={async () => {
-          // V3.0.1 新增 chat block 时同步走 New Chat 链路:
-          // 1) addBlock 拿到 blockId
-          // 2) POST /conversations 起新对话
-          // 3) patchBlockState 把 conversationId 写进 BlockState (canvas 自动持久化)
-          const newBlockId = addBlock("chat");
+          // V3.0.2 修复:先 await POST /conversations 拿到 convId,再 addBlock
+          // 时把 conversationId 一起注入 initialState。避免之前"先 addBlock 后
+          // patchBlockState"的 race —— 新 ChatSidebar 在 patch 前已挂载读到
+          // null 走 fallback 路径挑别的 conv,导致用户看到的不是新对话。
           setOpen(false);
-          if (!newBlockId || !workspaceId) return;
+          if (!workspaceId) {
+            addBlock("chat");
+            return;
+          }
+          let conv: { id: string } | null = null;
           try {
-            const conv = await createConversation(workspaceId, agentId || undefined);
-            patchBlockState(newBlockId, { conversationId: conv.id });
+            conv = await createConversation(workspaceId, agentId || undefined);
           } catch (err) {
             console.warn("[AddBlockMenu] create conversation failed:", err);
-            // block 已加,只是没绑定 conv —— ChatSidebar fallback 会自己挑/建一个
           }
+          addBlock("chat", conv ? ({ conversationId: conv.id } as any) : undefined);
         }}
       >
         <SparkleIcon />

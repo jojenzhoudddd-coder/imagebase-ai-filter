@@ -36,7 +36,6 @@ import {
   listConversations,
   deleteConversation as apiDeleteConversation,
   getConversationMessages,
-  subscribeChatListen,
   fetchChatContextSnapshot,
   fetchChatSuggestions,
   streamChatMessage,
@@ -45,6 +44,7 @@ import {
 } from "../../api";
 import { extractMentionPayloads } from "../Mention/mentionSyntax";
 import { useToast } from "../Toast/index";
+import { listenChatShared } from "./listenHub";
 
 // Client-side message model (mutable during streaming)
 interface UiMessage {
@@ -389,6 +389,34 @@ export default function ChatSidebar({
     // conversation changes come from handleNewConversation directly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, workspaceId]);
+
+  // V3.0.2 #3:切换对话时主动拉历史
+  // 老逻辑只在 [open, workspaceId] 上跑初始化,activeConv.id 通过 list popover /
+  // delete 后建新等内部路径变化时,messages 不会重新拉 → 一直显示空白 / 老内容,
+  // 只有 F5 刷新才能加载。
+  // 修法:加一个 effect 监听 activeConv?.id,若与 lastFetchedConvIdRef 不同就拉。
+  // 初始化路径(line 345)拉完后也要更新 ref,避免重复拉。
+  const lastFetchedConvIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const convId = activeConv?.id;
+    if (!convId) return;
+    if (convId === lastFetchedConvIdRef.current) return;  // 已拉过
+    if (streamingRef.current) return;  // streaming 中不打断
+    lastFetchedConvIdRef.current = convId;
+    (async () => {
+      try {
+        const { conversation, messages: serverMsgs, hasMore } = await getConversationMessages(convId, { limit: 20 });
+        setActiveConv(conversation);
+        setHasMoreHistory(hasMore);
+        setMessages(serverMsgs.map(serverToUi));
+        setPendingConfirm(null);
+        setError(null);
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    })();
+  }, [open, activeConv?.id]);
 
   // ─── Persist active conversation + messages to cache ─────────────────
   // Write on every settled state change. Streaming intermediate states are
@@ -1091,7 +1119,7 @@ export default function ChatSidebar({
         }
       }, 200);
     };
-    const off = subscribeChatListen(convId, {
+    const off = listenChatShared(convId, {
       // Token-level deltas 频率太高,不触发 reload(token-by-token sync 是 V2 优化)
       // 只在消息边界事件触发 reload
       onMessagePersisted: triggerReload,
@@ -1648,16 +1676,7 @@ function EmptyState({
         <div className="chat-empty-title">{renderTitleWithCommaBreak(t("chat.empty.title"))}</div>
       </div>
 
-      {contextHint && (
-        <div className="chat-empty-context-hint" title={`workspaceId: ${contextHint.workspaceId}`}>
-          <span className="dot" aria-hidden="true" />
-          {t("chat.empty.contextHint", {
-            tables: contextHint.tableCount,
-            fields: contextHint.fieldCount,
-            records: contextHint.recordCount,
-          })}
-        </div>
-      )}
+      {/* V3.0.2 #4: 去掉 "Loaded N tables · M fields · K records" 统计 hint */}
 
       <div className="chat-empty-sections">
         <div className="chat-empty-section">
