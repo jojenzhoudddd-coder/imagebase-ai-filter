@@ -61,12 +61,24 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
       return;
     }
 
+    // V3.0.3:水平 clamp helper —— 默认左对齐 anchor (rect.left),
+    // 但 menu 右边超出 viewport 时距右窗 12px,左边也保留 ≥ 8px 兜底。
+    const clampLeft = (preferred: number) => {
+      const RIGHT_GAP = 12;
+      const LEFT_MIN = 8;
+      const maxLeft = vw - menuW - RIGHT_GAP;
+      let left = preferred;
+      if (left > maxLeft) left = maxLeft;
+      if (left < LEFT_MIN) left = LEFT_MIN;
+      return left;
+    };
+
     if (position === "above") {
-      setPos({ top: rect.top - menuH - 4, left: rect.left });
+      setPos({ top: rect.top - menuH - 4, left: clampLeft(rect.left) });
       return;
     }
     if (position === "below") {
-      setPos({ top: rect.bottom + 4, left: rect.left });
+      setPos({ top: rect.bottom + 4, left: clampLeft(rect.left) });
       return;
     }
     // auto: prefer below; flip to above if not enough room below (and there IS
@@ -74,9 +86,9 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
     const spaceBelow = vh - rect.bottom;
     const spaceAbove = rect.top;
     if (spaceBelow >= menuH + 8 || spaceBelow >= spaceAbove) {
-      setPos({ top: rect.bottom + 4, left: rect.left });
+      setPos({ top: rect.bottom + 4, left: clampLeft(rect.left) });
     } else {
-      setPos({ top: Math.max(8, rect.top - menuH - 4), left: rect.left });
+      setPos({ top: Math.max(8, rect.top - menuH - 4), left: clampLeft(rect.left) });
     }
   }, [anchorEl, position, width]);
 

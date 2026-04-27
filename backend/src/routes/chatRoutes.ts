@@ -272,6 +272,31 @@ router.get("/conversations/:id/messages", async (req: Request, res: Response) =>
   res.json({ conversation: conv, messages: enrichedMessages, hasMore: result.hasMore });
 });
 
+// V3.0.3 POST /api/chat/conversations/:id/clear — 清空对话内容(保留 conv id)
+router.post("/conversations/:id/clear", async (req: Request, res: Response) => {
+  const convId = req.params.id;
+  const conv = await convStore.getConversation(convId);
+  if (!conv) {
+    res.status(404).json({ error: "Conversation not found" });
+    return;
+  }
+  const ok = await convStore.clearConversationMessages(convId);
+  // 同步清 per-conv working memory(保留文件路径,但内容空)
+  if (conv.agentId) {
+    try {
+      const { agentDir } = await import("../services/agentService.js");
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const file = path.join(agentDir(conv.agentId), "memory", "working", `${convId}.jsonl`);
+      await fs.writeFile(file, "", "utf8").catch(() => {});
+    } catch { /* swallow */ }
+  }
+  // turnRegistry 当前 inflight 也 abort 掉(避免清空后旧 turn 还在写入)
+  const { abortTurn } = await import("../services/turnRegistry.js");
+  abortTurn(convId, "conversation_cleared");
+  res.json({ ok });
+});
+
 // DELETE /api/chat/conversations/:id
 router.delete("/conversations/:id", async (req: Request, res: Response) => {
   const convId = req.params.id;

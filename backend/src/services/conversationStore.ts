@@ -148,6 +148,26 @@ export async function deleteConversation(id: string): Promise<boolean> {
   }
 }
 
+/**
+ * V3.0.3 清空对话:删 conversation 下所有 messages + reset messageCount,
+ * 保留 conversation 本身(id / title 不变,继续给同一会话用)。SubagentRun /
+ * WorkflowRun 关联到这条 conv 的也一并删,避免历史 join 出来空 row。
+ */
+export async function clearConversationMessages(id: string): Promise<boolean> {
+  const conv = await prisma.conversation.findUnique({ where: { id } });
+  if (!conv) return false;
+  await prisma.$transaction([
+    prisma.message.deleteMany({ where: { conversationId: id } }),
+    prisma.subagentRun.deleteMany({ where: { parentConversationId: id } }),
+    prisma.workflowRun.deleteMany({ where: { parentConversationId: id } }),
+    prisma.conversation.update({
+      where: { id },
+      data: { messageCount: 0, summary: null, updatedAt: new Date() },
+    }),
+  ]);
+  return true;
+}
+
 export async function updateConversation(
   id: string,
   patch: Partial<Pick<Conversation, "title" | "summary">>

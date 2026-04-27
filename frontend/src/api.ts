@@ -840,6 +840,15 @@ export interface ChatConversation {
   updatedAt: number;
 }
 
+/** V3.0.3 清空对话内容(保留 conv id) */
+export async function clearConversationMessages(conversationId: string): Promise<void> {
+  const res = await fetch(`${BASE}/chat/conversations/${encodeURIComponent(conversationId)}/clear`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`Failed to clear conversation: ${res.status}`);
+}
+
 export async function listConversations(
   workspaceId: string,
   agentId?: string,

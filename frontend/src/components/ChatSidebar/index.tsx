@@ -35,6 +35,7 @@ import {
   createConversation,
   listConversations,
   deleteConversation as apiDeleteConversation,
+  clearConversationMessages,
   getConversationMessages,
   fetchChatContextSnapshot,
   fetchChatSuggestions,
@@ -291,6 +292,7 @@ export default function ChatSidebar({
   const [convListLoading, setConvListLoading] = useState(false);
   const convListBtnRef = useRef<HTMLButtonElement>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const toast = useToast();
 
   // Bumped after each streamed turn finishes, so AgentNamePill can re-fetch
@@ -1154,20 +1156,57 @@ export default function ChatSidebar({
     setConvListOpen(false);
   }, [activeConv?.id, streaming, handleStop]);
 
-  // V3.0 PR1 删除当前 conv → 自动建新
+  // V3.0.3 删除当前 conv → 切到列表里的下一条/上一条
+  // 最后一条不能删(用户改用"清空对话"重置内容)。
   const handleDeleteCurrentConversation = useCallback(async () => {
     const cur = activeConv?.id;
     setDeleteConfirmOpen(false);
     if (!cur) return;
     try {
+      // 拉最新 list 判断 sibling
+      const list = await listConversations(workspaceId);
+      if (list.length <= 1) {
+        toast.error(t("chat.toast.deleteOnlyOne"));
+        return;
+      }
+      const idx = list.findIndex((c) => c.id === cur);
+      // 优先 createdAt desc 顺序的下一条 (idx+1,createdAt 更老),没有就上一条 (idx-1,更新)
+      const neighbor = list[idx + 1] ?? list[idx - 1];
       await apiDeleteConversation(cur);
       toast.success(t("chat.toast.deleted"));
-      // 自动起新对话(走 handleNewConversation 一致路径)
-      await handleNewConversation();
+      if (neighbor) {
+        // 切过去
+        stickToBottomRef.current = true;
+        setMessages([]);
+        setPendingConfirm(null);
+        setError(null);
+        setActiveConv({ id: neighbor.id } as ChatConversation);
+      }
+      // 同步刷新 popover 的列表(去掉刚删的)
+      setConvList(list.filter((c) => c.id !== cur));
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [activeConv?.id, t, toast, handleNewConversation]);
+  }, [activeConv?.id, workspaceId, t, toast]);
+
+  // V3.0.3 清空当前对话:删 messages + 重置 working memory + 保留 conv id
+  const handleClearCurrentConversation = useCallback(async () => {
+    const cur = activeConv?.id;
+    setClearConfirmOpen(false);
+    if (!cur) return;
+    try {
+      if (streaming) handleStop();
+      await clearConversationMessages(cur);
+      // 本地立刻置空
+      setMessages([]);
+      setPendingConfirm(null);
+      setError(null);
+      stickToBottomRef.current = true;
+      toast.success(t("chat.toast.cleared"));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [activeConv?.id, streaming, handleStop, t, toast]);
 
   // V3.0 PR1 打开 conversation 列表 (拉最新 list)
   // V3.0.1 修复:
@@ -1223,16 +1262,8 @@ export default function ChatSidebar({
           <ChatModelPicker agentId={agentId} open={open} disabled={streaming} />
         </div>
         <div className="chat-header-actions">
-          {/* V3.0 PR1: + 新对话 / ≡ 全部对话 / ⋯ 更多 (含删除当前) / × 关闭 block */}
-          <button
-            type="button"
-            className="chat-header-btn"
-            title={t("chat.menu.newChat")}
-            aria-label={t("chat.menu.newChat")}
-            onClick={() => void handleNewConversation()}
-          >
-            <PlusIcon size={16} />
-          </button>
+          {/* V3.0.3: 移除 + 按钮(挪进 ≡ list popover 第一项),topbar 只剩
+              ≡ 全部对话 / ⋯ 更多 / × 关闭 block。 */}
           <button
             ref={convListBtnRef}
             type="button"
@@ -1260,11 +1291,16 @@ export default function ChatSidebar({
           <BlockCloseButton />
         </div>
       </header>
-      {/* ⋯ More menu — V3.0 改为只含"删除当前对话";原 refresh 已被 + 替代 */}
+      {/* ⋯ More menu — V3.0.3:含"清空当前对话" + "删除当前对话" */}
       {menuOpen && moreBtnRef.current && (
         <DropdownMenu
           anchorEl={moreBtnRef.current}
           items={[
+            {
+              key: "clear",
+              label: t("chat.menu.clearCurrent"),
+              icon: <RefreshIcon size={16} />,
+            },
             {
               key: "delete",
               label: t("chat.menu.deleteCurrent"),
@@ -1274,18 +1310,26 @@ export default function ChatSidebar({
           ]}
           onSelect={(key) => {
             setMenuOpen(false);
-            if (key === "delete") setDeleteConfirmOpen(true);
+            if (key === "clear") setClearConfirmOpen(true);
+            else if (key === "delete") setDeleteConfirmOpen(true);
           }}
           onClose={() => setMenuOpen(false)}
           width={200}
         />
       )}
-      {/* ≡ All conversations popover */}
+      {/* ≡ All conversations popover — V3.0.3:第一项是"+ 新对话",剩下是历史 list */}
       {convListOpen && convListBtnRef.current && (
         <DropdownMenu
           anchorEl={convListBtnRef.current}
-          items={
-            convListLoading
+          items={[
+            // 顶部 + 新对话(总在第一,始终可点)
+            {
+              key: "__new",
+              label: t("chat.list.newChat"),
+              icon: <PlusIcon size={16} />,
+            },
+            // 老对话列表
+            ...(convListLoading
               ? [{ key: "__loading", label: "…", disabled: true }]
               : convList.length === 0
               ? [{ key: "__empty", label: t("chat.list.empty"), disabled: true }]
@@ -1293,9 +1337,14 @@ export default function ChatSidebar({
                   key: c.id,
                   label: c.title || t("chat.list.untitled"),
                   active: c.id === activeConv?.id,
-                }))
-          }
+                }))),
+          ]}
           onSelect={(key) => {
+            if (key === "__new") {
+              setConvListOpen(false);
+              void handleNewConversation();
+              return;
+            }
             if (!key.startsWith("__")) void handleSwitchConversation(key);
           }}
           onClose={() => setConvListOpen(false)}
@@ -1312,6 +1361,16 @@ export default function ChatSidebar({
         variant="danger"
         onConfirm={() => void handleDeleteCurrentConversation()}
         onCancel={() => setDeleteConfirmOpen(false)}
+      />
+      {/* V3.0.3 Clear current chat confirm */}
+      <ConfirmDialog
+        open={clearConfirmOpen}
+        title={t("chat.clear.confirm.title")}
+        message={t("chat.clear.confirm.message")}
+        confirmLabel={t("chat.clear.confirm.ok")}
+        cancelLabel={t("chat.clear.confirm.cancel")}
+        onConfirm={() => void handleClearCurrentConversation()}
+        onCancel={() => setClearConfirmOpen(false)}
       />
       {/* Old refresh confirm — V3.0 不再使用,但保留兼容(防有地方还在用) */}
       <ConfirmDialog
