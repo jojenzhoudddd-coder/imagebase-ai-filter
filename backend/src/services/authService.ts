@@ -306,13 +306,14 @@ export async function createUserWithWorkspace(input: {
       },
     });
     // 5 行空记录 — cells 留空,用户进来直接点击编辑即可
-    await tx.record.createMany({
-      data: Array.from({ length: 5 }, (_, i) => ({
-        tableId: tableRow.id,
-        cells: {} as any,
-        order: i,
-      })),
-    });
+    // V2.9.10: Record 模型没有 order 列,排序靠 createdAt;5 条 createMany 在
+    // 同一 tx 里写入,createdAt 同毫秒精度可能不稳定。用循环单条 create 保证
+    // createdAt 单调递增,顺序与 sidebar 显示一致。
+    for (let i = 0; i < 5; i++) {
+      await tx.record.create({
+        data: { tableId: tableRow.id, cells: {} as any },
+      });
+    }
     await tx.design.create({
       data: {
         workspaceId: ws.id,
