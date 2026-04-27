@@ -15,6 +15,8 @@
 
 import express, { type Request, type Response } from "express";
 import * as convStore from "../services/conversationStore.js";
+import { publishChatEvent, subscribeChat } from "../services/chatPubsub.js";
+import { dispatchMessage } from "../services/turnOrchestrator.js";
 import { runAgent, resumeAfterConfirm, type AgentContext, type SseEvent } from "../services/chatAgentService.js";
 import * as store from "../services/dbStore.js";
 import { listSubagentRunsForConversation } from "../services/subagentRunStore.js";
@@ -68,6 +70,19 @@ function setupSse(res: Response) {
 
 function writeEvent(res: Response, e: SseEvent) {
   res.write(`event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`);
+}
+
+/**
+ * V3.0 PR3:writeEvent + 同时 publish 到 chatPubsub。所有 passive listener
+ * (其他 chat block 看同 conv) 通过 GET /listen 收到广播。
+ *
+ * 不广播的事件:`done` (request-scoped 标识,旁观者不需要),其他都广播。
+ */
+function writeEventBoth(res: Response, convId: string, e: SseEvent) {
+  writeEvent(res, e);
+  if (e.event !== "done") {
+    publishChatEvent(convId, { event: e.event, data: e.data });
+  }
 }
 
 // ─── REST endpoints ──────────────────────────────────────────────────────
@@ -153,11 +168,15 @@ router.post("/suggestions/refresh", async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/chat/conversations?workspaceId=xxx
+// GET /api/chat/conversations?workspaceId=xxx&agentId=xxx&sortBy=createdAt|updatedAt
+// V3.0 PR1: 默认 createdAt desc (新建在最上);可选 agentId 过滤
 router.get("/conversations", async (req: Request, res: Response) => {
   const workspaceId = (req.query.workspaceId as string) || "doc_default";
+  const agentId = (req.query.agentId as string) || undefined;
+  const sortByRaw = req.query.sortBy as string | undefined;
+  const sortBy = sortByRaw === "updatedAt" ? "updatedAt" : "createdAt";
   try {
-    const list = await convStore.listConversations(workspaceId);
+    const list = await convStore.listConversations(workspaceId, { sortBy, agentId });
     res.json(list);
   } catch (err) {
     // Previously threw into Express default handler → bare 500 + empty
@@ -255,11 +274,24 @@ router.get("/conversations/:id/messages", async (req: Request, res: Response) =>
 
 // DELETE /api/chat/conversations/:id
 router.delete("/conversations/:id", async (req: Request, res: Response) => {
-  const ok = await convStore.deleteConversation(req.params.id);
-  turnStates.delete(req.params.id);
+  const convId = req.params.id;
+  // V3.0 PR2: 找到 conv 的 agentId,顺便清 per-conv working memory file
+  const conv = await convStore.getConversation(convId);
+  const ok = await convStore.deleteConversation(convId);
+  turnStates.delete(convId);
   if (!ok) {
     res.status(404).json({ error: "Conversation not found" });
     return;
+  }
+  // 清 per-conv working memory(失败不阻塞 — 文件可能本来就没建)
+  if (conv?.agentId) {
+    try {
+      const { agentDir } = await import("../services/agentService.js");
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const file = path.join(agentDir(conv.agentId), "memory", "working", `${convId}.jsonl`);
+      await fs.unlink(file).catch(() => {});
+    } catch { /* swallow */ }
   }
   res.json({ ok: true });
 });
@@ -325,12 +357,17 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
     };
 
     try {
-      for await (const event of runAgent(ctx, message.trim(), ac.signal)) {
-        writeEvent(res, event);
+      // V3.0 PR4: 走 turnOrchestrator,自动处理 idle / branch / queue 三模式
+      for await (const event of dispatchMessage({
+        ctx,
+        userMessage: message.trim(),
+        abortSignal: ac.signal,
+      })) {
+        writeEventBoth(res, req.params.id, event);
       }
     } catch (err) {
-      console.error("[chatRoutes] runAgent threw:", err);
-      writeEvent(res, {
+      console.error("[chatRoutes] dispatchMessage threw:", err);
+      writeEventBoth(res, req.params.id, {
         event: "error",
         data: {
           code: "INTERNAL",
@@ -351,7 +388,7 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
     } else {
       // SSE already open — try to write a final error event if we still can.
       try {
-        writeEvent(res, {
+        writeEventBoth(res, req.params.id, {
           event: "error",
           data: { code: "INTERNAL", message: msg },
         });
@@ -400,11 +437,11 @@ router.post("/conversations/:id/confirm", async (req: Request, res: Response) =>
 
     try {
       for await (const event of resumeAfterConfirm(ctx, callId, confirmed, ac.signal)) {
-        writeEvent(res, event);
+        writeEventBoth(res, req.params.id, event);
       }
     } catch (err) {
       console.error("[chatRoutes] resumeAfterConfirm threw:", err);
-      writeEvent(res, {
+      writeEventBoth(res, req.params.id, {
         event: "error",
         data: { code: "INTERNAL", message: err instanceof Error ? err.message : String(err) },
       });
@@ -419,20 +456,59 @@ router.post("/conversations/:id/confirm", async (req: Request, res: Response) =>
       res.status(500).json({ error: `confirm request failed: ${msg}` });
     } else {
       try {
-        writeEvent(res, { event: "error", data: { code: "INTERNAL", message: msg } });
+        writeEventBoth(res, req.params.id, { event: "error", data: { code: "INTERNAL", message: msg } });
         res.end();
       } catch { /* closed */ }
     }
   }
 });
 
+// V3.0 PR3: passive listener — 旁观者订阅同 convId 的所有 chat 事件
+// GET /api/chat/conversations/:id/listen
+router.get("/conversations/:id/listen", async (req: Request, res: Response) => {
+  const convId = req.params.id;
+  // 验 conversation 存在
+  const conv = await convStore.getConversation(convId);
+  if (!conv) {
+    res.status(404).json({ error: "Conversation not found" });
+    return;
+  }
+  setupSse(res);
+  // 首包确认连接
+  res.write(`event: connected\ndata: {"convId":"${convId}"}\n\n`);
+
+  const off = subscribeChat(convId, (ev) => {
+    try {
+      res.write(`event: ${ev.event}\ndata: ${JSON.stringify(ev.data)}\n\n`);
+    } catch {
+      // res 已关 → 后面 close 事件会清理
+    }
+  });
+
+  // 心跳:每 25s 一个 comment 行,防 nginx 60s idle 切流
+  const hb = setInterval(() => {
+    try {
+      res.write(`: heartbeat\n\n`);
+    } catch {/* swallow */}
+  }, 25_000);
+  hb.unref?.();
+
+  req.on("close", () => {
+    off();
+    clearInterval(hb);
+  });
+});
+
 // ─── Stop current turn ──────────────────────────────────────────────────
 // POST /api/chat/conversations/:id/stop
-router.post("/conversations/:id/stop", (req: Request, res: Response) => {
+router.post("/conversations/:id/stop", async (req: Request, res: Response) => {
   const state = turnStates.get(req.params.id);
   if (state) {
     state.abortController.abort();
   }
+  // V3.0 PR4: 也 abort orchestrator 的 turn (含 main + branches + synth)
+  const { abortTurn } = await import("../services/turnRegistry.js");
+  abortTurn(req.params.id, "user_stop");
   res.json({ ok: true });
 });
 

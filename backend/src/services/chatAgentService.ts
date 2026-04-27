@@ -955,7 +955,18 @@ export interface SseEvent {
     | "workflow_branch_start"
     | "workflow_end"
     | "workflow_error"
-    | "workflow_aborted";
+    | "workflow_aborted"
+    // V3.0 PR4 multi-conversation / branch / synth 事件
+    | "message_persisted"
+    | "turn_pending"
+    | "turn_promoted"
+    | "branch_started"
+    | "branch_finished"
+    | "synth_started"
+    | "synth_thinking_delta"
+    | "synth_message_delta"
+    | "synth_finished"
+    | "connected";
   data: Record<string, unknown>;
 }
 
@@ -2489,16 +2500,22 @@ async function* runAgentImpl(
   // deterministic (no LLM call) so it's cheap; we still detach it so slow
   // filesystems can't delay the user's `done` event.
   agentSvc
-    .appendWorkingMemory(agentId, {
-      timestamp: new Date().toISOString(),
-      conversationId,
-      userMessage,
-      assistantMessage: accumulatedText,
-      toolCalls: accumulatedToolCalls.map((c) => c.tool),
-    })
+    .migrateLegacyWorkingMemory(agentId)
+    .catch(() => undefined) // 幂等,失败不阻塞 append
+    .then(() =>
+      agentSvc.appendWorkingMemory(agentId, {
+        timestamp: new Date().toISOString(),
+        conversationId,
+        userMessage,
+        assistantMessage: accumulatedText,
+        toolCalls: accumulatedToolCalls.map((c) => c.tool),
+      })
+    )
     .then(async () => {
+      // V3.0 PR2: per-conv compaction
       const result = await agentSvc.compressWorkingMemory(agentId, {
         minTurns: WORKING_MEMORY_COMPRESS_THRESHOLD,
+        conversationId,
       });
       if (result.compressed) {
         logAgent({

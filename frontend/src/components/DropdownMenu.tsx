@@ -10,6 +10,10 @@ export interface MenuItem {
   disabled?: boolean;
   noop?: boolean;
   section?: string;
+  /** V3.0 PR1: 危险操作(如删除),CSS 标红 */
+  danger?: boolean;
+  /** V3.0 PR1: 当前选中态(如对话列表中高亮当前对话) */
+  active?: boolean;
 }
 
 interface Props {
@@ -127,7 +131,7 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
               <button
                 key={item.key}
                 ref={(el) => onItemRef?.(item.key, el)}
-                className={`dropdown-menu-item${item.disabled ? " disabled" : ""}${item.suffix ? " has-suffix" : ""}${activeSubMenuKey === item.key ? " active-submenu" : ""}`}
+                className={`dropdown-menu-item${item.disabled ? " disabled" : ""}${item.suffix ? " has-suffix" : ""}${activeSubMenuKey === item.key ? " active-submenu" : ""}${item.danger ? " danger" : ""}${item.active ? " active" : ""}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (item.disabled || item.noop) return;

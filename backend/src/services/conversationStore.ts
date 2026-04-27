@@ -102,10 +102,18 @@ function toMessage(row: {
 
 // ─── Public API ──────────────────────────────────────────────────────────
 
-export async function listConversations(workspaceId: string): Promise<Conversation[]> {
+export async function listConversations(
+  workspaceId: string,
+  opts?: { sortBy?: "createdAt" | "updatedAt"; agentId?: string | null }
+): Promise<Conversation[]> {
+  // V3.0 PR1: 默认 createdAt desc (最新建在最上,符合用户期望);
+  // 老调用没传 opts 仍按 updatedAt 兼容(不破坏现有接口)。
+  const sortBy = opts?.sortBy ?? "createdAt";
+  const where: any = { workspaceId };
+  if (opts?.agentId !== undefined) where.agentId = opts.agentId;
   const rows = await prisma.conversation.findMany({
-    where: { workspaceId },
-    orderBy: { updatedAt: "desc" },
+    where,
+    orderBy: { [sortBy]: "desc" },
   });
   return rows.map(toConversation);
 }
@@ -160,7 +168,12 @@ export async function updateConversation(
 
 export async function appendMessage(
   conversationId: string,
-  msg: Omit<Message, "id" | "conversationId" | "timestamp"> & { timestamp?: number }
+  msg: Omit<Message, "id" | "conversationId" | "timestamp"> & {
+    timestamp?: number;
+    // V3.0 multi-conv 字段
+    branchTag?: string | null;
+    parentMessageId?: string | null;
+  }
 ): Promise<Message | undefined> {
   // Ensure the conversation exists — keeps the old Map-era null-return behavior.
   const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
@@ -171,6 +184,13 @@ export async function appendMessage(
   // Transaction: insert message + bump count/updatedAt + auto-title
   // so concurrent appends don't race on messageCount.
   const [message] = await prisma.$transaction(async (tx) => {
+    // V3.0:计算 seq (per-conv 单调递增)
+    const maxSeq = await tx.message.aggregate({
+      where: { conversationId },
+      _max: { seq: true },
+    });
+    const nextSeq = (maxSeq._max.seq ?? -1) + 1;
+
     const row = await tx.message.create({
       data: {
         conversationId,
@@ -180,6 +200,10 @@ export async function appendMessage(
         toolCalls: (msg.toolCalls ?? undefined) as never,
         toolResult: (msg.toolResult ?? undefined) as never,
         timestamp: ts,
+        // V3.0
+        branchTag: msg.branchTag ?? null,
+        parentMessageId: msg.parentMessageId ?? null,
+        seq: nextSeq,
       },
     });
     const count = await tx.message.count({ where: { conversationId } });

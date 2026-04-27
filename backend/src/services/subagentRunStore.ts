@@ -46,6 +46,10 @@ export interface SubagentRunCreate {
   parentSubagentRunId?: string | null;
   depth?: number;
   workflowNodeId?: string | null;
+  // V3.0 multi-conv
+  kind?: string | null;
+  branchId?: string | null;
+  workflowRunId?: string | null;
 }
 
 export interface SubagentRunUpdate {
@@ -101,6 +105,10 @@ export async function createSubagentRun(input: SubagentRunCreate): Promise<Subag
       parentSubagentRunId: input.parentSubagentRunId ?? null,
       depth: input.depth ?? 0,
       workflowNodeId: input.workflowNodeId ?? null,
+      // V3.0
+      kind: input.kind ?? null,
+      branchId: input.branchId ?? null,
+      workflowRunId: input.workflowRunId ?? null,
       status: "running",
     },
   });

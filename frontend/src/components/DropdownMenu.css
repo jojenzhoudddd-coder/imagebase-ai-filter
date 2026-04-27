@@ -59,6 +59,24 @@
   background: none;
 }
 
+/* V3.0 PR1: danger 项标红 (delete current chat 之类) */
+.dropdown-menu-item.danger {
+  color: var(--danger, #d73a49);
+}
+.dropdown-menu-item.danger .dropdown-menu-item-icon {
+  color: var(--danger, #d73a49);
+}
+.dropdown-menu-item.danger:hover {
+  background: var(--danger-bg, rgba(215, 58, 73, 0.08));
+}
+
+/* V3.0 PR1: active 项 (conversation 列表中的当前会话) */
+.dropdown-menu-item.active {
+  background: var(--surface-hover, rgba(20, 86, 240, 0.08));
+  color: var(--primary, #1456f0);
+  font-weight: 500;
+}
+
 .dropdown-menu-item.has-suffix {
   padding-right: 4px;
 }

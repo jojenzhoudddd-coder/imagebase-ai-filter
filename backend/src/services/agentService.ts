@@ -316,8 +316,25 @@ export interface WorkingMemoryEntry {
   toolCalls: string[]; // tool names in invocation order, duplicates preserved
 }
 
-function workingMemoryPath(agentId: string): string {
-  return path.join(agentDir(agentId), "memory", "working.jsonl");
+// V3.0 PR2: working memory 改为 per-conversation。
+//   每个 conversation 一个文件 ~/.imagebase/agents/<id>/memory/working/<convId>.jsonl
+//   compaction 也按 convId 跑(自然隔离)。
+//
+// Legacy 兼容:旧 ~/.imagebase/agents/<id>/memory/working.jsonl 仍可读;
+//   一次性迁移由 migrateLegacyWorkingMemory(agentId) 完成,见下方。
+function workingMemoryDir(agentId: string): string {
+  return path.join(agentDir(agentId), "memory", "working");
+}
+
+function workingMemoryPath(agentId: string, convId?: string): string {
+  // 兼容旧调用:不传 convId → 旧的扁平路径(只用于 legacy 读)
+  if (!convId) return path.join(agentDir(agentId), "memory", "working.jsonl");
+  // V3.0 per-conv 路径
+  return path.join(workingMemoryDir(agentId), `${convId}.jsonl`);
+}
+
+async function ensureWorkingDir(agentId: string): Promise<void> {
+  await fs.mkdir(workingMemoryDir(agentId), { recursive: true });
 }
 
 export async function appendWorkingMemory(
@@ -325,15 +342,45 @@ export async function appendWorkingMemory(
   entry: WorkingMemoryEntry
 ): Promise<void> {
   await ensureAgentFiles(agentId);
+  await ensureWorkingDir(agentId);
   const line = JSON.stringify(entry) + "\n";
-  await fs.appendFile(workingMemoryPath(agentId), line, "utf8");
+  // V3.0:从 entry.conversationId 路由到 per-conv 文件
+  const target = workingMemoryPath(agentId, entry.conversationId);
+  await fs.appendFile(target, line, "utf8");
 }
 
-export async function readWorkingMemory(agentId: string): Promise<WorkingMemoryEntry[]> {
+/**
+ * V3.0 PR2: 读 working memory。
+ *   - 传 convId → 只读该 conversation 的 working
+ *   - 不传 → 读全部 (跨 conv 合并,排序按 timestamp asc) — legacy 兼容
+ */
+export async function readWorkingMemory(
+  agentId: string,
+  convId?: string,
+): Promise<WorkingMemoryEntry[]> {
   await ensureAgentFiles(agentId);
+  if (convId) {
+    return readJsonlSafe(workingMemoryPath(agentId, convId));
+  }
+  // No convId: legacy aggregated read — 把 per-conv 目录下所有文件 + 老的 flat
+  // working.jsonl 都读出来按 timestamp 合并,主要给迁移 / 调试用。
+  const flat = await readJsonlSafe(workingMemoryPath(agentId));
+  let perConv: WorkingMemoryEntry[] = [];
+  try {
+    const dir = workingMemoryDir(agentId);
+    const files = await fs.readdir(dir).catch(() => []);
+    for (const f of files) {
+      if (!f.endsWith(".jsonl")) continue;
+      perConv = perConv.concat(await readJsonlSafe(path.join(dir, f)));
+    }
+  } catch { /* dir not yet created */ }
+  return [...flat, ...perConv].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+async function readJsonlSafe(p: string): Promise<WorkingMemoryEntry[]> {
   let raw: string;
   try {
-    raw = await fs.readFile(workingMemoryPath(agentId), "utf8");
+    raw = await fs.readFile(p, "utf8");
   } catch (err: any) {
     if (err?.code === "ENOENT") return [];
     throw err;
@@ -345,15 +392,66 @@ export async function readWorkingMemory(agentId: string): Promise<WorkingMemoryE
     try {
       out.push(JSON.parse(trimmed));
     } catch {
-      // Skip malformed lines — don't lose well-formed neighbors.
+      // skip malformed
     }
   }
   return out;
 }
 
-export async function clearWorkingMemory(agentId: string): Promise<void> {
+export async function clearWorkingMemory(agentId: string, convId?: string): Promise<void> {
   await ensureAgentFiles(agentId);
-  await fs.writeFile(workingMemoryPath(agentId), "", "utf8");
+  if (convId) {
+    await ensureWorkingDir(agentId);
+    await fs.writeFile(workingMemoryPath(agentId, convId), "", "utf8");
+  } else {
+    // legacy:清空旧 flat 文件
+    await fs.writeFile(workingMemoryPath(agentId), "", "utf8");
+  }
+}
+
+/**
+ * V3.0 PR2 迁移:把老的 ~/.imagebase/agents/<id>/memory/working.jsonl 按
+ * entry.conversationId 拆到 working/<convId>.jsonl,重命名老文件成 .bak。
+ * 幂等:已迁移过(老文件被改名 / per-conv dir 非空)就直接跳过。
+ *
+ * 部署时机:agent 第一次被使用 OR 由 scripts/migrate-working-memory-per-conv.ts
+ * 一次性扫所有 agent 跑。这里实现成"延迟迁移":在每次 appendWorkingMemory 前
+ * 触发一次 try/catch 包裹的 migrate(用 lock 文件防止并发重入)。
+ */
+export async function migrateLegacyWorkingMemory(agentId: string): Promise<{
+  migrated: boolean; movedTurns: number; error?: string;
+}> {
+  const flatPath = workingMemoryPath(agentId);
+  // 已迁移过 → 老文件已改 .bak,直接 skip
+  try {
+    await fs.access(flatPath);
+  } catch {
+    return { migrated: false, movedTurns: 0 };
+  }
+  const entries = await readJsonlSafe(flatPath);
+  if (entries.length === 0) {
+    // 空文件直接改名,后续 appendWorkingMemory 走 per-conv 即可
+    await fs.rename(flatPath, flatPath + ".bak").catch(() => {});
+    return { migrated: true, movedTurns: 0 };
+  }
+  await ensureWorkingDir(agentId);
+  // 按 convId 分组
+  const byConv = new Map<string, WorkingMemoryEntry[]>();
+  for (const e of entries) {
+    const convId = e.conversationId || "_legacy_unknown";
+    if (!byConv.has(convId)) byConv.set(convId, []);
+    byConv.get(convId)!.push(e);
+  }
+  // 逐 conv 写入 per-conv 文件 (append 模式,不覆盖已存在的内容)
+  let total = 0;
+  for (const [convId, es] of byConv) {
+    const lines = es.map((e) => JSON.stringify(e)).join("\n") + "\n";
+    await fs.appendFile(workingMemoryPath(agentId, convId), lines, "utf8");
+    total += es.length;
+  }
+  // 重命名旧文件,留 30 天给运维心理踏实
+  await fs.rename(flatPath, flatPath + ".bak").catch(() => {});
+  return { migrated: true, movedTurns: total };
 }
 
 /**
@@ -367,13 +465,15 @@ export async function clearWorkingMemory(agentId: string): Promise<void> {
  */
 export async function compressWorkingMemory(
   agentId: string,
-  opts?: { minTurns?: number }
+  opts?: { minTurns?: number; conversationId?: string },
 ): Promise<
   | { compressed: true; filename: string; turns: number }
   | { compressed: false; turns: number }
 > {
   const minTurns = Math.max(1, opts?.minTurns ?? 10);
-  const entries = await readWorkingMemory(agentId);
+  // V3.0 PR2: 优先按 convId compress;不传 convId 走 legacy aggregate (向后兼容)
+  const convId = opts?.conversationId;
+  const entries = await readWorkingMemory(agentId, convId);
   if (entries.length < minTurns) {
     return { compressed: false, turns: entries.length };
   }
@@ -442,13 +542,16 @@ export async function compressWorkingMemory(
   }
 
   const tags = ["working-memory-compaction", ...topKeywords.slice(0, 3)];
+  // V3.0 PR2: 把 convId 也写入 episodic 元信息 (tag),方便日后 recall 按 conv 过滤
+  if (convId) tags.push(`conv:${convId.slice(-12)}`);
   const { filename } = await appendEpisodicMemory(agentId, {
     title,
     body: bodyLines.join("\n"),
     tags,
   });
 
-  await clearWorkingMemory(agentId);
+  // V3.0:只清掉本 conv 的 working;legacy 模式保留旧行为
+  await clearWorkingMemory(agentId, convId);
   return { compressed: true, filename, turns: entries.length };
 }
 

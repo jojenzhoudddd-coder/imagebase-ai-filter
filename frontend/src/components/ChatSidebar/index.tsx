@@ -21,7 +21,7 @@ import ConfirmCard from "./ChatMessage/ConfirmCard";
 import ChatModelPicker from "./ChatModelPicker";
 import BlockCloseButton from "../BlockCloseButton";
 import AgentNamePill from "./AgentNamePill";
-import { MoreIcon, RefreshIcon } from "./icons";
+import { MoreIcon, RefreshIcon, PlusIcon, HistoryIcon, TrashIcon } from "./icons";
 import DropdownMenu from "../DropdownMenu";
 import ConfirmDialog from "../ConfirmDialog";
 import { useTranslation } from "../../i18n";
@@ -34,7 +34,9 @@ import {
   type PendingConfirm,
   createConversation,
   listConversations,
+  deleteConversation as apiDeleteConversation,
   getConversationMessages,
+  subscribeChatListen,
   fetchChatContextSnapshot,
   fetchChatSuggestions,
   streamChatMessage,
@@ -42,6 +44,7 @@ import {
   stopChatTurn,
 } from "../../api";
 import { extractMentionPayloads } from "../Mention/mentionSyntax";
+import { useToast } from "../Toast/index";
 
 // Client-side message model (mutable during streaming)
 interface UiMessage {
@@ -177,6 +180,15 @@ interface Props {
    * is already active — App.tsx's switchTable() guards against re-fetch.
    */
   onActiveTableChange?: (tableId: string) => void;
+
+  /**
+   * V3.0 PR1: per-block conversation override.
+   * 当父级(App.tsx 通过 ChatBlockState)指定要打开哪个 conversation 时传入;
+   * 不传则 ChatSidebar 自己挑(沿用 V2 行为:cache 或 first 或新建)。
+   * 父级在用户切换 / 新建 / 删除会话后通过 onConversationChange 同步回 BlockState。
+   */
+  conversationId?: string | null;
+  onConversationChange?: (convId: string | null) => void;
 }
 
 /**
@@ -207,14 +219,42 @@ export default function ChatSidebar({
   agentId = "agent_default",
   onClose,
   onActiveTableChange,
+  conversationId: propConversationId,
+  onConversationChange,
 }: Props) {
   const { t } = useTranslation();
   // Hydrate from localStorage synchronously so a refresh shows cached
   // messages immediately — no welcome-page flash while /conversations loads.
   const initialCache = useRef<CachedState | null>(readCache(workspaceId)).current;
-  const [activeConv, setActiveConv] = useState<ChatConversation | null>(
-    initialCache ? ({ id: initialCache.activeConvId } as ChatConversation) : null
-  );
+  // V3.0 PR1: 优先级 propConversationId > cache > null
+  const [activeConv, setActiveConv] = useState<ChatConversation | null>(() => {
+    if (propConversationId) return { id: propConversationId } as ChatConversation;
+    if (initialCache) return { id: initialCache.activeConvId } as ChatConversation;
+    return null;
+  });
+
+  // V3.0 PR1: 父级切换 conversationId 时同步 activeConv (e.g. App.tsx 从 BlockState
+  // 读到不同的 convId 后传下来)。前提:propConversationId 与当前 activeConv.id 不同
+  // 才更新,避免无限循环。
+  useEffect(() => {
+    if (propConversationId !== undefined && propConversationId !== null) {
+      if (activeConv?.id !== propConversationId) {
+        setActiveConv({ id: propConversationId } as ChatConversation);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propConversationId]);
+
+  // V3.0 PR1: activeConv 内部变化时回调父级(用户在本 block 切了 conv,父级要更新 BlockState)
+  useEffect(() => {
+    if (activeConv?.id && onConversationChange) {
+      // 只有与父级 prop 不一致时才回调,避免无限循环
+      if (activeConv.id !== propConversationId) {
+        onConversationChange(activeConv.id);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConv?.id]);
   const [messages, setMessages] = useState<UiMessage[]>(initialCache?.messages ?? []);
   const [inputValue, setInputValue] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -244,6 +284,14 @@ export default function ChatSidebar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
+
+  // V3.0 PR1 多对话 UI 状态
+  const [convListOpen, setConvListOpen] = useState(false);
+  const [convList, setConvList] = useState<ChatConversation[]>([]);
+  const [convListLoading, setConvListLoading] = useState(false);
+  const convListBtnRef = useRef<HTMLButtonElement>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const toast = useToast();
 
   // Bumped after each streamed turn finishes, so AgentNamePill can re-fetch
   // and pick up any rename performed by the `update_agent_name` tool call.
@@ -1019,6 +1067,93 @@ export default function ChatSidebar({
     }
   }, [workspaceId, agentId, streaming, handleStop]);
 
+  // V3.0 PR3: passive listener — 同 conv 在多个 ChatBlock 时,非发起方通过 SSE
+  // 接收对方触发的事件,延迟 200ms 后从 server 重拉 messages。streaming 期间
+  // (本 block 是发起方) 不应用 listener 事件,避免重复。
+  useEffect(() => {
+    if (!open) return;
+    const convId = activeConv?.id;
+    if (!convId) return;
+    let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+    const triggerReload = () => {
+      if (streamingRef.current) return;  // 本 block 在发,自己有 fetch SSE
+      if (reloadTimer) clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(async () => {
+        if (streamingRef.current) return;
+        try {
+          const { messages: msgs, hasMore } = await getConversationMessages(convId, { limit: 20 });
+          setHasMoreHistory(hasMore);
+          if (!streamingRef.current) {
+            setMessages((prev) => mergeServerWithLocal(msgs.map(serverToUi), prev));
+          }
+        } catch {
+          // ignore — 下次事件还会触发
+        }
+      }, 200);
+    };
+    const off = subscribeChatListen(convId, {
+      // Token-level deltas 频率太高,不触发 reload(token-by-token sync 是 V2 优化)
+      // 只在消息边界事件触发 reload
+      onMessagePersisted: triggerReload,
+      onBranchStarted: triggerReload,
+      onBranchFinished: triggerReload,
+      onTurnPromoted: triggerReload,
+      onSynthFinished: triggerReload,
+      onTurnPending: triggerReload,
+      // V1 backward-compat events (assistant 流式 done / tool_result):
+      onEvent: (name: string) => {
+        if (name === "done" || name === "tool_result" || name === "start") triggerReload();
+      },
+    });
+    return () => {
+      off();
+      if (reloadTimer) clearTimeout(reloadTimer);
+    };
+  }, [open, activeConv?.id]);
+
+  // V3.0 PR1 切换到指定 conversation
+  const handleSwitchConversation = useCallback(async (convId: string) => {
+    if (convId === activeConv?.id) {
+      setConvListOpen(false);
+      return;
+    }
+    if (streaming) handleStop();
+    stickToBottomRef.current = true;
+    setMessages([]);
+    setPendingConfirm(null);
+    setError(null);
+    setActiveConv({ id: convId } as ChatConversation);
+    setConvListOpen(false);
+  }, [activeConv?.id, streaming, handleStop]);
+
+  // V3.0 PR1 删除当前 conv → 自动建新
+  const handleDeleteCurrentConversation = useCallback(async () => {
+    const cur = activeConv?.id;
+    setDeleteConfirmOpen(false);
+    if (!cur) return;
+    try {
+      await apiDeleteConversation(cur);
+      toast.success(t("chat.toast.deleted"));
+      // 自动起新对话(走 handleNewConversation 一致路径)
+      await handleNewConversation();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [activeConv?.id, t, toast, handleNewConversation]);
+
+  // V3.0 PR1 打开 conversation 列表 (拉最新 list)
+  const openConvList = useCallback(async () => {
+    setConvListOpen((open) => !open);
+    if (convList.length === 0 || !convListOpen) {
+      setConvListLoading(true);
+      try {
+        const list = await listConversations(workspaceId, agentId);
+        setConvList(list);
+      } catch { /* swallow */ }
+      setConvListLoading(false);
+    }
+  }, [convList.length, convListOpen, workspaceId, agentId]);
+
   // ─── Render ─────────────────────────────────────────────────────────
   // Header row re-added per Figma node 6:5309 "AI header": no title, just a
   // right-aligned cluster with History + More icon buttons. The outer
@@ -1045,45 +1180,97 @@ export default function ChatSidebar({
           <ChatModelPicker agentId={agentId} open={open} disabled={streaming} />
         </div>
         <div className="chat-header-actions">
-          {/* Phase 1 decision: the Agent's soul.md / profile.md are NOT
-              exposed as an interactive UI surface. Users read/write them
-              only through chat (the Agent self-edits via Tier 0 meta-tools).
-              The "..." overflow is still available for refresh-conversation. */}
-          {(messages.length > 0 || streaming) && (
-            <button
-              ref={moreBtnRef}
-              type="button"
-              className="chat-header-btn"
-              title={t("chat.menu.more")}
-              aria-label={t("chat.menu.more")}
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen((v) => !v)}
-            >
-              <MoreIcon size={16} />
-            </button>
-          )}
+          {/* V3.0 PR1: + 新对话 / ≡ 全部对话 / ⋯ 更多 (含删除当前) / × 关闭 block */}
+          <button
+            type="button"
+            className="chat-header-btn"
+            title={t("chat.menu.newChat")}
+            aria-label={t("chat.menu.newChat")}
+            onClick={() => void handleNewConversation()}
+          >
+            <PlusIcon size={16} />
+          </button>
+          <button
+            ref={convListBtnRef}
+            type="button"
+            className="chat-header-btn"
+            title={t("chat.menu.allConversations")}
+            aria-label={t("chat.menu.allConversations")}
+            aria-haspopup="menu"
+            aria-expanded={convListOpen}
+            onClick={() => void openConvList()}
+          >
+            <HistoryIcon size={16} />
+          </button>
+          <button
+            ref={moreBtnRef}
+            type="button"
+            className="chat-header-btn"
+            title={t("chat.menu.more")}
+            aria-label={t("chat.menu.more")}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <MoreIcon size={16} />
+          </button>
           <BlockCloseButton />
         </div>
       </header>
+      {/* ⋯ More menu — V3.0 改为只含"删除当前对话";原 refresh 已被 + 替代 */}
       {menuOpen && moreBtnRef.current && (
         <DropdownMenu
           anchorEl={moreBtnRef.current}
           items={[
             {
-              key: "refresh",
-              label: t("chat.menu.refresh"),
-              icon: <RefreshIcon size={16} />,
+              key: "delete",
+              label: t("chat.menu.deleteCurrent"),
+              icon: <TrashIcon size={16} />,
+              danger: true,
             },
           ]}
           onSelect={(key) => {
             setMenuOpen(false);
-            if (key === "refresh") setRefreshConfirmOpen(true);
+            if (key === "delete") setDeleteConfirmOpen(true);
           }}
           onClose={() => setMenuOpen(false)}
-          width={180}
+          width={200}
         />
       )}
+      {/* ≡ All conversations popover */}
+      {convListOpen && convListBtnRef.current && (
+        <DropdownMenu
+          anchorEl={convListBtnRef.current}
+          items={
+            convListLoading
+              ? [{ key: "__loading", label: "…", disabled: true }]
+              : convList.length === 0
+              ? [{ key: "__empty", label: t("chat.list.empty"), disabled: true }]
+              : convList.map((c) => ({
+                  key: c.id,
+                  label: c.title || t("chat.list.untitled"),
+                  active: c.id === activeConv?.id,
+                }))
+          }
+          onSelect={(key) => {
+            if (!key.startsWith("__")) void handleSwitchConversation(key);
+          }}
+          onClose={() => setConvListOpen(false)}
+          width={260}
+        />
+      )}
+      {/* Delete confirm */}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title={t("chat.delete.confirm.title")}
+        message={t("chat.delete.confirm.message")}
+        confirmLabel={t("chat.delete.confirm.ok")}
+        cancelLabel={t("chat.delete.confirm.cancel")}
+        variant="danger"
+        onConfirm={() => void handleDeleteCurrentConversation()}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
+      {/* Old refresh confirm — V3.0 不再使用,但保留兼容(防有地方还在用) */}
       <ConfirmDialog
         open={refreshConfirmOpen}
         title={t("chat.refresh.confirm.title")}

@@ -142,6 +142,20 @@ export function RefreshIcon({ size = 16, className }: IconProps) {
   );
 }
 
+/** Trash icon — used by the chat header more-menu "Delete current chat" item. */
+export function TrashIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <path
+        d="M6 2a1 1 0 00-1 1h6a1 1 0 00-1-1H6zM4 4h8v9a1 1 0 01-1 1H5a1 1 0 01-1-1V4zM3 4h10V3H3v1zM6.5 6v5M9.5 6v5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /** Settings cog — 8-tooth outline gear used in the chat header. Placeholder
  * for a future settings drawer; currently wired to a no-op onClick. */
 export function SettingsIcon({ size = 16, className }: IconProps) {

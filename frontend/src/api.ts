@@ -840,10 +840,81 @@ export interface ChatConversation {
   updatedAt: number;
 }
 
-export async function listConversations(workspaceId: string): Promise<ChatConversation[]> {
-  const res = await fetch(`${BASE}/chat/conversations?workspaceId=${encodeURIComponent(workspaceId)}`);
+export async function listConversations(
+  workspaceId: string,
+  agentId?: string,
+  sortBy: "createdAt" | "updatedAt" = "createdAt",
+): Promise<ChatConversation[]> {
+  const p = new URLSearchParams({ workspaceId, sortBy });
+  if (agentId) p.set("agentId", agentId);
+  const res = await fetch(`${BASE}/chat/conversations?${p}`);
   if (!res.ok) throw new Error("Failed to list conversations");
   return res.json();
+}
+
+/**
+ * V3.0 PR3: passive listener — 订阅别的 ChatBlock 在同 conv 上发出 / 收到的事件。
+ * 返回一个 cleanup 函数,unmount 时调以解订阅。
+ *
+ * 与 streamChatMessage 的区别:streamChatMessage 是 POST + 流式响应,自己驱动一轮;
+ * subscribeChatListen 是 GET + 持久 SSE,只接收别人 push 的事件。
+ */
+export function subscribeChatListen(
+  conversationId: string,
+  handlers: {
+    onMessagePersisted?: (data: any) => void;
+    onTurnPending?: (data: any) => void;
+    onBranchStarted?: (data: any) => void;
+    onBranchFinished?: (data: any) => void;
+    onTurnPromoted?: (data: any) => void;
+    onSynthStarted?: (data: any) => void;
+    onSynthDelta?: (data: any) => void;
+    onSynthFinished?: (data: any) => void;
+    onError?: (data: any) => void;
+    onConnected?: (data: any) => void;
+    /** generic — 任何未单独 handle 的事件走这里 */
+    onEvent?: (event: string, data: any) => void;
+  },
+): () => void {
+  const url = `${BASE}/chat/conversations/${encodeURIComponent(conversationId)}/listen`;
+  const es = new EventSource(url, { withCredentials: true });
+  const wire = (name: string, h?: (data: any) => void) => {
+    if (!h) return;
+    es.addEventListener(name, (e: MessageEvent) => {
+      try { h(JSON.parse(e.data)); } catch { /* ignore */ }
+    });
+  };
+  wire("message_persisted", handlers.onMessagePersisted);
+  wire("turn_pending", handlers.onTurnPending);
+  wire("branch_started", handlers.onBranchStarted);
+  wire("branch_finished", handlers.onBranchFinished);
+  wire("turn_promoted", handlers.onTurnPromoted);
+  wire("synth_started", handlers.onSynthStarted);
+  wire("synth_message_delta", handlers.onSynthDelta);
+  wire("synth_thinking_delta", handlers.onSynthDelta);
+  wire("synth_finished", handlers.onSynthFinished);
+  wire("error", handlers.onError);
+  wire("connected", handlers.onConnected);
+  // generic catch-all (DOM EventSource 不支持 *,只能列举常用的 fallthrough)
+  if (handlers.onEvent) {
+    const known = new Set([
+      "message_persisted", "turn_pending", "branch_started", "branch_finished",
+      "turn_promoted", "synth_started", "synth_message_delta",
+      "synth_thinking_delta", "synth_finished", "error", "connected",
+    ]);
+    es.onmessage = (e: MessageEvent) => {
+      // default "message" event — just forward
+      try { handlers.onEvent!("message", JSON.parse(e.data)); } catch { /* */ }
+    };
+    // 也监听一些 V1 事件,旁观方仍要消费 (assistant message 流式 / tool_call 等):
+    for (const name of ["start", "thinking", "message", "tool_start", "tool_result", "confirm", "done"]) {
+      if (known.has(name)) continue;
+      es.addEventListener(name, (e: MessageEvent) => {
+        try { handlers.onEvent!(name, JSON.parse(e.data)); } catch { /* */ }
+      });
+    }
+  }
+  return () => es.close();
 }
 
 export interface ChatContextSnapshot {

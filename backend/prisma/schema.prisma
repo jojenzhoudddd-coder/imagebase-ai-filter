@@ -220,12 +220,17 @@ model Conversation {
   messageCount Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  // V3.0 multi-conversation:in-flight 状态供 UI 知道当前 conv 正在 generating
+  // 还是 idle (重启时强制 reset 为 idle)
+  status       String   @default("idle") // "idle" | "generating" | "synth"
 
   agent    Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
   messages Message[]
 
   @@index([workspaceId, updatedAt(sort: Desc)])
   @@index([agentId, updatedAt(sort: Desc)])
+  // V3.0 PR1: createdAt desc list 排序索引
+  @@index([workspaceId, createdAt(sort: Desc)])
   @@map("conversations")
 }
 
@@ -238,10 +243,15 @@ model Message {
   toolCalls      Json?
   toolResult     Json?
   timestamp      DateTime @default(now())
+  // V3.0 multi-conversation
+  branchTag       String?  // "main" | "appended" | "synthesis" | null (legacy)
+  parentMessageId String?  // synthesis 指向被合成主线 user message;branch 也可指向
+  seq             Int      @default(0)  // per-conv 单调递增,前端按此排序
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, timestamp])
+  @@index([conversationId, seq])
   @@map("messages")
 }
 
@@ -283,8 +293,14 @@ model SubagentRun {
   promptTokens     Int?
   completionTokens Int?
 
+  // V3.0 multi-conversation
+  kind          String?  // "main" | "branch" | "synth" | "external" | null (legacy)
+  branchId      String?  // turnOrchestrator 的 BranchState.branchId,关联 batch 内位置
+  workflowRunId String?  // V3.0 PR5: append-batch 的 WorkflowRun id
+
   @@index([parentMessageId])
   @@index([parentConversationId, startedAt])
+  @@index([branchId])
   @@index([parentSubagentRunId])
   @@map("subagent_runs")
 }

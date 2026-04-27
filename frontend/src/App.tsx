@@ -6,7 +6,7 @@ import { SidebarToggleProvider } from "./contexts/sidebarToggleContext";
 import { WorkspaceProvider } from "./contexts/workspaceContext";
 import { ArtifactViewProvider } from "./contexts/artifactViewContext";
 import { ChatBlockProvider } from "./contexts/chatBlockContext";
-import { CanvasProvider } from "./contexts/canvasContext";
+import { CanvasProvider, useCanvas } from "./contexts/canvasContext";
 import MagicCanvas from "./components/MagicCanvas/index";
 import type { CanvasState } from "./canvas/types";
 import TableView, { TableViewHandle } from "./components/TableView/index";
@@ -2075,20 +2075,17 @@ export default function App() {
     );
   }
 
-  // Chat block 渲染:每个 chat block 都 mount 一份 ChatSidebar(共享同一个 agent
-  // 当前 active conversation)。多 chat block 显示同一对话(等同浏览器多 tab)。
-  // V2 加多会话时,block.id 可作为 key 让每个 ChatSidebar 选不同会话。
+  // Chat block 渲染:V3.0 PR1 每个 ChatBlock 独立持有 conversationId,落到 BlockState 持久化。
   const renderChatBlock = useCallback(
     (blockId: string) => (
       // 保留 .chat-part 类名 —— ChatSidebar.css 里的 padding / 内部 layout 依赖
       // 这层 wrapper(否则 input 贴底边)。在 magic canvas 里 .chat-part 没有
       // 圆角/border(走 BlockShell 提供),flex 行为仍 ok。
       <div className="chat-part mc-chat-part-canvas" key={blockId}>
-        <ChatSidebar
-          open={true}
+        <PerBlockChatSidebar
+          blockId={blockId}
           workspaceId={WORKSPACE_ID}
           agentId={AGENT_ID}
-          onClose={() => { /* canvas 层用 BlockShell 的 X 按钮关 block,这里不需要 */ }}
           onActiveTableChange={(tableId) => {
             setActiveItemType("table");
             void switchTable(tableId);
@@ -2204,4 +2201,53 @@ export default function App() {
     </WorkspaceProvider>
     </SidebarToggleProvider>
   );
+}
+
+/**
+ * V3.0 PR1: PerBlockChatSidebar — 每个 chat block 独立读写自己的 conversationId
+ * (落到 canvas BlockState),与其他同 agent 的 block 隔离。
+ *
+ * 流程:
+ * 1) 从 BlockState 读 conversationId 透传给 ChatSidebar
+ * 2) ChatSidebar 内部切换 / 新建 / 删除会话时通过 onConversationChange 回调,
+ *    本组件用 patchBlockState 写回 BlockState (canvas 自动 debounce 持久化)
+ */
+function PerBlockChatSidebar({
+  blockId,
+  workspaceId,
+  agentId,
+  onActiveTableChange,
+}: {
+  blockId: string;
+  workspaceId: string;
+  agentId: string;
+  onActiveTableChange?: (tableId: string) => void;
+}) {
+  const canvas = useCanvas();
+  const blockState = canvas.state.blockStates[blockId] as ChatBlockStateLike | undefined;
+  const conversationId = blockState?.conversationId ?? null;
+
+  const handleConversationChange = useCallback(
+    (convId: string | null) => {
+      canvas.patchBlockState(blockId, { conversationId: convId ?? undefined });
+      canvas.scheduleSave();
+    },
+    [blockId, canvas],
+  );
+
+  return (
+    <ChatSidebar
+      open={true}
+      workspaceId={workspaceId}
+      agentId={agentId}
+      conversationId={conversationId}
+      onConversationChange={handleConversationChange}
+      onClose={() => { /* BlockShell 处理 */ }}
+      onActiveTableChange={onActiveTableChange}
+    />
+  );
+}
+
+interface ChatBlockStateLike {
+  conversationId?: string;
 }

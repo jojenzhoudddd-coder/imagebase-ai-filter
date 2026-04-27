@@ -19,7 +19,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Block, BlockState, CanvasState, LayoutNode, BlockType, ArtifactBlockState } from "../canvas/types";
+import type { Block, BlockState, CanvasState, LayoutNode, BlockType, ArtifactBlockState, ChatBlockState, SystemBlockState } from "../canvas/types";
 import {
   collectLeaves,
   countLeaves,
@@ -139,8 +139,11 @@ export interface CanvasContextValue {
   moveBlockToEdge: (sourceId: string, edge: CanvasEdge) => void;
   /** 改 split ratio(resize) */
   setRatioByPath: (path: ("L" | "R")[], ratio: number) => void;
-  /** 更新某个 block 的 internal state(例:artifact 的 active / sidebar 折叠) */
-  patchBlockState: (blockId: string, patch: Partial<ArtifactBlockState>) => void;
+  /** 更新某个 block 的 internal state(例:artifact 的 active / sidebar 折叠 / chat conversationId) */
+  patchBlockState: (
+    blockId: string,
+    patch: Partial<ArtifactBlockState> | Partial<ChatBlockState> | Partial<SystemBlockState>,
+  ) => void;
   /** 触发后端持久化(防抖) */
   scheduleSave: () => void;
 }
@@ -295,11 +298,12 @@ export function CanvasProvider({
   }, []);
 
   const patchBlockState = useCallback(
-    (blockId: string, patch: Partial<ArtifactBlockState>) => {
+    // V3.0 PR1: 泛型 patch — 支持 Artifact / Chat / System 任意 block 类型
+    (blockId: string, patch: Partial<ArtifactBlockState> | Partial<ChatBlockState> | Partial<SystemBlockState>) => {
       setState((prev) => {
-        const oldS = (prev.blockStates[blockId] ?? {}) as ArtifactBlockState;
-        const newS = { ...oldS, ...patch };
-        return { ...prev, blockStates: { ...prev.blockStates, [blockId]: newS } };
+        const oldS = (prev.blockStates[blockId] ?? {}) as Record<string, unknown>;
+        const newS = { ...oldS, ...(patch as Record<string, unknown>) };
+        return { ...prev, blockStates: { ...prev.blockStates, [blockId]: newS as BlockState } };
       });
     },
     [],
