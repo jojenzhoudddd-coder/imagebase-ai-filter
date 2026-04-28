@@ -26,6 +26,8 @@ import {
   resolveActiveTools,
 } from "../../mcp-server/src/tools/index.js";
 import { allSkills, skillsByName } from "../../mcp-server/src/skills/index.js";
+import type { SkillDefinition } from "../../mcp-server/src/skills/types.js";
+import { loadUserSkills } from "./userSkill/userSkillRegistry.js";
 import type { ToolDefinition, ToolContext } from "../../mcp-server/src/tools/tableTools.js";
 import * as convStore from "./conversationStore.js";
 import type { Message, ToolCall } from "./conversationStore.js";
@@ -78,7 +80,7 @@ const WORKING_MEMORY_COMPRESS_THRESHOLD = 10;
 // conversations that pivot away from a skill's domain.
 const SKILL_EVICTION_TURNS = 10;
 
-interface ConvSkillState {
+export interface ConvSkillState {
   /** Skill names currently active for this conversation. */
   active: Set<string>;
   /** turnIndex at which each active skill was last used. */
@@ -89,7 +91,7 @@ interface ConvSkillState {
 
 const skillStateByConv = new Map<string, ConvSkillState>();
 
-function getOrInitSkillState(conversationId: string): ConvSkillState {
+export function getOrInitSkillState(conversationId: string): ConvSkillState {
   let s = skillStateByConv.get(conversationId);
   if (!s) {
     s = { active: new Set(), lastUsedTurn: new Map(), turnIndex: 0 };
@@ -98,7 +100,9 @@ function getOrInitSkillState(conversationId: string): ConvSkillState {
   return s;
 }
 
-/** Map tool-name → owning skill name (for tracking lastUsedTurn on tool invocation). */
+/** Map tool-name → owning skill name (for tracking lastUsedTurn on tool invocation).
+ *  Module-level cache covers builtin skills; user skills get merged in per-turn
+ *  via `buildSkillNameForTool(...)` below since their tool names are dynamic. */
 const skillNameForTool: Map<string, string> = (() => {
   const m = new Map<string, string>();
   for (const s of allSkills) {
@@ -107,15 +111,40 @@ const skillNameForTool: Map<string, string> = (() => {
   return m;
 })();
 
+/** Build the per-turn tool→skill map. Builtin entries are static; user
+ *  entries (`invoke_skill_workflow_*`) are added on top of the cached map. */
+export function buildSkillNameForTool(userSkills: SkillDefinition[]): Map<string, string> {
+  if (userSkills.length === 0) return skillNameForTool;
+  const m = new Map(skillNameForTool);
+  for (const s of userSkills) {
+    for (const t of s.tools) m.set(t.name, s.name);
+  }
+  return m;
+}
+
+/** Build the per-turn merged skillsByName lookup. User skills win on collision. */
+export function buildAvailableSkillsByName(
+  userSkills: SkillDefinition[],
+): Record<string, SkillDefinition> {
+  if (userSkills.length === 0) return skillsByName;
+  const merged: Record<string, SkillDefinition> = { ...skillsByName };
+  for (const s of userSkills) merged[s.name] = s;
+  return merged;
+}
+
 /**
  * Auto-activate any skill whose `triggers` match the user's turn message.
  * Mutates `state.active` in place. Called once per turn before we build the
  * tool list for ARK. Keeps the user out of the "explicit activate_skill"
  * round trip when their intent is obvious from keywords.
  */
-function autoActivateByTriggers(state: ConvSkillState, userMessage: string): string[] {
+export function autoActivateByTriggers(
+  state: ConvSkillState,
+  userMessage: string,
+  availableSkills: SkillDefinition[] = allSkills,
+): string[] {
   const added: string[] = [];
-  for (const skill of allSkills) {
+  for (const skill of availableSkills) {
     if (state.active.has(skill.name)) continue;
     const hit = skill.triggers.some((pat) =>
       typeof pat === "string" ? userMessage.includes(pat) : pat.test(userMessage)
@@ -138,10 +167,13 @@ function autoActivateByTriggers(state: ConvSkillState, userMessage: string): str
  * eviction sweep — i.e. A keeps B alive. Intentionally non-transitive
  * (see SkillDefinition.softDeps docstring).
  */
-function evictStaleSkills(state: ConvSkillState): string[] {
+export function evictStaleSkills(
+  state: ConvSkillState,
+  availableSkillsByName: Record<string, SkillDefinition> = skillsByName,
+): string[] {
   // Refresh softDep lastUsedTurn so protected skills survive this sweep.
   for (const name of state.active) {
-    const deps = skillsByName[name]?.softDeps;
+    const deps = availableSkillsByName[name]?.softDeps;
     if (!deps) continue;
     for (const dep of deps) {
       if (state.active.has(dep)) {
@@ -169,10 +201,11 @@ function evictStaleSkills(state: ConvSkillState): string[] {
  * Added P1 · cooperative skill activation for cross-skill workflows
  * (e.g. analyst-skill suggesting idea-skill before writing results).
  */
-function processSuggestActivate(
+export function processSuggestActivate(
   parsedOutput: unknown,
   state: ConvSkillState,
   logFn: (entry: Record<string, unknown>) => void,
+  availableSkillsByName: Record<string, SkillDefinition> = skillsByName,
 ): string[] {
   const hints = (parsedOutput as { _suggestActivate?: unknown } | null)?._suggestActivate;
   if (!Array.isArray(hints)) return [];
@@ -180,7 +213,7 @@ function processSuggestActivate(
   for (const h of hints) {
     const name = (h as { skill?: unknown })?.skill;
     if (typeof name !== "string") continue;
-    if (!skillsByName[name]) continue;
+    if (!availableSkillsByName[name]) continue;
     if (state.active.has(name)) continue;
     state.active.add(name);
     state.lastUsedTurn.set(name, state.turnIndex);
@@ -296,17 +329,20 @@ const META_SYSTEM_PROMPT = `# Layer 1 · Meta（OpenClaw Agent 元规则）
 //
 // Keep this tight: each skill is one line. Heavy per-tool detail stays in
 // the tools themselves once they're activated.
-function buildSkillCatalog(activeSkillNames: string[]): string {
-  if (!allSkills.length) return "";
+export function buildSkillCatalog(
+  activeSkillNames: string[],
+  availableSkills: SkillDefinition[] = allSkills,
+): string {
+  if (!availableSkills.length) return "";
   const activeSet = new Set(activeSkillNames);
   const lines: string[] = [
     "# Tier 2 · 可激活技能目录（Skill Catalog）",
     "默认只有 Tier 0（记忆 / 身份 / skill 路由）和 Tier 1（list_tables / get_table）工具。",
     "当用户的需求落在以下场景时，先调 activate_skill({name}) 把对应技能挂进来，下一轮就能调用里面的工具。",
-    "已 active 的技能会标记为 ✅；无需重复激活。",
+    "已 active 的技能会标记为 ✅；无需重复激活。带 [user] 前缀是你自己保存的技能。",
     "",
   ];
-  for (const s of allSkills) {
+  for (const s of availableSkills) {
     const flag = activeSet.has(s.name) ? "✅ " : "";
     lines.push(
       `- ${flag}**${s.name}** (${s.displayName}, ${s.tools.length} 个工具) — ${s.when}`
@@ -742,7 +778,9 @@ function buildUserMentionsLayer(mentions?: UserMention[]): string | null {
  */
 export function buildSystemText(
   layers: PrebuiltSystemLayers,
-  activeSkillNames: string[]
+  activeSkillNames: string[],
+  availableSkills: SkillDefinition[] = allSkills,
+  availableSkillsByName: Record<string, SkillDefinition> = skillsByName,
 ): string {
   const layer3Parts: string[] = [];
   if (layers.runtime) {
@@ -755,14 +793,14 @@ export function buildSystemText(
   if (layers.analystHandles) layer3Parts.push(layers.analystHandles);
   if (layers.userMentions) layer3Parts.push(layers.userMentions);
 
-  const skillCatalog = buildSkillCatalog(activeSkillNames);
+  const skillCatalog = buildSkillCatalog(activeSkillNames, availableSkills);
   const systemParts = [META_SYSTEM_PROMPT, layers.identity];
   if (skillCatalog) systemParts.push(skillCatalog);
   systemParts.push(TOOL_GUIDANCE_ZH);
 
   const activeFragments: string[] = [];
   for (const name of activeSkillNames) {
-    const frag = skillsByName[name]?.promptFragment;
+    const frag = availableSkillsByName[name]?.promptFragment;
     if (frag && frag.trim()) {
       activeFragments.push(`# Active Skill · ${name}\n${frag.trim()}`);
     }
@@ -785,7 +823,10 @@ async function assembleInput(
     requestedId: string | null | undefined;
     usedFallback: boolean;
   },
-  userMentions?: UserMention[]
+  userMentions?: UserMention[],
+  /** Skill Creator V1: optional turn-scoped merged skill list (builtin + user). */
+  availableSkills: SkillDefinition[] = allSkills,
+  availableSkillsByName: Record<string, SkillDefinition> = skillsByName,
 ): Promise<{ input: ArkInputItem[]; layers: PrebuiltSystemLayers }> {
   const [identity, snapshot, recalled, analystHandles] = await Promise.all([
     buildIdentityLayer(agentId),
@@ -797,7 +838,7 @@ async function assembleInput(
     identity, snapshot, recalled, analystHandles, runtime,
     userMentions: buildUserMentionsLayer(userMentions),
   };
-  const systemText = buildSystemText(layers, activeSkillNames);
+  const systemText = buildSystemText(layers, activeSkillNames, availableSkills, availableSkillsByName);
 
   const { messages: history } = await convStore.getMessages(conversationId);
   // Sliding window: last 20 messages (plan Phase 3.2)
@@ -1617,7 +1658,32 @@ async function* runAgentImpl(
   // ── Phase 3: skill activation ───────────────────────────────────────
   const skillState = getOrInitSkillState(conversationId);
   skillState.turnIndex += 1;
-  const autoActivated = autoActivateByTriggers(skillState, userMessage);
+  // Skill Creator V1: pull the agent's user-defined skills *once per turn*.
+  // We don't cache: enable/disable/update can happen between turns and we
+  // want the next turn to reflect them immediately. Failure to load (DB hiccup)
+  // degrades to "no user skills this turn" — never aborts the turn.
+  let userSkillsForTurn: SkillDefinition[] = [];
+  try {
+    userSkillsForTurn = await loadUserSkills(agentId);
+  } catch (err) {
+    logAgent({
+      event: "user_skills_load_failed",
+      conversationId,
+      agentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  const availableSkillsForTurn: SkillDefinition[] = [
+    ...allSkills,
+    ...userSkillsForTurn,
+  ];
+  const availableSkillsByNameForTurn = buildAvailableSkillsByName(userSkillsForTurn);
+  const skillNameForToolForTurn = buildSkillNameForTool(userSkillsForTurn);
+  const autoActivated = autoActivateByTriggers(
+    skillState,
+    userMessage,
+    availableSkillsForTurn,
+  );
   if (autoActivated.length) {
     logAgent({
       event: "skill_auto_activated",
@@ -1706,7 +1772,7 @@ async function* runAgentImpl(
     },
     abortSignal: abortSignal,
     onActivateSkill: (name: string) => {
-      if (!skillsByName[name]) return;
+      if (!availableSkillsByNameForTurn[name]) return;
       skillState.active.add(name);
       skillState.lastUsedTurn.set(name, skillState.turnIndex);
       logAgent({ event: "skill_activated", conversationId, skill: name, reason: "explicit" });
@@ -1793,7 +1859,7 @@ async function* runAgentImpl(
         workflowNodeId?: string | null;
         worktreeId?: string | null;
       }) => {
-        const activeTools = resolveActiveTools([...skillState.active]);
+        const activeTools = resolveActiveTools([...skillState.active], availableSkillsByNameForTurn);
         const stream = spawnSubagent(
           {
             modelId: sopts.modelId,
@@ -1906,7 +1972,7 @@ async function* runAgentImpl(
       // Host's first spawn → depth=1 (default); subagent's spawn → depth=2.
       _depth?: number;
     }) => {
-      const activeTools = resolveActiveTools([...skillState.active]);
+      const activeTools = resolveActiveTools([...skillState.active], availableSkillsByNameForTurn);
       // Resolve the parent-message id we'll attach the subagent run to.
       // For PR3 V1 we don't have it yet (the host's user message is
       // persisted at end-of-turn) — use the conversationId + a synthetic
@@ -1980,6 +2046,8 @@ async function* runAgentImpl(
     [...skillState.active],
     { model, requestedId: storedModelId, usedFallback },
     ctx.userMentions,
+    availableSkillsForTurn,
+    availableSkillsByNameForTurn,
   );
   // Track which skills the system prompt currently reflects so we only
   // rebuild when the set actually changes (cheap guard; string concat is
@@ -2029,7 +2097,7 @@ async function* runAgentImpl(
     // round because an `activate_skill` call in this very turn should
     // expose that skill's tools on the NEXT round.
     toolCtx.activeSkills = [...skillState.active];
-    const activeTools = resolveActiveTools(toolCtx.activeSkills);
+    const activeTools = resolveActiveTools(toolCtx.activeSkills, availableSkillsByNameForTurn);
 
     // Rebuild the system prompt when the active skill set changed since
     // last round. Without this the newly-activated skill's promptFragment
@@ -2040,7 +2108,12 @@ async function* runAgentImpl(
     // field which also tells the model to continue (the two work together).
     const nowSkillSnapshot = [...skillState.active].sort().join("|");
     if (nowSkillSnapshot !== lastPromptSkillSnapshot) {
-      const rebuilt = buildSystemText(prebuiltLayers, [...skillState.active]);
+      const rebuilt = buildSystemText(
+        prebuiltLayers,
+        [...skillState.active],
+        availableSkillsForTurn,
+        availableSkillsByNameForTurn,
+      );
       input[0] = { role: "system", content: [{ type: "input_text", text: rebuilt }] };
       lastPromptSkillSnapshot = nowSkillSnapshot;
     }
@@ -2258,8 +2331,10 @@ async function* runAgentImpl(
         try {
           const out = await tool.handler(parsedArgs, toolCtx);
           toolOutput = out;
-          // Bump lastUsedTurn on the owning skill, if any.
-          const owningSkill = skillNameForTool.get(fc.name);
+          // Bump lastUsedTurn on the owning skill, if any. Use the per-turn
+          // map so user-skill-bundled tools (`invoke_skill_workflow_*`) also
+          // count toward their owner's idle counter.
+          const owningSkill = skillNameForToolForTurn.get(fc.name);
           if (owningSkill && skillState.active.has(owningSkill)) {
             skillState.lastUsedTurn.set(owningSkill, skillState.turnIndex);
           }
@@ -2343,8 +2418,11 @@ async function* runAgentImpl(
           // Cooperative skill activation — tools can suggest follow-up
           // skills via `_suggestActivate: [{skill, reason}]`. Activate
           // immediately so the next round's tool list includes them.
-          processSuggestActivate(parsed, skillState, (entry) =>
-            logAgent({ ...entry, conversationId }),
+          processSuggestActivate(
+            parsed,
+            skillState,
+            (entry) => logAgent({ ...entry, conversationId }),
+            availableSkillsByNameForTurn,
           );
           const marker = parsed?._stream;
           if (marker && typeof marker === "object") {
@@ -2534,7 +2612,7 @@ async function* runAgentImpl(
     });
 
   // End-of-turn: drop skills that haven't been used for N turns.
-  const evicted = evictStaleSkills(skillState);
+  const evicted = evictStaleSkills(skillState, availableSkillsByNameForTurn);
   if (evicted.length) {
     logAgent({ event: "skill_evicted", conversationId, skills: evicted, reason: "idle_turns" });
   }
@@ -2639,11 +2717,21 @@ async function* resumeAfterConfirmImpl(
   // it defensively consistent), activation callbacks still mutate the same
   // state the next turn will read.
   const resumeSkillState = getOrInitSkillState(ctx.conversationId);
+  // Load user skills for the resume so onActivateSkill knows about names that
+  // only exist in this agent's UserSkill table (e.g. user skill became danger
+  // and was deferred to this confirmation round). Best-effort.
+  let resumeUserSkills: SkillDefinition[] = [];
+  try {
+    resumeUserSkills = await loadUserSkills(resumeAgentId);
+  } catch {
+    /* ignore */
+  }
+  const resumeAvailableSkillsByName = buildAvailableSkillsByName(resumeUserSkills);
   const resumeToolCtx: ToolContext = {
     agentId: resumeAgentId,
     activeSkills: [...resumeSkillState.active],
     onActivateSkill: (name: string) => {
-      if (!skillsByName[name]) return;
+      if (!resumeAvailableSkillsByName[name]) return;
       resumeSkillState.active.add(name);
       resumeSkillState.lastUsedTurn.set(name, resumeSkillState.turnIndex);
     },
@@ -2654,7 +2742,8 @@ async function* resumeAfterConfirmImpl(
   };
   // Bump lastUsedTurn for the owning skill so it doesn't get evicted just
   // because the confirmation round-tripped across turns.
-  const owningSkill = skillNameForTool.get(pending.tool);
+  const resumeSkillNameForTool = buildSkillNameForTool(resumeUserSkills);
+  const owningSkill = resumeSkillNameForTool.get(pending.tool);
   if (owningSkill && resumeSkillState.active.has(owningSkill)) {
     resumeSkillState.lastUsedTurn.set(owningSkill, resumeSkillState.turnIndex);
   }

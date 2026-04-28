@@ -341,6 +341,49 @@ model WorkflowRun {
   @@map("workflow_runs")
 }
 
+// ─── User-defined Skill (V1: agent-level only) ─────────────────────────────
+// 用户/Agent 自助创建的 skill 容器。三类资产任意非空即有效：
+//   - promptFragment: 注入 system prompt 的策略/术语片段
+//   - workflowDocs[]: 一组持久化的 WorkflowDoc DSL，激活后变成 invoke_skill_workflow_<id>_<i> 工具
+//   - toolWhitelist[]: 激活时可用的 tool 白名单（V2 启用）
+// scriptHandlers (确定性代码) 留给 V2，需要 isolated-vm sandbox。
+// 详见 docs/skill-creator-plan.md。
+
+model UserSkill {
+  id          String   @id @default(cuid())
+  /// V1 only "agent"; V2 will add "workspace" / "global"
+  ownerType   String   // "agent" | "workspace" | "global"
+  /// agentId / workspaceId / null (global preset 用 null，V1 永远是 agentId)
+  ownerId     String
+  name        String
+  description String   @default("") @db.Text
+  /// string[] — 触发关键词（≥1 非空，≤20 个）
+  triggers    Json
+
+  // ── 三类资产 (任意组合，任意非空即有效) ──
+  promptFragment String? @db.Text
+  /// WorkflowDoc[]（复用 services/workflow/types.ts 的 schema），≤5 个
+  workflowDocs   Json?
+  /// string[] — 激活时只允许这些 tool（V2 启用，V1 写库不消费）
+  toolWhitelist  Json?
+
+  // ── 来源溯源 (save_workflow_run_as_skill 写入) ──
+  sourceConversationId String?
+  sourceWorkflowRunId  String?
+
+  // ── 状态 + 使用统计 ──
+  enabled       Boolean   @default(true)
+  invokedCount  Int       @default(0)
+  lastInvokedAt DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([ownerType, ownerId])
+  @@index([enabled])
+  @@map("user_skills")
+}
+
 // ─── 设计稿（SVG 矢量画布） ───
 
 model Design {

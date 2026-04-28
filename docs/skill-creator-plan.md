@@ -1,8 +1,10 @@
-# Skill Creator + Workflow DSL 持久化 方案讨论稿
+# Skill Creator + Workflow DSL 持久化 方案
 
-> 状态:讨论中,未排期
+> **状态:V1 已上线 (2026-04-28)**
 > 议题来源:用户问"workflow DSL 是否能持久化复用",自然延展到"用户级 skill 创建管理"
 > 决策原则:把 workflow 复用吸收进更高维的 Skill 容器,而不是单独做 SavedWorkflow
+>
+> **V1 范围 (实际交付)**:promptFragment + workflowDocs + agent 级 ownership + 6 个 Tier 0 MCP 工具 + 全部对话内完成(无前端 UI)。`scriptHandlers` 留 V2,workspace / global 共享留 V2。详见 `docs/changelog.md` 2026-04-28 条目。
 
 ---
 

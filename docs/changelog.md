@@ -5,6 +5,76 @@
 
 ---
 
+## 2026-04-28 (Skill Creator V1)
+
+### feat(agent): user-defined skills — Agent 在对话中自助保存可复用能力
+
+**分支**: `AIWorkBeta`
+
+把 Agent 一段成功的工作流封装成可复用的 user skill。核心洞察:**Skill = Workflow 的超集** —— 不单独做 SavedWorkflow,而是把 workflow 复用作为 Skill 的一种 asset 类型,统一通过现有 skill 触发机制激活。
+
+#### 数据层 (PR1)
+
+- 新 Prisma model `UserSkill`(id / ownerType / ownerId / name / triggers JSONB / promptFragment Text / workflowDocs JSONB / toolWhitelist JSONB / sourceConversationId / sourceWorkflowRunId / enabled / invokedCount / lastInvokedAt + createdAt/updatedAt + 索引 (ownerType,ownerId) + (enabled))
+- Migration `20260428180000_add_user_skill`
+- `services/userSkill/userSkillStore.ts` —— Prisma CRUD + 4 类校验:name (1-60 字符,无前后空格 / 无斜杠) / triggers (1-20 个非空) / promptFragment (≤8KB) / workflowDocs (≤5 个,每个跑结构 + 危险关键字双校验)
+- `services/userSkill/workflowDocValidator.ts` —— DSL 入库前安全把关:拒 eval / Function / process.exit / require / import / __proto__ / `<script` / child_process / fs.* 等,≤50 节点 + ≤32KB 字符串字段 + ≤8 层嵌套 + 引用完整性
+
+#### 集成层 (PR2)
+
+- `services/userSkill/userSkillRegistry.ts` —— `loadUserSkills(agentId)` 拉所有 enabled user skill,经 `toSkillDefinition()` 适配成 SkillDefinition;每个 `workflowDocs[i]` 转成 `invoke_skill_workflow_<userSkillId>_<docIndex>` 工具,handler 闭包派发 `ctx.executeWorkflow({templateId:"custom", params:{customDoc, userSkillId, userSkillName}})`,成功后 fire-and-forget `recordUserSkillInvocation()` 累计 invokedCount + 写 lastInvokedAt
+- `chatAgentService.ts` 主循环 per-turn 调一次 `loadUserSkills(agentId)`,把 user skills merge 进 builtin 后传递给 `autoActivateByTriggers` / `evictStaleSkills` / `processSuggestActivate` / `buildSkillCatalog` / `buildSystemText` / `assembleInput`(全部加 `availableSkills` + `availableSkillsByName` 第二参数,默认 fallback module-level)
+- `mcp-server/src/tools/index.ts` 的 `resolveActiveTools(activeSkillNames, extraSkillsByName?)` 加第二参数,user skills 在 lookup 中优先于 builtin(同名时 user skill 覆盖)
+- DB 失败时降级到"本轮无 user skill",不让 turn 崩
+
+#### Agent 自助管理工具 (PR3)
+
+新增 6 个 Tier 0 工具 (`mcp-server/src/tools/userSkillTools.ts`),跟 update_profile / create_memory 同级:
+
+| 工具 | 用途 |
+|---|---|
+| `create_skill` | 从零保存一个 skill (promptFragment / workflowDocs / toolWhitelist 任意一个非空) |
+| `list_my_skills` | 列出自己的 skill (id / name / triggers / enabled / invokedCount / assetSummary) |
+| `update_skill` | 局部 patch,改 workflowDocs 重新跑校验 |
+| `delete_skill` ⚠ | 走危险确认流,deleteSummary 含累计调用次数 |
+| `enable_skill(id, bool)` | **跨对话持久 boolean**(关闭后所有对话不再触发匹配,记录保留)。跟 `activate_skill`(仅当前对话内存激活)正交 |
+| `save_workflow_run_as_skill` | 一键转存历史 `WorkflowRun.docJson` 为 skill,自动写入"触发后调 invoke_skill_workflow_<skillId>_0"提示;host owner 必须匹配 + status=success |
+
+#### 用户视角
+
+```
+用户:"调研 React 19 RC 状态,然后写到 idea"
+Agent: ... 用 web_search + web_fetch + append_to_idea 完成 ...
+用户:"以后我说'调研 X 技术',你都按这个流程来"
+Agent → create_skill({name:"tech-research", triggers:["调研","research"],
+                     promptFragment:"用户说'调研 X'时,先 web_search 最新 release notes...",
+                     toolWhitelist:["web_search","web_fetch","create_idea","append_to_idea"]})
+→ 入库
+→ 任何对话只要消息含"调研"就自动激活,Agent 看到注入的 promptFragment
+```
+
+#### 测试
+
+3 个独立测试驱动 (`backend/scripts/skill-pr{1,2,3}-test.ts`),共 89 个用例:
+
+| | 用例 | 结果 |
+|---|---|---|
+| PR1 (Store + DSL validator) | SK-101~119, SK-150~157 | 26 PASS / 1 SKIPPED |
+| PR2 (registry + chatAgent 接入) | SK-201~214, SK-250~255 | 20 PASS |
+| PR3 (6 Tier 0 工具 + E2E) | SK-301~361, SK-E01~E08 | 39 PASS / 3 SKIPPED |
+
+总 **85 PASS / 4 SKIPPED / 0 FAIL**(SKIPPED 都是 loop-level 测不了 / 上游已覆盖 / 需 pm2 重启)。
+
+#### V1 边界 (留 V2)
+
+- ❌ `scriptHandlers`(确定性代码)需 isolated-vm sandbox,V1 砍掉
+- ❌ `ownerType="workspace"` / `"global"` 共享 / preset
+- ❌ 前端 `/settings/skills` UI(全部 Tier 0 工具支持对话内完成)
+
+详见 `docs/skill-creator-plan.md`(状态从"讨论中"→"V1 已上线")。
+
+---
+
 ## 2026-04-27 (Agent Workflow V2.5)
 
 ### feat(workflow): 自由编排 + concurrent-data 真实现 + per-artifact 写串行化 + LLM condition + 安全表达式增强

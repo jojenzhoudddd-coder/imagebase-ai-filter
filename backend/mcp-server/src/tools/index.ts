@@ -28,6 +28,7 @@ import { metaTools } from "./metaTools.js";
 import { memoryTools } from "./memoryTools.js";
 import { skillRouterTools } from "./skillRouterTools.js";
 import { cronTools } from "./cronTools.js";
+import { userSkillTools } from "./userSkillTools.js";
 import { ideaNavTools, ideaTools } from "./ideaTools.js";
 import { mentionTools } from "./mentionTools.js";
 import { designNavTools } from "./designTools.js";
@@ -99,12 +100,16 @@ const TIER1_NAMES = new Set([
   "web_fetch",
 ]);
 
-/** Tier 0 — identity + memory + skill routing + cron. Always loaded. */
+/** Tier 0 — identity + memory + skill routing + cron + user-skill management.
+ *  Always loaded. Skill Creator V1 adds 6 user-skill management tools so the
+ *  Agent can create / list / update / delete / toggle / save-from-run user
+ *  skills in any conversation. */
 export const tier0Tools: ToolDefinition[] = [
   ...metaTools,
   ...memoryTools,
   ...skillRouterTools,
   ...cronTools,
+  ...userSkillTools,
 ];
 
 /** Tier 1 — core workspace navigation. Always loaded. */
@@ -124,12 +129,22 @@ export const tier1Tools: ToolDefinition[] = [
 /**
  * Resolve the tool list for an in-process agent turn given the active skills.
  * External MCP stdio callers use `allTools` directly.
+ *
+ * Skill Creator V1: optional `extraSkillsByName` lets the chat agent loop
+ * splice in user-defined skills (loaded per-turn from DB) without polluting
+ * the module-level builtin registry. User-skill names in `activeSkillNames`
+ * are looked up there first, falling back to builtin `skillsByName`.
+ * On name collision, user skill wins (intentional — user customisation is
+ * the entire point).
  */
-export function resolveActiveTools(activeSkillNames: string[] = []): ToolDefinition[] {
+export function resolveActiveTools(
+  activeSkillNames: string[] = [],
+  extraSkillsByName?: Record<string, import("../skills/types.js").SkillDefinition>,
+): ToolDefinition[] {
   const active: ToolDefinition[] = [...tier0Tools, ...tier1Tools];
   const seen = new Set(active.map((t) => t.name));
   for (const name of activeSkillNames) {
-    const skill = skillsByName[name];
+    const skill = extraSkillsByName?.[name] ?? skillsByName[name];
     if (!skill) continue;
     for (const t of skill.tools) {
       if (seen.has(t.name)) continue; // dedupe (shouldn't happen but defensive)
