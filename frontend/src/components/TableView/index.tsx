@@ -276,7 +276,14 @@ function TextEditor({
   const commit = () => {
     if (committedRef.current) return;
     committedRef.current = true;
-    const v = draft.trim();
+    // Source of truth: prefer the DOM <input>.value over `draft` state.
+    // Reasoning: under Chinese IME composition or when blur fires in the
+    // same tick as a final keystroke, React state may not have flushed the
+    // last onChange event yet — but the DOM value always reflects what
+    // the user actually sees. Falling back to draft if the ref is gone
+    // (already-unmounted edge case).
+    const raw = inputRef.current?.value ?? draft;
+    const v = raw.trim();
     if (field.type === "Number") {
       onCommit(v === "" ? null : Number(v));
     } else {
@@ -792,6 +799,41 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   const { t } = useTranslation();
   const toast = useToast();
   const [editing, setEditing] = useState<EditingState | null>(null);
+
+  /**
+   * Close the active cell editor without losing the user's typed draft.
+   *
+   * Background: the cell editors (TextEditor / SelectEditor / DateEditor /
+   * UserEditor) commit their draft via the input's `onBlur` handler. When
+   * we call `setEditing(null)` directly, React schedules the editor to
+   * unmount on the next commit — before the browser fires the natural
+   * blur event on the focused input. The unmount removes the input from
+   * the DOM, so `onBlur` never runs, and the last few keystrokes the user
+   * just typed are lost.
+   *
+   * Workaround: synchronously blur the currently-focused input first.
+   * This fires the editor's `onBlur` synthetic-event handler, which calls
+   * `commit()` → `onCommit(draft)` → `commitEdit()` → `setEditing(null)`,
+   * cleanly persisting the latest state. The explicit `setEditing(null)`
+   * after acts as a safety net for editors that don't auto-clear (e.g.
+   * the user is editing but the focused element is not their <input>).
+   *
+   * Use this *every time* we want to cancel-or-close an in-flight edit.
+   */
+  const dismissEditor = useCallback(() => {
+    if (typeof document !== "undefined") {
+      const active = document.activeElement as HTMLElement | null;
+      if (
+        active &&
+        (active.tagName === "INPUT" || active.tagName === "TEXTAREA")
+      ) {
+        // Synchronously fires the editor's onBlur → commit. After this
+        // returns, React state will already reflect the saved draft.
+        active.blur();
+      }
+    }
+    setEditing(null);
+  }, []);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [selectedColIds, setSelectedColIds] = useState<Set<string>>(new Set());
   const [colWidths, setColWidths] = useState<Record<string, number>>(loadColWidths);
@@ -1024,7 +1066,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (tableRef.current && !tableRef.current.contains(e.target as Node)) {
-        if (editing) setEditing(null);
+        if (editing) dismissEditor();
         if (selectedColIds.size > 0) setSelectedColIds(new Set());
         if (cellRange) setCellRange(null);
       }
@@ -1154,8 +1196,10 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     if (editing && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.closest(".cell-editor-wrap"))) {
       return;
     }
-    // If currently editing a different cell, exit edit mode first
-    if (editing) setEditing(null);
+    // If currently editing a different cell, exit edit mode first.
+    // dismissEditor flushes the draft via blur() before unmounting so a
+    // user clicking-away mid-typing keeps every character they've entered.
+    if (editing) dismissEditor();
 
     // Check if clicking on an already-selected single cell (for "click again to edit")
     const wasAlreadySelected = cellRange &&
@@ -1181,7 +1225,10 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       if (!cellDragRef.current.dragging && (Math.abs(dx) > CELL_DRAG_THRESHOLD || Math.abs(dy) > CELL_DRAG_THRESHOLD)) {
         cellDragRef.current.dragging = true;
         justCellDraggedRef.current = true;
-        setEditing(null); // cancel any pending edit
+        // Drag started while editing — flush the in-progress draft before
+        // unmounting so dragging into a multi-cell selection doesn't eat
+        // the half-typed text.
+        dismissEditor();
         document.body.style.userSelect = "none";
       }
 

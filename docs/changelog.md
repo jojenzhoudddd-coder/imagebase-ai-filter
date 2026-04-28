@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-04-28 (Hotfix · 编辑单元格丢字)
+
+### fix(table): 单元格编辑时快速点击切走丢字
+
+**症状**:用户在表格单元格输入文字过程中,点击其他单元格(或表格外)切走,最近输入的几个字符消失。
+
+**根因**:
+
+`TableView/index.tsx` 在 3 处直接调用 `setEditing(null)`:
+1. `handleCellMouseDown` 切到另一单元格时
+2. 点表格外区域时
+3. 拖动选区跨过阈值时
+
+`setEditing(null)` 让 React 在下一次 commit 卸载 `<input>`,这发生在浏览器的 `blur` 事件之前。卸载后输入框已不在 DOM 中,**`onBlur` 处理器不再运行**,而 `commit()` 写回正是在 `onBlur` 里 —— 草稿丢了。
+
+中文输入法补刀:即便 onBlur 跑起来,React 状态(`draft`)也可能比 DOM 的 `.value` 落后一拍,因为 `compositionend` 触发的 `onChange` 还没 flush。
+
+**修复**:
+
+- 新增 `dismissEditor()` helper:在 setEditing(null) 之前 **先 `document.activeElement.blur()`**,同步触发当前 input 的 onBlur → commit → onCommit → setEditing(null)。3 处 setEditing(null) 全部改用 dismissEditor。
+- TextEditor.commit() 改读 `inputRef.current?.value`(DOM value 是真值,IME 提交时立即同步),`draft` 状态作为 fallback。覆盖 IME 提交后立刻 blur 的边角场景。
+
+效果:不论用户怎么快速点击切走 / 中文 IME 提交时机如何,最后一字符都进库。
+
+---
+
 ## 2026-04-28 (Hotfix · 删字段卡死)
 
 ### fix(table): 删字段时遇到旧 sort 形状 → 后端 throw → nginx 504 → 前端 JSON parse fail
