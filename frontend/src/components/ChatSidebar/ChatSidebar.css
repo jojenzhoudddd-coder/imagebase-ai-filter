@@ -290,7 +290,8 @@
   bottom: 100%;
   width: 550px;
   height: 400px;
-  transform: scale(0.4);
+  /* V4.7.4 缩小到原来的 80% (= 0.4 * 0.8 = 0.32) → 实际 ~176x128 */
+  transform: scale(0.32);
   transform-origin: bottom right;
   z-index: -1;
   pointer-events: none;
@@ -301,6 +302,11 @@
 @container (min-width: 600px) {
   .chat-welcome-mascots {
     display: block;
+  }
+  /* V4.7.4 #2: 容器够宽显示 mascots 时,给推荐 prompt 行右侧留出 mascot 宽度
+     (176 + 24 gap = 200px),避免视觉打架。窄 block 不显示 mascots 时仍占满。 */
+  .chat-welcome-presets-wrap {
+    padding-right: 200px;
   }
 }
 
