@@ -242,8 +242,8 @@
   min-height: 24px;
 }
 
-/* V4.6: row 容器,stack 在中间居中,mascots absolute 贴右侧。
-   container-type 让里头的 mascots 用 container query 判断是否有足够空间。 */
+/* V4.6 / V4.7: row 容器,stack 居中。container-type 让 mascots 用容器宽度判断
+   是否显示;mascots 锚定在 stack 内部,固定在输入框上方右对齐。 */
 .chat-welcome-row {
   position: relative;
   width: 100%;
@@ -253,34 +253,53 @@
 }
 
 .chat-welcome-stack {
+  position: relative;          /* V4.7 mascots 锚到 stack 右下 */
   display: flex;
   flex-direction: column;
-  align-items: stretch;       /* 内部子元素左对齐 input 边缘 */
+  align-items: stretch;        /* 内部子元素左对齐 input 边缘 */
   gap: 24px;
   width: 100%;
   max-width: 800px;
 }
 
-/* V4.6 4 个 mascot:贴 row 容器右下角,缩到 0.4 (~220×160)。
-   container query:row 至少 1080px 宽才显示(即 stack 800 + gap 32 + mascot 220 + 28px buffer)。
-   再窄就 display:none,避免叠加 stack。 */
+/* V4.7 4 个 mascot:固定在输入框上方,右对齐输入框,图层位于推荐 prompt 之下。
+   - position: absolute 锚到 stack 内部 (stack 是 relative)
+   - right: 0 (stack 右缘 = 输入框右缘)
+   - bottom: 76px (输入框约 60px + 16px gap,mascot 底边贴住输入框上沿)
+   - z-index: 0,presets 行 z-index 高 → presets chip 覆盖 mascots
+   - 仅在 chat block 较宽 (≥ 600px) 时显示,避免压到 stack 主轴 */
 .chat-welcome-mascots {
   position: absolute;
   right: 0;
-  bottom: 0;
+  bottom: 76px;
   width: 550px;
   height: 400px;
   transform: scale(0.4);
   transform-origin: bottom right;
+  z-index: 0;
   pointer-events: none;
   user-select: none;
-  display: none;  /* 默认隐藏 */
+  display: none;  /* 默认隐藏,容器够宽再显示 */
 }
 
-@container (min-width: 1080px) {
+@container (min-width: 600px) {
   .chat-welcome-mascots {
     display: block;
   }
+}
+
+/* presets 行抬高 z-index,覆盖 mascots 重叠区域 */
+.chat-welcome-presets-row,
+.chat-welcome-presets-wrap {
+  position: relative;
+  z-index: 1;
+}
+
+/* hero / input 也设 z-index 1 保证 mascots 处于最底层 */
+.chat-welcome-hero,
+.chat-welcome-stack > .chat-input-wrap {
+  position: relative;
+  z-index: 1;
 }
 
 .chat-welcome-hero {
