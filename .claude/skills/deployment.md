@@ -95,6 +95,18 @@ pm2 monit                           # CPU/memory dashboard
 
 Config file: `/etc/nginx/conf.d/ai-filter.conf`
 
+### HTTP/2 (required — multi-block SSE depends on it)
+
+The `listen 443 ssl http2;` line **must** include `http2`. Without it, the
+browser falls back to HTTP/1.1 and is capped at 6 concurrent connections per
+origin. Magic Canvas multi-block dashboards open one SSE per block
+(`useWorkspaceSync` + `useTableSync` × N + `useIdeaSync` × M + chat stream),
+which saturates the pool and starves regular API fetches (sidebar load,
+artifact switch). HTTP/2 multiplexes everything over one TCP connection — no
+6-cap, no starvation. Verify with `curl -I https://www.imagebase.cc/...` →
+expect `HTTP/2 200`. Re-added 2026-04-28 after the original certbot-managed
+config dropped the `http2` token during a renew.
+
 ### Key Settings for SSE
 ```nginx
 # SSE long connections require these settings:

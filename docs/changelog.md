@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-04-28 (Hotfix · 多 block SSE 把连接池占满)
+
+### perf(nginx): 启用 HTTP/2 — 多 block 不再饿死 sidebar / API 请求
+
+**症状**:用户在 Magic Canvas 打开多个 block 后,sidebar 切换变慢、新加载的 API 响应也间歇性卡。怀疑 block 之间共享了什么频率限制。
+
+**根因**:不是后端限流,是 **HTTP/1.1 浏览器连接池上限**。
+
+每个 block / artifact 都开自己的 SSE 长连接:
+- `useWorkspaceSync` × 1 (sidebar 数据同步)
+- `useTableSync` × N (每个表格 block 一个)
+- `useIdeaSync` × M (每个打开的 Idea 编辑器一个)
+- chat stream × 1 (生成中)
+
+浏览器在 HTTP/1.1 下对单个 origin **硬限 6 条并发连接**。打开 4 个 table block + 1 idea + workspace + chat ≈ 6,**全部 SSE 占满,后续 fetch 排队**。sidebar 切换的 `GET /api/workspaces/:id/tables` 等就只能等空闲连接释放,延迟肉眼可感。
+
+**修复**:nginx `listen 443 ssl;` → `listen 443 ssl http2;`,nginx -t + reload。
+
+HTTP/2 在单个 TCP 连接上多路复用,**没有 6 条上限**。SSE 全部走在同一条 TCP 连接的不同 stream 上,sidebar 的 fetch 与 SSE 流并行,不再相互饿死。
+
+**验证**:`curl -I https://www.imagebase.cc/...` 返回 `HTTP/2 200` ✅。
+
+**未做**:HTTP/3 / QUIC(nginx 主线版要 1.25+ 才稳)留给未来。HTTP/2 已经覆盖 99% 的浏览器场景。
+
+---
+
 ## 2026-04-28 (Hotfix · 编辑单元格丢字)
 
 ### fix(table): 单元格编辑时快速点击切走丢字
