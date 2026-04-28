@@ -232,13 +232,14 @@
 }
 .chat-welcome-centered::-webkit-scrollbar { display: none; }
 .chat-welcome-centered::before {
+  /* V4.7.5: 整体上移 5% → 比例从 40/60 改为 35/65 */
   content: "";
-  flex: 4;
+  flex: 35;
   min-height: 24px;
 }
 .chat-welcome-centered::after {
   content: "";
-  flex: 6;
+  flex: 65;
   min-height: 24px;
 }
 
