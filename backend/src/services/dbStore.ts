@@ -486,6 +486,95 @@ export async function updateField(tableId: string, fieldId: string, dto: UpdateF
   return field;
 }
 
+/**
+ * Strip a set of field references from one view's filter / sort / group /
+ * fieldOrder / hiddenFields, defensively handling every malformed shape
+ * we've seen in the wild:
+ *   - `view.sort` truthy but `view.sort.rules` undefined (legacy
+ *     `{conditions, direction}` shape, prod 2026-04-28)
+ *   - `view.filter` undefined or `view.filter.conditions` undefined
+ *   - `view.group.rules` not an array
+ *
+ * Returns nothing — mutates `view` in place. Always leaves canonical shape:
+ *   filter:{ logic, conditions:[] } / sort:{ rules:[] } / group:{ rules:[] }.
+ *
+ * Without these guards, a single corrupted view crashes deleteField /
+ * batchDeleteFields with `Cannot read properties of undefined (reading 'filter')`,
+ * the unhandled rejection escapes the route handler (Express 4 doesn't
+ * auto-catch async throws), and the request hangs until nginx upstream
+ * timeout returns an HTML 504 to the browser. We've gotten one of those
+ * already — see docs/changelog.md 2026-04-28 hotfix.
+ */
+function stripFieldRefsFromView(view: View, fieldIds: ReadonlySet<string>) {
+  // Filter — re-create the object if any piece is malformed
+  if (!view.filter || typeof view.filter !== "object") {
+    view.filter = { logic: "and", conditions: [] };
+  } else if (!Array.isArray(view.filter.conditions)) {
+    view.filter.conditions = [];
+  } else {
+    view.filter.conditions = view.filter.conditions.filter(
+      (c) => c && !fieldIds.has(c.fieldId),
+    );
+  }
+  // Sort — drop entirely if shape is unrecoverable; otherwise normalize rules.
+  if (view.sort) {
+    if (!Array.isArray((view.sort as any).rules)) {
+      // Legacy shape repair — old data sometimes stored `{conditions, direction}`
+      // here. Best-effort migration: try to lift `conditions` into `rules`,
+      // otherwise just blank it.
+      const legacy = (view.sort as any).conditions;
+      if (Array.isArray(legacy)) {
+        view.sort = {
+          rules: legacy
+            .filter((c: any) => c && c.fieldId && !fieldIds.has(c.fieldId))
+            .map((c: any) => ({
+              fieldId: String(c.fieldId),
+              order: c.order === "desc" || c.direction === "desc" ? "desc" : "asc",
+            })),
+        };
+      } else {
+        view.sort = { rules: [] };
+      }
+    } else {
+      view.sort.rules = view.sort.rules.filter(
+        (r) => r && !fieldIds.has(r.fieldId),
+      );
+    }
+  }
+  // Group — same shape recovery as sort
+  if (view.group) {
+    if (!Array.isArray((view.group as any).rules)) {
+      const legacy = (view.group as any).conditions;
+      view.group = {
+        rules: Array.isArray(legacy)
+          ? legacy
+              .filter((c: any) => c && c.fieldId && !fieldIds.has(c.fieldId))
+              .map((c: any) => ({
+                fieldId: String(c.fieldId),
+                order:
+                  c.order === "desc" || c.direction === "desc" ? "desc" : "asc",
+              }))
+          : [],
+      };
+    } else {
+      view.group.rules = view.group.rules.filter(
+        (r) => r && !fieldIds.has(r.fieldId),
+      );
+    }
+  }
+  // Field-order arrays — coerce non-arrays to empty
+  if (view.fieldOrder !== undefined) {
+    view.fieldOrder = Array.isArray(view.fieldOrder)
+      ? view.fieldOrder.filter((id) => typeof id === "string" && !fieldIds.has(id))
+      : [];
+  }
+  if (view.hiddenFields !== undefined) {
+    view.hiddenFields = Array.isArray(view.hiddenFields)
+      ? view.hiddenFields.filter((id) => typeof id === "string" && !fieldIds.has(id))
+      : [];
+  }
+}
+
 export async function deleteField(tableId: string, fieldId: string): Promise<boolean> {
   const row = await prisma.table.findUnique({ where: { id: tableId } });
   if (!row) return false;
@@ -499,20 +588,9 @@ export async function deleteField(tableId: string, fieldId: string): Promise<boo
 
   // Remove from views' filters/sorts/fieldOrder/hiddenFields
   const views = (row.views ?? []) as View[];
+  const ids = new Set([fieldId]);
   for (const view of views) {
-    view.filter.conditions = view.filter.conditions.filter(c => c.fieldId !== fieldId);
-    if (view.sort) {
-      view.sort.rules = view.sort.rules.filter(r => r.fieldId !== fieldId);
-    }
-    if (view.group) {
-      view.group.rules = view.group.rules.filter(r => r.fieldId !== fieldId);
-    }
-    if (view.fieldOrder) {
-      view.fieldOrder = view.fieldOrder.filter(id => id !== fieldId);
-    }
-    if (view.hiddenFields) {
-      view.hiddenFields = view.hiddenFields.filter(id => id !== fieldId);
-    }
+    stripFieldRefsFromView(view, ids);
   }
 
   // Remove from auto number counters
@@ -606,21 +684,9 @@ export async function batchDeleteFields(tableId: string, fieldIds: string[]): Pr
   // Remove fields from table
   const remainingFields = fields.filter(f => !toDeleteIds.has(f.id));
 
-  // Clean views
+  // Clean views — uses defensive normalizer (see stripFieldRefsFromView).
   for (const view of views) {
-    view.filter.conditions = view.filter.conditions.filter(c => !toDeleteIds.has(c.fieldId));
-    if (view.sort) {
-      view.sort.rules = view.sort.rules.filter(r => !toDeleteIds.has(r.fieldId));
-    }
-    if (view.group) {
-      view.group.rules = view.group.rules.filter(r => !toDeleteIds.has(r.fieldId));
-    }
-    if (view.fieldOrder) {
-      view.fieldOrder = view.fieldOrder.filter(id => !toDeleteIds.has(id));
-    }
-    if (view.hiddenFields) {
-      view.hiddenFields = view.hiddenFields.filter(id => !toDeleteIds.has(id));
-    }
+    stripFieldRefsFromView(view, toDeleteIds);
   }
 
   // Remove auto number counters

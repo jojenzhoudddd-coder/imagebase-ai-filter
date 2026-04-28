@@ -5,6 +5,35 @@
 
 ---
 
+## 2026-04-28 (Hotfix · 删字段卡死)
+
+### fix(table): 删字段时遇到旧 sort 形状 → 后端 throw → nginx 504 → 前端 JSON parse fail
+
+**症状**: 用户 Jojenzhou 在「需求管理」表删字段,前端等很久后报
+`SyntaxError: Unexpected token '<', "<html> <h"... is not valid JSON`。
+
+**根因链**:
+
+1. 该表的视图存了**旧 schema** 的 sort:`{conditions:[{fieldId, direction}]}`。canonical 是 `{rules:[{fieldId, order}]}`。
+2. `dbStore.batchDeleteFields()` 直接 `view.sort.rules.filter(...)` —— `rules` undefined,抛 `TypeError: Cannot read properties of undefined (reading 'filter')`。
+3. 路由 `tableRoutes.ts:226` 是 `async` 但**没 try/catch**;Express 4 不自动捕获 async throw。
+4. throw → `unhandledRejection` → 全局 handler 仅 console.error 保活进程,**不发响应**。
+5. 浏览器 fetch 等 → nginx upstream 60s 超时 → 504 + HTML body。
+6. 前端 `r.json()` 撞到 `<html>` → 抛 SyntaxError。
+
+**修复**(三层):
+
+- **`dbStore.ts`** 新增 `stripFieldRefsFromView(view, ids)` 私有辅助:防御性归一化 view.filter / sort / group / fieldOrder / hiddenFields 五个数组,并对旧 `{conditions, direction}` 形状自动迁移为 canonical `{rules, order}`。`deleteField` + `batchDeleteFields` 都改用这个辅助。
+- **`middleware/asyncErrorBoundary.ts`** (新):内联实现 express-async-errors 的 6 行 monkey-patch + global 500 JSON 兜底。**必须在任何 router 构造之前 `installAsyncErrorBoundary()`**,所以放 index.ts 顶部。`globalErrorHandler` 挂在所有路由之后。任何 async route handler 抛错都自动 forward 到 next(err) → 500 JSON,不再 hang。
+- **数据自愈**: 旧形状的 view 在下一次任何 deleteField/batchDeleteFields 调用时自动被规范化写回。
+
+**未做**(留给 V2 / 后续):
+
+- 全表扫一次 prod DB 把所有 `{conditions, direction}` 形状的 view sort 一次性迁移。当前是 lazy-fix(只在删字段时触发),如果有视图永不删字段就会保留旧形状,但这个不是 bug —— canonical 读路径(records/query)早就有同样的兼容代码 (`tableRoutes.ts:407`)。
+- 给所有路由加 zod 入参校验。这次的根因不是入参,是 DB 老数据形状,zod 防不住。
+
+---
+
 ## 2026-04-28 (Skill Creator V1)
 
 ### feat(agent): user-defined skills — Agent 在对话中自助保存可复用能力

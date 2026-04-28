@@ -1,4 +1,14 @@
 import "dotenv/config";
+import {
+  installAsyncErrorBoundary,
+  globalErrorHandler,
+} from "./middleware/asyncErrorBoundary.js";
+// CRITICAL: must run before any Router is constructed (i.e. before any of the
+// route imports below). Without it Express 4 lets async route throws escape
+// into unhandledRejection — the request never sends a response, nginx upstream
+// times out, browser gets HTML 504, FE chokes on `r.json()`. See
+// docs/changelog.md 2026-04-28 hotfix for the original symptom report.
+installAsyncErrorBoundary();
 import express from "express";
 import compression from "compression";
 import cors from "cors";
@@ -287,6 +297,11 @@ app.use(express.static(publicDir));
 app.get("*", (_req, res) => {
   res.sendFile(path.join(publicDir, "index.html"));
 });
+
+// LAST middleware in the chain — catches any error forwarded via next(err)
+// (including async throws auto-forwarded by installAsyncErrorBoundary above).
+// Always returns 500 JSON so FE never parses an HTML 502/504 from nginx.
+app.use(globalErrorHandler);
 
 async function start() {
   // Connect to PostgreSQL
