@@ -242,6 +242,16 @@
   min-height: 24px;
 }
 
+/* V4.6: row 容器,stack 在中间居中,mascots absolute 贴右侧。
+   container-type 让里头的 mascots 用 container query 判断是否有足够空间。 */
+.chat-welcome-row {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  container-type: inline-size;
+}
+
 .chat-welcome-stack {
   display: flex;
   flex-direction: column;
@@ -249,6 +259,28 @@
   gap: 24px;
   width: 100%;
   max-width: 800px;
+}
+
+/* V4.6 4 个 mascot:贴 row 容器右下角,缩到 0.4 (~220×160)。
+   container query:row 至少 1080px 宽才显示(即 stack 800 + gap 32 + mascot 220 + 28px buffer)。
+   再窄就 display:none,避免叠加 stack。 */
+.chat-welcome-mascots {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 550px;
+  height: 400px;
+  transform: scale(0.4);
+  transform-origin: bottom right;
+  pointer-events: none;
+  user-select: none;
+  display: none;  /* 默认隐藏 */
+}
+
+@container (min-width: 1080px) {
+  .chat-welcome-mascots {
+    display: block;
+  }
 }
 
 .chat-welcome-hero {

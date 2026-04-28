@@ -46,6 +46,7 @@ import {
 import { extractMentionPayloads } from "../Mention/mentionSyntax";
 import { useToast } from "../Toast/index";
 import { listenChatShared } from "./listenHub";
+import { AnimatedCharacters } from "../../auth/AnimatedCharacters";
 
 // Client-side message model (mutable during streaming)
 interface UiMessage {
@@ -1388,21 +1389,32 @@ export default function ChatSidebar({
           的欢迎页 (hero + 横向 preset + 行内 input,整组居中,800px 宽度上限)。 */}
       {messages.length === 0 && !error ? (
         <div className="chat-welcome-centered" ref={scrollRef}>
-          <div className="chat-welcome-stack">
-            <WelcomeHero />
-            <WelcomePresets
-              suggestions={suggestions}
-              onPreset={(text) => setInputValue(text)}
-            />
-            <ChatInput
-              value={inputValue}
-              onChange={setInputValue}
-              onSend={handleSend}
-              onStop={handleStop}
-              streaming={streaming}
-              disabled={!activeConv}
-              workspaceId={workspaceId}
-            />
+          <div className="chat-welcome-row">
+            <div className="chat-welcome-stack">
+              <WelcomeHero />
+              <WelcomePresets
+                suggestions={suggestions}
+                onPreset={(text) => setInputValue(text)}
+              />
+              <ChatInput
+                value={inputValue}
+                onChange={setInputValue}
+                onSend={handleSend}
+                onStop={handleStop}
+                streaming={streaming}
+                disabled={!activeConv}
+                workspaceId={workspaceId}
+              />
+            </div>
+            {/* V4.6 复用登录页 4 个 mascot:跟随鼠标 + 输入时"看输入框内容"。
+                position: absolute,贴着 stack 右侧;窄 block 时被 overflow 切掉。 */}
+            <div className="chat-welcome-mascots" aria-hidden="true">
+              <AnimatedCharacters
+                isTyping={false}
+                showPassword={true}
+                passwordLength={inputValue.length}
+              />
+            </div>
           </div>
         </div>
       ) : (
