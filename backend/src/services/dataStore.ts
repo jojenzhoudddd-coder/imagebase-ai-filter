@@ -392,7 +392,11 @@ export interface TableBriefInfo {
     name: string;
     type: string;
     isPrimary: boolean;
+    /** SingleSelect / MultiSelect 字段的选项名;非 select 字段为 undefined */
     options?: string[];
+    /** V4.4: User / Group 字段的可选人员 — `{id, name}` 对,让 AI filter
+     *  能直接拿 user.id 拼条件,无需再调 search_record 反查。 */
+    users?: { id: string; name: string }[];
   }[];
 }
 
@@ -410,6 +414,7 @@ export function getTableBriefInfo(tableId: string): TableBriefInfo | null {
       type: f.type,
       isPrimary: f.isPrimary,
       options: f.config.options?.map((o) => o.name),
+      users: f.config.users?.map((u) => ({ id: u.id, name: u.name })),
     })),
   };
 }

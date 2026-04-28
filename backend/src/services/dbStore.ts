@@ -1013,6 +1013,8 @@ export async function getTableBriefInfo(tableId: string): Promise<TableBriefInfo
       type: f.type,
       isPrimary: f.isPrimary,
       options: f.config.options?.map((o) => o.name),
+      // V4.4: 人员字段 users 也带出来,AI filter 直接拿到 user.id 拼条件
+      users: f.config.users?.map((u) => ({ id: u.id, name: u.name })),
     })),
   };
 }

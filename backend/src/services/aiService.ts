@@ -487,7 +487,7 @@ const TOOL_DEFINITIONS = [
   {
     type: "function" as const,
     name: "get_table_brief_info",
-    description: "获取当前数据表的字段列表、字段类型、选项配置、记录总数。当需要确认字段名、字段类型或可用选项值时调用。",
+    description: "获取当前数据表的字段列表、字段类型、选项配置、人员字段可选用户、记录总数。当需要确认字段名、字段类型、可用选项值或可用人员 ID 时调用。注意:常用字段元信息已经在系统 prompt 里给你,通常不必再调此工具,除非需要重新核对。",
     parameters: {
       type: "object",
       properties: {
