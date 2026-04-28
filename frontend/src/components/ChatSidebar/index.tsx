@@ -1778,45 +1778,42 @@ function WelcomePresets({
     el.scrollBy({ left: dx, behavior: "smooth" });
   };
 
+  // V4.3.1: 去掉 section label,直接渲染 scroller + 内联在 wrap 内的箭头
   return (
-    <div className="chat-welcome-presets-row">
-      <div className="chat-welcome-section-label">{t("chat.empty.sectionLabel")}</div>
-      <div className="chat-welcome-presets-wrap">
-        {canPrev && (
+    <div className="chat-welcome-presets-wrap">
+      {canPrev && (
+        <button
+          type="button"
+          className="chat-welcome-presets-arrow prev"
+          onClick={() => scrollBy(-280)}
+          aria-label={t("chat.empty.scrollLeft")}
+        >
+          <ArrowLeftIcon />
+        </button>
+      )}
+      <div className="chat-welcome-presets-scroller" ref={scrollerRef}>
+        {effective.map((s, idx) => (
           <button
+            key={`${idx}-${s.label}`}
             type="button"
-            className="chat-welcome-presets-arrow prev"
-            onClick={() => scrollBy(-280)}
-            aria-label={t("chat.empty.scrollLeft")}
+            className="chat-preset-chip chat-preset-chip-compact"
+            onClick={() => onPreset(s.prompt)}
+            title={s.prompt}
           >
-            <ArrowLeftIcon />
+            <span className="chat-preset-chip-label">{s.label}</span>
           </button>
-        )}
-        <div className="chat-welcome-presets-scroller" ref={scrollerRef}>
-          {effective.map((s, idx) => (
-            <button
-              key={`${idx}-${s.label}`}
-              type="button"
-              className="chat-preset-chip"
-              onClick={() => onPreset(s.prompt)}
-              title={s.prompt}
-            >
-              <span className="chat-preset-chip-label">{s.label}</span>
-              <SpaceRightIcon size={12} />
-            </button>
-          ))}
-        </div>
-        {canNext && (
-          <button
-            type="button"
-            className="chat-welcome-presets-arrow next"
-            onClick={() => scrollBy(280)}
-            aria-label={t("chat.empty.scrollRight")}
-          >
-            <ArrowRightIcon />
-          </button>
-        )}
+        ))}
       </div>
+      {canNext && (
+        <button
+          type="button"
+          className="chat-welcome-presets-arrow next"
+          onClick={() => scrollBy(280)}
+          aria-label={t("chat.empty.scrollRight")}
+        >
+          <ArrowRightIcon />
+        </button>
+      )}
     </div>
   );
 }
