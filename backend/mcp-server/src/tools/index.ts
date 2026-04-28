@@ -36,6 +36,7 @@ import { dictionaryTools } from "./dictionaryTools.js";
 import { demoNavTools } from "./demoTools.js";
 import { subagentTools } from "./subagentTools.js";
 import { workflowTools } from "./workflowTools.js";
+import { webTools } from "./webTools.js";
 import { allSkills, skillsByName } from "../skills/index.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
@@ -50,6 +51,7 @@ import type { ToolDefinition, ToolContext } from "./tableTools.js";
 //   - Taste nav:   list_tastes,  get_taste             (taste-chatbot v1)
 //   - Mention:     find_mentionable,
 //                  list_incoming_mentions              (cross-skill bridge)
+//   - Web:         web_search,   web_fetch            (Tavily + Readability)
 //
 // `find_mentionable` is cross-skill on purpose: writing an idea may require
 // referencing a view or a taste the agent hasn't "activated" any skill for.
@@ -92,6 +94,9 @@ const TIER1_NAMES = new Set([
   "execute_workflow_template",
   // V2.5 B4 自由编排
   "compose_workflow",
+  // Web tools — always-on info retrieval (knowledge cutoff bypass)
+  "web_search",
+  "web_fetch",
 ]);
 
 /** Tier 0 — identity + memory + skill routing + cron. Always loaded. */
@@ -113,6 +118,7 @@ export const tier1Tools: ToolDefinition[] = [
   ...demoNavTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...subagentTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...workflowTools.filter((t) => TIER1_NAMES.has(t.name)),
+  ...webTools.filter((t) => TIER1_NAMES.has(t.name)),
 ];
 
 /**
