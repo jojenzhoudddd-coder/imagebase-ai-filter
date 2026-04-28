@@ -216,6 +216,112 @@
   40% { opacity: 1; transform: scale(1); }
 }
 
+/* ─── V4.3 新欢迎页:整组居中 800px 宽,横排 prompt 可分页滚动 ─────── */
+.chat-welcome-centered {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.chat-welcome-centered::-webkit-scrollbar { display: none; }
+
+.chat-welcome-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;       /* 内部子元素左对齐 input 边缘 */
+  gap: 24px;
+  width: 100%;
+  max-width: 800px;
+}
+
+.chat-welcome-hero {
+  display: flex;
+  align-items: center;
+}
+
+.chat-welcome-title {
+  font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 36px;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.chat-welcome-presets-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.chat-welcome-section-label {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+
+.chat-welcome-presets-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.chat-welcome-presets-scroller {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 2px 0;
+}
+.chat-welcome-presets-scroller::-webkit-scrollbar { display: none; }
+.chat-welcome-presets-scroller > .chat-preset-chip {
+  flex-shrink: 0;             /* 不挤压,保持完整宽度;超出走横向滚动 */
+}
+
+.chat-welcome-presets-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 2px 6px rgba(31, 35, 41, 0.08);
+  transition: background 100ms ease, color 100ms ease;
+}
+.chat-welcome-presets-arrow:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.chat-welcome-presets-arrow.prev { left: -14px; }
+.chat-welcome-presets-arrow.next { right: -14px; }
+
+/* V4.3 conversation 状态:消息列表 + input 都给一个内层 800px 居中容器 */
+.chat-messages-inner {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 28px;
+}
+
 /* ─── Empty-state welcome page ─────────────────────────────────────────
  * Layout: hero (mascot IP + title) → context-hint pill → preset chips.
  *
@@ -1404,9 +1510,25 @@
 .chat-input-wrap {
   position: relative;
   flex: 0 0 auto;
-  /* 自管 20px 左右(.chat-part 不再统一 padding) —— 与 .chat-messages 对齐。 */
+  /* V4.3 对话状态下:input 也跟 messages 一样居中 800px 上限。
+     padding 自管 20px 左右,inner 通过 max-width 居中。 */
   padding: 0 20px;
   background: transparent;
+  display: flex;
+  justify-content: center;
+}
+/* V4.3 max-width cap;靠子元素自动撑开,在 800px+padding 内居中 */
+.chat-input-wrap > * {
+  width: 100%;
+  max-width: 800px;
+}
+/* 欢迎页里 ChatInput 不要 ::before gradient 遮罩(没有上方滚动内容) */
+.chat-welcome-stack .chat-input-wrap::before {
+  display: none;
+}
+/* 欢迎页里 ChatInput 自管 padding 与 stack 对齐,不再额外 20px 内边距 */
+.chat-welcome-stack .chat-input-wrap {
+  padding: 0;
 }
 /* Top gradient overlay (white→transparent) — hints the message area is
  * scrollable behind it. Height 11px, sits just above the input box. */

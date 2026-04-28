@@ -536,6 +536,8 @@ export const zh: TranslationKeys = {
   "chat.empty.title": "你好，我是你的智能助手",
   "chat.empty.contextHint": "已加载 {{tables}} 张表 · {{fields}} 个字段 · {{records}} 条记录",
   "chat.empty.sectionLabel": "告诉我你想做什么",
+  "chat.empty.scrollLeft": "向左滚动",
+  "chat.empty.scrollRight": "向右滚动",
   "chat.empty.preset.answer.label": "基于我的多维表格回答问题",
   "chat.empty.preset.answer.prompt": "请根据当前工作空间的表数据回答我的问题",
   "chat.empty.preset.save.label": "自动把新消息保存到我的表里",

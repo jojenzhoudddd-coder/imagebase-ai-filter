@@ -534,6 +534,8 @@ export const en = {
   "chat.empty.title": "Hi, I'm your chatbot",
   "chat.empty.contextHint": "Loaded {{tables}} tables · {{fields}} fields · {{records}} records",
   "chat.empty.sectionLabel": "Start by telling me what you need",
+  "chat.empty.scrollLeft": "Scroll left",
+  "chat.empty.scrollRight": "Scroll right",
   "chat.empty.preset.answer.label": "Answer questions using my bases",
   "chat.empty.preset.answer.prompt": "Answer my questions using the tables in this workspace",
   "chat.empty.preset.save.label": "Save new messages to my base automatically",

@@ -1384,52 +1384,69 @@ export default function ChatSidebar({
         }}
         onCancel={() => setRefreshConfirmOpen(false)}
       />
-      <div className="chat-messages" ref={scrollRef}>
-        {/* 历史分页 loading 指示 —— 滚到顶时 fetch 老消息,在最上方显示 spinner */}
-        {loadingOlder && (
-          <div className="chat-history-loading" role="status" aria-live="polite">
-            <span className="chat-history-loading-dot" />
-            <span className="chat-history-loading-dot" />
-            <span className="chat-history-loading-dot" />
+      {/* V4.3 改版:有消息走原"上滚 + 底部输入"流;无消息走"页面正中"
+          的欢迎页 (hero + 横向 preset + 行内 input,整组居中,800px 宽度上限)。 */}
+      {messages.length === 0 && !error ? (
+        <div className="chat-welcome-centered" ref={scrollRef}>
+          <div className="chat-welcome-stack">
+            <WelcomeHero />
+            <WelcomePresets
+              suggestions={suggestions}
+              onPreset={(text) => setInputValue(text)}
+            />
+            <ChatInput
+              value={inputValue}
+              onChange={setInputValue}
+              onSend={handleSend}
+              onStop={handleStop}
+              streaming={streaming}
+              disabled={!activeConv}
+              workspaceId={workspaceId}
+            />
           </div>
-        )}
-        {messages.length === 0 && !error && (
-          <EmptyState
-            contextHint={contextHint}
-            suggestions={suggestions}
-            onPreset={(text) => {
-              // Fill the input only — do NOT auto-send. User reviews/edits
-              // and presses send themselves.
-              setInputValue(text);
-            }}
+        </div>
+      ) : (
+        <>
+          <div className="chat-messages" ref={scrollRef}>
+            {/* 历史分页 loading 指示 —— 滚到顶时 fetch 老消息,在最上方显示 spinner */}
+            {loadingOlder && (
+              <div className="chat-history-loading" role="status" aria-live="polite">
+                <span className="chat-history-loading-dot" />
+                <span className="chat-history-loading-dot" />
+                <span className="chat-history-loading-dot" />
+              </div>
+            )}
+
+            {/* 800px 居中:用一个 inner wrapper 限制宽度 */}
+            <div className="chat-messages-inner">
+              {messages.map((m) => (
+                <MessageBlock key={m.id} msg={m} />
+              ))}
+
+              {pendingConfirm && (
+                <ConfirmCard
+                  pending={pendingConfirm}
+                  onConfirm={() => handleConfirm(true)}
+                  onCancel={() => handleConfirm(false)}
+                  disabled={streaming}
+                />
+              )}
+
+              {error && <div className="chat-error-card">{error}</div>}
+            </div>
+          </div>
+
+          <ChatInput
+            value={inputValue}
+            onChange={setInputValue}
+            onSend={handleSend}
+            onStop={handleStop}
+            streaming={streaming}
+            disabled={!activeConv}
+            workspaceId={workspaceId}
           />
-        )}
-
-        {messages.map((m) => (
-          <MessageBlock key={m.id} msg={m} />
-        ))}
-
-        {pendingConfirm && (
-          <ConfirmCard
-            pending={pendingConfirm}
-            onConfirm={() => handleConfirm(true)}
-            onCancel={() => handleConfirm(false)}
-            disabled={streaming}
-          />
-        )}
-
-        {error && <div className="chat-error-card">{error}</div>}
-      </div>
-
-      <ChatInput
-        value={inputValue}
-        onChange={setInputValue}
-        onSend={handleSend}
-        onStop={handleStop}
-        streaming={streaming}
-        disabled={!activeConv}
-        workspaceId={workspaceId}
-      />
+        </>
+      )}
     </aside>
   );
 }
@@ -1705,18 +1722,25 @@ function renderTitleWithCommaBreak(title: string) {
   );
 }
 
-function EmptyState({
-  onPreset,
-  contextHint,
+/** V4.3 新欢迎页 hero — 仅标题,左对齐 input */
+function WelcomeHero() {
+  const { t } = useTranslation();
+  return (
+    <div className="chat-welcome-hero">
+      <div className="chat-welcome-title">{renderTitleWithCommaBreak(t("chat.empty.title"))}</div>
+    </div>
+  );
+}
+
+/** V4.3 横向推荐 prompt + 分页滚动 */
+function WelcomePresets({
   suggestions,
+  onPreset,
 }: {
-  onPreset: (text: string) => void;
-  contextHint: ChatContextSnapshot | null;
   suggestions: ChatSuggestion[];
+  onPreset: (text: string) => void;
 }) {
   const { t } = useTranslation();
-
-  // Prefer dynamic, AI-generated suggestions; fall back to static presets.
   const effective: ChatSuggestion[] =
     suggestions.length > 0
       ? suggestions
@@ -1725,37 +1749,91 @@ function EmptyState({
           prompt: t(`chat.empty.preset.${key}.prompt`),
         }));
 
-  // Welcome page: hero (mascot IP + title), context-hint pill, preset chips.
-  // "Or use a template" section removed per product direction.
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [canPrev, setCanPrev] = useState(false);
+  const [canNext, setCanNext] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setCanPrev(el.scrollLeft > 4);
+    setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    updateScrollState();
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", updateScrollState);
+    window.addEventListener("resize", updateScrollState);
+    return () => {
+      el.removeEventListener("scroll", updateScrollState);
+      window.removeEventListener("resize", updateScrollState);
+    };
+  }, [updateScrollState, effective.length]);
+
+  const scrollBy = (dx: number) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dx, behavior: "smooth" });
+  };
+
   return (
-    <div className="chat-empty">
-      <div className="chat-empty-hero">
-        {/* 头像 IP 图已移除（产品方向） —— 仅保留标题 */}
-        <div className="chat-empty-title">{renderTitleWithCommaBreak(t("chat.empty.title"))}</div>
-      </div>
-
-      {/* V3.0.2 #4: 去掉 "Loaded N tables · M fields · K records" 统计 hint */}
-
-      <div className="chat-empty-sections">
-        <div className="chat-empty-section">
-          <div className="chat-empty-section-label">{t("chat.empty.sectionLabel")}</div>
-          <div className="chat-empty-presets">
-            {effective.map((s, idx) => (
-              <button
-                key={`${idx}-${s.label}`}
-                type="button"
-                className="chat-preset-chip"
-                onClick={() => onPreset(s.prompt)}
-                title={s.prompt}
-              >
-                <span className="chat-preset-chip-label">{s.label}</span>
-                <SpaceRightIcon size={12} />
-              </button>
-            ))}
-          </div>
+    <div className="chat-welcome-presets-row">
+      <div className="chat-welcome-section-label">{t("chat.empty.sectionLabel")}</div>
+      <div className="chat-welcome-presets-wrap">
+        {canPrev && (
+          <button
+            type="button"
+            className="chat-welcome-presets-arrow prev"
+            onClick={() => scrollBy(-280)}
+            aria-label={t("chat.empty.scrollLeft")}
+          >
+            <ArrowLeftIcon />
+          </button>
+        )}
+        <div className="chat-welcome-presets-scroller" ref={scrollerRef}>
+          {effective.map((s, idx) => (
+            <button
+              key={`${idx}-${s.label}`}
+              type="button"
+              className="chat-preset-chip"
+              onClick={() => onPreset(s.prompt)}
+              title={s.prompt}
+            >
+              <span className="chat-preset-chip-label">{s.label}</span>
+              <SpaceRightIcon size={12} />
+            </button>
+          ))}
         </div>
+        {canNext && (
+          <button
+            type="button"
+            className="chat-welcome-presets-arrow next"
+            onClick={() => scrollBy(280)}
+            aria-label={t("chat.empty.scrollRight")}
+          >
+            <ArrowRightIcon />
+          </button>
+        )}
       </div>
     </div>
+  );
+}
+
+function ArrowLeftIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M9 3 5 7l4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M5 3 9 7l-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
