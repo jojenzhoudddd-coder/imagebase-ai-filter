@@ -210,6 +210,8 @@ export const en = {
   "table.addField": "Add field",
   "table.addRecord": "Add record",
   "table.records": "records",
+  "table.copiedCells": "Copied {{count}} cell(s)",
+  "table.pastedCells": "Pasted {{count}} cell(s)",
   "table.hideField": "Hide field",
   "table.hideFields": "Hide {{count}} fields",
   "table.deleteField": "Delete field",

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Field, TableRecord, UserOption } from "../../types";
 import { useTranslation } from "../../i18n/index";
+import { useToast } from "../Toast/index";
 import { useResolvedTheme } from "../../theme";
 import { FieldIcon as FieldIconSvg } from "../FieldConfig/FieldIcons";
 import "./TableView.css";
@@ -338,11 +339,13 @@ function SelectEditor({
   value,
   onCommit,
   onCancel,
+  onNavigate,
 }: {
   field: Field;
   value: CellValue;
   onCommit: (v: CellValue) => void;
   onCancel: () => void;
+  onNavigate?: (dRow: number, dCol: number) => void;
 }) {
   const options = field.config.options ?? [];
   const ref = useRef<HTMLDivElement>(null);
@@ -355,6 +358,22 @@ function SelectEditor({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [onCancel]);
+
+  // V4.2 #2/#3: Tab/Shift+Tab navigation
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        onCancel();
+        onNavigate?.(0, e.shiftKey ? -1 : 1);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onCancel, onNavigate]);
 
   return (
     <div ref={ref} className="cell-dropdown">
@@ -391,11 +410,13 @@ function UserEditor({
   value,
   onCommit,
   onCancel,
+  onNavigate,
 }: {
   field: Field;
   value: CellValue;
   onCommit: (v: CellValue) => void;
   onCancel: () => void;
+  onNavigate?: (dRow: number, dCol: number) => void;
 }) {
   const users = field.config.users ?? [];
   const ref = useRef<HTMLDivElement>(null);
@@ -407,6 +428,22 @@ function UserEditor({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [onCancel]);
+
+  // V4.2 #2/#3: Tab/Shift+Tab navigation
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        onCancel();
+        onNavigate?.(0, e.shiftKey ? -1 : 1);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onCancel, onNavigate]);
 
   return (
     <div ref={ref} className="cell-dropdown">
@@ -445,10 +482,12 @@ function DateEditor({
   value,
   onCommit,
   onCancel,
+  onNavigate,
 }: {
   value: CellValue;
   onCommit: (v: CellValue) => void;
   onCancel: () => void;
+  onNavigate?: (dRow: number, dCol: number) => void;
 }) {
   const { t } = useTranslation();
   const parsed = value ? new Date(typeof value === "number" ? value : String(value)) : new Date();
@@ -474,6 +513,24 @@ function DateEditor({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [onCancel]);
+
+  // V4.2 #2:Tab/Shift+Tab/Esc 全局处理(date picker 没有 input 接 keydown)。
+  // Tab → commit 当前 value(无修改也算)+ onNavigate 切换;Esc → cancel。
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        // 若 value 还没更新过,提交原值不破坏;若用户已点过日期,onCommit 已被调用过
+        onCancel();  // 关闭 picker
+        onNavigate?.(0, e.shiftKey ? -1 : 1);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onCancel, onNavigate]);
 
   const monthNames = t("table.months").split(",");
 
@@ -625,28 +682,28 @@ function EditableCell({
         return (
           <div className="cell-editor-wrap">
             <CellDisplay field={field} value={value} />
-            <SelectEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} />
+            <SelectEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />
           </div>
         );
       case "MultiSelect":
         return (
           <div className="cell-editor-wrap">
             <CellDisplay field={field} value={value} />
-            <SelectEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} />
+            <SelectEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />
           </div>
         );
       case "User":
         return (
           <div className="cell-editor-wrap">
             <CellDisplay field={field} value={value} />
-            <UserEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} />
+            <UserEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />
           </div>
         );
       case "DateTime":
         return (
           <div className="cell-editor-wrap">
             <CellDisplay field={field} value={value} />
-            <DateEditor value={value} onCommit={onCommit} onCancel={onCancel} />
+            <DateEditor value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />
           </div>
         );
       default:
@@ -713,6 +770,7 @@ const CELL_DRAG_THRESHOLD = 4;
 
 const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords, onClearCells, onClearRowCells, onAddField, onEditField, onAddRecord }, ref) {
   const { t } = useTranslation();
+  const toast = useToast();
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [selectedColIds, setSelectedColIds] = useState<Set<string>>(new Set());
@@ -997,11 +1055,71 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       if (e.clipboardData) {
         e.clipboardData.setData("text/plain", tsv);
         e.preventDefault();
+        // V4.2 #1: 复制成功 toast,显示复制单元格数
+        const cellCount = (maxRow - minRow + 1) * (maxCol - minCol + 1);
+        toast.success(t("table.copiedCells", { count: cellCount }));
       }
     };
     document.addEventListener("copy", handler);
     return () => document.removeEventListener("copy", handler);
-  }, [records, visibleFields]);
+  }, [records, visibleFields, toast, t]);
+
+  // V4.2 #1: 粘贴 (Ctrl/Cmd+V) — 解析 TSV,从 cellRange 起点(或单 cell 选中)开始填
+  useEffect(() => {
+    const handler = (e: ClipboardEvent) => {
+      const tableEl = tableRef.current;
+      if (!tableEl || !tableEl.contains(document.activeElement)) return;
+      // 编辑态下让浏览器走默认 paste(input/textarea 内部处理)
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return;
+      const range = cellRangeRef.current;
+      if (!range) return;  // 没有选区不粘贴
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      if (!text) return;
+      e.preventDefault();
+      const rows = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+      // 去掉末尾空行(剪贴板常带 trailing \n)
+      while (rows.length > 0 && rows[rows.length - 1] === "") rows.pop();
+      if (rows.length === 0) return;
+      const startRow = Math.min(range.startRowIdx, range.endRowIdx);
+      const startCol = Math.min(range.startColIdx, range.endColIdx);
+      const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime", "Lookup"]);
+      let pasted = 0;
+      for (let r = 0; r < rows.length; r++) {
+        const targetRowIdx = startRow + r;
+        if (targetRowIdx >= records.length) break;
+        const cols = rows[r].split("\t");
+        for (let c = 0; c < cols.length; c++) {
+          const targetColIdx = startCol + c;
+          if (targetColIdx >= visibleFields.length) break;
+          const field = visibleFields[targetColIdx];
+          if (readOnlyTypes.has(field.type)) continue;
+          const rec = records[targetRowIdx];
+          if (!rec) continue;
+          // 简单 coercion:Number/Boolean 尝试转,其他直接当字符串
+          const raw = cols[c];
+          let v: any = raw;
+          if (field.type === "Number") {
+            const n = Number(raw);
+            v = Number.isFinite(n) ? n : null;
+          } else if (field.type === "Checkbox") {
+            v = raw === "true" || raw === "1" || raw === "✓";
+          } else if (field.type === "MultiSelect") {
+            v = raw ? raw.split(",").map(s => s.trim()).filter(Boolean) : [];
+          } else if (raw === "") {
+            v = null;
+          }
+          onCellChange(rec.id, field.id, v);
+          pasted++;
+        }
+      }
+      if (pasted > 0) {
+        toast.success(t("table.pastedCells", { count: pasted }));
+      }
+    };
+    document.addEventListener("paste", handler);
+    return () => document.removeEventListener("paste", handler);
+  }, [records, visibleFields, onCellChange, toast, t]);
 
   // ── Cell range selection: drag to select ──
   const isCellInRange = useCallback((rowIdx: number, colIdx: number) => {

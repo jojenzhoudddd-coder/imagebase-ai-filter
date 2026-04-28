@@ -212,6 +212,8 @@ export const zh: TranslationKeys = {
   "table.addField": "添加字段",
   "table.addRecord": "添加记录",
   "table.records": "条记录",
+  "table.copiedCells": "已复制 {{count}} 个单元格",
+  "table.pastedCells": "已粘贴 {{count}} 个单元格",
   "table.hideField": "隐藏字段",
   "table.hideFields": "隐藏 {{count}} 个字段",
   "table.deleteField": "删除字段",
