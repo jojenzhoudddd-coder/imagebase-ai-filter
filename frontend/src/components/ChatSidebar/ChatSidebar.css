@@ -254,6 +254,8 @@
 .chat-welcome-hero {
   display: flex;
   align-items: center;
+  /* V4.3.2: 标题左 padding 8px,与 input 框内文字的视觉缩进对齐 */
+  padding-left: 8px;
 }
 
 .chat-welcome-title {
