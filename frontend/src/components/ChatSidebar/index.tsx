@@ -1396,24 +1396,26 @@ export default function ChatSidebar({
                 suggestions={suggestions}
                 onPreset={(text) => setInputValue(text)}
               />
-              <ChatInput
-                value={inputValue}
-                onChange={setInputValue}
-                onSend={handleSend}
-                onStop={handleStop}
-                streaming={streaming}
-                disabled={!activeConv}
-                workspaceId={workspaceId}
-              />
-            </div>
-            {/* V4.6 复用登录页 4 个 mascot:跟随鼠标 + 输入时"看输入框内容"。
-                position: absolute,贴着 stack 右侧;窄 block 时被 overflow 切掉。 */}
-            <div className="chat-welcome-mascots" aria-hidden="true">
-              <AnimatedCharacters
-                isTyping={false}
-                showPassword={true}
-                passwordLength={inputValue.length}
-              />
+              {/* V4.7.1: 把 mascots 锚定到 ChatInput 上方,用一个 input-anchor
+                  wrapper 让它们 absolute 定位到 chat-input-box 顶部右侧。 */}
+              <div className="chat-welcome-input-anchor">
+                <div className="chat-welcome-mascots" aria-hidden="true">
+                  <AnimatedCharacters
+                    isTyping={false}
+                    showPassword={true}
+                    passwordLength={inputValue.length}
+                  />
+                </div>
+                <ChatInput
+                  value={inputValue}
+                  onChange={setInputValue}
+                  onSend={handleSend}
+                  onStop={handleStop}
+                  streaming={streaming}
+                  disabled={!activeConv}
+                  workspaceId={workspaceId}
+                />
+              </div>
             </div>
           </div>
         </div>
