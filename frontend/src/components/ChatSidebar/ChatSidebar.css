@@ -254,6 +254,12 @@
 
 .chat-welcome-stack {
   position: relative;          /* V4.7 mascots 锚到 stack 右下 */
+  /* V4.7.3: isolation:isolate 创建一个"透明"的 stacking context,
+     mascots 的 z-index:-1 被限定在 stack 内部,不会逃到 .chat-sidebar
+     这种祖先,被祖先背景吃掉 → 真正可见。同时 sibling presets/hero/input
+     位于同 context 的 z-index:auto(=0),压在 mascots 之上,符合"位于
+     prompt 之下"语义。 */
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: stretch;        /* 内部子元素左对齐 input 边缘 */
@@ -298,12 +304,8 @@
   }
 }
 
-/* presets 行 / hero 都设 z-index: 1,确保 mascots (z-index -1) 在它们下方 */
-.chat-welcome-presets-wrap,
-.chat-welcome-hero {
-  position: relative;
-  z-index: 1;
-}
+/* V4.7.3: stack 已经 isolation:isolate,mascots z-index:-1 被锁在 stack 内,
+   sibling presets/hero/input 默认 z-index 都比 -1 高,无需显式设置。 */
 
 .chat-welcome-hero {
   display: flex;
