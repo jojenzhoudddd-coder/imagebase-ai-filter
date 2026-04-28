@@ -44,16 +44,15 @@ function utc8Hour(d: Date = new Date()): number {
 // ─── Prompt ──────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `# 角色
-你是飞书多维表格（Lark Base）的工作区编辑助手。你的任务是基于工作区里的数据表 / 灵感文档 / 画布的名称列表，给这个工作区写一段简短的"中性介绍"和一句"slogan"。
+你是飞书多维表格（Lark Base）的工作区编辑助手。你的任务是基于工作区里的数据表 / 灵感文档 / 画布的名称列表，为这个工作区写一句"slogan"。
 
 # 输出
 必须输出且仅输出一个 JSON 对象，格式：
-{ "summary": "...", "slogan": "..." }
+{ "slogan": "..." }
 
 # 要求
-- summary：50 字以内（含标点）的中文短语，一句话客观介绍这个工作区的内容主题，不夸张、不带情绪标签。
 - slogan：**严格** 20 个字符以内（含标点）的中文短句，富有创意但落地，能呼应实际内容（不要套用空话）。超过 20 字会被强制截断。
-- 工作区为空时，summary 写"刚开始的空白工作区"，slogan 写"未来从一张空表开始"。
+- 工作区为空时，slogan 写"未来从一张空表开始"。
 - 严禁加 Markdown 代码块、严禁解释、严禁追问。`;
 
 function buildUserPrompt(input: {
@@ -82,6 +81,7 @@ function buildUserPrompt(input: {
 // ─── Single workspace generation ─────────────────────────────────────────
 
 interface SummaryResult {
+  /** V4.5: summary 字段保留 type(向后兼容),实际不再生成,固定为空串 */
   summary: string;
   slogan: string;
 }
@@ -107,13 +107,11 @@ function tryParseSummary(raw: string): SummaryResult | null {
   if (start < 0 || end <= start) return null;
   try {
     const obj = JSON.parse(s.slice(start, end + 1)) as Record<string, unknown>;
-    let summary = typeof obj.summary === "string" ? obj.summary.trim() : "";
+    // V4.5: 只读 slogan;summary 字段忽略(向后兼容旧 prompt 偶发返回)
     let slogan = typeof obj.slogan === "string" ? obj.slogan.trim() : "";
-    if (!summary || !slogan) return null;
-    // 硬上限:即使 prompt 已经要求"20 字以内",模型偶尔会超,这里强制截。
-    summary = truncateChars(summary, MAX_SUMMARY_CHARS);
+    if (!slogan) return null;
     slogan = truncateChars(slogan, MAX_SLOGAN_CHARS);
-    return { summary, slogan };
+    return { summary: "", slogan };
   } catch {
     return null;
   }
@@ -197,12 +195,13 @@ async function generateForWorkspace(workspaceId: string): Promise<void> {
   await prisma.workspace.update({
     where: { id: workspaceId },
     data: {
-      aiSummary: parsed.summary,
+      // V4.5: 不再生成 summary,字段置 null;DB 列保留(向后兼容)
+      aiSummary: null,
       aiSlogan: parsed.slogan,
       aiSummaryAt: new Date(),
     },
   });
-  console.log(`[workspaceSummary] ${workspaceId}: refreshed (${parsed.summary.length} / ${parsed.slogan.length} chars)`);
+  console.log(`[workspaceSummary] ${workspaceId}: refreshed slogan=${parsed.slogan.length} chars`);
 }
 
 // ─── Public entry: heartbeat-driven daily refresh ────────────────────────
@@ -283,11 +282,12 @@ export async function regenerateMissingSummaries(): Promise<void> {
   }
   inflight = true;
   try {
+    // V4.5: 不再有 summary 概念,改为按 aiSlogan 是否缺失来判断
     const workspaces = await prisma.workspace.findMany({
-      where: { aiSummary: null },
+      where: { aiSlogan: null },
       select: { id: true },
     });
-    console.log(`[workspaceSummary] missing-fill scanning ${workspaces.length} workspaces with null summary`);
+    console.log(`[workspaceSummary] missing-fill scanning ${workspaces.length} workspaces with null slogan`);
     if (workspaces.length === 0) return;
     let done = 0;
     for (const ws of workspaces) {

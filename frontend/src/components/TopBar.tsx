@@ -340,16 +340,13 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
               <span className="topbar-stat-num">{formatTokenCount(stats?.totalTokens ?? 0)}</span>
               <span className="topbar-stat-label">tokens</span>
             </span>
-            {(stats?.summary || stats?.slogan) && (
+            {/* V4.5: 只展示 slogan,不展示 summary */}
+            {stats?.slogan && (
               <>
                 <span className="topbar-info-sep" />
-                <span className="topbar-summary" title={stats.slogan ?? stats.summary ?? ""}>
+                <span className="topbar-summary" title={stats.slogan}>
                   <SloganIcon />
-                  <span className="topbar-summary-text">
-                    {stats.summary ? `${stats.summary}` : ""}
-                    {stats.summary && stats.slogan ? " · " : ""}
-                    {stats.slogan ? stats.slogan : ""}
-                  </span>
+                  <span className="topbar-summary-text">{stats.slogan}</span>
                 </span>
               </>
             )}
