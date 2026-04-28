@@ -297,20 +297,28 @@ function TextEditor({
         if (e.nativeEvent.isComposing || e.keyCode === 229) return;
         if (e.key === "Enter") {
           e.preventDefault();
+          e.nativeEvent.stopImmediatePropagation();
           commit();
           // V2.9 #4: Enter → 下一行同列;Shift+Enter 不导航(允许将来支持多行)
           if (!e.shiftKey) onNavigate?.(1, 0);
         } else if (e.key === "Escape") {
           e.preventDefault();
+          e.nativeEvent.stopImmediatePropagation();
           onCancel();
         } else if (e.key === "Tab") {
           // V2.9 #4: Tab → 下一列;Shift+Tab → 上一列
+          // V4.2.1 修复"Tab 跳过 SingleSelect":React 18 在事件处理里同步
+          // flush state,SelectEditor 立刻 mount + 它的 document keydown listener
+          // 抓到同一个 Tab event 二次 navigate。stopImmediatePropagation 阻止
+          // 事件冒泡到 document,新 listener 不会再触发。
           e.preventDefault();
+          e.nativeEvent.stopImmediatePropagation();
           commit();
           onNavigate?.(0, e.shiftKey ? -1 : 1);
         } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
           // V2.9 #3: 上下箭头 → 上下行同列
           e.preventDefault();
+          e.nativeEvent.stopImmediatePropagation();
           commit();
           onNavigate?.(e.key === "ArrowUp" ? -1 : 1, 0);
         } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
@@ -320,10 +328,12 @@ function TextEditor({
           const isAtEnd = el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
           if (e.key === "ArrowLeft" && isAtStart) {
             e.preventDefault();
+            e.nativeEvent.stopImmediatePropagation();
             commit();
             onNavigate?.(0, -1);
           } else if (e.key === "ArrowRight" && isAtEnd) {
             e.preventDefault();
+            e.nativeEvent.stopImmediatePropagation();
             commit();
             onNavigate?.(0, 1);
           }
@@ -360,14 +370,18 @@ function SelectEditor({
   }, [onCancel]);
 
   // V4.2 #2/#3: Tab/Shift+Tab navigation
+  // V4.2.1: stopImmediatePropagation 防 React 18 同步 flush 导致下一个 dropdown
+  // editor 在同一帧 mount + listener 立刻就绪 → 二次触发 → 跳过中间字段。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Tab") {
         e.preventDefault();
+        e.stopImmediatePropagation();
         onCancel();
         onNavigate?.(0, e.shiftKey ? -1 : 1);
       } else if (e.key === "Escape") {
         e.preventDefault();
+        e.stopImmediatePropagation();
         onCancel();
       }
     };
@@ -430,14 +444,18 @@ function UserEditor({
   }, [onCancel]);
 
   // V4.2 #2/#3: Tab/Shift+Tab navigation
+  // V4.2.1: stopImmediatePropagation 防 React 18 同步 flush 导致下一个 dropdown
+  // editor 在同一帧 mount + listener 立刻就绪 → 二次触发 → 跳过中间字段。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Tab") {
         e.preventDefault();
+        e.stopImmediatePropagation();
         onCancel();
         onNavigate?.(0, e.shiftKey ? -1 : 1);
       } else if (e.key === "Escape") {
         e.preventDefault();
+        e.stopImmediatePropagation();
         onCancel();
       }
     };
@@ -515,16 +533,18 @@ function DateEditor({
   }, [onCancel]);
 
   // V4.2 #2:Tab/Shift+Tab/Esc 全局处理(date picker 没有 input 接 keydown)。
-  // Tab → commit 当前 value(无修改也算)+ onNavigate 切换;Esc → cancel。
+  // V4.2.1: stopImmediatePropagation 防同帧下一个 dropdown editor 的 listener
+  // 抓到同一个 Tab 二次触发跳字段。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Tab") {
         e.preventDefault();
-        // 若 value 还没更新过,提交原值不破坏;若用户已点过日期,onCommit 已被调用过
-        onCancel();  // 关闭 picker
+        e.stopImmediatePropagation();
+        onCancel();
         onNavigate?.(0, e.shiftKey ? -1 : 1);
       } else if (e.key === "Escape") {
         e.preventDefault();
+        e.stopImmediatePropagation();
         onCancel();
       }
     };
@@ -1023,12 +1043,10 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   useEffect(() => {
     const handler = (e: ClipboardEvent) => {
       if (!cellRangeRef.current) return;
-      const tableEl = tableRef.current;
-      if (!tableEl || !tableEl.contains(document.activeElement)) {
-        // 焦点不在 table 内,让浏览器走默认 copy(避免劫持别处的 ctrl+c)
-        return;
-      }
-      // 在 input/textarea 编辑态下,优先复制选中文本(浏览器默认),不劫持
+      // V4.2.1 修复:之前要求 document.activeElement 在 table 内,但鼠标拖选
+      // cellRange 不会主动 focus table → handler bail,Mac 下 Cmd+C 看似不起作用。
+      // 改为:只要 cellRange 有值且当前不在 input/textarea 编辑文字,就劫持 copy。
+      // (`copy`/`paste` 事件 OS 级触发,Cmd+C 与 Ctrl+C 都进同一 handler。)
       const ae = document.activeElement as HTMLElement | null;
       if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) {
         return;
@@ -1064,12 +1082,10 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     return () => document.removeEventListener("copy", handler);
   }, [records, visibleFields, toast, t]);
 
-  // V4.2 #1: 粘贴 (Ctrl/Cmd+V) — 解析 TSV,从 cellRange 起点(或单 cell 选中)开始填
+  // V4.2 #1: 粘贴 (Cmd/Ctrl+V) — 解析 TSV,从 cellRange 起点(或单 cell 选中)开始填
   useEffect(() => {
     const handler = (e: ClipboardEvent) => {
-      const tableEl = tableRef.current;
-      if (!tableEl || !tableEl.contains(document.activeElement)) return;
-      // 编辑态下让浏览器走默认 paste(input/textarea 内部处理)
+      // V4.2.1 同 copy:不再要求焦点在 table 内,只要 cellRange 有 + 不在 input/textarea
       const ae = document.activeElement as HTMLElement | null;
       if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return;
       const range = cellRangeRef.current;
