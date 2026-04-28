@@ -263,11 +263,14 @@
 }
 
 /* V4.7.1: input-anchor 把 ChatInput 和 mascots 包到一个 relative 容器里,
-   mascots 用 bottom:100% + right:0 精确锚到 chat-input-box 上沿右对齐。 */
+   mascots 用 bottom:100% + right:0 精确锚到 chat-input-box 上沿右对齐。
+   V4.7.2 修复图层:不在 anchor 上加 z-index,避免它创建 stacking context 把
+   mascots 的 -1 局限在 anchor 内 → mascots 反而高于 sibling presets。
+   现在 anchor 仅 position:relative,mascots 的 z-index:-1 直接相对根
+   stacking context,真正在 presets 之下。 */
 .chat-welcome-input-anchor {
   position: relative;
   width: 100%;
-  z-index: 1;       /* 让里面的 ChatInput 自然处于上层 */
 }
 
 /* 4 个 mascot:固定在 chat-input-box 上方右对齐,图层位于推荐 prompt 之下。
