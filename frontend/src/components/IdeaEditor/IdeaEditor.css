@@ -158,6 +158,12 @@
  * the `<br>` is replaced by a text node and the `:has(br:only-child)`
  * guard stops matching, so the placeholder hides. Color matches the
  * textarea's ::placeholder token. */
+/* The host paragraph needs `position: relative` so the absolute-positioned
+ * placeholder anchors to it (and not to some ancestor like .idea-preview-body
+ * which would land it at the document corner). */
+.idea-preview-body p[data-idea-empty-line] {
+  position: relative;
+}
 .idea-preview-body p[data-idea-empty-line][data-placeholder]:has(> br:only-child)::before {
   content: attr(data-placeholder);
   color: var(--color-text-placeholder);
@@ -165,6 +171,20 @@
   line-height: 1.7;
   pointer-events: none;
   user-select: none;
+  /* 2026-04-29: take the placeholder OUT OF the inline flow so the caret
+   * lands at the visual left edge of the line (offset 0 of the <p>) and
+   * the placeholder text just overlays the same position as a hint. The
+   * old in-flow `::before` pushed the caret past its own width — users
+   * saw the caret blinking AFTER the hint, which read as "the editor
+   * already has content typed". `position: absolute; top:0; left:0`
+   * pins the hint at the start of the line; the caret takes its natural
+   * position before the `<br>` (also at start of line). When the user
+   * types the first character, the `<br>` is replaced by a text node
+   * and the `:has(br:only-child)` guard fails → placeholder vanishes. */
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: pre;
 }
 
 /* Ensure the editable surface has enough height to host a visible caret
