@@ -966,12 +966,32 @@ export async function fetchChatSuggestions(workspaceId: string): Promise<ChatSug
 
 export async function createConversation(
   workspaceId: string,
-  agentId?: string
+  agentIdOrOpts?:
+    | string
+    | {
+        agentId?: string;
+        title?: string;
+        attachedToType?: string;
+        attachedToId?: string;
+      }
 ): Promise<ChatConversation> {
+  // Backwards compat: caller may pass `(workspaceId, agentId)` (string) OR
+  // `(workspaceId, optsObject)`. PR9 added the object form.
+  const opts =
+    typeof agentIdOrOpts === "string"
+      ? { agentId: agentIdOrOpts }
+      : agentIdOrOpts ?? {};
+  const body = {
+    workspaceId,
+    ...(opts.agentId ? { agentId: opts.agentId } : {}),
+    ...(opts.title ? { title: opts.title } : {}),
+    ...(opts.attachedToType ? { attachedToType: opts.attachedToType } : {}),
+    ...(opts.attachedToId ? { attachedToId: opts.attachedToId } : {}),
+  };
   const res = await mutationFetch(`${BASE}/chat/conversations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workspaceId, ...(agentId ? { agentId } : {}) }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error("Failed to create conversation");
   return res.json();
@@ -1932,3 +1952,28 @@ export async function moveIdeaBlock(
   if (!res.ok) throw new Error(`moveIdeaBlock failed (${res.status})`);
   return res.json();
 }
+
+// PR9: block-level comment APIs
+export interface IdeaCommentBrief {
+  id: string;
+  workspaceId: string;
+  title: string;
+  messageCount: number;
+  createdAt: number;
+  updatedAt: number;
+  /** blockId within this idea, or null if (somehow) misformatted. */
+  blockId: string | null;
+}
+
+/** List conversations attached to any block of this idea. */
+export async function fetchIdeaComments(ideaId: string): Promise<IdeaCommentBrief[]> {
+  const res = await fetch(`${BASE}/ideas/${encodeURIComponent(ideaId)}/comments`);
+  if (!res.ok) throw new Error(`fetchIdeaComments failed (${res.status})`);
+  const data = (await res.json()) as { comments: IdeaCommentBrief[] };
+  return data.comments;
+}
+
+// Note: PR9 createConversation expansion is in the original definition above
+// (~line 967). The dual-signature form (string | optsObject) supports both
+// the old `(ws, agentId)` callsites and the new `(ws, {title, attachedTo*})`
+// pattern used by IdeaEditor's block-comment flow.

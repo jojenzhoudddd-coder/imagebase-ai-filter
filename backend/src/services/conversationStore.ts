@@ -46,6 +46,9 @@ export interface Conversation {
   messageCount: number;
   createdAt: number;
   updatedAt: number;
+  /** PR9: optional anchor for "comment-style" conversations (idea-block / etc). */
+  attachedToType?: string | null;
+  attachedToId?: string | null;
 }
 
 // ─── Prisma client (own instance; Prisma recommends per-module or singleton) ──
@@ -65,6 +68,8 @@ function toConversation(row: {
   messageCount: number;
   createdAt: Date;
   updatedAt: Date;
+  attachedToType?: string | null;
+  attachedToId?: string | null;
 }): Conversation {
   return {
     id: row.id,
@@ -75,6 +80,8 @@ function toConversation(row: {
     messageCount: row.messageCount,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
+    attachedToType: row.attachedToType ?? null,
+    attachedToId: row.attachedToId ?? null,
   };
 }
 
@@ -121,16 +128,36 @@ export async function listConversations(
 export async function createConversation(
   workspaceId: string,
   title?: string,
-  agentId?: string | null
+  agentId?: string | null,
+  attached?: { type: string; id: string } | null,
 ): Promise<Conversation> {
   const row = await prisma.conversation.create({
     data: {
       workspaceId,
       agentId: agentId ?? null,
       title: title || "新对话",
+      // PR9: optional anchor (idea-block / future taste / table-record / ...).
+      attachedToType: attached?.type ?? null,
+      attachedToId: attached?.id ?? null,
     },
   });
   return toConversation(row);
+}
+
+/** PR9: list conversations attached to any block of the given idea.
+ *  Returns rows in insertion-order; FE groups by block on its own. */
+export async function listConversationsAttachedToIdea(
+  ideaId: string,
+): Promise<Conversation[]> {
+  // attachedToId for idea-block is "<ideaId>#<blockId>" — startsWith filter.
+  const rows = await prisma.conversation.findMany({
+    where: {
+      attachedToType: "idea-block",
+      attachedToId: { startsWith: `${ideaId}#` },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map(toConversation);
 }
 
 export async function getConversation(id: string): Promise<Conversation | undefined> {

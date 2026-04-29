@@ -4,7 +4,8 @@ import { useToast } from "../Toast/index";
 import InlineEdit from "../InlineEdit";
 import SidebarExpandButton from "../SidebarExpandButton";
 import BlockCloseButton from "../BlockCloseButton";
-import { fetchIdea, saveIdeaContent, uploadIdeaAttachment } from "../../api";
+import { fetchIdea, saveIdeaContent, uploadIdeaAttachment, fetchIdeaComments, createConversation as apiCreateConversation } from "../../api";
+import type { IdeaCommentBrief } from "../../api";
 import { useIdeaSync } from "../../hooks/useIdeaSync";
 import MentionPicker from "../Mention/MentionPicker";
 import MarkdownPreview from "./MarkdownPreview";
@@ -369,6 +370,51 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const { blocks: ideaBlocks } = useIdeaBlocks(ideaId, {
     localContent: content,
   });
+
+  // PR9: per-block comment counts. Fetched once + after each "add comment"
+  // mutation. Future PR can SSE-invalidate; for V1 a simple manual refresh
+  // covers the actions the user takes from this surface.
+  const [blockComments, setBlockComments] = useState<IdeaCommentBrief[]>([]);
+  const refreshComments = useCallback(() => {
+    fetchIdeaComments(ideaId).then(setBlockComments).catch(() => {
+      /* ignore — empty list is fine */
+    });
+  }, [ideaId]);
+  useEffect(() => {
+    refreshComments();
+  }, [refreshComments]);
+  const commentCountsByBlock = (() => {
+    const m: Record<string, number> = {};
+    for (const c of blockComments) {
+      if (c.blockId) m[c.blockId] = (m[c.blockId] ?? 0) + 1;
+    }
+    return m;
+  })();
+  const handleAddBlockComment = useCallback(
+    async (blockId: string) => {
+      try {
+        // Generate a short title from the block's first words (truncated).
+        const block = ideaBlocks?.find((b) => b.id === blockId);
+        const seed = (block?.content ?? "")
+          .replace(/[#>*`\-_]/g, "")
+          .trim()
+          .split(/\s+/)
+          .slice(0, 8)
+          .join(" ");
+        const title = seed ? `💬 ${seed.slice(0, 40)}` : "💬 块讨论";
+        await apiCreateConversation(workspaceId, {
+          title,
+          attachedToType: "idea-block",
+          attachedToId: `${ideaId}#${blockId}`,
+        });
+        toast.success(t("blockMenu.commentCreated") || "讨论已创建");
+        refreshComments();
+      } catch (err) {
+        toast.error(`${t("blockMenu.commentFail")}: ${err instanceof Error ? err.message : err}`);
+      }
+    },
+    [ideaBlocks, ideaId, workspaceId, refreshComments, toast, t],
+  );
   const [mentionState, setMentionState] = useState<
     | null
     | {
@@ -1509,6 +1555,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
               onMentionClick={handleMentionChipClick}
               placeholder={t("idea.empty")}
               readOnly={streaming}
+              commentCounts={commentCountsByBlock}
+              onAddBlockComment={handleAddBlockComment}
             />
           ) : (
             /* While blocks load (first paint), fall back to the old

@@ -190,17 +190,36 @@ router.get("/conversations", async (req: Request, res: Response) => {
 });
 
 // POST /api/chat/conversations
-// Body: { workspaceId, agentId? } — agentId defaults to "agent_default"
+// Body: { workspaceId, agentId?, title?, attachedToType?, attachedToId? }
+//   - agentId defaults to "agent_default"
+//   - PR9: attachedToType + attachedToId together anchor a "comment-style"
+//     conversation to e.g. an idea block (`"idea-block"` + `<ideaId>#<bid>`).
 router.post("/conversations", async (req: Request, res: Response) => {
-  const { workspaceId, agentId } = req.body as { workspaceId?: string; agentId?: string };
+  const { workspaceId, agentId, title, attachedToType, attachedToId } = req.body as {
+    workspaceId?: string;
+    agentId?: string;
+    title?: string;
+    attachedToType?: string;
+    attachedToId?: string;
+  };
   if (!workspaceId) {
     res.status(400).json({ error: "workspaceId is required" });
     return;
   }
+  // Both anchor fields must be present together (or both absent).
+  let attached: { type: string; id: string } | null = null;
+  if (attachedToType || attachedToId) {
+    if (!attachedToType || !attachedToId) {
+      res.status(400).json({ error: "attachedToType + attachedToId must be set together" });
+      return;
+    }
+    attached = { type: attachedToType, id: attachedToId };
+  }
   const conv = await convStore.createConversation(
     workspaceId,
-    undefined,
-    agentId ?? "agent_default"
+    title,
+    agentId ?? "agent_default",
+    attached,
   );
   res.json(conv);
 });

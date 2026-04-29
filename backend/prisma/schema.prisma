@@ -224,6 +224,14 @@ model Conversation {
   // 还是 idle (重启时强制 reset 为 idle)
   status       String   @default("idle") // "idle" | "generating" | "synth"
 
+  // PR9: 块级评论。可选 — 普通对话不填,挂在某 idea block 上的"评论对话"填:
+  //   attachedToType="idea-block", attachedToId="<ideaId>#<blockId>"
+  // 将来扩展到 attachedToType="taste"/"table-record" 等其他锚点。
+  // FE 在 IdeaEditor 看 idea 时通过 GET /api/ideas/:id/comments 拉 attachedTo
+  // 该 idea 任一 block 的对话,渲染 block 评论计数 / 跳转气泡。
+  attachedToType String?
+  attachedToId   String?
+
   agent    Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
   messages Message[]
 
@@ -231,6 +239,8 @@ model Conversation {
   @@index([agentId, updatedAt(sort: Desc)])
   // V3.0 PR1: createdAt desc list 排序索引
   @@index([workspaceId, createdAt(sort: Desc)])
+  // PR9: 反查"某 block 上有哪些对话"
+  @@index([attachedToType, attachedToId])
   @@map("conversations")
 }
 

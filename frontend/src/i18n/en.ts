@@ -443,6 +443,9 @@ export const en = {
   "blockMenu.toQuote": "Convert to quote",
   "blockMenu.toList": "Convert to list",
   "blockMenu.toDivider": "Convert to divider",
+  "blockMenu.addComment": "Discuss this block",
+  "blockMenu.commentFail": "Comment open failed",
+  "blockMenu.commentCreated": "Comment thread created — open from ChatBlock",
 
   // Default view/field names
   "view.defaultGrid": "Grid",
