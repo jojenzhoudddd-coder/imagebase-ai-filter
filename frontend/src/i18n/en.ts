@@ -425,6 +425,8 @@ export const en = {
   "idea.mentionSection": "Idea",
   "idea.mentionDemo": "Demo",
   "idea.mentionModel": "Model",
+  "idea.uploadAttachment": "Upload",
+  "idea.uploadFailed": "Upload failed",
 
   // Default view/field names
   "view.defaultGrid": "Grid",

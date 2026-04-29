@@ -403,6 +403,14 @@ router.delete("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
     res.status(404).json({ error: "Idea not found" });
     return;
   }
+  // PR5: snapshot attachment (hash, ext) pairs BEFORE the cascade so we can
+  // reap blobs whose last reference is gone. Doing this before the delete
+  // (rather than relying on the cascaded rows) avoids a race where the rows
+  // disappear and we lose the keys.
+  const { snapshotAttachmentBlobs, reapBlobsByHashes } = await import(
+    "../services/ideaAttachmentService.js"
+  );
+  const { workspaceId: snapshotWs, pairs } = await snapshotAttachmentBlobs(idea.id);
   await prisma.$transaction(async (tx) => {
     await tx.mention.deleteMany({ where: { sourceType: "idea", sourceId: idea.id } });
     await tx.mention.deleteMany({
@@ -413,8 +421,20 @@ router.delete("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
         ],
       },
     });
+    // FK on IdeaAttachment.ideaId is ON DELETE CASCADE — rows go automatically.
     await tx.idea.delete({ where: { id: idea.id } });
   });
+  // Reap orphan blobs (best-effort; failures here only leak storage, not data).
+  if (snapshotWs && pairs.length > 0) {
+    try {
+      const removed = await reapBlobsByHashes(snapshotWs, pairs);
+      if (removed.length > 0) {
+        console.log(`[idea:delete] reaped ${removed.length} attachment blobs for idea ${idea.id}`);
+      }
+    } catch (err) {
+      console.error(`[idea:delete] attachment reap failed for ${idea.id}:`, err);
+    }
+  }
   eventBus.emitWorkspaceChange({
     type: "idea:delete",
     workspaceId: idea.workspaceId,

@@ -25,6 +25,10 @@ import adminRoutes from "./routes/adminRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
 import tasteRoutes from "./routes/tasteRoutes.js";
 import ideaRoutes from "./routes/ideaRoutes.js";
+import {
+  ideaAttachmentRouter,
+  ideaAttachmentTopRouter,
+} from "./routes/ideaAttachmentRoutes.js";
 import mentionRoutes from "./routes/mentionRoutes.js";
 import mentionReverseRoutes from "./routes/mentionReverseRoutes.js";
 import analystRoutes from "./routes/analystRoutes.js";
@@ -149,6 +153,11 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/designs", designRoutes);
 app.use("/api/designs", tasteRoutes);
 app.use("/api/ideas", ideaRoutes);
+// PR5: Idea attachment 上传 (multipart) 挂在 /api/ideas/:ideaId/attachments
+// (parent route 已经做过 workspace access check)。
+app.use("/api/ideas", ideaAttachmentRouter);
+// 静态读取 / 删除单个附件挂在 top-level /api/idea-attachments
+app.use("/api/idea-attachments", ideaAttachmentTopRouter);
 app.use("/api/workspaces", mentionRoutes);
 // Reverse mention lookup (workspace-agnostic path since callers already know
 // the workspace — keeps the URL shape flat and search-friendly for logs).

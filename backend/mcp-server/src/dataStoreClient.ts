@@ -41,6 +41,9 @@ export interface HttpOptions {
   workspaceId?: string;
   /** Override the AsyncLocalStorage-derived auth token. Rarely used. */
   authToken?: string;
+  /** PR5: pass `body` as a FormData (multipart/form-data) instead of JSON.
+   *  fetch sets the Content-Type + boundary automatically for FormData. */
+  rawForm?: boolean;
 }
 
 export async function apiRequest<T = unknown>(path: string, opts: HttpOptions = {}): Promise<T> {
@@ -59,10 +62,15 @@ export async function apiRequest<T = unknown>(path: string, opts: HttpOptions = 
     headers["Cookie"] = `${COOKIE_NAME}=${authToken}`;
   }
 
-  let body: string | undefined;
+  let body: string | FormData | undefined;
   if (opts.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    body = JSON.stringify(opts.body);
+    if (opts.rawForm) {
+      // FormData — let fetch set Content-Type with multipart boundary.
+      body = opts.body as FormData;
+    } else {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify(opts.body);
+    }
   }
 
   const res = await fetch(url, { method, headers, body });

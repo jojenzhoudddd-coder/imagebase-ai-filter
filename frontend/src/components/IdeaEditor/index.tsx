@@ -4,7 +4,7 @@ import { useToast } from "../Toast/index";
 import InlineEdit from "../InlineEdit";
 import SidebarExpandButton from "../SidebarExpandButton";
 import BlockCloseButton from "../BlockCloseButton";
-import { fetchIdea, saveIdeaContent } from "../../api";
+import { fetchIdea, saveIdeaContent, uploadIdeaAttachment } from "../../api";
 import { useIdeaSync } from "../../hooks/useIdeaSync";
 import MentionPicker from "../Mention/MentionPicker";
 import MarkdownPreview from "./MarkdownPreview";
@@ -826,6 +826,108 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     scheduleSave(text);
   }, [detectMention, scheduleSave]);
 
+  // ── PR5: paste / drop / picker → upload + splice Markdown reference ──
+  //
+  // Inserts the Markdown reference at the current caret position. For images
+  // and SVG we use `![alt](url)`; for video/PDF we use a plain `[name](url)`
+  // link (rehype-raw + rehype-sanitize won't render <video> safely without
+  // schema additions, and <a> is universally safe). The Agent's
+  // `upload_to_idea` tool follows the same convention server-side.
+  const insertAttachmentMarkdown = useCallback(
+    (att: { url: string; mime: string; originalName?: string | null }) => {
+      const ta = textareaRef.current;
+      const start = ta?.selectionStart ?? content.length;
+      const end = ta?.selectionEnd ?? start;
+      const alt = (att.originalName || "attachment").replace(/[\[\]]/g, "");
+      const isImage = att.mime.startsWith("image/");
+      const md = isImage ? `![${alt}](${att.url})` : `[${alt}](${att.url})`;
+      const next = content.slice(0, start) + md + content.slice(end);
+      setContent(next);
+      scheduleSave(next);
+      // Restore caret right after the inserted markdown.
+      requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          const pos = start + md.length;
+          textareaRef.current.focus();
+          textareaRef.current.setSelectionRange(pos, pos);
+        }
+      });
+    },
+    [content, scheduleSave, setContent],
+  );
+
+  /** Drop / paste / file-picker entry point. Handles a list of File objects
+   *  one at a time; aggregates errors but never aborts the whole batch on
+   *  a single failure. */
+  const uploadFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      for (const f of files) {
+        try {
+          const att = await uploadIdeaAttachment(ideaId, f);
+          insertAttachmentMarkdown(att);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          toast.error(t("idea.uploadFailed") + `: ${msg}`);
+        }
+      }
+    },
+    [ideaId, insertAttachmentMarkdown, toast, t],
+  );
+
+  /** Capture-phase paste: if any clipboardData.items are files, intercept
+   *  and upload. Plain text paste falls through to the textarea native
+   *  handler. */
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      if (streaming) return;
+      const items = Array.from(e.clipboardData?.items ?? []);
+      const files = items
+        .filter((it) => it.kind === "file")
+        .map((it) => it.getAsFile())
+        .filter((f): f is File => !!f);
+      if (files.length === 0) return; // text paste — leave it
+      e.preventDefault();
+      void uploadFiles(files);
+    },
+    [streaming, uploadFiles],
+  );
+
+  /** Drop handler — same flow as paste. We listen on the textarea + the
+   *  preview wrapper so users can drag-drop into either mode. */
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLElement>) => {
+      if (streaming) return;
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length === 0) return;
+      e.preventDefault();
+      void uploadFiles(files);
+    },
+    [streaming, uploadFiles],
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLElement>) => {
+    if (e.dataTransfer?.types?.includes("Files")) {
+      e.preventDefault(); // allow drop
+    }
+  }, []);
+
+  /** Hidden file input — clicking the toolbar upload button triggers it. */
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const handleUploadButtonClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      if (files.length === 0) return;
+      void uploadFiles(files);
+      // Reset so the same file can be picked twice in a row.
+      e.target.value = "";
+    },
+    [uploadFiles],
+  );
+
   /** Preview-mode mention trigger. MarkdownPreview fires this whenever the
    * caret sits after an `@<query>` sequence (or null when that's no longer
    * true). Coords arrive in viewport pixels. */
@@ -1184,6 +1286,32 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             {mode === "source" ? PREVIEW_ICON : SOURCE_ICON}
             {mode === "source" ? t("idea.preview") : t("idea.source")}
           </button>
+          {/* PR5: 上传附件按钮 (图 / SVG / PDF / 视频),也支持 paste / drop */}
+          <button
+            className={`idea-editor-topbar-btn${streaming ? " disabled" : ""}`}
+            onClick={handleUploadButtonClick}
+            disabled={streaming}
+            title={t("idea.uploadAttachment")}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 4v12m0-12 4 4m-4-4-4 4M4 18v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            {t("idea.uploadAttachment")}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/svg+xml,application/pdf,video/mp4,video/webm"
+            multiple
+            style={{ display: "none" }}
+            onChange={handleFileInputChange}
+          />
           {/* V2.9 #6: Undo 按钮 — 与 Table topbar 一致(icon + 文字 + disabled 透明) */}
           <button
             className={`idea-editor-topbar-btn${canUndo ? "" : " disabled"}`}
@@ -1212,6 +1340,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
               value={content}
               readOnly={streaming}
               onChange={handleChange}
+              onPaste={handlePaste}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
               onKeyDown={(e) => {
                 // Tab / Shift+Tab → indent / outdent. Uses 2-space units, matches
                 // Prettier defaults and renders consistently in markdown list

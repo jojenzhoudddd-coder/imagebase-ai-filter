@@ -427,6 +427,8 @@ export const zh: TranslationKeys = {
   "idea.mentionSection": "Idea",
   "idea.mentionDemo": "Demo",
   "idea.mentionModel": "Model",
+  "idea.uploadAttachment": "上传",
+  "idea.uploadFailed": "上传失败",
 
   // Default view/field names
   "view.defaultGrid": "表格",

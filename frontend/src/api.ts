@@ -1822,3 +1822,44 @@ export async function exportDemoZip(demoId: string): Promise<string> {
   const blob = await res.blob();
   return URL.createObjectURL(blob);
 }
+
+// ─── PR5: Idea attachments ───────────────────────────────────────────────
+
+export interface IdeaAttachment {
+  id: string;
+  ideaId: string;
+  workspaceId: string;
+  hash: string;
+  ext: string;
+  mime: string;
+  size: number;
+  originalName: string;
+  uploadedBy: string | null;
+  createdAt: string;
+  /** Server-generated public URL. Use this in Markdown `![alt](url)`. */
+  url: string;
+}
+
+/** Upload one file to an idea. Returns the attachment record (incl. url). */
+export async function uploadIdeaAttachment(
+  ideaId: string,
+  file: File | Blob,
+  filename?: string,
+): Promise<IdeaAttachment> {
+  const fd = new FormData();
+  // Server expects field name "file"
+  fd.append("file", file, filename ?? (file instanceof File ? file.name : "upload.bin"));
+  const res = await fetch(`${BASE}/ideas/${encodeURIComponent(ideaId)}/attachments`, {
+    method: "POST",
+    body: fd,
+  });
+  if (!res.ok) {
+    let msg = `Upload failed (${res.status})`;
+    try {
+      const j = await res.json();
+      if (j?.error) msg = j.error;
+    } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return res.json();
+}

@@ -449,11 +449,56 @@ model Idea {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  attachments IdeaAttachment[]
 
   @@index([workspaceId])
   @@index([parentId])
   @@map("ideas")
+}
+
+// ─── IdeaAttachment (PR5, 2026-04-29) ──────────────────────────────────────
+// 灵感文档的二进制附件 (图 / SVG / PDF / 视频 / ...)。Markdown 主体只存 URL
+// 引用,这里持久化 fs key + 元数据。
+//
+// 资产文件存 BlobStorage 下:
+//   idea-attachments/<workspaceId>/<sha256>.<ext>
+//
+// 同 workspace 内同 hash 的文件 dedup —— 多个 IdeaAttachment 行可以指向同一个
+// blob (同一图片在多个 idea 出现时不重复存储)。删除某个 IdeaAttachment 时
+// 检查同 (workspaceId, hash) 还有无其它行,无则物理删除 blob。
+//
+// 跨 workspace 不 dedup (隐私边界)。
+//
+// idea 级联删除走 onDelete: Cascade —— Idea 删了所有 IdeaAttachment 行
+// 一并消失,blob 由路由层在 Idea 删除事务内手动 reap (refcount 检查后)。
+
+model IdeaAttachment {
+  id           String   @id @default(cuid())
+  ideaId       String
+  workspaceId  String
+  /// sha256 hex of file content. Primary dedup key within a workspace.
+  hash         String
+  /// File extension WITHOUT leading dot, e.g. "png" / "svg" / "pdf".
+  /// Lowercased, sanitised (no /, no ..). Used to build the blob key.
+  ext          String
+  /// MIME from upload validation. We trust this only after server-side
+  /// sniffing / extension whitelist; never echo raw client value.
+  mime         String
+  /// Bytes. Bounded by per-mime upload limits (see ideaAttachmentService).
+  size         Int
+  /// Original filename for display (FE shows on hover). Sanitised,
+  /// max 200 chars. Not used in fs path.
+  originalName String   @default("")
+  /// User who uploaded — nullable for Agent uploads with no user context.
+  uploadedBy   String?
+  createdAt    DateTime @default(now())
+
+  idea Idea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  @@index([ideaId])
+  @@index([workspaceId, hash])
+  @@map("idea_attachments")
 }
 
 // ─── Mention（@ 提及的关系记录，源 → 目标 的单向边） ───

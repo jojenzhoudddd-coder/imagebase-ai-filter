@@ -285,6 +285,96 @@ export const ideaWriteTools: ToolDefinition[] = [
       return toolResult(result);
     },
   },
+
+  // PR5: Agent 给 idea 上传图片 / SVG / PDF / 视频附件,返回 url。
+  // 上传后 Agent 应该把 ![alt](url) 拼进 Markdown,通过 append_to_idea /
+  // insert_into_idea / 流式写入。本工具不动 idea content,只产生附件 url。
+  {
+    name: "upload_to_idea",
+    description:
+      "把一张图(或 SVG / PDF / 视频)作为附件上传到指定 idea,返回可在 Markdown 里直接引用的 url。" +
+      "调用时机:用户让你画一张图 / 把外部图片插入 idea / Agent 自己生成图片需要嵌入文档。" +
+      "上传后**你需要**再调 append_to_idea 或 insert_into_idea 把 ![alt](url) 拼进 Markdown 主体 —— " +
+      "本工具不会自动改 idea content。" +
+      "支持 mime:image/png · jpeg · webp · gif · avif · svg+xml · application/pdf · video/mp4 · webm。" +
+      "size 上限:image 10MB / SVG 1MB / PDF 20MB / video 100MB。" +
+      "去重:同 workspace 同 hash 不重复存储,多个 idea 引用同一文件天然共享。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ideaId: { type: "string", description: "目标 idea id" },
+        base64: {
+          type: "string",
+          description:
+            "文件内容的 base64 编码(不带 data:mime;base64, 前缀)。可以是任意支持 mime 的二进制内容。",
+        },
+        mime: {
+          type: "string",
+          description:
+            "MIME 类型,如 image/png / image/svg+xml / application/pdf / video/mp4。",
+        },
+        originalName: {
+          type: "string",
+          description: "可选;原始文件名,显示用,会被 sanitize。",
+        },
+        alt: {
+          type: "string",
+          description:
+            "可选;返回值会包含一个建议的 markdown 引用(如 ![alt](url)),你可直接拷贝拼进 idea。",
+        },
+      },
+      required: ["ideaId", "base64", "mime"],
+    },
+    handler: async (args): Promise<string> => {
+      const ideaId = String(args.ideaId ?? "").trim();
+      if (!ideaId) return JSON.stringify({ error: "ideaId required" });
+      const b64 = String(args.base64 ?? "");
+      const mime = String(args.mime ?? "").trim();
+      if (!b64) return JSON.stringify({ error: "base64 required" });
+      if (!mime) return JSON.stringify({ error: "mime required" });
+      let buf: Buffer;
+      try {
+        buf = Buffer.from(b64, "base64");
+      } catch {
+        return JSON.stringify({ error: "invalid base64" });
+      }
+      if (buf.byteLength === 0) return JSON.stringify({ error: "empty content" });
+      // Use multipart upload via the same HTTP endpoint the FE uses, so the
+      // server-side route handles all validation + access checks uniformly.
+      const formData = new FormData();
+      formData.append("file", new Blob([buf as any], { type: mime }), args.originalName ? String(args.originalName) : "upload.bin");
+      try {
+        const res = await apiRequest<any>(`/api/ideas/${ideaId}/attachments`, {
+          method: "POST",
+          body: formData,
+          // apiRequest sets Content-Type for JSON by default; we override.
+          rawForm: true,
+        } as any);
+        const alt = typeof args.alt === "string" && args.alt.trim() ? args.alt.trim() : (res.originalName || "image");
+        const isImage = (res.mime || "").startsWith("image/");
+        const isVideo = (res.mime || "").startsWith("video/");
+        const markdown = isImage
+          ? `![${alt}](${res.url})`
+          : isVideo
+            ? `<video controls src="${res.url}"></video>`
+            : `[${alt}](${res.url})`;
+        return JSON.stringify({
+          id: res.id,
+          url: res.url,
+          mime: res.mime,
+          size: res.size,
+          markdown,
+          note:
+            "已上传。请用 append_to_idea / insert_into_idea / replace_section 把上面的 markdown 字段拼进 idea 主体。" +
+            "本工具不会自动改 idea content。",
+        });
+      } catch (err) {
+        return JSON.stringify({
+          error: `upload_to_idea failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    },
+  },
 ];
 
 // ── Tier 2 (idea-skill): streaming writes (V2) ────────────────────────────
