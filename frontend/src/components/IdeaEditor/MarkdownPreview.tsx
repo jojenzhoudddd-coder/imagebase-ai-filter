@@ -63,6 +63,14 @@ export interface MarkdownPreviewHandle {
    * (block drag handles, ⋮ menu) can measure block bounding rects. May
    * return null while the component is unmounted. */
   getRoot: () => HTMLDivElement | null;
+  /** Force the InnerMarkdown to unmount + remount, picking up the latest
+   * `source` prop. Use this AFTER an external (non-editing) source change
+   * — e.g. after a block-level mutation succeeds — so the rendered DOM
+   * reflects the new content. Do NOT call mid-edit; the InnerMarkdown
+   * memo bails during edits to preserve browser-driven DOM mutations,
+   * and forcing a remount with stale fiber crashes (see the useEffect
+   * comment above). */
+  forceRemount: () => void;
 }
 
 interface Props {
@@ -636,17 +644,28 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
 
   // If source changes *externally* (tab switch, SSE, programmatic
   // setContent from a block-level mutation, etc.) while we're NOT editing,
-  // re-snapshot AND force a remount via renderToken. The remount is the
-  // only way past the InnerMarkdown memo, which deliberately bails on
-  // every re-render while `editable` is true (to keep the DOM stable
-  // under user keystrokes). Without this bump, programmatic setContent
-  // updates the parent's `source` prop but the rendered DOM stays frozen
-  // — that's why drag-in-preview looked broken even after the move
-  // endpoint succeeded and parent state updated. (2026-04-29.)
+  // re-snapshot. We deliberately do NOT bump `renderToken` here anymore.
+  //
+  // Why: bumping renderToken forces InnerMarkdown to unmount + remount.
+  // While the user has been editing, the contenteditable contract lets
+  // the browser mutate DOM directly (Backspace, native Enter, IME, ...).
+  // The InnerMarkdown memo bails on every edit-time render to *keep* the
+  // browser's DOM mutations from being clobbered, so React's fiber for
+  // InnerMarkdown gets STALE — it still records the children that were
+  // there at last commit, while the actual DOM has fewer (or different)
+  // children. When something later forces a remount, React's unmount
+  // path walks the stale fiber and calls `removeChild` on nodes that
+  // are no longer in the DOM → `NotFoundError: The node to be removed
+  // is not a child of this node` → page crash.
+  //
+  // For programmatic source changes that REALLY need a re-render (e.g.
+  // BlockOverlays' move/delete/transform success path), the parent now
+  // calls `previewRef.current.forceRemount()` explicitly, which is only
+  // invoked from controlled non-editing entry points where the DOM
+  // hasn't been browser-mutated mid-flight. (2026-04-29.)
   useEffect(() => {
     if (!editingRef.current) {
       sourceSnapshotRef.current = source;
-      setRenderToken((t) => t + 1);
     }
   }, [source]);
 
@@ -1202,49 +1221,49 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       : mapFlatOffsetToSource(container, caretInBlock, srcSlice);
     const sourceOffset = blockStart + offsetInSlice;
 
-    // Build the separator + landing-pad for the new paragraph.
+    // 2026-04-29 take-2: drop the ZWSP-landing-pad approach.
     //
-    // The hard part: pure markdown can't represent an empty paragraph.
-    // `\n\n\n\n` (paragraph break + blank line + paragraph break) collapses
-    // to a single block separator at the parser, so even though we inserted
-    // newlines, no NEW visible block appears for the caret to land in. The
-    // user presses Enter at end of "hello", expects to see a new line below
-    // they can type into, and instead the caret jumps to whatever block was
-    // already next (or nowhere).
+    // Why the ZWSP plan failed: it created a 1-char (`​`) paragraph that the
+    // parser preserved, but the side-effects were ugly:
+    //   • Backspace required two presses — first to delete the invisible
+    //     ZWSP, second to actually merge the now-empty paragraph into the
+    //     previous one. From the user's POV, the line "wouldn't delete" on
+    //     the first press because nothing visibly changed.
+    //   • The second Enter after a partial-Backspace hit a state where the
+    //     block's `data-md-orig-text="​"` no longer matched its innerText
+    //     and the splice path resolved to bogus offsets — page crash.
     //
-    // Fix (2026-04-29): splice `\n\n​\n\n` — two paragraph breaks bracketing
-    // a single zero-width space. ZWSP is a real character that the markdown
-    // parser keeps as a paragraph (one-char body). The renderer produces a
-    // visible empty-looking `<p>` with `data-md-start/end` covering the
-    // ZWSP — the caret has somewhere to land, the user types and the typed
-    // characters concatenate after the ZWSP. The ZWSP stays invisible
-    // (zero-width) so the user sees only their own text.
+    // New approach: insert a SINGLE `\n` at the caret. With `remark-breaks`
+    // (already enabled in remarkPlugins), `\n` inside a paragraph renders
+    // as a `<br>` soft break — visible new line, caret naturally lands
+    // after it, Backspace deletes the `\n` cleanly. No ZWSP, no orphan
+    // blocks, no two-step delete.
     //
-    // Cleanup of the lingering ZWSP: when the user backspaces past their own
-    // typed content into the ZWSP-only paragraph, our existing Backspace
-    // handler will fall through to the browser's native delete which removes
-    // the ZWSP and merges with the previous block. If the user does nothing
-    // (just leaves the empty paragraph there), the `​` survives in
-    // source — harmless, invisible, byte-stable. That's an acceptable
-    // trade-off for getting the caret-landing-pad behaviour right.
+    // To get a hard paragraph break, the user just presses Enter twice:
+    // the second `\n` makes `\n\n`, which IS a markdown paragraph break,
+    // and the parser splits on it naturally. That's the canonical
+    // markdown semantics — let it do the work instead of fighting it.
     const src = sourceSnapshotRef.current;
-    const before = src.slice(0, sourceOffset);
-    const after = src.slice(sourceOffset);
-    const prevNL = (/\n+$/.exec(before)?.[0].length) ?? 0;
-    const nextNL = (/^\n+/.exec(after)?.[0].length) ?? 0;
-    const leadNL = "\n".repeat(Math.max(0, 2 - prevNL));
-    const trailNL = "\n".repeat(Math.max(0, 2 - nextNL));
-    // The ZWSP-bearing landing-pad block. Caret target offset will be
-    // RIGHT AFTER the ZWSP so typing appends to it.
-    const ZWSP = "​";
-    const splice = leadNL + ZWSP + trailNL;
-    const caretTargetOffset = sourceOffset + leadNL.length + ZWSP.length;
+    // Clamp the computed source offset to the actual source bounds.
+    // After a sequence like "Enter → Backspace → Enter", the block's
+    // data-md-orig-text can lag behind its innerText, which makes the
+    // mapFlatOffsetToSource math overshoot or undershoot. An out-of-
+    // bounds splice produces malformed markdown that has crashed the
+    // renderer in past sessions ("press Enter twice → page blanks").
+    // Clamping keeps us in the legal range; the worst-case visual is
+    // a slightly off caret, which is recoverable.
+    const safeOffset = Math.max(0, Math.min(sourceOffset, src.length));
+    const before = src.slice(0, safeOffset);
+    const after = src.slice(safeOffset);
+    const splice = "\n";
+    const caretTargetOffset = safeOffset + splice.length;
 
     const newSource = before + splice + after;
     sourceSnapshotRef.current = newSource;
     onEditableInput(newSource);
-    // Force a fresh parse so the new block structure materialises — the
-    // InnerMarkdown memo otherwise holds onto the pre-Enter DOM forever.
+    // Force a fresh parse so the new <br> / paragraph structure
+    // materialises — the InnerMarkdown memo otherwise holds onto the
+    // pre-Enter DOM forever.
     setRenderToken(t => t + 1);
 
     // Restore caret at the new source position. After remount, find the
@@ -1320,12 +1339,39 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
    * left alone — users who want a `<br>` soft break inside the same block
    * still expect native behavior there. */
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      if (composingRef.current) return;
-      e.preventDefault();
-      insertParagraphBreak();
-      return;
-    }
+    // 2026-04-29 take-3: stop intercepting Enter.
+    //
+    // History of this code:
+    //   1. Originally we intercepted Enter, splice `\n\n` into source via
+    //      `insertParagraphBreak()`, and bumped `renderToken` to force a
+    //      remount so the new paragraph structure was visible.
+    //   2. Today's session tried two splice variants (ZWSP landing pad
+    //      then plain `\n`) — both still required the renderToken bump
+    //      to flush the new render.
+    //   3. The renderToken bump unmounts the InnerMarkdown subtree. Its
+    //      memo bails on every edit-time render (to keep the DOM stable
+    //      under user keystrokes), so the React fiber drifts from the
+    //      actual DOM whenever the browser handles a Backspace etc.
+    //      When the next Enter then forces a remount, React walks the
+    //      stale fiber and calls `removeChild` on nodes the browser has
+    //      already removed → `NotFoundError` → the entire React tree
+    //      blanks.
+    //
+    // Browser's native Enter inside contentEditable inserts a `<br>` (or
+    // splits the paragraph) directly into the DOM. The follow-up `input`
+    // event flows through `handleInput` → `commitEdits`, which captures
+    // the new innerText and splices it back into source via the existing
+    // delta-based path. No fiber bump needed because we never need to
+    // re-render: the DOM the browser produced IS the new state. Memo
+    // bails on the next React render → DOM stays as-is → consistent.
+    //
+    // Trade-off: native Enter behavior varies slightly across browsers
+    // (Chrome usually splits into `<div>`s, Firefox into `<br>`s). Both
+    // round-trip cleanly through innerText → source. Inline atomics
+    // (mention chips) are still `contentEditable=false` so the user
+    // can't accidentally split inside one.
+    //
+    // Shift+Enter behavior is unchanged: native, inserts `<br>`.
 
     // Backspace chip deletion — when the caret sits immediately after a
     // mention chip (contentEditable=false), the browser's default Backspace
@@ -1699,6 +1745,7 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       return placed;
     },
     getRoot: () => rootRef.current,
+    forceRemount: () => setRenderToken((t) => t + 1),
   }), [onEditableInput]);
 
   // Render the InnerMarkdown unconditionally so the contenteditable root

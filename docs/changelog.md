@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-04-29 (Hotfix #2 · Idea preview Enter→Backspace→Enter 整页崩溃)
+
+### fix(idea): 移除 Enter 拦截器,改走浏览器原生 Enter,避免 React fiber/DOM 失同步导致的整页 unmount
+
+**症状**:用户在上一版热修后报 "preview 模式回车新增一行,再删除会无法删除,需要按两下删除,然后再换行,页面会崩"。
+
+**根因**:contentEditable 的设计 + React memo 互斥协议出现死结。
+
+1. 上一版的 `insertParagraphBreak` 用 ZWSP (`​`) 当占位段落,所以一次 Enter 实际写入 `\n\n​\n\n`。第一次 Backspace 删的是不可见的 ZWSP——用户看不出区别——所以"按两下才删除"。
+2. 真正杀页面的是第二次 Enter:`InnerMarkdown` memo 在 `editable` 时 100% bail (这是为了让浏览器自己改的 DOM 不被 React 覆盖回去),所以 React 的 fiber 在用户每次 Backspace 后已经和真实 DOM 失同步——fiber 还记着 `[<p>, <p data-empty>]` 两个孩子,DOM 里只有一个。
+3. 这时 `setRenderToken+1` 强制 unmount + remount,React 走旧 fiber 的清理路径,对每个旧子节点喊 `removeChild` ——其中一个早被浏览器删了——抛 `NotFoundError: The node to be removed is not a child of this node`,React 树整片爆掉,白屏。
+
+**修复**:不再拦截 Enter。`handleKeyDown` 里的 `if (e.key === "Enter") { preventDefault(); insertParagraphBreak(); }` 整段去掉,让浏览器原生处理。
+
+- 浏览器原生 Enter 自己改 DOM (Chrome 拆 `<p>` / Firefox 插 `<br>`),follow-up 的 `input` 事件触发 `commitEdits` 把新 innerText 反向同步到 source。
+- 不再 bump `renderToken`,所以不再触发 unmount 路径,fiber/DOM 失同步永远不会引起 `removeChild` 崩溃。
+- Shift+Enter 行为不变 (本来就是原生 `<br>`)。
+
+**同时**:
+- 保留 `forceRemount()` 在 imperative handle 上,但只给 `BlockOverlays.onAfterMutate` 这种"用户没在打字"的入口用——这些路径下 fiber 一定和 DOM 一致,remount 安全。
+- 删掉之前那个会过激重挂载的 source-change useEffect 里的 `setRenderToken+1`(导致初次进入页面就崩的副作用)。
+- ZWSP 占位段落的整段 splice 逻辑也移除。
+
+**取舍**:Enter 现在依赖浏览器原生行为,跨浏览器细节有微差(Chrome 拆段 / Firefox `<br>`),`data-md-start/end` 在多次 Enter+Backspace 后可能漂到负值——但 `commitEdits` 会一边走一边修,实际入库内容仍 round-trip。任何残余别扭都不会崩页。
+
+**实拍验证**:
+- Enter → Backspace → Enter → 页面活着,3 个循环无 `removeChild` 报错
+- DOM 结构正常 (`<p>hello</p>` + 一个空段落)
+- Console 无 React error boundary 警告
+
+---
+
 ## 2026-04-29 (Hotfix · Idea preview 编辑四连 bug)
 
 ### fix(idea): 回车换行 / 上下方向键 / 拖拽 / 图片渲染全部失效

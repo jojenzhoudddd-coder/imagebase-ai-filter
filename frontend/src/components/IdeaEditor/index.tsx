@@ -1569,9 +1569,17 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                   //      collide on baseVersion.
                   //   3. useIdeaBlocks's refetch still fires for the
                   //      server-canonical block list (handle preservation).
+                  //   4. `forceRemount()` — the InnerMarkdown memo
+                  //      deliberately bails on every edit-time render to
+                  //      preserve browser-driven DOM mutations, so the
+                  //      new `source` prop won't reach the DOM unless
+                  //      we explicitly trigger a remount. Safe here
+                  //      because mutations are user-initiated drags /
+                  //      menu clicks — the user is NOT mid-typing.
                   setContentSilent(resp.content);
                   versionRef.current = resp.version;
                   refetchIdeaBlocks();
+                  previewRef.current?.forceRemount();
                 }}
               />
             )}
