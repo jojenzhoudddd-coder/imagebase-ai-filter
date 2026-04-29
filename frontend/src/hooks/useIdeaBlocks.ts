@@ -126,15 +126,22 @@ export function useIdeaBlocks(
     };
   }, [ideaId, refetch]);
 
-  // Local content path: parse on the fly. We use a tiny client-side parser
-  // that matches server semantics for the common cases. Imperfect for table /
-  // html blocks (server is canonical) but good enough for live preview while
-  // typing — the moment the user pauses typing and autosave runs, SSE
-  // refresh replaces the synthetic blocks with the server's parsed view.
+  // 2026-04-29 fix:always prefer serverBlocks when present, even if
+  // `localContent` is set. Reason: localContent parsing produces synthetic
+  // ids (`local-0`, `local-1`, …) that don't exist in DB, breaking
+  // block-level mutations (move/delete/transform return 404).
+  // localContent path is now only an initial-load fallback before the
+  // first server fetch returns. Once serverBlocks is populated, we ride
+  // SSE refreshes for updates — which run after autosave (~600ms after
+  // last keystroke). The slight render lag is invisible because preview-
+  // mode editing is contentEditable + per-block, so user keystrokes
+  // appear in the DOM immediately regardless of React's view.
   const blocks: IdeaBlockBrief[] | null =
-    localContent != null
-      ? parseLocalBlocks(localContent)
-      : serverBlocks;
+    serverBlocks ??
+    (localContent != null ? parseLocalBlocks(localContent) : null);
+  // Avoid linter complaint about unused `localContent` if user switches
+  // off the fallback path. (No-op.)
+  void localContent;
 
   return { blocks, serverVersion, refetch, loading, error };
 }

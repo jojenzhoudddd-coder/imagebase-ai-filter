@@ -33,13 +33,18 @@
 }
 
 .idea-block {
-  /* PR8: hover affordances + drag handle + drop indicators. */
+  /* PR8: hover affordances + drag handle + drop indicators.
+   * Geometry:
+   *   block.padding-left = 36px  →  content edge starts here
+   *   handle.left=0, handle.width=28  →  handle occupies [0, 28]
+   *   gap between handle right edge and content = 36 - 28 = 8px
+   *   block.margin-left = -36px so content's effective left visually
+   *   matches the un-handled layout (page padding still controls outer
+   *   inset via .idea-block-list-page wrapper).
+   * Reported 2026-04-29: handle was flush against text. */
   width: 100%;
-  /* Make space on the left for the absolute-positioned ⋮ handle.
-   * Negative margin keeps the actual content aligned with the rest of
-   * the editor. */
-  padding-left: 28px;
-  margin-left: -28px;
+  padding-left: 36px;
+  margin-left: -36px;
   position: relative;
   transition: background 120ms ease-out;
 }
@@ -86,12 +91,13 @@
   opacity: 0.45;
 }
 
-/* Drop indicator — 2px line above/below target. */
+/* Drop indicator — 2px line above/below target, aligned to content edge
+ * (matches .idea-block padding-left: 36px). */
 .idea-block.drop-indicator-above::before,
 .idea-block.drop-indicator-below::after {
   content: "";
   position: absolute;
-  left: 28px;
+  left: 36px;
   right: 0;
   height: 2px;
   background: var(--color-primary, #1456f0);
