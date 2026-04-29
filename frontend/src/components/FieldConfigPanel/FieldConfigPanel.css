@@ -73,7 +73,11 @@
   transition: background 0.12s;
 }
 
-.field-config-item:hover {
+.field-config-item:hover,
+.field-config-item.is-highlighted {
+  /* Hover and keyboard-highlighted rows share the same visual treatment so
+   * users can't tell which input drove the highlight. onMouseEnter on the
+   * row syncs the keyboard cursor to the mouse so the two never disagree. */
   background: var(--surface-inset);
 }
 

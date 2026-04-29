@@ -123,8 +123,18 @@
   white-space: nowrap;
 }
 
-.cs-option:hover {
+.cs-option:hover,
+.cs-option.is-highlighted {
+  /* Hover and keyboard-highlighted rows share the same visual treatment.
+   * onMouseEnter on each option syncs the keyboard cursor to the mouse so
+   * the two cursors never disagree. */
   background: var(--color-bg-hover);
+}
+
+/* Make the option container itself focus-able without an outline ring when
+ * it's the keyboard target on non-searchable dropdowns. */
+.cs-options:focus {
+  outline: none;
 }
 
 .cs-option.active {

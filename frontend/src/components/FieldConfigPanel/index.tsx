@@ -41,6 +41,10 @@ export default function FieldConfigPanel({
   const dragOverRef = useRef<{ id: string | null; pos: "above" | "below" | null }>({ id: null, pos: null });
 
   const [searchQuery, setSearchQuery] = useState("");
+  // Highlighted row for keyboard navigation. Always reflects the current
+  // filtered list — reset to 0 whenever the query changes (or the list
+  // shrinks past the index).
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
 
   const hiddenSet = new Set(hiddenFields);
 
@@ -51,6 +55,58 @@ export default function FieldConfigPanel({
     const q = searchQuery.trim();
     return fields.filter(f => pinyinMatch(f.name, q));
   }, [fields, searchQuery, isSearching]);
+
+  // Clamp the highlight whenever the visible list changes — avoids stale
+  // out-of-range index when the user types and the list shrinks.
+  useEffect(() => {
+    if (highlightedIndex >= filteredFields.length) {
+      setHighlightedIndex(filteredFields.length > 0 ? filteredFields.length - 1 : 0);
+    }
+  }, [filteredFields.length, highlightedIndex]);
+
+  // Reset highlight to top on every query change so ArrowDown lands on the
+  // first match — consistent with autocomplete UX.
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [searchQuery]);
+
+  // Scroll the highlighted row into view when navigation moves it.
+  useEffect(() => {
+    const items = filteredFields;
+    if (items.length === 0) return;
+    const target = items[highlightedIndex];
+    if (!target) return;
+    const el = itemRefs.current.get(target.id);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [highlightedIndex, filteredFields]);
+
+  // Handle ↑/↓/Enter from the search input. Order of options on the page
+  // matches `filteredFields` exactly, so navigation order matches list order.
+  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    const len = filteredFields.length;
+    if (len === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex((i) => (i + 1) % len);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex((i) => (i - 1 + len) % len);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const target = filteredFields[highlightedIndex];
+      if (!target) return;
+      const isHidden = hiddenSet.has(target.id);
+      if (target.isPrimary) return; // primary field — no action
+      if (isHidden) {
+        // Hidden field: Enter shows it back (mirrors clicking the eye toggle).
+        onToggleVisibility(target.id);
+      } else if (onSelectField) {
+        // Visible field: Enter scrolls/selects (mirrors clicking the name).
+        onSelectField(target.id);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredFields, highlightedIndex, hiddenSet, onToggleVisibility, onSelectField]);
 
   // Position the panel below the anchor button —— 右对齐 trigger 的 hover 区域
   // panel.right === btn.right → left = btn.right - panelWidth (280)
@@ -183,24 +239,27 @@ export default function FieldConfigPanel({
           onChange={setSearchQuery}
           placeholder={t("fieldConfig.searchPlaceholder")}
           onEscape={() => { if (!searchQuery) onClose(); }}
+          onKeyDown={handleSearchKeyDown}
         />
       </div>
       <div className="field-config-list">
         {filteredFields.length === 0 && isSearching ? (
           <div className="field-config-empty">{t("fieldConfig.noFields")}</div>
         ) : (
-          filteredFields.map((field) => {
+          filteredFields.map((field, idx) => {
             const isHidden = hiddenSet.has(field.id);
             const isPrimary = field.isPrimary;
             const isDragging = dragState?.fieldId === field.id;
             const dragDisabled = isPrimary || isSearching;
+            const isHighlighted = idx === highlightedIndex;
 
             return (
               <div
                 key={field.id}
                 ref={(el) => { if (el) itemRefs.current.set(field.id, el); else itemRefs.current.delete(field.id); }}
-                className={`field-config-item ${isDragging ? "is-dragging" : ""} ${getDragOverClass(field.id)}`}
+                className={`field-config-item ${isDragging ? "is-dragging" : ""} ${getDragOverClass(field.id)} ${isHighlighted ? "is-highlighted" : ""}`}
                 style={getDragTransform(field.id)}
+                onMouseEnter={() => setHighlightedIndex(idx)}
               >
                 {/* Drag handle */}
                 <div

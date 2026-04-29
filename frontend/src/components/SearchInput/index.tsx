@@ -9,6 +9,10 @@ interface Props {
   autoFocus?: boolean;
   onEscape?: () => void;
   className?: string;
+  /** Optional pass-through keydown handler. Runs BEFORE the internal
+   *  Escape logic — call `e.preventDefault()` if the parent fully
+   *  handled the event (e.g. ArrowUp/Down/Enter for list navigation). */
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 }
 
 export default function SearchInput({
@@ -18,6 +22,7 @@ export default function SearchInput({
   autoFocus = false,
   onEscape,
   className = "",
+  onKeyDown,
 }: Props) {
   const { t } = useTranslation();
   const resolvedPlaceholder = placeholder || t("search.placeholder");
@@ -35,7 +40,11 @@ export default function SearchInput({
   }, [onChange]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      // Parent first — gives the host a chance to handle ArrowUp/Down/Enter
+      // for list navigation. If the parent prevents default, bail.
+      onKeyDown?.(e);
+      if (e.defaultPrevented) return;
       if (e.key === "Escape") {
         if (value) {
           onChange("");
@@ -44,7 +53,7 @@ export default function SearchInput({
         }
       }
     },
-    [value, onChange, onEscape]
+    [value, onChange, onEscape, onKeyDown]
   );
 
   return (
