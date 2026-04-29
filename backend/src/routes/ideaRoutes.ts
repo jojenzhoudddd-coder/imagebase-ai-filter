@@ -5,6 +5,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { eventBus } from "../services/eventBus.js";
 import { extractIdeaSections } from "../services/ideaSections.js";
 import { buildMentionRows } from "../services/mentionIndex.js";
+import { syncBlocksForIdea, listBlocksForIdea } from "../services/ideaBlockService.js";
 import { applyIdeaWrite } from "../services/ideaWriteService.js";
 import { withArtifactWriteLock } from "../services/artifactWriteQueue.js";
 import * as ideaStream from "../services/ideaStreamSessionService.js";
@@ -184,6 +185,46 @@ router.get("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
   });
 }));
 
+// GET /api/ideas/:ideaId/blocks — PR6 block-based read API for the FE
+// block-renderer (PR7+). Returns ordered blocks with type / content / props.
+//
+// Lazy backfill: if the IdeaBlock table is empty for this idea (legacy idea
+// created before PR6 deployed), parse + persist on first read so subsequent
+// reads are cheap. Done outside any external transaction since the user is
+// just reading; they don't expect side-effects but we provide consistent
+// reads regardless.
+router.get("/:ideaId/blocks", asyncHandler(async (req: Request, res: Response) => {
+  const idea = await prisma.idea.findUnique({
+    where: { id: req.params.ideaId },
+    select: { id: true, content: true, version: true },
+  });
+  if (!idea) {
+    res.status(404).json({ error: "Idea not found" });
+    return;
+  }
+  let rows = await listBlocksForIdea(prisma as any, idea.id);
+  if (rows.length === 0 && idea.content.length > 0) {
+    // Backfill on demand. Single-flight isn't strictly needed for V1
+    // because parse is idempotent and concurrent backfills will both
+    // succeed (last writer wins; identical output).
+    await prisma.$transaction(async (tx: any) => {
+      await syncBlocksForIdea(tx, idea.id, idea.content);
+    });
+    rows = await listBlocksForIdea(prisma as any, idea.id);
+  }
+  res.json({
+    ideaId: idea.id,
+    version: idea.version,
+    blocks: rows.map((r) => ({
+      id: r.id,
+      order: r.order,
+      type: r.type,
+      content: r.content,
+      props: r.props,
+    })),
+  });
+}));
+
 // PUT /api/ideas/:ideaId — save content (optimistic versioning)
 // body: { content: string, baseVersion: number }
 // 409 on version mismatch: { conflict:true, latest:{content,version} }
@@ -250,6 +291,10 @@ router.put("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
     if (mentionRows.length > 0) {
       await tx.mention.createMany({ data: mentionRows });
     }
+    // PR6: keep IdeaBlock table in sync. parseToBlocks is byte-stable so
+    // `Idea.content` remains source of truth — blocks are a derived view
+    // for FE block-renderer (PR7+) and future block-level operations.
+    await syncBlocksForIdea(tx, existing.id, content);
     return u;
   });
 
@@ -315,6 +360,8 @@ router.post("/:ideaId/write", asyncHandler(async (req: Request, res: Response) =
         if (mentionRows.length > 0) {
           await tx.mention.createMany({ data: mentionRows });
         }
+        // PR6: sync block table (see PUT /content for context).
+        await syncBlocksForIdea(tx, existing.id, write.content);
         return u;
       });
       return { kind: "ok" as const, updated, write };

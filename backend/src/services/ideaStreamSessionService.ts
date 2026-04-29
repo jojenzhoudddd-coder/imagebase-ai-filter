@@ -46,6 +46,7 @@ import { eventBus } from "./eventBus.js";
 import { applyIdeaWrite, type IdeaAnchor } from "./ideaWriteService.js";
 import { extractIdeaSections } from "./ideaSections.js";
 import { buildMentionRows } from "./mentionIndex.js";
+import { syncBlocksForIdea } from "./ideaBlockService.js";
 import { PrismaClient } from "../generated/prisma/client.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -337,6 +338,8 @@ export async function finalize(
       if (rows.length > 0) {
         await tx.mention.createMany({ data: rows });
       }
+      // PR6: keep IdeaBlock table in sync with finalized content.
+      await syncBlocksForIdea(tx, ideaId, finalContent);
       return updated;
     });
 

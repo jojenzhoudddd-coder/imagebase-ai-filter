@@ -451,10 +451,55 @@ model Idea {
 
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   attachments IdeaAttachment[]
+  blocks      IdeaBlock[]
 
   @@index([workspaceId])
   @@index([parentId])
   @@map("ideas")
+}
+
+// ─── IdeaBlock (PR6, 2026-04-29) ───────────────────────────────────────────
+// Idea 内容的"块级"分解。Idea.content 仍是 source of truth (原 Markdown 字符串
+// 不动,旧 API 兼容);写时同步派生这张表,FE 在 PR7+ 切到 block-based 渲染时
+// 直接读这张表,无需在客户端再 parse Markdown。
+//
+// 关键约束:
+//   - parseToBlocks(content) 必须保留原始字节 —— 把 blocks.map(b=>b.content).join("")
+//     拼回去严格等于 content。这样 source 模式 / Markdown 导出 / 第三方 git diff
+//     全部稳定。
+//   - 一篇 idea 写入时:在 PUT /content 的 $transaction 里
+//     deleteMany({ideaId}) + createMany(parsed blocks)。原子。
+//   - blockId 永久稳定 (cuid)。后续 PR8+ 的 `<ideaId>#<blockId>` mention 锚点
+//     不会因为编辑 / heading 重命名失效 —— PR6 不动 Mention,PR7+ 再迁移。
+//
+// 详见 docs/roadmap-post-skill-v1.md PR6。
+model IdeaBlock {
+  id            String   @id @default(cuid())
+  ideaId        String
+  /// fractional indexing: 0, 1, 2, ... 之间允许 0.5 / 0.25 等插入。Float 让
+  /// 拖动重排只改一个 block 的 order 而不必重写整个序列。V1 写入时按整数
+  /// 0,1,2...,后续 PR8 拖动重排开始用小数。
+  order         Float
+  /// "heading" | "paragraph" | "list" | "code" | "quote" | "divider" |
+  /// "html" | "table"。enum-like,V1 不限 string 以便 PR10 加新类型。
+  type          String
+  /// 这个 block 的原始 Markdown 字节(含 trailing newline 等)。reassemble
+  /// 把所有 block 的 content 直接 concat = 原 Idea.content。
+  content       String   @db.Text
+  /// 类型特有元数据:
+  ///   heading: { level: 1-6, slug: string }
+  ///   list:    { ordered: bool, startsAt?: number }
+  ///   code:    { language: string | null }
+  ///   table:   { columns: number, hasHeader: bool }
+  ///   image:   不在 V1,内嵌图片仍在 paragraph 里,PR10 时单拆
+  props         Json     @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  idea Idea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  @@index([ideaId, order])
+  @@map("idea_blocks")
 }
 
 // ─── IdeaAttachment (PR5, 2026-04-29) ──────────────────────────────────────
