@@ -66,8 +66,12 @@
   border-radius: 4px;
 }
 
-.idea-block > * {
-  /* Stretch the inner MarkdownPreview to use the block width. */
+/* Stretch only the *content* child (MarkdownPreview) to full block width.
+ * Crucially we DON'T want this to apply to the ⋮ handle (.idea-block-handle):
+ * `.idea-block > *` has higher specificity than `.idea-block-handle`, so
+ * without :not() the handle would be pulled to 100% width, rendering as a
+ * giant horizontal black bar between blocks (reported 2026-04-29). */
+.idea-block > *:not(.idea-block-handle) {
   width: 100%;
 }
 
