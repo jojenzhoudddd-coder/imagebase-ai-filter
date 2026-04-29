@@ -289,11 +289,24 @@ export function reassembleBlocks(blocks: ParsedBlock[]): string {
 type PrismaTxLike = Prisma.TransactionClient | PrismaClient;
 
 /**
- * Replace all IdeaBlock rows for `ideaId` with the parsed result of
- * `content`. Caller must run inside a `$transaction` together with the
- * Idea.content update so reads never see a half-updated state.
+ * Sync IdeaBlock rows for `ideaId` to match the parsed result of `content`.
  *
- * Returns the number of blocks written.
+ * 2026-04-29 fix:we used to do `deleteMany + createMany`, which regenerated
+ * every block's primary key on every write. Any FE state that held a block
+ * id from before the save (drag, BlockMenu, mention chip) would 404 on the
+ * next API call. The fix: align rows by **position** and update in place.
+ * - position i present in both old + new → UPDATE existing row (id stays)
+ * - position i only in new → INSERT new row
+ * - position i only in old → DELETE extra row
+ *
+ * This means a row's id is tied to its position, not its content. After
+ * a drag-reorder via POST /move, the row at position N has new content but
+ * the same id as before the move — which is fine for drag UX and mention
+ * stability (a `mention://idea-block/<id>` link refers to "this position",
+ * which is a reasonable identity for block-level anchors).
+ *
+ * Caller must run inside the `$transaction` that also writes Idea.content
+ * so readers never see a half-updated state. Returns the row count.
  */
 export async function syncBlocksForIdea(
   tx: PrismaTxLike,
@@ -301,21 +314,51 @@ export async function syncBlocksForIdea(
   content: string,
 ): Promise<number> {
   const parsed = parseToBlocks(content);
-  await tx.ideaBlock.deleteMany({ where: { ideaId } });
-  if (parsed.length === 0) return 0;
-  // createMany doesn't return ids in Postgres; we don't need them here, the
-  // FE will fetch via `GET /api/ideas/:id/blocks` which reads ordered by
-  // (ideaId, order). For deterministic order assign integer 0,1,2... — PR8
-  // will switch to fractional indexing on drag.
-  await tx.ideaBlock.createMany({
-    data: parsed.map((b, idx) => ({
-      ideaId,
-      order: idx,
-      type: b.type,
-      content: b.content,
-      props: b.props as any,
-    })),
-  });
+  const existing = (await tx.ideaBlock.findMany({
+    where: { ideaId },
+    orderBy: { order: "asc" },
+  })) as unknown as IdeaBlockRow[];
+
+  const max = Math.max(parsed.length, existing.length);
+  for (let i = 0; i < max; i++) {
+    const pa = parsed[i];
+    const ex = existing[i];
+    if (pa && ex) {
+      // Update in place if anything changed. Cheap equality checks first.
+      const propsChanged =
+        JSON.stringify(ex.props ?? {}) !== JSON.stringify(pa.props ?? {});
+      if (
+        ex.type !== pa.type ||
+        ex.content !== pa.content ||
+        ex.order !== i ||
+        propsChanged
+      ) {
+        await tx.ideaBlock.update({
+          where: { id: ex.id },
+          data: {
+            type: pa.type,
+            content: pa.content,
+            order: i,
+            props: pa.props as any,
+          },
+        });
+      }
+    } else if (pa) {
+      // New block at position i → insert
+      await tx.ideaBlock.create({
+        data: {
+          ideaId,
+          order: i,
+          type: pa.type,
+          content: pa.content,
+          props: pa.props as any,
+        },
+      });
+    } else if (ex) {
+      // Removed block at position i → delete
+      await tx.ideaBlock.delete({ where: { id: ex.id } });
+    }
+  }
   return parsed.length;
 }
 
