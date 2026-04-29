@@ -9,6 +9,8 @@ import { useIdeaSync } from "../../hooks/useIdeaSync";
 import MentionPicker from "../Mention/MentionPicker";
 import MarkdownPreview from "./MarkdownPreview";
 import type { MarkdownPreviewHandle, MentionQueryState } from "./MarkdownPreview";
+import BlockList from "./BlockList";
+import { useIdeaBlocks } from "../../hooks/useIdeaBlocks";
 import { buildMentionLink } from "../Mention/mentionSyntax";
 import type { ParsedMention } from "../Mention/mentionSyntax";
 import type { MentionHit } from "../../types";
@@ -357,6 +359,16 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // which surface triggered it.
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<MarkdownPreviewHandle>(null);
+
+  // PR7: block list driving preview-mode rendering. We pass `localContent`
+  // (the live `content` state) so preview follows source-mode keystrokes
+  // without waiting for autosave + SSE round trip. After autosave fires
+  // the SSE refetch replaces the local-parsed blocks with the canonical
+  // server view — this delta is invisible to users since the parser is
+  // byte-stable.
+  const { blocks: ideaBlocks } = useIdeaBlocks(ideaId, {
+    localContent: content,
+  });
   const [mentionState, setMentionState] = useState<
     | null
     | {
@@ -1483,15 +1495,30 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             />
           </div>
         ) : (
-          <MarkdownPreview
-            ref={previewRef}
-            source={content}
-            onMentionClick={handleMentionChipClick}
-            editable
-            onEditableInput={handlePreviewInput}
-            placeholder={t("idea.empty")}
-            onMentionQuery={handlePreviewMentionQuery}
-          />
+          /* PR7: preview now uses the virtualized block list. Per-block
+           * MarkdownPreview instances handle inline rendering (mention
+           * chips / GFM / sanitize) — full functional parity with the
+           * old single-document render except contentEditable is dropped
+           * (use Source mode for editing). PR8 reintroduces block-level
+           * editing with proper hover affordances. */
+          ideaBlocks ? (
+            <BlockList
+              blocks={ideaBlocks}
+              scrollRef={bodyRef}
+              onMentionClick={handleMentionChipClick}
+              placeholder={t("idea.empty")}
+            />
+          ) : (
+            /* While blocks load (first paint), fall back to the old
+             * single-render path so users don't see a flash of empty.
+             * Read-only here too. */
+            <MarkdownPreview
+              ref={previewRef}
+              source={content}
+              onMentionClick={handleMentionChipClick}
+              placeholder={t("idea.empty")}
+            />
+          )
         )}
       </div>
 

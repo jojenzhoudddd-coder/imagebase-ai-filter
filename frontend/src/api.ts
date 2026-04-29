@@ -1863,3 +1863,27 @@ export async function uploadIdeaAttachment(
   }
   return res.json();
 }
+
+// ─── PR6/PR7: Idea blocks ───────────────────────────────────────────────
+
+export interface IdeaBlockBrief {
+  id: string;
+  order: number;
+  type: string;
+  /** Original Markdown bytes for this block (concat of all = full content). */
+  content: string;
+  props: Record<string, unknown>;
+}
+
+export interface IdeaBlocksResponse {
+  ideaId: string;
+  version: number;
+  blocks: IdeaBlockBrief[];
+}
+
+/** Fetch the parsed block list for an idea. PR6 route. */
+export async function fetchIdeaBlocks(ideaId: string): Promise<IdeaBlocksResponse> {
+  const res = await fetch(`${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks`);
+  if (!res.ok) throw new Error(`fetchIdeaBlocks failed (${res.status})`);
+  return res.json();
+}

@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.13.24",
     "pinyin-pro": "^3.28.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

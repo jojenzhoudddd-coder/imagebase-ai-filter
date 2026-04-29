@@ -1,0 +1,41 @@
+/* BlockList — virtualized block container (PR7).
+ *
+ * Each .idea-block wraps a MarkdownPreview instance. Spacing comes from the
+ * preview's internal margins (h2 / p / ul / pre etc.) so the block container
+ * itself is just a positioner — no padding, no border. The translation +
+ * absolute layout is what virtualizer dictates. */
+
+.idea-block-list {
+  /* width=100% is implicit via right:0 on each .idea-block; the wrapping
+   * container uses its parent's width. */
+  width: 100%;
+}
+
+.idea-block {
+  /* PR7 V1: blocks are read-only. Hover affordance is added in PR8. */
+  width: 100%;
+}
+
+.idea-block > * {
+  /* Stretch the inner MarkdownPreview to use the block width. */
+  width: 100%;
+}
+
+.idea-block-list-empty {
+  color: var(--color-text-placeholder);
+  padding: 8px 0;
+  user-select: none;
+}
+
+/* Per-type tweaks: tighten margins on adjacent blocks so the doc reads as a
+ * single document, not 50 separate pages. MarkdownPreview's internal
+ * `<p>` margins still drive spacing; we just kill the doubled margin on
+ * the very-first / very-last child of each block. */
+.idea-block .markdown-preview-root {
+  margin: 0;
+}
+
+/* Ensure heading anchors still work — block-level scrolling target.
+ * IdeaEditor's mention link "scroll to heading slug" handler walks the DOM
+ * looking for elements whose [data-heading-slug] matches; that behavior
+ * is unchanged because MarkdownPreview emits those attrs per-heading. */
