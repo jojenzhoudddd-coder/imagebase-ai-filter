@@ -82,7 +82,13 @@ export default function FieldConfigPanel({
 
   // Handle ↑/↓/Enter from the search input. Order of options on the page
   // matches `filteredFields` exactly, so navigation order matches list order.
+  //
+  // IME guard: while a Chinese / Japanese IME composition is active, Enter
+  // confirms the candidate and ↑/↓ traverses the candidate list — those
+  // events MUST go to the IME. `e.nativeEvent.isComposing` covers modern
+  // browsers; `keyCode === 229` is the legacy placeholder.
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     const len = filteredFields.length;
     if (len === 0) return;
     if (e.key === "ArrowDown") {

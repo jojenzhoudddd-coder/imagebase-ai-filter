@@ -110,8 +110,15 @@ export default function CustomSelect({
   // ↑/↓/Enter handler shared by the search input AND the dropdown when there
   // is no search input (e.g. when `searchable=false` we still wire it on the
   // option list container so non-searchable dropdowns also get keyboard nav).
+  //
+  // IME guard: while a Chinese / Japanese IME composition is active, Enter
+  // confirms the candidate and ↑/↓ traverses the candidate list — those
+  // events MUST flow to the IME, not us. `e.nativeEvent.isComposing` covers
+  // modern browsers; `keyCode === 229` is the legacy placeholder some IMEs
+  // still emit on the very first composition keydown.
   const handleNavKey = useCallback(
     (e: React.KeyboardEvent) => {
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
       const len = filteredOptions.length;
       if (len === 0) return;
       if (e.key === "ArrowDown") {
@@ -161,6 +168,10 @@ export default function CustomSelect({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={searchPlaceholder ?? t("fieldConfig.searchPlaceholder")}
                 onKeyDown={(e) => {
+                  // While an IME composition is active, every key belongs to
+                  // the IME (Enter confirms candidate, Esc cancels, etc.).
+                  // Bail out so we don't steal those events.
+                  if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                   // Escape: first clears query, second closes (autocomplete UX).
                   if (e.key === "Escape") {
                     if (query) {
