@@ -1514,21 +1514,23 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
            * (use Source mode for editing). PR8 reintroduces block-level
            * editing with proper hover affordances. */
           ideaBlocks ? (
-            <BlockList
-              ideaId={ideaId}
-              blocks={ideaBlocks}
-              scrollRef={bodyRef}
-              onMentionClick={handleMentionChipClick}
-              placeholder={t("idea.empty")}
-              readOnly={streaming}
-              editable
-              onContentChange={(next) => {
-                // Mirror handlePreviewInput from the legacy whole-doc
-                // MarkdownPreview path: setContent + scheduleSave.
-                setContent(next);
-                scheduleSave(next);
-              }}
-            />
+            <div className="idea-block-list-page">
+              <BlockList
+                ideaId={ideaId}
+                blocks={ideaBlocks}
+                scrollRef={bodyRef}
+                onMentionClick={handleMentionChipClick}
+                placeholder={t("idea.empty")}
+                readOnly={streaming}
+                editable
+                onContentChange={(next) => {
+                  // Mirror handlePreviewInput from the legacy whole-doc
+                  // MarkdownPreview path: setContent + scheduleSave.
+                  setContent(next);
+                  scheduleSave(next);
+                }}
+              />
+            </div>
           ) : (
             /* While blocks load (first paint), fall back to the old
              * single-render path so users don't see a flash of empty.

@@ -6,9 +6,30 @@
  * absolute layout is what virtualizer dictates. */
 
 .idea-block-list {
-  /* width=100% is implicit via right:0 on each .idea-block; the wrapping
-   * container uses its parent's width. */
+  /* width=100% via right:0 on each .idea-block. */
   width: 100%;
+}
+
+/* Page-level inset (60px top / 80px bottom / 60px sides) — wraps the entire
+ * BlockList. We can't put padding on .idea-block-list itself: virtualizer
+ * positions children with `position:absolute; transform:translateY(start)`
+ * RELATIVE TO list's padding box, but its `getTotalSize()` doesn't include
+ * the padding so the scroll container would size wrong. Wrapping in a
+ * separate padded div sidesteps this — the list keeps its math, the
+ * wrapper adds the visual inset.
+ * (Reported 2026-04-29: per-block MarkdownPreview kept inheriting the
+ *  legacy `.idea-preview-body` 60px padding, stacking 140px gaps between
+ *  every block.) */
+.idea-block-list-page {
+  padding: 60px 60px 80px 60px;
+  box-sizing: border-box;
+}
+
+/* Per-block MarkdownPreview must NOT carry the legacy 60px page-level
+ * padding — that's now on the wrapper above. */
+.idea-block .idea-preview-body {
+  padding: 0 !important;
+  min-height: 0 !important;
 }
 
 .idea-block {
