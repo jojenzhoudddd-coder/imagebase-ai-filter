@@ -49,9 +49,59 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-m);
   box-shadow: var(--shadow-dropdown);
-  padding: 4px;
+  /* The inner `.cs-options` carries padding + scroll so a `.cs-search` row
+   * (when present) can stay pinned at the top while the option list scrolls
+   * underneath. Keep .cs-list itself as a plain flex container. */
+  display: flex;
+  flex-direction: column;
   max-height: 320px;
+  overflow: hidden;
+}
+
+/* Search row — only rendered when `searchable` prop is true. */
+.cs-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 0 10px;
+  height: 36px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.cs-search-icon {
+  flex-shrink: 0;
+}
+
+.cs-search-input {
+  flex: 1;
+  height: 100%;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  outline: none;
+  font-family: var(--font-family);
+}
+
+.cs-search-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* Options list — separated from .cs-list so search row can sit above
+ * without scrolling out of view. */
+.cs-options {
+  flex: 1;
   overflow-y: auto;
+  padding: 4px;
+}
+
+.cs-empty {
+  padding: 16px 12px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-align: center;
 }
 
 .cs-option {

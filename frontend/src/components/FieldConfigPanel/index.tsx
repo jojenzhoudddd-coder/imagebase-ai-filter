@@ -176,9 +176,7 @@ export default function FieldConfigPanel({
       style={{ top: pos.top, left: pos.left }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="field-config-header">
-        {t("fieldConfig.title")}
-      </div>
+      {/* Header removed per UX request — search row sits 4px below the panel top edge. */}
       <div className="field-config-search">
         <SearchInput
           value={searchQuery}

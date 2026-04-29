@@ -210,6 +210,9 @@ export default function FilterRow({ condition, fields, onChange, onDelete }: Pro
         options={fields.map((f) => ({ value: f.id, label: f.name }))}
         onChange={(v) => handleFieldChange(v)}
         className="fr-select fr-field"
+        // Field lists can grow large; pinyin search lets users jump to a
+        // field by typing initials (e.g. "fzr" → "负责人").
+        searchable
       />
 
       <OperatorDropdown
