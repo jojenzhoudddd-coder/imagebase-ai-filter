@@ -25,8 +25,13 @@ export default defineConfig({
       output: {
         manualChunks: (id) => {
           if (!id.includes("node_modules")) return undefined;
-          // React 全家桶 —— 几乎所有页面都要,单独成 chunk 长效缓存
-          if (id.match(/node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/)) {
+          // React 全家桶 —— 几乎所有页面都要,单独成 chunk 长效缓存。
+          // @tanstack/react-virtual 必须和 react 一起加载:它在模块顶层
+          // 就 const useLayoutEffect = React.useLayoutEffect。如果落到通用
+          // vendor chunk(在 react chunk 之前求值)→ "Cannot read properties
+          // of undefined (reading 'useLayoutEffect')" → 整个 app 白屏。
+          // (PR7 引入这条依赖时,2026-04-29 prod 白屏 hotfix)
+          if (id.match(/node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|@tanstack[\\/]react-virtual|@tanstack[\\/]virtual-core)[\\/]/)) {
             return "vendor-react";
           }
           // Markdown 渲染栈 —— IdeaEditor + ChatSidebar 都用到,但只有这俩用
