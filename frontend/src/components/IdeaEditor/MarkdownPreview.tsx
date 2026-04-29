@@ -350,15 +350,46 @@ const InnerMarkdown = memo(function InnerMarkdown({
       // match text. Users switch to Source mode to edit inline markdown.
       // Each one stamps `data-md-inline-src` with its source-side markdown so
       // commitEdits can preserve the syntax when rebuilding the block.
+      // 2026-04-29: drop `contentEditable={false}` from strong/em/del so the
+      // user can click into them to position the caret. They were originally
+      // atomic to keep the chip-aware delta mapper simple, but the price was
+      // "I can't put my caret in bold text". Editing inside still produces
+      // sensible source updates: the inline-src attr captures the verbatim
+      // `**bold**` slice, and `commitEdits`'s rebuild path splices the new
+      // flat text into the inline-src window so the surrounding `**`s
+      // survive across edits.
       strong: ({ node, children, ...rest }: any) => (
-        <strong contentEditable={false} data-md-inline-src={inlineSrcFrom(node)} {...rest}>{children}</strong>
+        <strong data-md-inline-src={inlineSrcFrom(node)} {...rest}>{children}</strong>
       ),
       em: ({ node, children, ...rest }: any) => (
-        <em contentEditable={false} data-md-inline-src={inlineSrcFrom(node)} {...rest}>{children}</em>
+        <em data-md-inline-src={inlineSrcFrom(node)} {...rest}>{children}</em>
       ),
       del: ({ node, children, ...rest }: any) => (
-        <del contentEditable={false} data-md-inline-src={inlineSrcFrom(node)} {...rest}>{children}</del>
+        <del data-md-inline-src={inlineSrcFrom(node)} {...rest}>{children}</del>
       ),
+      // Image — wrap with the same inline-atomic contract so `commitEdits`
+      // sees deletions. Without a wrapper, the bare `<img>` has no
+      // data-md-inline-src/start/end attrs and `flattenChildren` returns ""
+      // for it, so when the user Backspaces the image out, commitEdits
+      // computes a zero-delta and the source still has `![](url)` → the
+      // image reappears on the next render. Wrapping in a span with the
+      // markdown source captured AND a single-char placeholder text
+      // ("⁣" invisible separator) gives the mapper something concrete
+      // to splice out when the image is removed. (2026-04-29.)
+      img: ({ node, src, alt, ...rest }: any) => {
+        const srcSlice = inlineSrcFrom(node);
+        return (
+          <span
+            contentEditable={false}
+            data-md-inline-src={srcSlice}
+            data-md-inline-start={node?.position?.start?.offset}
+            data-md-inline-end={node?.position?.end?.offset}
+            className="idea-image-wrap"
+          >
+            <img src={src} alt={alt} {...rest} />
+          </span>
+        );
+      },
       code: ({ node, children, className, ...rest }: any) => {
         // Fenced ```vega-lite``` blocks → render as a chart. Falls back to
         // the raw <code> element when the spec doesn't parse as JSON so
@@ -592,7 +623,9 @@ function mapFlatOffsetToSource(
 
 /** Flatten ReactNode children to plain text for the orig-text snapshot.
  * Must mirror what the browser will put in innerText — mention chips render
- * as `@label`, so we respect that. */
+ * as `@label`, so we respect that. Images render as a single replacement
+ * char so deleting the `<img>` produces a non-zero innerText delta and
+ * `commitEdits` can splice the source. */
 function flattenChildren(children: any): string {
   if (children == null) return "";
   if (typeof children === "string" || typeof children === "number") return String(children);
@@ -602,6 +635,23 @@ function flattenChildren(children: any): string {
     const cls: string | undefined = children.props?.className;
     if (typeof cls === "string" && cls.includes("idea-mention-chip")) {
       return `@${children.props?.title ?? ""}`;
+    }
+    // Image wrapper → single object-replacement char (U+FFFC). Picked
+    // because it matches what browsers put in `innerText` for <img>
+    // — keeping flat-vs-DOM consistent so commitEdits sees a delta when
+    // the <img> is deleted. (2026-04-29.)
+    if (typeof cls === "string" && cls.includes("idea-image-wrap")) {
+      return "￼";
+    }
+    // 2026-04-29: at wrapBlock("p") time the child is still the
+    // unrendered react-markdown component wrapper — `children.type` is
+    // the function we registered in `components.img`, NOT the literal
+    // string "img". The string-equal check fails. Detect images by their
+    // distinctive props (`src` is mandatory on `<img>`, plus there's no
+    // sane non-image React element a paragraph would receive a `src` on),
+    // and substitute the same replacement char.
+    if (children.props && typeof children.props.src === "string") {
+      return "￼";
     }
     return flattenChildren(children.props?.children);
   }
@@ -673,6 +723,13 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
   // affordance that typing will insert text. Place the caret at the end of
   // the rendered content so typing appends naturally. Runs once per mount;
   // MarkdownPreview unmounts on mode toggle so we don't need to retrigger.
+  //
+  // Special case (2026-04-29): when the doc is empty (rendered placeholder
+  // `<p data-idea-empty-line>`), placing the caret at "end of contents"
+  // lands it AFTER the placeholder text in the inline flow because the
+  // placeholder is implemented as a CSS `::before` pseudo-element. Visually
+  // the user sees the caret blinking past the hint, which reads as
+  // "something's already typed". Force caret-at-start in that case.
   useEffect(() => {
     if (!editable) return;
     let cancelled = false;
@@ -689,7 +746,13 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
         if (root.childNodes.length === 0) return;
         const range = document.createRange();
         range.selectNodeContents(root);
-        range.collapse(false);
+        // Empty-doc placeholder: caret at start so the placeholder reads
+        // "type here…" instead of "you already typed". Other docs: caret
+        // at end so typing appends.
+        const isEmpty =
+          root.childNodes.length === 1 &&
+          root.firstElementChild?.hasAttribute("data-idea-empty-line");
+        range.collapse(isEmpty ? true : false);
         const sel = window.getSelection();
         if (sel) {
           sel.removeAllRanges();
@@ -1388,20 +1451,28 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       if (sel && sel.rangeCount > 0) {
         const range = sel.getRangeAt(0);
         if (range.collapsed) {
-          // Two possible caret-after-chip shapes:
-          //  (a) caret is at offset 0 of a text node whose previousSibling is a chip
-          //  (b) caret is at index N of an element node, and childNodes[N-1] is a chip
+          // Two possible caret-after-atomic shapes:
+          //  (a) caret is at offset 0 of a text node whose previousSibling is an atomic
+          //  (b) caret is at index N of an element node, and childNodes[N-1] is an atomic
+          // 2026-04-29: extended to also catch image wrappers (idea-image-wrap).
+          // Without this, Backspace right after an image either silently
+          // deletes nothing (atomic is contentEditable=false) or the
+          // browser nukes the entire enclosing <p>, both leaving the
+          // markdown source's `![alt](url)` orphaned.
+          const isAtomic = (el: Element): boolean =>
+            el.classList.contains("idea-mention-chip") ||
+            el.classList.contains("idea-image-wrap");
           let chip: HTMLElement | null = null;
           const sc = range.startContainer;
           const so = range.startOffset;
           if (sc.nodeType === Node.TEXT_NODE && so === 0) {
             const prev = (sc as Text).previousSibling;
-            if (prev instanceof HTMLElement && prev.classList.contains("idea-mention-chip")) {
+            if (prev instanceof HTMLElement && isAtomic(prev)) {
               chip = prev;
             }
           } else if (sc.nodeType === Node.ELEMENT_NODE && so > 0) {
             const prev = sc.childNodes[so - 1];
-            if (prev instanceof HTMLElement && prev.classList.contains("idea-mention-chip")) {
+            if (prev instanceof HTMLElement && isAtomic(prev)) {
               chip = prev;
             }
           }

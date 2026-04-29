@@ -1306,17 +1306,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           {statusLabel && <span className="idea-editor-status">{statusLabel}</span>}
           {/* V2.9.3: save status 和 Switch 之间加竖线 */}
           {statusLabel && <span className="idea-editor-topbar-sep" aria-hidden="true" />}
-          {/* Single view-bar toggle — shows only the destination mode.
-           * In Source view, the button reads "Preview"; click to switch. */}
-          <button
-            className="idea-editor-topbar-btn"
-            onClick={toggleMode}
-            title={t("idea.toggleHint")}
-          >
-            {mode === "source" ? PREVIEW_ICON : SOURCE_ICON}
-            {mode === "source" ? t("idea.preview") : t("idea.source")}
-          </button>
-          {/* PR5: 上传附件按钮 (图 / SVG / PDF / 视频),也支持 paste / drop */}
+          {/* PR5: 上传附件按钮 (图 / SVG / PDF / 视频),也支持 paste / drop.
+           * 2026-04-29: Upload 放在 Switch 之前 —— Upload 是高频操作,Switch 是
+           * 模式切换更靠后习惯 (跟 word / 飞书文档左右顺序对齐). */}
           <button
             className={`idea-editor-topbar-btn${streaming ? " disabled" : ""}`}
             onClick={handleUploadButtonClick}
@@ -1333,6 +1325,16 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
               />
             </svg>
             {t("idea.uploadAttachment")}
+          </button>
+          {/* Single view-bar toggle — shows only the destination mode.
+           * In Source view, the button reads "Preview"; click to switch. */}
+          <button
+            className="idea-editor-topbar-btn"
+            onClick={toggleMode}
+            title={t("idea.toggleHint")}
+          >
+            {mode === "source" ? PREVIEW_ICON : SOURCE_ICON}
+            {mode === "source" ? t("idea.preview") : t("idea.source")}
           </button>
           <input
             ref={fileInputRef}
