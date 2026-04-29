@@ -70,8 +70,28 @@ const _inflightGets = new Map<string, Promise<any>>();
 function getDedup<T>(url: string): Promise<T> {
   const existing = _inflightGets.get(url);
   if (existing) return existing as Promise<T>;
+  // 2026-04-29 hotfix: previously this didn't check `res.ok`. On 404 (e.g.
+  // a Magic Canvas table-block pointing at a stale Demo id like
+  // `dm913020441412`), the backend returns `{"error":"Table not found"}`
+  // and `res.json()` happily resolves with that *object* — but the caller
+  // expects `T = Field[] | TableRecord[] | View[]`. The next `useMemo`
+  // does `fields.map(...)`, throws "fields.map is not a function", and
+  // the entire React tree above unmounts. From the user's POV the page
+  // just blanks and won't reload.
+  //
+  // Reject on non-ok so the caller's .catch (e.g. TableArtifactSurface's
+  // `useEffect`) actually sees the failure and `fields` stays at its
+  // initial empty-array default — useMemo over `[].map(...)` returns []
+  // safely, the editor renders an empty table, no React tree teardown.
   const promise = fetch(url)
-    .then(res => res.json())
+    .then((res) => {
+      if (!res.ok) {
+        return res.text().then((body) => {
+          throw new Error(`getDedup ${url} → ${res.status}: ${body.slice(0, 200)}`);
+        });
+      }
+      return res.json() as Promise<T>;
+    })
     .finally(() => {
       // 解析后清掉 entry,下次调用是真新鲜的请求
       _inflightGets.delete(url);
