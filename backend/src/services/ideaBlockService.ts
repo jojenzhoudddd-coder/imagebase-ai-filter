@@ -319,12 +319,102 @@ export async function syncBlocksForIdea(
     orderBy: { order: "asc" },
   })) as unknown as IdeaBlockRow[];
 
-  const max = Math.max(parsed.length, existing.length);
-  for (let i = 0; i < max; i++) {
+  // 2026-04-29 fix: a naive position-based pairing (parsed[i] ↔ existing[i])
+  // mis-shifts IDs whenever a block is inserted or deleted in the middle —
+  // the row at position i gets *mutated* to look like the new block, and the
+  // FE's stable-ID references go stale (e.g. "delete bullet, then transform
+  // quote" turns the bullet's id into a quote and the quote's id into a
+  // paragraph; the next FE click hits the wrong row).
+  //
+  // Greedy content-based matching instead: parsed blocks try to claim a
+  // *content-identical* existing row first (closest in position when there
+  // are ties), and only unclaimed parsed blocks fall back to remaining
+  // unclaimed existing rows in document order. The result is that any block
+  // the user didn't touch keeps its id verbatim, and inserts/deletes leave
+  // a clean "new id here, old id removed" diff.
+  const N = parsed.length;
+  const M = existing.length;
+  const parsedToExisting = new Array<number>(N).fill(-1);
+  const existingClaimed = new Array<boolean>(M).fill(false);
+
+  // Pass 1a: exact content + type match (closest by position when ties).
+  for (let i = 0; i < N; i++) {
+    let bestJ = -1;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let j = 0; j < M; j++) {
+      if (existingClaimed[j]) continue;
+      const ex = existing[j];
+      const pa = parsed[i];
+      if (ex.type === pa.type && ex.content === pa.content) {
+        const dist = Math.abs(j - i);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestJ = j;
+        }
+      }
+    }
+    if (bestJ >= 0) {
+      parsedToExisting[i] = bestJ;
+      existingClaimed[bestJ] = true;
+    }
+  }
+  // Pass 1b: relaxed match — same type, same body when trailing whitespace
+  // is stripped. A block move flips the last block's "\n\n" → "\n" (or vice
+  // versa) because trailing-block-of-doc has different framing; without this
+  // pass, the moved block's id leaks to the new tail and a different id
+  // gets pulled to the moved-to position. Stripping trailing `\s+` for the
+  // comparison keeps the moved block's id pinned to its content.
+  for (let i = 0; i < N; i++) {
+    if (parsedToExisting[i] !== -1) continue;
     const pa = parsed[i];
-    const ex = existing[i];
-    if (pa && ex) {
-      // Update in place if anything changed. Cheap equality checks first.
+    const paBody = pa.content.replace(/\s+$/, "");
+    if (paBody.length === 0) continue; // don't match empty bodies
+    let bestJ = -1;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let j = 0; j < M; j++) {
+      if (existingClaimed[j]) continue;
+      const ex = existing[j];
+      if (ex.type !== pa.type) continue;
+      if (ex.content.replace(/\s+$/, "") !== paBody) continue;
+      const dist = Math.abs(j - i);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestJ = j;
+      }
+    }
+    if (bestJ >= 0) {
+      parsedToExisting[i] = bestJ;
+      existingClaimed[bestJ] = true;
+    }
+  }
+
+  // Pass 2: assign remaining unclaimed existing rows to unmatched parsed
+  // positions in document order — these are the blocks the user *edited*
+  // (content changed in place but the row keeps its id, transforms etc.).
+  const remainingExisting: number[] = [];
+  for (let j = 0; j < M; j++) if (!existingClaimed[j]) remainingExisting.push(j);
+  let cursor = 0;
+  for (let i = 0; i < N; i++) {
+    if (parsedToExisting[i] !== -1) continue;
+    if (cursor < remainingExisting.length) {
+      const j = remainingExisting[cursor++];
+      parsedToExisting[i] = j;
+      existingClaimed[j] = true;
+    }
+  }
+
+  // Apply the diff:
+  //   - parsed[i] with a paired existing[j]  → UPDATE in place (keep id)
+  //   - parsed[i] with no pair               → CREATE
+  //   - existing[j] never claimed            → DELETE
+  // Order matters only insofar as the @@index([ideaId, order]) needs to
+  // reflect the final positions; no unique constraint, so concurrent
+  // identical orders during the loop are fine.
+  for (let i = 0; i < N; i++) {
+    const j = parsedToExisting[i];
+    const pa = parsed[i];
+    if (j >= 0) {
+      const ex = existing[j];
       const propsChanged =
         JSON.stringify(ex.props ?? {}) !== JSON.stringify(pa.props ?? {});
       if (
@@ -343,8 +433,7 @@ export async function syncBlocksForIdea(
           },
         });
       }
-    } else if (pa) {
-      // New block at position i → insert
+    } else {
       await tx.ideaBlock.create({
         data: {
           ideaId,
@@ -354,9 +443,11 @@ export async function syncBlocksForIdea(
           props: pa.props as any,
         },
       });
-    } else if (ex) {
-      // Removed block at position i → delete
-      await tx.ideaBlock.delete({ where: { id: ex.id } });
+    }
+  }
+  for (let j = 0; j < M; j++) {
+    if (!existingClaimed[j]) {
+      await tx.ideaBlock.delete({ where: { id: existing[j].id } });
     }
   }
   return parsed.length;

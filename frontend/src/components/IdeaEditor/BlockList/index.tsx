@@ -388,12 +388,18 @@ export default function BlockList({
               onEditableInput={
                 editable && !readOnly
                   ? (next: string) => {
-                      // Normalise trailing whitespace on every edit so
-                      // the user can never accumulate phantom blank lines
-                      // between blocks. Keep exactly one `\n` if the
-                      // original block had one, else 0.
-                      const normalised = next.replace(/\n+$/, block.content.endsWith("\n") ? "\n" : "");
-                      handleBlockEdit(vi.index, normalised);
+                      // PR8.5 hotfix #2 (2026-04-29): we previously stripped
+                      // trailing newlines on every edit, which killed the
+                      // Enter-at-end of a block — pressing Enter at the end
+                      // of a paragraph produced "hello\n", got normalised
+                      // back to "hello", and the new line never persisted.
+                      // We now forward whatever the contentEditable surface
+                      // produces verbatim. Phantom blank lines between
+                      // blocks are still suppressed by the *render-time*
+                      // strip in `renderSource` above; that's a one-way
+                      // visual normalisation that doesn't touch the byte
+                      // source so the user's input is preserved.
+                      handleBlockEdit(vi.index, next);
                     }
                   : undefined
               }

@@ -59,6 +59,10 @@ export interface MarkdownPreviewHandle {
    * source-offset. Returns true on success. Used when toggling source →
    * preview. */
   setCaretFromSourceOffset: (offset: number) => boolean;
+  /** Returns the contenteditable root element so external overlays
+   * (block drag handles, ⋮ menu) can measure block bounding rects. May
+   * return null while the component is unmounted. */
+  getRoot: () => HTMLDivElement | null;
 }
 
 interface Props {
@@ -143,7 +147,10 @@ const SVG_ATTRS = [
  * Note: this runs BEFORE rehype-sanitize, so rehype-sanitize's `protocols.href`
  * whitelist is still the second line of defense. Adding to react-markdown's
  * allow-list is necessary but not sufficient. */
-const SAFE_URL_PROTOCOL = /^(https?|ircs?|mailto|xmpp|mention)$/i;
+// 2026-04-29: extended with `data` + `blob` to keep inline images alive after
+// react-markdown's own `defaultUrlTransform` runs. (Sanitisation by
+// rehype-sanitize is the second-line defense; see `schema.protocols.src`.)
+const SAFE_URL_PROTOCOL = /^(https?|ircs?|mailto|xmpp|mention|data|blob)$/i;
 function safeUrlTransform(value: string): string {
   const colon = value.indexOf(":");
   const questionMark = value.indexOf("?");
@@ -181,6 +188,17 @@ const schema: typeof defaultSchema = {
       ...((defaultSchema.attributes?.a) || []),
       ["href", /^mention:\/\//, /^https?:\/\//, /^#/, /^\//, /^mailto:/, /^tel:/],
     ],
+    // 2026-04-29: GH's defaultSchema.attributes.img is just `[aria, longDesc, src]`
+    // — `alt`, `title`, `width`, `height` get stripped, so a stock markdown
+    // `![alt](url)` renders an *attribute-less* `<img>` whose `alt` text
+    // never reaches the user (some screen readers also refuse to announce
+    // unaliased images). We allow the standard set here. `src` itself is
+    // still constrained by the `protocols.src` allow-list below.
+    img: [
+      ...((defaultSchema.attributes?.img) || []),
+      "alt", "title", "width", "height", "loading", "referrerpolicy",
+      "crossorigin", "decoding",
+    ],
     // P1 fix: rehype-sanitize's defaultSchema strips `start` / `type` /
     // `reversed` from <ol> and `value` from <li>, which is why preview was
     // losing ordered list numbering when source had `1. … 2. … 3. …`. The
@@ -199,6 +217,11 @@ const schema: typeof defaultSchema = {
   protocols: {
     ...(defaultSchema.protocols || {}),
     href: [...((defaultSchema.protocols?.href) || []), "mention"],
+    // 2026-04-29: allow `data:` and `blob:` URLs for inline images so
+    // pasted screenshots and locally-generated previews render. (Server
+    // attachments like `/api/idea-attachments/...` are relative URLs and
+    // pass through hast-util-sanitize's "no colon → safe" rule.)
+    src: [...((defaultSchema.protocols?.src) || []), "data", "blob"],
   },
 };
 
@@ -611,12 +634,19 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
   // the remount deterministic and sidesteps the memo entirely.
   const [renderToken, setRenderToken] = useState(0);
 
-  // If source changes *externally* (tab switch, SSE, etc.) while we're NOT
-  // editing, re-snapshot and let InnerMarkdown re-render. While editing we
-  // keep the snapshot at its value at focus-start (see handleFocus below).
+  // If source changes *externally* (tab switch, SSE, programmatic
+  // setContent from a block-level mutation, etc.) while we're NOT editing,
+  // re-snapshot AND force a remount via renderToken. The remount is the
+  // only way past the InnerMarkdown memo, which deliberately bails on
+  // every re-render while `editable` is true (to keep the DOM stable
+  // under user keystrokes). Without this bump, programmatic setContent
+  // updates the parent's `source` prop but the rendered DOM stays frozen
+  // — that's why drag-in-preview looked broken even after the move
+  // endpoint succeeded and parent state updated. (2026-04-29.)
   useEffect(() => {
     if (!editingRef.current) {
       sourceSnapshotRef.current = source;
+      setRenderToken((t) => t + 1);
     }
   }, [source]);
 
@@ -1172,19 +1202,45 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       : mapFlatOffsetToSource(container, caretInBlock, srcSlice);
     const sourceOffset = blockStart + offsetInSlice;
 
-    // Build the separator. We want 2 newlines between content on each side
-    // (markdown paragraph break). If the adjacent source already has some
-    // newlines — e.g. caret sits at end of a heading that already ends with
-    // `\n` — only insert what's missing, so we don't balloon to triple-
-    // newline on every Enter.
+    // Build the separator + landing-pad for the new paragraph.
+    //
+    // The hard part: pure markdown can't represent an empty paragraph.
+    // `\n\n\n\n` (paragraph break + blank line + paragraph break) collapses
+    // to a single block separator at the parser, so even though we inserted
+    // newlines, no NEW visible block appears for the caret to land in. The
+    // user presses Enter at end of "hello", expects to see a new line below
+    // they can type into, and instead the caret jumps to whatever block was
+    // already next (or nowhere).
+    //
+    // Fix (2026-04-29): splice `\n\n​\n\n` — two paragraph breaks bracketing
+    // a single zero-width space. ZWSP is a real character that the markdown
+    // parser keeps as a paragraph (one-char body). The renderer produces a
+    // visible empty-looking `<p>` with `data-md-start/end` covering the
+    // ZWSP — the caret has somewhere to land, the user types and the typed
+    // characters concatenate after the ZWSP. The ZWSP stays invisible
+    // (zero-width) so the user sees only their own text.
+    //
+    // Cleanup of the lingering ZWSP: when the user backspaces past their own
+    // typed content into the ZWSP-only paragraph, our existing Backspace
+    // handler will fall through to the browser's native delete which removes
+    // the ZWSP and merges with the previous block. If the user does nothing
+    // (just leaves the empty paragraph there), the `​` survives in
+    // source — harmless, invisible, byte-stable. That's an acceptable
+    // trade-off for getting the caret-landing-pad behaviour right.
     const src = sourceSnapshotRef.current;
     const before = src.slice(0, sourceOffset);
     const after = src.slice(sourceOffset);
     const prevNL = (/\n+$/.exec(before)?.[0].length) ?? 0;
     const nextNL = (/^\n+/.exec(after)?.[0].length) ?? 0;
-    const sep = "\n".repeat(Math.max(1, 2 - prevNL - nextNL));
+    const leadNL = "\n".repeat(Math.max(0, 2 - prevNL));
+    const trailNL = "\n".repeat(Math.max(0, 2 - nextNL));
+    // The ZWSP-bearing landing-pad block. Caret target offset will be
+    // RIGHT AFTER the ZWSP so typing appends to it.
+    const ZWSP = "​";
+    const splice = leadNL + ZWSP + trailNL;
+    const caretTargetOffset = sourceOffset + leadNL.length + ZWSP.length;
 
-    const newSource = before + sep + after;
+    const newSource = before + splice + after;
     sourceSnapshotRef.current = newSource;
     onEditableInput(newSource);
     // Force a fresh parse so the new block structure materialises — the
@@ -1196,7 +1252,7 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
     // accordingly. If we can't locate one (target is past the last block),
     // fall back to end of the editable root — still better than losing the
     // caret entirely.
-    const targetOffset = sourceOffset + sep.length;
+    const targetOffset = caretTargetOffset;
     requestAnimationFrame(() => {
       const r = rootRef.current;
       if (!r) return;
@@ -1642,6 +1698,7 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       }
       return placed;
     },
+    getRoot: () => rootRef.current,
   }), [onEditableInput]);
 
   // Render the InnerMarkdown unconditionally so the contenteditable root

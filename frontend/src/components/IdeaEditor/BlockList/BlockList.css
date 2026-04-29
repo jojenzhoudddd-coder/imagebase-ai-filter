@@ -146,3 +146,73 @@
  * IdeaEditor's mention link "scroll to heading slug" handler walks the DOM
  * looking for elements whose [data-heading-slug] matches; that behavior
  * is unchanged because MarkdownPreview emits those attrs per-heading. */
+
+/* ─── BlockOverlays (2026-04-29 rewrite) ─────────────────────────────────
+ * Absolute-positioned overlay layer that paints ⋮ handles + drop indicators
+ * on top of a single whole-doc MarkdownPreview. Sits inside
+ * .idea-preview-stack alongside the preview itself; the stack is
+ * position:relative so absolute children inherit its top-left as origin. */
+.idea-preview-stack {
+  position: relative;
+}
+
+/* The overlay container itself spans the whole stack. pointer-events:none
+ * means hover events pass through to the live preview underneath; only the
+ * handle buttons (which set pointer-events:auto explicitly) catch clicks. */
+.idea-block-overlays {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Per-block overlay item — sized to match the block's bounding box in the
+ * live preview (top + height computed by `measure()` walking the DOM). */
+.idea-block-overlay {
+  /* Most styling lives on .idea-block-handle. The wrapper is just a hit-area
+   * coordinator and a positioning anchor for the drop indicators. */
+  border-radius: 4px;
+  transition: background 120ms ease-out;
+}
+
+/* Override the default .idea-block-handle position so it lives in the
+ * overlay's coordinate system (sibling of the wrapper) rather than as a
+ * BlockList row child. */
+.idea-block-handle-overlay {
+  /* `position: absolute` already set inline; this rule is for hover state. */
+}
+
+.idea-block-overlay:hover .idea-block-handle-overlay,
+.idea-block-overlay.is-hover .idea-block-handle-overlay {
+  opacity: 1;
+  pointer-events: auto !important;
+}
+.idea-block-handle-overlay {
+  opacity: 0;
+}
+.idea-block-overlay.is-drag-source {
+  opacity: 0.45;
+}
+.idea-block-overlay.drop-indicator-above::before,
+.idea-block-overlay.drop-indicator-below::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-primary, #1456f0);
+  border-radius: 1px;
+  pointer-events: none;
+}
+.idea-block-overlay.drop-indicator-above::before { top: -1px; }
+.idea-block-overlay.drop-indicator-below::after  { bottom: -1px; }
+
+/* Streaming lock — visual cue that the doc is read-only because Agent is
+ * writing. Subtle so it doesn't fight the streaming text underneath. */
+.idea-preview-streaming-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+}

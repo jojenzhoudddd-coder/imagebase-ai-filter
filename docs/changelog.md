@@ -5,6 +5,51 @@
 
 ---
 
+## 2026-04-29 (Hotfix · Idea preview 编辑四连 bug)
+
+### fix(idea): 回车换行 / 上下方向键 / 拖拽 / 图片渲染全部失效
+
+**症状**:用户报四个问题，全部发生在 Idea preview 模式：
+1. block 内回车不换行
+2. block 之间无法用上下方向键移动光标
+3. drag 在 preview 不生效（但 source 模式下能看到位置变了）
+4. preview 模式不展示图片
+
+**根因（4 层级联）**:
+
+1. **架构层**:PR7+PR8 把 preview 切成"每块一个 contentEditable"的虚拟列表，跟浏览器原生 Enter / 方向键行为打架；同时每块独立 contentEditable 让光标无法跨块移动。
+2. **`useIdeaBlocks` SSE 静默 400**:hook 订阅 `/api/sync/ideas/:id/events` 时漏了必填的 `?clientId=…`,后端直接返回 400,EventSource 从未连上,`idea:content-change` 永远不触发 refetch。所有 block 级别的 mutation 看起来"成功了但前端没反应"。
+3. **`useIdeaSync` 自回声过滤把 block-mutation 的内容广播也吞了**:useIdeaSync 主动过滤 `clientId === self` 的事件(避免用户输入回弹),但这同时也把 drag/delete/transform 触发的 content-change 给屏蔽了。父级 `IdeaEditor.content` state 不更新,preview 自然也不动。
+4. **`InnerMarkdown` memo 总是 bail**:memo comparator 写的是 `if (next.editable && prev.editable) return true`——为了 user 输入时 DOM 稳定,但同时也封死了"程序化 setContent"的路径,外部 source 变化进不到 DOM。
+
+**修复**:
+
+1. **架构改回单 contentEditable**:preview-edit mode 用整篇 `<MarkdownPreview editable />`,原生 Enter / 方向键 / IME / 图片走浏览器自己的处理。
+2. **新增 `BlockOverlays.tsx`**:用 absolute-position 把 ⋮ handle 和 drag 区盖在 MarkdownPreview 之上,遍历 preview root 的直接子元素和 `ideaBlocks[i]` 一一对应,复用原 BlockList 的 menu / drop indicator / API 调用。
+3. **`useIdeaBlocks` 加 `clientId`**:URL 拼上 `?clientId=…`,SSE 终于能连上。
+4. **mutation 响应回灌父级**:`BlockOverlays.onAfterMutate({content, version})` 直接把后端返回的新内容 + 版本喂给 IdeaEditor 的 setContent + versionRef,绕开 useIdeaSync 的自回声过滤。
+5. **memo 旁路**:`MarkdownPreview` 在 source 变化的 useEffect 里同时 `setRenderToken(t => t+1)`,强制 InnerMarkdown 重新挂载(key 切换比改 memo 干净,避免影响用户主动输入的稳定性)。
+6. **Enter 落点用 ZWSP(U+200B)夹击**:splice `\n\n​\n\n` 而不是单纯的 `\n\n`——markdown parser 把 ZWSP 当作单字符段落保留,渲染出可见但空白的 `<p>`,光标有地方落,typing 直接 append 到 ZWSP 后面。
+7. **图片 sanitize schema 扩展**:`<img>` 加上 `alt/title/width/height/loading/...` 属性白名单;`src` 协议白名单加 `data:` / `blob:`;`safeUrlTransform` 同步加 `data` / `blob`。
+8. **block ID 稳定性(顺手修)**:`syncBlocksForIdea` 从"按位置 i 配对"改成"按 type+content 内容匹配 + 末尾空白容忍"两遍贪心,删除中间块或拖动末尾块都能保住所有未变 block 的 id 不漂移。
+
+**全部在浏览器实拍验证过**(localhost:5173 真实 React event flow,不是 curl 烟雾测试):
+- 回车在"paragraph C"末尾按 → 出现新空段落 → 用户可输入
+- 拖动 paragraph A 到顶 → DOM 立刻从 [C, A, B] 变成 [B, C, A]
+- `![alt](https://placehold.co/200x100/png)` 真正画出 200×100 占位图
+- 单 contentEditable → 上下方向键原生跨段落
+
+**文件**:
+- `frontend/src/hooks/useIdeaBlocks.ts` — `clientId` option
+- `frontend/src/components/IdeaEditor/index.tsx` — 改回 MarkdownPreview + 接 BlockOverlays
+- `frontend/src/components/IdeaEditor/BlockList/BlockOverlays.tsx` (新增)
+- `frontend/src/components/IdeaEditor/BlockList/BlockList.css` — overlay 样式
+- `frontend/src/components/IdeaEditor/BlockList/index.tsx` — 移除 Enter 强制 normalize
+- `frontend/src/components/IdeaEditor/MarkdownPreview.tsx` — getRoot / ZWSP / memo 旁路 / img schema
+- `backend/src/services/ideaBlockService.ts` — content-match sync
+
+---
+
 ## 2026-04-28 (Hotfix · 多 block SSE 把连接池占满)
 
 ### perf(nginx): 启用 HTTP/2 — 多 block 不再饿死 sidebar / API 请求

@@ -38,6 +38,16 @@ export interface UseIdeaBlocksOptions {
   /** Called whenever the version we know about changes. Useful for the
    *  IdeaEditor parent to update its `versionRef`. */
   onVersion?: (version: number) => void;
+  /** Required for the SSE subscription — the per-idea events endpoint
+   *  rejects connections without `?clientId=…`. Pass the IdeaEditor's
+   *  clientId (same as the one used for `useIdeaSync`). Without this,
+   *  the SSE 400s, the FE never sees `idea:content-change` events, and
+   *  block-level mutations (drag/delete/transform) appear "successful"
+   *  but the rendered list stays stale. (2026-04-29: this was the actual
+   *  cause of the "drag in preview不生效" bug — the move endpoint did
+   *  succeed server-side, but useIdeaBlocks never refetched because its
+   *  SSE never connected.) */
+  clientId?: string;
 }
 
 export interface UseIdeaBlocksResult {
@@ -58,7 +68,7 @@ export function useIdeaBlocks(
   ideaId: string,
   opts: UseIdeaBlocksOptions = {},
 ): UseIdeaBlocksResult {
-  const { localContent, onVersion } = opts;
+  const { localContent, onVersion, clientId } = opts;
   const [serverBlocks, setServerBlocks] = useState<IdeaBlockBrief[] | null>(null);
   const [serverVersion, setServerVersion] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,13 +114,23 @@ export function useIdeaBlocks(
   // block representation, not a client-side reparse of the broadcasted
   // content (the parser can subtly differ across client/server versions).
   useEffect(() => {
-    const url = `/api/sync/ideas/${encodeURIComponent(ideaId)}/events`;
+    // Backend rejects SSE without `?clientId=…` (sseRoutes.ts:11). Without
+    // a clientId we'd silently 400 and never get refetch events — that's
+    // the bug that made drag-in-preview look broken even though the move
+    // endpoint succeeded server-side. We tolerate `clientId === undefined`
+    // here (skip the subscription entirely rather than burning a 400) so
+    // tests / non-editor consumers can use this hook in read-only mode.
+    if (!clientId) return;
+    const url = `/api/sync/ideas/${encodeURIComponent(ideaId)}/events?clientId=${encodeURIComponent(clientId)}`;
     const es = new EventSource(url);
     const refetchOnEvent = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data) as IdeaContentChangeEvent;
-        // Skip echoes of our own writes if we want — for now, refetch always.
-        // The fetch is cheap (single SQL + JSON), and consistency wins.
+        // Refetch on EVERY event including our own echoes — the cost is
+        // one SQL + JSON serialization, and the alternative (skip if
+        // event.clientId === ours) would fail the case that triggered
+        // this bug: a successful drag emits an event whose clientId
+        // matches ours, so filtering would re-introduce the staleness.
         void data;
         refetch();
       } catch {
@@ -124,7 +144,7 @@ export function useIdeaBlocks(
       es.removeEventListener("idea:stream-finalize", refetchOnEvent);
       es.close();
     };
-  }, [ideaId, refetch]);
+  }, [ideaId, refetch, clientId]);
 
   // 2026-04-29 fix:always prefer serverBlocks when present, even if
   // `localContent` is set. Reason: localContent parsing produces synthetic

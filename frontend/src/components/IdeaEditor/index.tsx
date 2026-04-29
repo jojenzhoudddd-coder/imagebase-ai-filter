@@ -10,6 +10,7 @@ import MentionPicker from "../Mention/MentionPicker";
 import MarkdownPreview from "./MarkdownPreview";
 import type { MarkdownPreviewHandle, MentionQueryState } from "./MarkdownPreview";
 import BlockList from "./BlockList";
+import BlockOverlays from "./BlockList/BlockOverlays";
 import { useIdeaBlocks } from "../../hooks/useIdeaBlocks";
 import { buildMentionLink } from "../Mention/mentionSyntax";
 import type { ParsedMention } from "../Mention/mentionSyntax";
@@ -366,8 +367,13 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // the SSE refetch replaces the local-parsed blocks with the canonical
   // server view — this delta is invisible to users since the parser is
   // byte-stable.
-  const { blocks: ideaBlocks } = useIdeaBlocks(ideaId, {
+  const { blocks: ideaBlocks, refetch: refetchIdeaBlocks } = useIdeaBlocks(ideaId, {
     localContent: content,
+    // 2026-04-29 fix: backend SSE rejects connections without ?clientId=…,
+    // which silently broke every block-list refresh after autosave / drag /
+    // delete / transform. Pipe the IdeaEditor's clientId so the SSE actually
+    // connects and refetch fires on idea:content-change.
+    clientId,
   });
   const [mentionState, setMentionState] = useState<
     | null
@@ -1507,41 +1513,77 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             />
           </div>
         ) : (
-          /* PR7: preview now uses the virtualized block list. Per-block
-           * MarkdownPreview instances handle inline rendering (mention
-           * chips / GFM / sanitize) — full functional parity with the
-           * old single-document render except contentEditable is dropped
-           * (use Source mode for editing). PR8 reintroduces block-level
-           * editing with proper hover affordances. */
-          ideaBlocks ? (
-            <div className="idea-block-list-page">
-              <BlockList
-                ideaId={ideaId}
-                blocks={ideaBlocks}
-                scrollRef={bodyRef}
-                onMentionClick={handleMentionChipClick}
-                placeholder={t("idea.empty")}
-                readOnly={streaming}
-                editable
-                onContentChange={(next) => {
-                  // Mirror handlePreviewInput from the legacy whole-doc
-                  // MarkdownPreview path: setContent + scheduleSave.
-                  setContent(next);
-                  scheduleSave(next);
-                }}
-              />
-            </div>
-          ) : (
-            /* While blocks load (first paint), fall back to the old
-             * single-render path so users don't see a flash of empty.
-             * Read-only here too. */
+          /* 2026-04-29 rewrite: revert to whole-doc MarkdownPreview as the
+           * editable surface (native Enter / arrow nav / image rendering /
+           * Backspace-merge / IME — all the things a per-block contentEditable
+           * was fighting). Block-level widgets that the user explicitly asked
+           * to keep (drag handle + ⋮ menu) are now overlaid by `BlockOverlays`,
+           * which absolute-positions them by walking the preview's top-level
+           * DOM children and pairing them with `ideaBlocks[i]` in order.
+           *
+           * Why one preview, two render concerns:
+           *   • The preview owns DOM + caret. It must stay a single
+           *     contentEditable so the browser can do its thing.
+           *   • The overlay owns block IDs + structural mutations (move/
+           *     delete/transform). It calls the same /api/ideas/:id/blocks
+           *     endpoints the old BlockList did, then triggers
+           *     `refetchIdeaBlocks` so structural changes show up before the
+           *     SSE round-trip (which the FE filters out as its own echo).
+           *
+           * BlockList is still used for the streaming-readonly fallback —
+           * Agent writes that lock the doc shouldn't surface an editable
+           * surface, so we keep the lighter virtualized renderer there. */
+          <div className="idea-preview-stack">
             <MarkdownPreview
               ref={previewRef}
               source={content}
               onMentionClick={handleMentionChipClick}
               placeholder={t("idea.empty")}
+              editable={!streaming}
+              onEditableInput={handlePreviewInput}
+              onMentionQuery={(state) => {
+                if (!state) {
+                  setMentionState(null);
+                  return;
+                }
+                setMentionState({
+                  origin: "preview",
+                  atIndex: state.atIndex,
+                  query: state.query,
+                  atRect: state.atRect,
+                });
+              }}
             />
-          )
+            {ideaBlocks && !streaming && (
+              <BlockOverlays
+                ideaId={ideaId}
+                blocks={ideaBlocks}
+                getPreviewRoot={() => previewRef.current?.getRoot() ?? null}
+                onAfterMutate={(resp) => {
+                  // Server returns the post-mutation full content +
+                  // version. Push both into local state so:
+                  //   1. MarkdownPreview's `source` reflects the new
+                  //      ordering immediately (don't wait for SSE — it's
+                  //      filtered out by useIdeaSync as a self-echo).
+                  //   2. versionRef advances so the next autosave doesn't
+                  //      collide on baseVersion.
+                  //   3. useIdeaBlocks's refetch still fires for the
+                  //      server-canonical block list (handle preservation).
+                  setContentSilent(resp.content);
+                  versionRef.current = resp.version;
+                  refetchIdeaBlocks();
+                }}
+              />
+            )}
+            {streaming && ideaBlocks && (
+              /* While the Agent is streaming a write, surface the read-only
+               * BlockList. The whole-doc preview above is still rendering
+               * (driven by `content`) so the user sees text flow in, but
+               * structural widgets are gone — Agent owns the doc until end-
+               * of-stream. */
+              <div className="idea-preview-streaming-overlay" aria-hidden />
+            )}
+          </div>
         )}
       </div>
 
