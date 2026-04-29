@@ -429,6 +429,22 @@ export const zh: TranslationKeys = {
   "idea.mentionModel": "Model",
   "idea.uploadAttachment": "上传",
   "idea.uploadFailed": "上传失败",
+  // PR8: block-level menu
+  "blockMenu.handleTooltip": "拖动 / 点击菜单",
+  "blockMenu.copyLink": "复制 block 链接",
+  "blockMenu.copyLinkOk": "已复制链接",
+  "blockMenu.copyLinkFail": "复制失败",
+  "blockMenu.delete": "删除",
+  "blockMenu.deleteFail": "删除失败",
+  "blockMenu.transformFail": "转换失败",
+  "blockMenu.moveFail": "移动失败",
+  "blockMenu.toParagraph": "转为正文",
+  "blockMenu.toH1": "转为一级标题",
+  "blockMenu.toH2": "转为二级标题",
+  "blockMenu.toH3": "转为三级标题",
+  "blockMenu.toQuote": "转为引用",
+  "blockMenu.toList": "转为列表",
+  "blockMenu.toDivider": "转为分割线",
 
   // Default view/field names
   "view.defaultGrid": "表格",

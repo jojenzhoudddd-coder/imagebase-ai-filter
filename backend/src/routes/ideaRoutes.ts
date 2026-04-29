@@ -5,7 +5,16 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { eventBus } from "../services/eventBus.js";
 import { extractIdeaSections } from "../services/ideaSections.js";
 import { buildMentionRows } from "../services/mentionIndex.js";
-import { syncBlocksForIdea, listBlocksForIdea } from "../services/ideaBlockService.js";
+import {
+  syncBlocksForIdea,
+  listBlocksForIdea,
+  getBlockWithContext,
+  spliceBlockContent,
+  spliceBlockDelete,
+  spliceBlockMove,
+  transformBlockContent,
+  IdeaBlockNotFoundError,
+} from "../services/ideaBlockService.js";
 import { applyIdeaWrite } from "../services/ideaWriteService.js";
 import { withArtifactWriteLock } from "../services/artifactWriteQueue.js";
 import * as ideaStream from "../services/ideaStreamSessionService.js";
@@ -224,6 +233,175 @@ router.get("/:ideaId/blocks", asyncHandler(async (req: Request, res: Response) =
     })),
   });
 }));
+
+// ─── PR8: block-level mutations ───────────────────────────────────────────
+// All three routes below share the same shape:
+//   1. resolve block context (block + idea + byte position)
+//   2. compute new full content via splice helper
+//   3. one $transaction:idea.update + mention rebuild + syncBlocksForIdea
+//   4. broadcast idea:content-change so clients (incl. our own BlockList)
+//      pick up the new structure
+//
+// Auth: parent /api/ideas mount already enforces workspace access.
+
+/** Helper that runs the standard write transaction given new content.
+ *  Returns the updated idea row + emits SSE. Mirrors the PUT /content path. */
+async function commitContentMutation(
+  ideaId: string,
+  newContent: string,
+  workspaceId: string,
+  clientId: string,
+): Promise<{ id: string; version: number; content: string }> {
+  const sections = extractIdeaSections(newContent);
+  const mentionRows = buildMentionRows(newContent, "idea", ideaId, workspaceId);
+  const updated = await prisma.$transaction(async (tx) => {
+    const u = await tx.idea.update({
+      where: { id: ideaId },
+      data: { content: newContent, version: { increment: 1 }, sections: sections as unknown as any },
+    });
+    await tx.mention.deleteMany({ where: { sourceType: "idea", sourceId: ideaId } });
+    if (mentionRows.length > 0) {
+      await tx.mention.createMany({ data: mentionRows });
+    }
+    await syncBlocksForIdea(tx, ideaId, newContent);
+    return u;
+  });
+  eventBus.emitIdeaChange({
+    type: "idea:content-change",
+    ideaId,
+    clientId,
+    timestamp: Date.now(),
+    payload: { content: updated.content, version: updated.version },
+  });
+  return { id: updated.id, version: updated.version, content: updated.content };
+}
+
+// PATCH /api/ideas/:ideaId/blocks/:blockId
+// body: { content?: string, transformTo?: "paragraph"|"heading-1..6"|"quote"|"list-bullet"|"divider" }
+// Both fields are optional but at least one required. transformTo wins if both given.
+router.patch(
+  "/:ideaId/blocks/:blockId",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { ideaId, blockId } = req.params;
+    const { content, transformTo } = req.body ?? {};
+    if (typeof content !== "string" && typeof transformTo !== "string") {
+      res.status(400).json({ error: "either `content` or `transformTo` required" });
+      return;
+    }
+    let ctx;
+    try {
+      ctx = await getBlockWithContext(prisma as any, blockId);
+    } catch (err) {
+      if (err instanceof IdeaBlockNotFoundError) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+    if (ctx.idea.id !== ideaId) {
+      res.status(400).json({ error: "blockId does not belong to ideaId" });
+      return;
+    }
+    let newBlockContent: string;
+    if (typeof transformTo === "string") {
+      const allowed = new Set([
+        "paragraph", "heading-1", "heading-2", "heading-3",
+        "heading-4", "heading-5", "heading-6", "quote",
+        "list-bullet", "divider",
+      ]);
+      if (!allowed.has(transformTo)) {
+        res.status(400).json({ error: `invalid transformTo: ${transformTo}` });
+        return;
+      }
+      newBlockContent = transformBlockContent(
+        ctx.block.content,
+        ctx.block.type,
+        transformTo as any,
+      );
+    } else {
+      newBlockContent = String(content);
+    }
+    const newFullContent = spliceBlockContent(ctx, newBlockContent);
+    const result = await commitContentMutation(
+      ctx.idea.id,
+      newFullContent,
+      ctx.idea.workspaceId,
+      getClientId(req),
+    );
+    res.json(result);
+  }),
+);
+
+// DELETE /api/ideas/:ideaId/blocks/:blockId
+router.delete(
+  "/:ideaId/blocks/:blockId",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { ideaId, blockId } = req.params;
+    let ctx;
+    try {
+      ctx = await getBlockWithContext(prisma as any, blockId);
+    } catch (err) {
+      if (err instanceof IdeaBlockNotFoundError) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+    if (ctx.idea.id !== ideaId) {
+      res.status(400).json({ error: "blockId does not belong to ideaId" });
+      return;
+    }
+    const newFullContent = spliceBlockDelete(ctx);
+    const result = await commitContentMutation(
+      ctx.idea.id,
+      newFullContent,
+      ctx.idea.workspaceId,
+      getClientId(req),
+    );
+    res.json(result);
+  }),
+);
+
+// POST /api/ideas/:ideaId/blocks/:blockId/move
+// body: { toIndex: number } — final 0-based index after the move.
+router.post(
+  "/:ideaId/blocks/:blockId/move",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { ideaId, blockId } = req.params;
+    const { toIndex } = req.body ?? {};
+    if (typeof toIndex !== "number" || !Number.isFinite(toIndex)) {
+      res.status(400).json({ error: "toIndex (number) required" });
+      return;
+    }
+    let ctx;
+    try {
+      ctx = await getBlockWithContext(prisma as any, blockId);
+    } catch (err) {
+      if (err instanceof IdeaBlockNotFoundError) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+    if (ctx.idea.id !== ideaId) {
+      res.status(400).json({ error: "blockId does not belong to ideaId" });
+      return;
+    }
+    const newFullContent = spliceBlockMove(ctx, toIndex);
+    if (newFullContent === ctx.idea.content) {
+      // No-op move (already at target). Return current state without bumping version.
+      res.json({ id: ctx.idea.id, version: ctx.idea.version, content: ctx.idea.content });
+      return;
+    }
+    const result = await commitContentMutation(
+      ctx.idea.id,
+      newFullContent,
+      ctx.idea.workspaceId,
+      getClientId(req),
+    );
+    res.json(result);
+  }),
+);
 
 // PUT /api/ideas/:ideaId — save content (optimistic versioning)
 // body: { content: string, baseVersion: number }

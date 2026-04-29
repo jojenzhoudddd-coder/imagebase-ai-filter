@@ -427,6 +427,22 @@ export const en = {
   "idea.mentionModel": "Model",
   "idea.uploadAttachment": "Upload",
   "idea.uploadFailed": "Upload failed",
+  // PR8: block-level menu
+  "blockMenu.handleTooltip": "Drag / click menu",
+  "blockMenu.copyLink": "Copy block link",
+  "blockMenu.copyLinkOk": "Link copied",
+  "blockMenu.copyLinkFail": "Copy failed",
+  "blockMenu.delete": "Delete",
+  "blockMenu.deleteFail": "Delete failed",
+  "blockMenu.transformFail": "Transform failed",
+  "blockMenu.moveFail": "Move failed",
+  "blockMenu.toParagraph": "Convert to paragraph",
+  "blockMenu.toH1": "Convert to H1",
+  "blockMenu.toH2": "Convert to H2",
+  "blockMenu.toH3": "Convert to H3",
+  "blockMenu.toQuote": "Convert to quote",
+  "blockMenu.toList": "Convert to list",
+  "blockMenu.toDivider": "Convert to divider",
 
   // Default view/field names
   "view.defaultGrid": "Grid",

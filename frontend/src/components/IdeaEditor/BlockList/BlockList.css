@@ -12,8 +12,83 @@
 }
 
 .idea-block {
-  /* PR7 V1: blocks are read-only. Hover affordance is added in PR8. */
+  /* PR8: hover affordances + drag handle + drop indicators. */
   width: 100%;
+  /* Make space on the left for the absolute-positioned ⋮ handle.
+   * Negative margin keeps the actual content aligned with the rest of
+   * the editor. */
+  padding-left: 28px;
+  margin-left: -28px;
+  position: relative;
+  transition: background 120ms ease-out;
+}
+
+/* ⋮ handle — only visible on hover. */
+.idea-block-handle {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 20px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: grab;
+  color: var(--color-text-muted, #8f959e);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out, background 120ms ease-out;
+  user-select: none;
+}
+
+.idea-block-handle:hover {
+  background: var(--surface-inset, #f5f6f7);
+  color: var(--color-text-primary, #1f2329);
+}
+
+.idea-block-handle:active {
+  cursor: grabbing;
+}
+
+.idea-block.is-hover .idea-block-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* While dragging the source row drops to half-opacity so the user knows
+ * what they grabbed. */
+.idea-block.is-drag-source {
+  opacity: 0.45;
+}
+
+/* Drop indicator: 2px line above/below target. */
+.idea-block.drop-indicator-above::before,
+.idea-block.drop-indicator-below::after {
+  content: "";
+  position: absolute;
+  left: 28px;
+  right: 0;
+  height: 2px;
+  background: var(--color-primary, #1456f0);
+  border-radius: 1px;
+  pointer-events: none;
+}
+.idea-block.drop-indicator-above::before { top: -1px; }
+.idea-block.drop-indicator-below::after  { bottom: -1px; }
+
+/* Block-link flash — subtle blue glow that fades. */
+@keyframes idea-block-flash {
+  0%   { background: rgba(20, 86, 240, 0.18); }
+  60%  { background: rgba(20, 86, 240, 0.12); }
+  100% { background: transparent; }
+}
+
+.idea-block.is-flash {
+  animation: idea-block-flash 1800ms ease-out;
+  border-radius: 4px;
 }
 
 .idea-block > * {

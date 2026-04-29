@@ -1887,3 +1887,48 @@ export async function fetchIdeaBlocks(ideaId: string): Promise<IdeaBlocksRespons
   if (!res.ok) throw new Error(`fetchIdeaBlocks failed (${res.status})`);
   return res.json();
 }
+
+// PR8: block-level mutations
+export interface BlockMutationResponse {
+  id: string;
+  version: number;
+  content: string;
+}
+
+export async function patchIdeaBlock(
+  ideaId: string,
+  blockId: string,
+  body: { content?: string; transformTo?: string },
+): Promise<BlockMutationResponse> {
+  const res = await fetch(
+    `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks/${encodeURIComponent(blockId)}`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  if (!res.ok) throw new Error(`patchIdeaBlock failed (${res.status})`);
+  return res.json();
+}
+
+export async function deleteIdeaBlock(
+  ideaId: string,
+  blockId: string,
+): Promise<BlockMutationResponse> {
+  const res = await fetch(
+    `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks/${encodeURIComponent(blockId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error(`deleteIdeaBlock failed (${res.status})`);
+  return res.json();
+}
+
+export async function moveIdeaBlock(
+  ideaId: string,
+  blockId: string,
+  toIndex: number,
+): Promise<BlockMutationResponse> {
+  const res = await fetch(
+    `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks/${encodeURIComponent(blockId)}/move`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ toIndex }) },
+  );
+  if (!res.ok) throw new Error(`moveIdeaBlock failed (${res.status})`);
+  return res.json();
+}

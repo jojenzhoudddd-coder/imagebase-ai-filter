@@ -341,3 +341,222 @@ export async function listBlocksForIdea(
   });
   return rows as unknown as IdeaBlockRow[];
 }
+
+// ─── PR8: block-level mutation primitives ─────────────────────────────────
+// These are the building blocks for the FE hover-⋮ menu (copy link / delete
+// / convert type) and the Agent's `update_idea_block` / `delete_idea_block` /
+// `move_idea_block` tools. They all operate by recomputing `Idea.content`
+// (still source of truth) — the IdeaBlock table is then synced via
+// `syncBlocksForIdea` so reads stay consistent.
+//
+// Critical: each call must run inside a `$transaction` together with the
+// content + mention update so readers never see a half-state. Helpers
+// return the new full content + version so the route handler can broadcast
+// SSE / response correctly.
+
+export class IdeaBlockNotFoundError extends Error {
+  constructor(blockId: string) {
+    super(`idea block not found: ${blockId}`);
+    this.name = "IdeaBlockNotFoundError";
+  }
+}
+
+export interface BlockContext {
+  block: IdeaBlockRow;
+  /** The owning Idea (id + content + version). */
+  idea: { id: string; content: string; version: number; workspaceId: string };
+  /** Zero-based position in the ordered list. */
+  index: number;
+  /** Byte offset of this block's start in `idea.content`. */
+  byteStart: number;
+  /** Byte offset of this block's end (exclusive) in `idea.content`. */
+  byteEnd: number;
+  /** All blocks in order (so callers can do their own splicing). */
+  ordered: IdeaBlockRow[];
+}
+
+/**
+ * Look up a block + compute its byte position within the parent idea's
+ * content. Throws `IdeaBlockNotFoundError` if missing.
+ *
+ * `byteStart` is computed from the prefix sum of the ordered blocks'
+ * `content` lengths — relies on PR6's byte-stable parser invariant
+ * (`blocks.map(b => b.content).join("") === idea.content`).
+ */
+export async function getBlockWithContext(
+  prisma: PrismaTxLike,
+  blockId: string,
+): Promise<BlockContext> {
+  const found = await prisma.ideaBlock.findUnique({ where: { id: blockId } });
+  if (!found) throw new IdeaBlockNotFoundError(blockId);
+  const block = found as unknown as IdeaBlockRow;
+  const idea = await prisma.idea.findUnique({
+    where: { id: block.ideaId },
+    select: { id: true, content: true, version: true, workspaceId: true },
+  });
+  if (!idea) throw new IdeaBlockNotFoundError(blockId); // idea gone but block lingered? defensive
+  const ordered = await listBlocksForIdea(prisma, block.ideaId);
+  const index = ordered.findIndex((b) => b.id === blockId);
+  if (index === -1) throw new IdeaBlockNotFoundError(blockId);
+  let byteStart = 0;
+  for (let i = 0; i < index; i++) byteStart += ordered[i].content.length;
+  const byteEnd = byteStart + ordered[index].content.length;
+  return { block, idea, index, byteStart, byteEnd, ordered };
+}
+
+/**
+ * Replace one block's raw Markdown content with `newBlockContent`. The new
+ * content is parsed and inserted as one or more blocks at the same position.
+ * (One paragraph could become two by adding a blank line in the middle —
+ * we let the parser decide; the block table picks up the change after sync.)
+ *
+ * Returns the new full content. Caller is responsible for running the
+ * surrounding $transaction (including mention rebuild + sync).
+ */
+export function spliceBlockContent(
+  ctx: BlockContext,
+  newBlockContent: string,
+): string {
+  const { idea, byteStart, byteEnd } = ctx;
+  return idea.content.slice(0, byteStart) + newBlockContent + idea.content.slice(byteEnd);
+}
+
+/**
+ * Delete one block from the parent idea's content. Returns new full content.
+ */
+export function spliceBlockDelete(ctx: BlockContext): string {
+  return spliceBlockContent(ctx, "");
+}
+
+/**
+ * Move a block to a new position in the ordered list. `targetIndex` is the
+ * desired *final* index (0-based). Returns new full content with all blocks
+ * reassembled in the new order.
+ *
+ * Boundary cases:
+ *   - targetIndex === ctx.index → returns identical content (no-op)
+ *   - targetIndex < 0 → clamped to 0 (move to start)
+ *   - targetIndex >= ordered.length → clamped to last (move to end)
+ */
+export function spliceBlockMove(
+  ctx: BlockContext,
+  targetIndex: number,
+): string {
+  const { ordered, index } = ctx;
+  const len = ordered.length;
+  let to = targetIndex;
+  if (to < 0) to = 0;
+  if (to > len - 1) to = len - 1;
+  if (to === index) return ctx.idea.content;
+
+  // Preserve the original "document tail" convention so the post-move file
+  // ends the way it did before. Without this, moving the last block away
+  // can introduce or strip trailing newlines that changes how source view
+  // displays the file (and accumulates aesthetic noise across many moves).
+  const originalLast = ordered[len - 1];
+  const originalTrailing = (originalLast.content.match(/[ \t]*\n*$/)?.[0]) ?? "";
+
+  const reordered = [...ordered];
+  const [moved] = reordered.splice(index, 1);
+  reordered.splice(to, 0, moved);
+
+  // Normalize each block's tail:
+  //   - non-last → exactly "\n\n" so heading-level constructs stay visually
+  //     separated (otherwise two `# X` lines would adhere)
+  //   - last    → original document trailing (could be "", "\n", or "\n\n")
+  return reordered
+    .map((b, i) => {
+      const isLast = i === reordered.length - 1;
+      const stripped = b.content.replace(/[ \t]*\n*$/, "");
+      return stripped + (isLast ? originalTrailing : "\n\n");
+    })
+    .join("");
+}
+
+/**
+ * Type-conversion helpers — produce new block content for a target type
+ * by stripping / reapplying common Markdown markers. Best-effort: we try to
+ * preserve the user's text while changing the wrapper.
+ *
+ * Supported transforms:
+ *   paragraph ↔ heading-1..6
+ *   paragraph ↔ quote
+ *   paragraph ↔ list-bullet
+ *   any ↔ paragraph (strip markers)
+ *
+ * Code blocks / tables / dividers / html are special — converting from
+ * those is lossy, so we accept the loss gracefully (the marker text becomes
+ * raw paragraph text). Converting *to* code/table/divider/html via this path
+ * is intentionally NOT supported (use the regular editor for that).
+ */
+export function transformBlockContent(
+  current: string,
+  fromType: string,
+  toType:
+    | "paragraph"
+    | "heading-1"
+    | "heading-2"
+    | "heading-3"
+    | "heading-4"
+    | "heading-5"
+    | "heading-6"
+    | "quote"
+    | "list-bullet"
+    | "divider",
+): string {
+  // Step 1: strip the leading marker(s) from the current block to get the
+  // "naked" text. Operate per-line.
+  const trailing = current.match(/\s*$/)?.[0] ?? "";
+  const body = current.slice(0, current.length - trailing.length);
+  const naked = body
+    .split("\n")
+    .map((line) => {
+      // strip heading markers
+      const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+      if (heading) return heading[2];
+      // strip quote markers
+      const quote = line.match(/^\s*>\s?(.*)$/);
+      if (quote) return quote[1];
+      // strip bullet
+      const bullet = line.match(/^(\s*)[-*+]\s+(.*)$/);
+      if (bullet) return bullet[2];
+      // strip ordered
+      const ord = line.match(/^(\s*)\d+[.)]\s+(.*)$/);
+      if (ord) return ord[2];
+      return line;
+    })
+    .join("\n");
+  // Step 2: reapply the target marker.
+  let next: string;
+  if (toType === "divider") {
+    // Discard text — divider has none.
+    next = "---";
+  } else if (toType.startsWith("heading-")) {
+    const level = parseInt(toType.slice("heading-".length), 10);
+    const hashes = "#".repeat(Math.max(1, Math.min(6, level)));
+    // Headings are single-line — collapse multi-line to first non-empty line.
+    const firstLine = naked.split("\n").find((l) => l.trim()) ?? "";
+    next = `${hashes} ${firstLine.trim()}`;
+  } else if (toType === "quote") {
+    next = naked
+      .split("\n")
+      .map((l) => (l.trim() ? `> ${l}` : ">"))
+      .join("\n");
+  } else if (toType === "list-bullet") {
+    next = naked
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((l) => `- ${l.trim()}`)
+      .join("\n");
+  } else {
+    // paragraph
+    next = naked.trim();
+  }
+  // Step 3: reattach the trailing whitespace so block boundaries stay clean.
+  // If the original had no trailing newline (last block of file) keep that
+  // behaviour; otherwise ensure exactly one trailing newline.
+  if (trailing) return next + (trailing.includes("\n") ? trailing : "\n");
+  // Fallback for last-block-no-trailing-newline case.
+  void fromType;
+  return next;
+}

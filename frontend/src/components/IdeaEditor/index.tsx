@@ -1503,10 +1503,12 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
            * editing with proper hover affordances. */
           ideaBlocks ? (
             <BlockList
+              ideaId={ideaId}
               blocks={ideaBlocks}
               scrollRef={bodyRef}
               onMentionClick={handleMentionChipClick}
               placeholder={t("idea.empty")}
+              readOnly={streaming}
             />
           ) : (
             /* While blocks load (first paint), fall back to the old

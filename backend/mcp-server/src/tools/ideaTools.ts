@@ -74,8 +74,9 @@ export const ideaNavTools: ToolDefinition[] = [
   {
     name: "get_idea",
     description:
-      "读取一篇灵感文档的完整内容 + 章节结构（含每个标题的 slug，供 insert_into_idea 等写入工具作为定位锚点）。" +
-      "content 是原始 Markdown（可能嵌入 HTML）。",
+      "读取一篇灵感文档的完整内容 + 章节结构 + block 列表(每段一个 blockId,供 update_idea_block / delete_idea_block / move_idea_block 定位)。" +
+      "content 是原始 Markdown(可能嵌入 HTML)。" +
+      "blocks 是 PR8 引入的精准编辑锚点 — 每段都有唯一 id,reorder/delete/transform 不会跑偏。",
     inputSchema: {
       type: "object",
       properties: {
@@ -118,6 +119,26 @@ export const ideaNavTools: ToolDefinition[] = [
           /* ignored — sections empty is acceptable */
         }
       }
+      // PR8: also fetch blocks so the Agent can use blockId-based mutations
+      // without an extra round trip. Best-effort — if /blocks fails we
+      // just return without blocks.
+      let blocks: { id: string; order: number; type: string; props: any }[] = [];
+      try {
+        const blocksRes = await apiRequest<{ blocks: { id: string; order: number; type: string; content: string; props: any }[] }>(
+          `/api/ideas/${id}/blocks`,
+        );
+        // Strip raw `content` from the per-block payload — the Agent already
+        // has detail.content; emitting it twice doubles tokens. props is
+        // small + useful (e.g. heading.level / list.ordered).
+        blocks = blocksRes.blocks.map((b) => ({
+          id: b.id,
+          order: b.order,
+          type: b.type,
+          props: b.props,
+        }));
+      } catch {
+        /* ignored — blocks empty is acceptable */
+      }
       return toolResult({
         id: detail.id,
         name: detail.name,
@@ -126,6 +147,7 @@ export const ideaNavTools: ToolDefinition[] = [
         version: detail.version,
         content: detail.content,
         sections,
+        blocks,
         updatedAt: detail.updatedAt,
       });
     },
@@ -372,6 +394,129 @@ export const ideaWriteTools: ToolDefinition[] = [
         return JSON.stringify({
           error: `upload_to_idea failed: ${err instanceof Error ? err.message : String(err)}`,
         });
+      }
+    },
+  },
+
+  // PR8: 块级精准编辑工具 — Agent 可以"只改这一段"而不必重写整个 idea。
+  // 比 append_to_idea / insert_into_idea 更细粒度,适合"把第三段那个 typo
+  // 改了"/"删掉那个过时的 callout"/"把 H2 改成 H3" 这类操作。
+  // blockId 来自 list_ideas / get_idea 的 sections (PR8.5 在 get_idea 返回
+  // 也加 blocks 列表,V1 由用户给 / Agent 通过 get_idea 看到 markdown 后
+  // 调 web 端 GET /blocks 端点拿)。
+  {
+    name: "update_idea_block",
+    description:
+      "替换某 idea 中某 block 的内容,或把 block type 转换成另一种。" +
+      "调用时机:精确改一段而不动其它段(比 replace_idea_content 安全得多)。" +
+      "传 content 直接替换该 block 的 markdown 字节;传 transformTo 自动转类型。" +
+      "transformTo 可选:paragraph / heading-1 ~ heading-6 / quote / list-bullet / divider。" +
+      "至少要传 content / transformTo 之一。" +
+      "返回 idea 的新 version,后续写入用此版本号。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ideaId: { type: "string", description: "目标 idea id" },
+        blockId: { type: "string", description: "要修改的 block id" },
+        content: {
+          type: "string",
+          description:
+            "新的 block markdown(整段替换)。需要包含必要的标记(heading 的 # / quote 的 > 等)。",
+        },
+        transformTo: {
+          type: "string",
+          enum: ["paragraph", "heading-1", "heading-2", "heading-3", "heading-4", "heading-5", "heading-6", "quote", "list-bullet", "divider"],
+          description: "把该 block 转成此类型(自动处理标记)",
+        },
+      },
+      required: ["ideaId", "blockId"],
+    },
+    handler: async (args): Promise<string> => {
+      const ideaId = String(args.ideaId ?? "").trim();
+      const blockId = String(args.blockId ?? "").trim();
+      if (!ideaId || !blockId) return JSON.stringify({ error: "ideaId + blockId required" });
+      const body: Record<string, unknown> = {};
+      if (typeof args.content === "string") body.content = args.content;
+      if (typeof args.transformTo === "string") body.transformTo = args.transformTo;
+      if (Object.keys(body).length === 0) {
+        return JSON.stringify({ error: "either content or transformTo required" });
+      }
+      try {
+        const r = await apiRequest<{ id: string; version: number; content: string }>(
+          `/api/ideas/${ideaId}/blocks/${blockId}`,
+          { method: "PATCH", body },
+        );
+        return toolResult({ ideaId: r.id, version: r.version, contentLength: r.content.length });
+      } catch (err) {
+        return JSON.stringify({ error: `update_idea_block failed: ${err instanceof Error ? err.message : String(err)}` });
+      }
+    },
+  },
+
+  {
+    name: "delete_idea_block",
+    danger: true,
+    description:
+      "⚠️ 删除某 idea 中某个 block(走危险确认流)。" +
+      "其它 block 全部保留,只精准移除这一段。比 delete_idea 安全粒度更细。" +
+      "返回 idea 的新 version。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ideaId: { type: "string" },
+        blockId: { type: "string" },
+      },
+      required: ["ideaId", "blockId"],
+    },
+    handler: async (args): Promise<string> => {
+      const ideaId = String(args.ideaId ?? "").trim();
+      const blockId = String(args.blockId ?? "").trim();
+      if (!ideaId || !blockId) return JSON.stringify({ error: "ideaId + blockId required" });
+      try {
+        const r = await apiRequest<{ id: string; version: number }>(
+          `/api/ideas/${ideaId}/blocks/${blockId}`,
+          { method: "DELETE" },
+        );
+        return toolResult({ ideaId: r.id, version: r.version });
+      } catch (err) {
+        return JSON.stringify({ error: `delete_idea_block failed: ${err instanceof Error ? err.message : String(err)}` });
+      }
+    },
+  },
+
+  {
+    name: "move_idea_block",
+    description:
+      "把某 idea 中的某 block 移动到新位置(0-based index)。" +
+      '其它 block 顺序保持。常用于"把这段挪到前面"/"把结论调到最后"。' +
+      "toIndex 超出范围会自动 clamp 到 [0, len-1]。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ideaId: { type: "string" },
+        blockId: { type: "string" },
+        toIndex: {
+          type: "number",
+          description: "目标位置的 0-based index。如要移到 H2-Section 之前,先 list 拿到该 H2 的 index,toIndex 就用那个数字。",
+        },
+      },
+      required: ["ideaId", "blockId", "toIndex"],
+    },
+    handler: async (args): Promise<string> => {
+      const ideaId = String(args.ideaId ?? "").trim();
+      const blockId = String(args.blockId ?? "").trim();
+      const toIndex = Number(args.toIndex);
+      if (!ideaId || !blockId || !Number.isFinite(toIndex)) {
+        return JSON.stringify({ error: "ideaId + blockId + toIndex required" });
+      }
+      try {
+        const r = await apiRequest<{ id: string; version: number }>(
+          `/api/ideas/${ideaId}/blocks/${blockId}/move`,
+          { method: "POST", body: { toIndex } },
+        );
+        return toolResult({ ideaId: r.id, version: r.version });
+      } catch (err) {
+        return JSON.stringify({ error: `move_idea_block failed: ${err instanceof Error ? err.message : String(err)}` });
       }
     },
   },
