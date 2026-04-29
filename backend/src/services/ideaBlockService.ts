@@ -330,6 +330,19 @@ export interface IdeaBlockRow {
   updatedAt: Date;
 }
 
+/** Fetch a list of blocks by id (used by chatAgentService when injecting
+ *  idea-block mention content into the system prompt). Order preserved
+ *  per the input ids array. Missing ids skipped silently. */
+export async function getBlocksByIds(
+  prisma: PrismaTxLike,
+  ids: string[],
+): Promise<IdeaBlockRow[]> {
+  if (ids.length === 0) return [];
+  const rows = await prisma.ideaBlock.findMany({ where: { id: { in: ids } } });
+  const byId = new Map((rows as IdeaBlockRow[]).map((r) => [r.id, r]));
+  return ids.map((id) => byId.get(id)).filter((r): r is IdeaBlockRow => !!r);
+}
+
 /** Fetch all blocks for an idea, ordered. */
 export async function listBlocksForIdea(
   prisma: PrismaTxLike,

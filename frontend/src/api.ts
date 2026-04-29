@@ -1096,6 +1096,7 @@ export type ChatMentionPayload =
   | { type: "table"; tableId: string }
   | { type: "idea"; ideaId: string }
   | { type: "idea-section"; ideaId: string; section: string }
+  | { type: "idea-block"; ideaId: string; blockId: string }
   | { type: "design"; designId: string }
   | { type: "taste"; tasteId: string; designId: string };
 
@@ -1953,27 +1954,6 @@ export async function moveIdeaBlock(
   return res.json();
 }
 
-// PR9: block-level comment APIs
-export interface IdeaCommentBrief {
-  id: string;
-  workspaceId: string;
-  title: string;
-  messageCount: number;
-  createdAt: number;
-  updatedAt: number;
-  /** blockId within this idea, or null if (somehow) misformatted. */
-  blockId: string | null;
-}
-
-/** List conversations attached to any block of this idea. */
-export async function fetchIdeaComments(ideaId: string): Promise<IdeaCommentBrief[]> {
-  const res = await fetch(`${BASE}/ideas/${encodeURIComponent(ideaId)}/comments`);
-  if (!res.ok) throw new Error(`fetchIdeaComments failed (${res.status})`);
-  const data = (await res.json()) as { comments: IdeaCommentBrief[] };
-  return data.comments;
-}
-
-// Note: PR9 createConversation expansion is in the original definition above
-// (~line 967). The dual-signature form (string | optsObject) supports both
-// the old `(ws, agentId)` callsites and the new `(ws, {title, attachedTo*})`
-// pattern used by IdeaEditor's block-comment flow.
+// (PR9 块级评论功能已移除 2026-04-29 — 保留 createConversation 的双签名形态
+//  以防其它处需要 title/attachedTo*,但 fetchIdeaComments / IdeaCommentBrief
+//  这条独立的"评论列表"路径已经无人调用,完整删掉。)

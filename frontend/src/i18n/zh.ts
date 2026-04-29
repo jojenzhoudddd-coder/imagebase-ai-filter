@@ -445,9 +445,6 @@ export const zh: TranslationKeys = {
   "blockMenu.toQuote": "转为引用",
   "blockMenu.toList": "转为列表",
   "blockMenu.toDivider": "转为分割线",
-  "blockMenu.addComment": "在此 block 上发起讨论",
-  "blockMenu.commentFail": "发起讨论失败",
-  "blockMenu.commentCreated": "讨论已创建,在 ChatBlock 中打开",
 
   // Default view/field names
   "view.defaultGrid": "表格",

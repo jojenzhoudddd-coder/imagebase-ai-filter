@@ -35,12 +35,12 @@ interface Props {
    *  parent IdeaEditor to refresh state if needed (refetch happens via
    *  SSE so this is mostly a hook for telemetry / toasts). */
   onAfterMutate?: () => void;
-  /** PR9: per-block comment counts keyed by blockId. Drives badge render. */
-  commentCounts?: Record<string, number>;
-  /** PR9: user clicked "+" on a block — open a new comment-style chat
-   *  conversation anchored to that block. The parent IdeaEditor implements
-   *  this by creating a Conversation row + opening a chat block. */
-  onAddBlockComment?: (blockId: string) => void;
+  /** When true, each block is contentEditable. Edits get spliced back
+   *  into the full document and surfaced via `onContentChange`. */
+  editable?: boolean;
+  /** Fires when a block edit produced a new full-document content.
+   *  Parent (IdeaEditor) is responsible for setContent + scheduleSave. */
+  onContentChange?: (newFullContent: string) => void;
 }
 
 const ESTIMATED_BLOCK_HEIGHT = 64;
@@ -55,8 +55,8 @@ export default function BlockList({
   readOnly = false,
   placeholder,
   onAfterMutate,
-  commentCounts,
-  onAddBlockComment,
+  editable = false,
+  onContentChange,
 }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -72,6 +72,38 @@ export default function BlockList({
   // ── Drag state ──
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropIndicator, setDropIndicator] = useState<{ blockId: string; pos: "above" | "below" } | null>(null);
+
+  // ── Per-block byte offsets (for editable splice) ──
+  // Source-of-truth invariant from PR6: blocks[i].content concatenated ===
+  // idea.content. So block N starts at sum(blocks[0..N-1].content.length).
+  // We snapshot offsets + the assembled full content for THIS render,
+  // referenced by the per-block onEditableInput closure. Each edit
+  // recomputes the new full content and forwards it to the parent.
+  const fullContentSnapshot = blocks.map((b) => b.content).join("");
+  const blockStarts: number[] = [];
+  let acc = 0;
+  for (const b of blocks) {
+    blockStarts.push(acc);
+    acc += b.content.length;
+  }
+
+  const handleBlockEdit = useCallback(
+    (idx: number, newBlockSource: string) => {
+      if (!onContentChange) return;
+      const start = blockStarts[idx] ?? 0;
+      const end = start + (blocks[idx]?.content.length ?? 0);
+      const next =
+        fullContentSnapshot.slice(0, start) +
+        newBlockSource +
+        fullContentSnapshot.slice(end);
+      onContentChange(next);
+    },
+    // blockStarts / fullContentSnapshot intentionally NOT in deps — we
+    // capture the snapshot at the time of render, which is correct: the
+    // user is editing what they see. Re-render replaces the closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [blocks, onContentChange],
+  );
 
   const virtualizer = useVirtualizer({
     count: blocks.length,
@@ -341,43 +373,16 @@ export default function BlockList({
                 </svg>
               </button>
             )}
-            <MarkdownPreview source={block.content} onMentionClick={onMentionClick} />
-            {/* PR9: block-level comment affordance. Right-side hover-only
-             * "+" mirrors the left-side ⋮ handle. Always-visible badge if
-             * the block has any attached conversations. */}
-            {onAddBlockComment && (
-              <button
-                className="idea-block-comment"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAddBlockComment(block.id);
-                }}
-                title={t("blockMenu.addComment")}
-                aria-label={t("blockMenu.addComment")}
-              >
-                {commentCounts && commentCounts[block.id] > 0 ? (
-                  <span className="idea-block-comment-badge">
-                    {commentCounts[block.id]}
-                  </span>
-                ) : (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M21 12a8 8 0 0 1-12.5 6.6L3 20l1.4-5.5A8 8 0 1 1 21 12z"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M12 9v6M9 12h6"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                )}
-              </button>
-            )}
+            <MarkdownPreview
+              source={block.content}
+              onMentionClick={onMentionClick}
+              editable={editable && !readOnly}
+              onEditableInput={
+                editable && !readOnly
+                  ? (next: string) => handleBlockEdit(vi.index, next)
+                  : undefined
+              }
+            />
           </div>
         );
       })}

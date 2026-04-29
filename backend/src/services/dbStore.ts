@@ -1171,3 +1171,12 @@ function cellValueToString(value: CellValue, field: Field, table: Table): string
   }
   return String(value);
 }
+
+// PR8.5: thin wrapper around ideaBlockService.getBlocksByIds so chatAgentService
+// (which already imports `* as store from "./dbStore"`) can fetch IdeaBlock
+// rows for inlining @ mention content into the system prompt without a
+// new import path.
+export async function getIdeaBlocksByIds(ids: string[]) {
+  const { getBlocksByIds } = await import("./ideaBlockService.js");
+  return getBlocksByIds(prisma as any, ids);
+}

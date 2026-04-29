@@ -218,6 +218,7 @@ export type MentionType =
   | "taste"
   | "idea"
   | "idea-section"
+  | "idea-block"
   | "demo"
   | "model";
 
@@ -237,9 +238,19 @@ export interface MentionHit {
   tableId?: string;
   designId?: string;
   ideaId?: string;
+  /** For idea-block hits: the block id (≠ id, which carries displayable
+   *  block id; we keep both so picker logic can be uniform). */
+  blockId?: string;
   /** Raw heading text for idea-section hits — preserved so the chip can show
    * it verbatim if the label is truncated. */
   headingText?: string;
+  /** For idea-block hits: a 1-line excerpt of the block content for the
+   *  picker to display. */
+  blockExcerpt?: string;
+  /** For idea-block hits: the block's type (paragraph / heading / list /
+   *  code / quote / table / divider / html). FE picker can render a small
+   *  type icon if desired. */
+  blockType?: string;
   /** Model-only fields (PR2). */
   modelId?: string;
   modelSpecialty?: string;

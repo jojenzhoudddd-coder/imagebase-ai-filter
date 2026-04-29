@@ -7,13 +7,15 @@
  * swaps the link for an interactive chip — everything else, inclusion in
  * paragraphs, tables, lists, falls out of react-markdown's normal pipeline.
  *
- * v4 mention types: `table` | `design` | `taste` | `idea` | `idea-section` | `model`.
+ * v4 mention types: `table` | `design` | `taste` | `idea` | `idea-section` |
+ *                   `idea-block` | `model`.
  *  - table        → `mention://table/<tableId>`
  *  - design       → `mention://design/<designId>`
  *  - taste        → `mention://taste/<tasteId>?design=<designId>`
  *  - idea         → `mention://idea/<ideaId>`
  *  - idea-section → `mention://idea-section/<headingSlug>?idea=<ideaId>`
- *  - model        → `mention://model/<modelId>` (chat input only,V1 不支持 idea 内引用模型导航)
+ *  - idea-block   → `mention://idea-block/<blockId>?idea=<ideaId>`  ← stable永久
+ *  - model        → `mention://model/<modelId>` (chat input only)
  *
  * Legacy v3 `view` mentions (`mention://view/<viewId>?table=<tableId>`) are
  * lazy-migrated to `table` at parse time:返回 `{type:"table", id:tableId}`
@@ -30,6 +32,8 @@ export interface ParsedMention {
   tableId?: string;
   designId?: string;
   ideaId?: string;
+  /** For idea-block:the block id (= id, but kept separately for clarity). */
+  blockId?: string;
   modelId?: string;
 }
 
@@ -42,6 +46,9 @@ export function buildMentionLink(hit: MentionHit): string {
     params.push(`design=${encodeURIComponent(hit.designId)}`);
   }
   if (hit.type === "idea-section" && hit.ideaId) {
+    params.push(`idea=${encodeURIComponent(hit.ideaId)}`);
+  }
+  if (hit.type === "idea-block" && hit.ideaId) {
     params.push(`idea=${encodeURIComponent(hit.ideaId)}`);
   }
   const query = params.length ? `?${params.join("&")}` : "";
@@ -93,6 +100,7 @@ export function parseMentionHref(href: string, label: string): ParsedMention | n
     rawType !== "taste" &&
     rawType !== "idea" &&
     rawType !== "idea-section" &&
+    rawType !== "idea-block" &&
     rawType !== "model"
   ) {
     return null;
@@ -105,6 +113,7 @@ export function parseMentionHref(href: string, label: string): ParsedMention | n
     tableId,
     designId,
     ideaId,
+    blockId: rawType === "idea-block" ? id : undefined,
     modelId: rawType === "model" ? id : undefined,
   };
 }
@@ -146,6 +155,8 @@ export function extractMentionPayloads(content: string): ChatMentionPayload[] {
       payload = { type: "idea", ideaId: parsed.id };
     } else if (parsed.type === "idea-section" && parsed.ideaId) {
       payload = { type: "idea-section", ideaId: parsed.ideaId, section: parsed.id };
+    } else if (parsed.type === "idea-block" && parsed.ideaId) {
+      payload = { type: "idea-block", ideaId: parsed.ideaId, blockId: parsed.id };
     } else if (parsed.type === "design") {
       payload = { type: "design", designId: parsed.id };
     } else if (parsed.type === "taste" && parsed.designId) {
@@ -155,6 +166,7 @@ export function extractMentionPayloads(content: string): ChatMentionPayload[] {
 
     const key = `${payload.type}:${"modelId" in payload ? payload.modelId
       : "tableId" in payload ? payload.tableId
+      : "blockId" in payload ? `${payload.ideaId}#${payload.blockId}`
       : "ideaId" in payload ? `${payload.ideaId}#${"section" in payload ? payload.section : ""}`
       : "designId" in payload && "tasteId" in payload ? `${payload.designId}/${payload.tasteId}`
       : "designId" in payload ? payload.designId

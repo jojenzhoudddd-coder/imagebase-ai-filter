@@ -234,33 +234,6 @@ router.get("/:ideaId/blocks", asyncHandler(async (req: Request, res: Response) =
   });
 }));
 
-// PR9: GET /api/ideas/:ideaId/comments
-// Lists conversations attached to any block of this idea. FE groups by
-// blockId (parsed from `attachedToId = <ideaId>#<blockId>`) to render
-// per-block comment-count badges + open-on-click affordances.
-router.get("/:ideaId/comments", asyncHandler(async (req: Request, res: Response) => {
-  // Best-effort:if idea doesn't exist we still return [] (caller may be
-  // racing a delete).
-  const { listConversationsAttachedToIdea } = await import(
-    "../services/conversationStore.js"
-  );
-  const conversations = await listConversationsAttachedToIdea(req.params.ideaId);
-  // Strip the ideaId prefix from attachedToId so FE just gets blockId.
-  const trimmed = conversations.map((c) => ({
-    id: c.id,
-    workspaceId: c.workspaceId,
-    title: c.title,
-    messageCount: c.messageCount,
-    createdAt: c.createdAt,
-    updatedAt: c.updatedAt,
-    blockId:
-      c.attachedToId && c.attachedToId.startsWith(`${req.params.ideaId}#`)
-        ? c.attachedToId.slice(req.params.ideaId.length + 1)
-        : null,
-  }));
-  res.json({ ideaId: req.params.ideaId, comments: trimmed });
-}));
-
 // ─── PR8: block-level mutations ───────────────────────────────────────────
 // All three routes below share the same shape:
 //   1. resolve block context (block + idea + byte position)

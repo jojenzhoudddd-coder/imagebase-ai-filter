@@ -30,7 +30,7 @@ const router = Router();
  *   - idea         → "<IdeaName>"
  *   - idea-section → "<IdeaName>.<HeadingText>"
  */
-type V4MentionType = "table" | "design" | "taste" | "idea" | "idea-section" | "demo" | "model";
+type V4MentionType = "table" | "design" | "taste" | "idea" | "idea-section" | "idea-block" | "demo" | "model";
 
 interface MentionHit {
   type: V4MentionType;
@@ -38,8 +38,10 @@ interface MentionHit {
   label: string;
   tableId?: string;   // legacy field, no longer set on table hits (id IS the tableId)
   designId?: string;  // for taste
-  ideaId?: string;    // for idea-section
+  ideaId?: string;    // for idea-section / idea-block
   headingText?: string; // raw heading body for idea-section
+  blockType?: string;   // for idea-block: heading / paragraph / list / ...
+  blockExcerpt?: string;// for idea-block: 1-line preview of block content
   // Model-only fields
   modelId?: string;
   modelSpecialty?: string;
@@ -55,6 +57,9 @@ interface MentionHit {
 function buildMentionUri(h: Omit<MentionHit, "mentionUri" | "markdown">): string {
   if (h.type === "idea-section" && h.ideaId) {
     return `mention://idea-section/${h.id}?idea=${encodeURIComponent(h.ideaId)}`;
+  }
+  if (h.type === "idea-block" && h.ideaId) {
+    return `mention://idea-block/${h.id}?idea=${encodeURIComponent(h.ideaId)}`;
   }
   if (h.type === "taste" && h.designId) {
     return `mention://taste/${h.id}?design=${encodeURIComponent(h.designId)}`;
@@ -86,6 +91,7 @@ function normaliseTypesParam(raw: string): Set<V4MentionType> {
     else if (seg === "taste") out.add("taste");
     else if (seg === "idea") out.add("idea");
     else if (seg === "idea-section") out.add("idea-section");
+    else if (seg === "idea-block") out.add("idea-block");
     else if (seg === "demo") out.add("demo");
     else if (seg === "model") out.add("model");
   }
@@ -131,6 +137,7 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
   const tasteHits: MentionHit[] = [];
   const ideaHits: MentionHit[] = [];
   const sectionHits: MentionHit[] = [];
+  const blockHits: MentionHit[] = []; // PR8.5: idea-block mentions
   const demoHits: MentionHit[] = [];
   const modelHits: MentionHit[] = [];
 
@@ -190,8 +197,9 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
     }
   }
 
-  // ── Ideas + their sections ──
-  const needIdeas = types.has("idea") || types.has("idea-section");
+  // ── Ideas + their sections + blocks ──
+  const needIdeas =
+    types.has("idea") || types.has("idea-section") || types.has("idea-block");
   if (needIdeas) {
     const ideas = await prisma.idea.findMany({
       where: { workspaceId },
@@ -222,6 +230,43 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
               ideaId: i.id,
               headingText: s.text,
             }));
+          }
+        }
+      }
+    }
+
+    // PR8.5: idea-block hits (one row per IdeaBlock).
+    if (types.has("idea-block")) {
+      const ideaIds = ideas.map((i) => i.id);
+      const ideaNameById = new Map(ideas.map((i) => [i.id, i.name]));
+      if (ideaIds.length > 0) {
+        const blockRows = await prisma.ideaBlock.findMany({
+          where: { ideaId: { in: ideaIds } },
+          orderBy: [{ ideaId: "asc" }, { order: "asc" }],
+        });
+        for (const b of blockRows) {
+          // dividers and pure-blank blocks aren't useful as mention targets
+          if (b.type === "divider") continue;
+          const ideaName = ideaNameById.get(b.ideaId) ?? "";
+          // Naked excerpt: strip leading markdown markers + collapse whitespace
+          const excerpt = (b.content ?? "")
+            .replace(/^[#>*`\-\s|]+/gm, "")
+            .replace(/[\r\n]+/g, " ")
+            .trim()
+            .slice(0, 60);
+          if (!excerpt) continue;
+          const label = `${ideaName}.${excerpt}`;
+          if (matchesAny([label, ideaName, excerpt])) {
+            blockHits.push(
+              decorate({
+                type: "idea-block",
+                id: b.id,
+                label,
+                ideaId: b.ideaId,
+                blockType: b.type,
+                blockExcerpt: excerpt,
+              }),
+            );
           }
         }
       }
@@ -277,6 +322,7 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
   tasteHits.sort(rankCmp);
   ideaHits.sort(rankCmp);
   sectionHits.sort(rankCmp);
+  blockHits.sort(rankCmp);
   demoHits.sort(rankCmp);
   modelHits.sort(rankCmp);
 
@@ -286,7 +332,7 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
   // V2.9.3: 当 model 被请求时,给 modelHits 一个"前置 quota":先把全部 model
   // 放进去,再做正常 round-robin 填剩余 slot。这样用户在 chat input 里 @
   // 永远能看到所有可用模型,而不是被 100 张表稀释成 1-2 个。
-  const buckets = [tableHits, tasteHits, designHits, ideaHits, sectionHits, demoHits];
+  const buckets = [tableHits, tasteHits, designHits, ideaHits, sectionHits, blockHits, demoHits];
   const hits: MentionHit[] = [];
   if (types.has("model")) {
     while (modelHits.length > 0 && hits.length < limit) {

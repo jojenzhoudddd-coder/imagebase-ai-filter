@@ -4,8 +4,7 @@ import { useToast } from "../Toast/index";
 import InlineEdit from "../InlineEdit";
 import SidebarExpandButton from "../SidebarExpandButton";
 import BlockCloseButton from "../BlockCloseButton";
-import { fetchIdea, saveIdeaContent, uploadIdeaAttachment, fetchIdeaComments, createConversation as apiCreateConversation } from "../../api";
-import type { IdeaCommentBrief } from "../../api";
+import { fetchIdea, saveIdeaContent, uploadIdeaAttachment } from "../../api";
 import { useIdeaSync } from "../../hooks/useIdeaSync";
 import MentionPicker from "../Mention/MentionPicker";
 import MarkdownPreview from "./MarkdownPreview";
@@ -370,51 +369,6 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const { blocks: ideaBlocks } = useIdeaBlocks(ideaId, {
     localContent: content,
   });
-
-  // PR9: per-block comment counts. Fetched once + after each "add comment"
-  // mutation. Future PR can SSE-invalidate; for V1 a simple manual refresh
-  // covers the actions the user takes from this surface.
-  const [blockComments, setBlockComments] = useState<IdeaCommentBrief[]>([]);
-  const refreshComments = useCallback(() => {
-    fetchIdeaComments(ideaId).then(setBlockComments).catch(() => {
-      /* ignore — empty list is fine */
-    });
-  }, [ideaId]);
-  useEffect(() => {
-    refreshComments();
-  }, [refreshComments]);
-  const commentCountsByBlock = (() => {
-    const m: Record<string, number> = {};
-    for (const c of blockComments) {
-      if (c.blockId) m[c.blockId] = (m[c.blockId] ?? 0) + 1;
-    }
-    return m;
-  })();
-  const handleAddBlockComment = useCallback(
-    async (blockId: string) => {
-      try {
-        // Generate a short title from the block's first words (truncated).
-        const block = ideaBlocks?.find((b) => b.id === blockId);
-        const seed = (block?.content ?? "")
-          .replace(/[#>*`\-_]/g, "")
-          .trim()
-          .split(/\s+/)
-          .slice(0, 8)
-          .join(" ");
-        const title = seed ? `💬 ${seed.slice(0, 40)}` : "💬 块讨论";
-        await apiCreateConversation(workspaceId, {
-          title,
-          attachedToType: "idea-block",
-          attachedToId: `${ideaId}#${blockId}`,
-        });
-        toast.success(t("blockMenu.commentCreated") || "讨论已创建");
-        refreshComments();
-      } catch (err) {
-        toast.error(`${t("blockMenu.commentFail")}: ${err instanceof Error ? err.message : err}`);
-      }
-    },
-    [ideaBlocks, ideaId, workspaceId, refreshComments, toast, t],
-  );
   const [mentionState, setMentionState] = useState<
     | null
     | {
@@ -1239,6 +1193,18 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     } else if (m.type === "idea-section" && m.ideaId) {
       // id of an idea-section chip is the heading slug.
       onNavigate({ type: "idea-section", ideaId: m.ideaId, headingSlug: m.id });
+    } else if (m.type === "idea-block" && m.ideaId) {
+      // PR8.5: navigate to the idea, then BlockList's hashchange listener
+      // scrolls + flashes the target block. We append `#block-<id>` to the URL
+      // hash; if we're navigating cross-idea, App.tsx routes will swap the
+      // active artifact and the new IdeaEditor's BlockList will pick up the
+      // hash on mount.
+      onNavigate({ type: "idea", id: m.ideaId });
+      // Set hash AFTER nav so the new IdeaEditor sees it. Use a microtask
+      // to let any same-tick state updates apply first.
+      Promise.resolve().then(() => {
+        window.location.hash = `block-${m.id}`;
+      });
     }
     // model 类型在 idea 内不导航 (V1 chat 才有意义)
   }, [onNavigate]);
@@ -1555,8 +1521,13 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
               onMentionClick={handleMentionChipClick}
               placeholder={t("idea.empty")}
               readOnly={streaming}
-              commentCounts={commentCountsByBlock}
-              onAddBlockComment={handleAddBlockComment}
+              editable
+              onContentChange={(next) => {
+                // Mirror handlePreviewInput from the legacy whole-doc
+                // MarkdownPreview path: setContent + scheduleSave.
+                setContent(next);
+                scheduleSave(next);
+              }}
             />
           ) : (
             /* While blocks load (first paint), fall back to the old
@@ -1581,8 +1552,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           query={mentionState.query}
           atRect={mentionState.atRect}
           /* V2.9.5: 显式传 types 把 demo 加进 idea editor 的 @ list (默认
-             types 只到 idea-section,没有 demo)。Idea 不需要 model。 */
-          types={["table", "taste", "idea", "idea-section", "demo"]}
+             types 只到 idea-section,没有 demo)。Idea 不需要 model。
+             PR8.5: 加 idea-block 让用户能 @ 同一篇 / 别篇 idea 的具体段落。 */
+          types={["table", "taste", "idea", "idea-section", "idea-block", "demo"]}
           onSelect={handleMentionSelect}
           onClose={() => setMentionState(null)}
         />

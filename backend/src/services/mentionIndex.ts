@@ -28,7 +28,8 @@ export type MentionTargetType =
   | "design"
   | "taste"
   | "idea"
-  | "idea-section";
+  | "idea-section"
+  | "idea-block";
 
 /**
  * Legacy v3 type "view" is normalised at parse time:
@@ -115,6 +116,16 @@ function normalizeHref(
       const ideaId = query.idea;
       if (!ideaId) return null;
       targetType = "idea-section";
+      targetId = `${ideaId}#${id}`;
+      break;
+    }
+    case "idea-block": {
+      // PR8.5: block-level mentions. URL: mention://idea-block/<blockId>?idea=<ideaId>
+      // Composite key uses `<ideaId>#<blockId>` so reverse lookup by ideaId
+      // (`startsWith("<ideaId>#")`) catches both section and block mentions.
+      const ideaId = query.idea;
+      if (!ideaId) return null;
+      targetType = "idea-block";
       targetId = `${ideaId}#${id}`;
       break;
     }

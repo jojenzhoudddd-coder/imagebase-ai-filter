@@ -741,7 +741,7 @@ export interface PrebuiltSystemLayers {
  *     REFERENCES — the agent should bias its reasoning toward those entities
  *     but isn't forced to call any specific tool.
  */
-function buildUserMentionsLayer(mentions?: UserMention[]): string | null {
+async function buildUserMentionsLayer(mentions?: UserMention[]): Promise<string | null> {
   if (!mentions || mentions.length === 0) return null;
   const models = mentions.filter((m): m is Extract<UserMention, { type: "model" }> => m.type === "model");
   const artifacts = mentions.filter((m) => m.type !== "model");
@@ -753,8 +753,49 @@ function buildUserMentionsLayer(mentions?: UserMention[]): string | null {
         models.map((m) => `- ${m.modelId} —— 你必须在本回合的工作流中包含一个调用此模型的子任务步骤(可作为 host / subagent)`).join("\n"),
     );
   }
-  if (artifacts.length > 0) {
-    const lines = artifacts.map((m) => {
+
+  // PR8.5: idea-block mentions get their full content inlined right here so
+  // the model can read the exact bytes the user pointed at (no extra tool
+  // call required). Failures fetching a block are silent — the line just
+  // shows the reference without content.
+  const blockMentions = artifacts.filter(
+    (m): m is Extract<UserMention, { type: "idea-block" }> => m.type === "idea-block",
+  );
+  let blockContents: { ideaId: string; blockId: string; content: string; type: string }[] = [];
+  if (blockMentions.length > 0) {
+    try {
+      const ids = blockMentions.map((m) => m.blockId);
+      const rows = await store.getIdeaBlocksByIds(ids);
+      blockContents = rows.map((r) => ({
+        ideaId: r.ideaId,
+        blockId: r.id,
+        content: r.content,
+        type: r.type,
+      }));
+    } catch (err) {
+      console.error("[buildUserMentionsLayer] block fetch failed:", err);
+    }
+  }
+  if (blockContents.length > 0) {
+    const lines: string[] = [];
+    for (const b of blockContents) {
+      lines.push(
+        `### 引用 · idea-block (${b.type}) — ideaId=${b.ideaId} blockId=${b.blockId}\n` +
+          "```\n" +
+          b.content.trim() +
+          "\n```",
+      );
+    }
+    parts.push(
+      `### 强引用 · 用户指向的具体 block (${blockContents.length} 个)\n` +
+        "下面是用户在指令中 @ 到的 idea block 的**完整原文**。Agent 应当把这些内容当作用户输入的一部分理解和回应。\n\n" +
+        lines.join("\n\n"),
+    );
+  }
+
+  const otherArtifacts = artifacts.filter((m) => m.type !== "idea-block");
+  if (otherArtifacts.length > 0) {
+    const lines = otherArtifacts.map((m) => {
       switch (m.type) {
         case "table": return `- table ${m.tableId}`;
         case "idea": return `- idea ${m.ideaId} (整篇)`;
@@ -764,7 +805,9 @@ function buildUserMentionsLayer(mentions?: UserMention[]): string | null {
         default: return null;
       }
     }).filter(Boolean) as string[];
-    parts.push(`### 软引用 · 用户聚焦的工作区实体 (${lines.length} 个)\n${lines.join("\n")}`);
+    if (lines.length > 0) {
+      parts.push(`### 软引用 · 用户聚焦的工作区实体 (${lines.length} 个)\n${lines.join("\n")}`);
+    }
   }
   return parts.join("\n\n");
 }
@@ -834,9 +877,11 @@ async function assembleInput(
     buildRecalledMemoriesSection(agentId, newUserMessage),
     buildAnalystHandlesSection(conversationId),
   ]);
+  // PR8.5: buildUserMentionsLayer is now async (block content fetch).
+  const userMentionsText = await buildUserMentionsLayer(userMentions);
   const layers: PrebuiltSystemLayers = {
     identity, snapshot, recalled, analystHandles, runtime,
-    userMentions: buildUserMentionsLayer(userMentions),
+    userMentions: userMentionsText,
   };
   const systemText = buildSystemText(layers, activeSkillNames, availableSkills, availableSkillsByName);
 
@@ -1024,6 +1069,7 @@ export type UserMention =
   | { type: "table"; tableId: string }
   | { type: "idea"; ideaId: string }
   | { type: "idea-section"; ideaId: string; section: string }
+  | { type: "idea-block"; ideaId: string; blockId: string }
   | { type: "design"; designId: string }
   | { type: "taste"; tasteId: string; designId: string };
 
