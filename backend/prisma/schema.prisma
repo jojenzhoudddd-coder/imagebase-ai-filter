@@ -341,43 +341,38 @@ model WorkflowRun {
   @@map("workflow_runs")
 }
 
-// ─── User-defined Skill (V1: agent-level only) ─────────────────────────────
-// 用户/Agent 自助创建的 skill 容器。三类资产任意非空即有效：
-//   - promptFragment: 注入 system prompt 的策略/术语片段
-//   - workflowDocs[]: 一组持久化的 WorkflowDoc DSL，激活后变成 invoke_skill_workflow_<id>_<i> 工具
-//   - toolWhitelist[]: 激活时可用的 tool 白名单（V2 启用）
-// scriptHandlers (确定性代码) 留给 V2，需要 isolated-vm sandbox。
-// 详见 docs/skill-creator-plan.md。
+// ─── User-defined Skill (V2: fs-first, 2026-04-28) ─────────────────────────
+// V2 改为 filesystem-first:source of truth 是 SKILL.md (YAML frontmatter +
+// Markdown body) + workflows/*.json,放在 BlobStorage 下
+//   agents/<ownerId>/skills/<id>/SKILL.md
+//   agents/<ownerId>/skills/<id>/workflows/0.json
+// DB 只保留薄索引(name 用于 list / 唯一性,enabled 用于过滤,invokedCount
+// 用于使用统计)。description / triggers / promptFragment / workflowDocs /
+// toolWhitelist / sourceConversationId / sourceWorkflowRunId 全部下沉到 fs。
+// 用户 / Agent 可以直接编辑 SKILL.md (不通过工具),next loadUserSkills 自动 pickup。
+// 详见 docs/roadmap-post-skill-v1.md PR4。
 
 model UserSkill {
   id          String   @id @default(cuid())
   /// V1 only "agent"; V2 will add "workspace" / "global"
-  ownerType   String   // "agent" | "workspace" | "global"
+  ownerType   String
   /// agentId / workspaceId / null (global preset 用 null，V1 永远是 agentId)
   ownerId     String
+  /// User-facing name. Mirrors SKILL.md frontmatter.name; kept in DB for
+  /// fast unique check + cheap list query without reading every file.
   name        String
-  description String   @default("") @db.Text
-  /// string[] — 触发关键词（≥1 非空，≤20 个）
-  triggers    Json
+  /// BlobStorage key prefix where this skill's files live. Format:
+  /// `agents/<ownerId>/skills/<id>/`. SKILL.md and workflows/*.json
+  /// are read relative to this prefix.
+  dirPath     String
 
-  // ── 三类资产 (任意组合，任意非空即有效) ──
-  promptFragment String? @db.Text
-  /// WorkflowDoc[]（复用 services/workflow/types.ts 的 schema），≤5 个
-  workflowDocs   Json?
-  /// string[] — 激活时只允许这些 tool（V2 启用，V1 写库不消费）
-  toolWhitelist  Json?
-
-  // ── 来源溯源 (save_workflow_run_as_skill 写入) ──
-  sourceConversationId String?
-  sourceWorkflowRunId  String?
-
-  // ── 状态 + 使用统计 ──
+  // ── 状态 + 使用统计 (DB-only,fs 不存,改动频繁) ──
   enabled       Boolean   @default(true)
   invokedCount  Int       @default(0)
   lastInvokedAt DateTime?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([ownerType, ownerId])
   @@index([enabled])

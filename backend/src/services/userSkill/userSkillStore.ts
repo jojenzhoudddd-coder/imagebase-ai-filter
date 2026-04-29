@@ -1,17 +1,21 @@
 /**
- * Prisma-backed UserSkill store (Skill Creator V1).
+ * UserSkill store (V2 — fs-first).
  *
- * 职责：
- *   - 存取 user_skills 表的 CRUD（含 owner-scoped list / get / update / delete）
- *   - 入库前跑 validateName / validateTriggers / validateAssetPresence /
- *     validateWorkflowDocs 四类校验，拒收非法 input
- *   - 提供 toggleEnabled / recordInvocation 两个状态变更助手
+ * 职责变化(2026-04-28):
+ *   - DB 表 `user_skills` 现在只是**薄索引**(id / ownerType / ownerId / name /
+ *     dirPath / enabled / invokedCount / lastInvokedAt / createdAt / updatedAt)
+ *   - description / triggers / promptFragment / workflowDocs / toolWhitelist /
+ *     sourceConversationId / sourceWorkflowRunId 全部下沉到 SKILL.md + workflows/*.json
+ *     (走 BlobStorage,见 services/userSkill/skillFs.ts)
+ *   - CRUD 在两个 store 之间协调:DB index 提供 fast list / unique check / enable
+ *     状态;fs 提供完整内容
  *
- * 不负责的事：
- *   - 把 UserSkill 适配成 SkillDefinition (那是 PR2 toSkillDefinition() 的活)
- *   - MCP 工具入口 (那是 PR3 skillMetaTools.ts)
+ * 不变的契约:
+ *   - 调用端仍然拿到 UserSkillRow 形态的数据(包括 promptFragment / workflowDocs
+ *     等字段),`get` / `list` 内部把 fs + DB 拼起来再返回
+ *   - 错误类(UserSkillValidationError 等)签名不变
  *
- * 详见 docs/skill-creator-plan.md。
+ * 详见 docs/roadmap-post-skill-v1.md PR4 + docs/skill-creator-plan.md。
  */
 
 import pg from "pg";
@@ -21,6 +25,16 @@ import {
   validateWorkflowDocs,
   WorkflowDocValidationError,
 } from "./workflowDocValidator.js";
+import {
+  readSkill,
+  readSkillFrontmatter,
+  writeSkill,
+  deleteSkill as deleteSkillFs,
+  skillDirPath,
+  SkillFsError,
+  type SkillFrontmatter,
+  type SkillFsRecord,
+} from "./skillFs.js";
 import type { WorkflowDoc } from "../workflow/types.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -31,6 +45,9 @@ const prisma = new PrismaClient({ adapter });
 
 export type SkillOwnerType = "agent" | "workspace" | "global";
 
+/** Composite shape: DB index columns + fs frontmatter + fs body + workflows.
+ *  This is what callers see from `get` / `list`. Backward-compatible-ish
+ *  with V1 — same field names. */
 export interface UserSkillRow {
   id: string;
   ownerType: SkillOwnerType;
@@ -48,6 +65,8 @@ export interface UserSkillRow {
   lastInvokedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /** V2 addition: fs key prefix. Mostly internal; UI may render for trust. */
+  dirPath: string;
 }
 
 export interface UserSkillCreateInput {
@@ -57,7 +76,7 @@ export interface UserSkillCreateInput {
   description?: string;
   triggers: string[];
   promptFragment?: string | null;
-  workflowDocs?: unknown[] | null; // 入库前会跑 validateWorkflowDocs
+  workflowDocs?: unknown[] | null;
   toolWhitelist?: string[] | null;
   sourceConversationId?: string | null;
   sourceWorkflowRunId?: string | null;
@@ -79,7 +98,7 @@ export interface UserSkillListFilter {
   onlyEnabled?: boolean;
 }
 
-// ─── Validation errors (re-exported for tooling layer) ───────────────────
+// ─── Errors ──────────────────────────────────────────────────────────────
 
 export class UserSkillValidationError extends Error {
   constructor(message: string, public readonly field?: string) {
@@ -109,12 +128,12 @@ export class UserSkillPermissionError extends Error {
   }
 }
 
-// ─── Constants (also drives validator messages) ──────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────────
 
 const NAME_MIN = 1;
 const NAME_MAX = 60;
 const TRIGGERS_MAX = 20;
-const PROMPT_FRAGMENT_MAX = 8 * 1024; // 8 KB
+const PROMPT_FRAGMENT_MAX = 8 * 1024;
 const WORKFLOW_DOCS_MAX = 5;
 const DESCRIPTION_MAX = 2000;
 
@@ -124,16 +143,8 @@ function validateName(name: unknown): string {
   if (typeof name !== "string") {
     throw new UserSkillValidationError("name 必须是字符串", "name");
   }
-  // Reject leading/trailing whitespace on the raw input — Skill names are
-  // user-facing identifiers, "  hi  " is almost always a typo and would also
-  // mask name-conflict checks (since trim() → "hi" might collide). Check the
-  // raw value, NOT the trimmed one (which by definition can't start/end with
-  // whitespace).
-  if (name.length > 0 && (name !== name.trim())) {
-    throw new UserSkillValidationError(
-      "name 不能以空格开头或结尾",
-      "name",
-    );
+  if (name.length > 0 && name !== name.trim()) {
+    throw new UserSkillValidationError("name 不能以空格开头或结尾", "name");
   }
   const trimmed = name.trim();
   if (trimmed.length < NAME_MIN || trimmed.length > NAME_MAX) {
@@ -192,7 +203,6 @@ function validatePromptFragment(pf: unknown): string | null {
       "promptFragment",
     );
   }
-  // 空字符串视为 null（"清空"语义）
   return pf.trim() ? pf : null;
 }
 
@@ -295,30 +305,52 @@ function validateOwner(ownerType: unknown, ownerId: unknown): {
   return { ownerType, ownerId };
 }
 
-// ─── Row ↔ DTO mapping ───────────────────────────────────────────────────
+// ─── Compose row from DB index + fs record ───────────────────────────────
 
-function rowToDto(row: any): UserSkillRow {
+interface IndexRow {
+  id: string;
+  ownerType: string;
+  ownerId: string;
+  name: string;
+  dirPath: string;
+  enabled: boolean;
+  invokedCount: number;
+  lastInvokedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+function composeRow(idx: IndexRow, fs: SkillFsRecord): UserSkillRow {
+  const fm = fs.frontmatter;
+  // Normalize body whitespace from fs round-trip. `serializeSkillMd` writes
+  //    `---\n<yaml>---\n\n<body>\n`
+  // and our parser's body capture group includes both the leading `\n`
+  // (after the closing `---\n`) and the trailing `\n` we appended. Strip
+  // both edges so a user who passed "abc" gets back "abc" (not "\nabc\n").
+  // Internal newlines are preserved verbatim. Lossy for users who
+  // intentionally put leading/trailing blank lines, but that matches
+  // every Markdown editor's behavior.
+  const body = fs.body.replace(/^\n+/, "").replace(/\n+$/, "");
   return {
-    id: row.id,
-    ownerType: row.ownerType as SkillOwnerType,
-    ownerId: row.ownerId,
-    name: row.name,
-    description: row.description ?? "",
-    triggers: Array.isArray(row.triggers) ? (row.triggers as string[]) : [],
-    promptFragment: row.promptFragment ?? null,
-    workflowDocs: row.workflowDocs
-      ? (row.workflowDocs as WorkflowDoc[])
+    id: idx.id,
+    ownerType: idx.ownerType as SkillOwnerType,
+    ownerId: idx.ownerId,
+    name: idx.name,
+    dirPath: idx.dirPath,
+    description: fm.description ?? "",
+    triggers: Array.isArray(fm.triggers) ? fm.triggers : [],
+    promptFragment: body && body.trim() ? body : null,
+    workflowDocs: fs.workflowDocs.length > 0 ? fs.workflowDocs : null,
+    toolWhitelist: Array.isArray(fm.allowed_tools) && fm.allowed_tools.length > 0
+      ? fm.allowed_tools
       : null,
-    toolWhitelist: row.toolWhitelist
-      ? (row.toolWhitelist as string[])
-      : null,
-    sourceConversationId: row.sourceConversationId ?? null,
-    sourceWorkflowRunId: row.sourceWorkflowRunId ?? null,
-    enabled: !!row.enabled,
-    invokedCount: row.invokedCount ?? 0,
-    lastInvokedAt: row.lastInvokedAt ?? null,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    sourceConversationId: fm.source?.conversation_id ?? null,
+    sourceWorkflowRunId: fm.source?.workflow_run_id ?? null,
+    enabled: idx.enabled,
+    invokedCount: idx.invokedCount,
+    lastInvokedAt: idx.lastInvokedAt,
+    createdAt: idx.createdAt,
+    updatedAt: idx.updatedAt,
   };
 }
 
@@ -336,36 +368,87 @@ export async function createUserSkill(
   const toolWhitelist = validateToolWhitelist(input.toolWhitelist);
   assertAssetPresence({ promptFragment, workflowDocs, toolWhitelist });
 
-  // Race-safe uniqueness check via transaction
-  const row = await prisma.$transaction(async (tx) => {
+  // Step 1: reserve DB row in a $transaction (handles name-conflict race).
+  // We need the row id BEFORE writing fs (dirPath includes id), so we INSERT
+  // first, then write fs, then on fs failure cleanup DB row.
+  const created = await prisma.$transaction(async (tx) => {
     const existing = await tx.userSkill.findFirst({
       where: { ownerType, ownerId, name },
       select: { id: true },
     });
-    if (existing) {
-      throw new UserSkillNameConflictError(name);
-    }
+    if (existing) throw new UserSkillNameConflictError(name);
     return tx.userSkill.create({
       data: {
         ownerType,
         ownerId,
         name,
-        description,
-        triggers: triggers as any,
-        promptFragment,
-        workflowDocs: (workflowDocs as any) ?? null,
-        toolWhitelist: (toolWhitelist as any) ?? null,
-        sourceConversationId: input.sourceConversationId ?? null,
-        sourceWorkflowRunId: input.sourceWorkflowRunId ?? null,
+        // dirPath is computed from id but id is generated by Prisma's @default(cuid())
+        // → temporary placeholder, we'll update right after.
+        dirPath: "pending",
       },
     });
   });
-  return rowToDto(row);
+
+  const dirPath = skillDirPath(ownerId, created.id);
+  const now = new Date().toISOString();
+  const frontmatter: SkillFrontmatter = {
+    id: created.id,
+    name,
+    description,
+    when_to_use: description, // V1 reuses description; future iterations may split
+    triggers,
+    allowed_tools: toolWhitelist ?? undefined,
+    workflows: undefined, // writeSkill fills from validated workflowDocs
+    source:
+      input.sourceConversationId || input.sourceWorkflowRunId
+        ? {
+            conversation_id: input.sourceConversationId ?? null,
+            workflow_run_id: input.sourceWorkflowRunId ?? null,
+          }
+        : undefined,
+    created_at: now,
+    updated_at: now,
+  };
+
+  try {
+    await writeSkill({
+      dirPath,
+      frontmatter,
+      body: promptFragment ?? "",
+      workflowDocs: workflowDocs ?? [],
+    });
+  } catch (err) {
+    // fs write failed — undo DB row so we don't leave a phantom index entry.
+    await prisma.userSkill.delete({ where: { id: created.id } }).catch(() => {});
+    throw err;
+  }
+
+  const finalRow = await prisma.userSkill.update({
+    where: { id: created.id },
+    data: { dirPath },
+  });
+  const fsRec = await readSkill(dirPath);
+  return composeRow(finalRow as unknown as IndexRow, fsRec);
 }
 
 export async function getUserSkill(id: string): Promise<UserSkillRow | null> {
-  const row = await prisma.userSkill.findUnique({ where: { id } });
-  return row ? rowToDto(row) : null;
+  const idx = (await prisma.userSkill.findUnique({ where: { id } })) as
+    | IndexRow
+    | null;
+  if (!idx) return null;
+  let fsRec: SkillFsRecord;
+  try {
+    fsRec = await readSkill(idx.dirPath);
+  } catch (err) {
+    // fs is the source of truth; if missing, signal corruption clearly.
+    throw new SkillFsError(
+      `index row ${id} points at ${idx.dirPath} but fs read failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      err,
+    );
+  }
+  return composeRow(idx, fsRec);
 }
 
 export async function listUserSkills(
@@ -374,11 +457,28 @@ export async function listUserSkills(
   const { ownerType, ownerId } = validateOwner(filter.ownerType, filter.ownerId);
   const where: Record<string, unknown> = { ownerType, ownerId };
   if (filter.onlyEnabled) where.enabled = true;
-  const rows = await prisma.userSkill.findMany({
+  const rows = (await prisma.userSkill.findMany({
     where: where as any,
     orderBy: { updatedAt: "desc" },
-  });
-  return rows.map(rowToDto);
+  })) as IndexRow[];
+  // Read each fs concurrently — these are tiny + OS page cache makes this
+  // effectively free after first call.
+  const enriched = await Promise.all(
+    rows.map(async (idx) => {
+      try {
+        const fsRec = await readSkill(idx.dirPath);
+        return composeRow(idx, fsRec);
+      } catch (err) {
+        // Don't crash the whole list on one corrupt row — log + skip.
+        console.error(
+          `[userSkillStore.list] skipping ${idx.id} (${idx.dirPath}):`,
+          err instanceof Error ? err.message : err,
+        );
+        return null;
+      }
+    }),
+  );
+  return enriched.filter((r): r is UserSkillRow => r !== null);
 }
 
 export async function updateUserSkill(
@@ -386,22 +486,28 @@ export async function updateUserSkill(
   patch: UserSkillUpdateInput,
   opts: { requireOwnerId?: string } = {},
 ): Promise<UserSkillRow> {
-  const existing = await prisma.userSkill.findUnique({ where: { id } });
-  if (!existing) throw new UserSkillNotFoundError(id);
-  if (opts.requireOwnerId && existing.ownerId !== opts.requireOwnerId) {
+  const idx = (await prisma.userSkill.findUnique({ where: { id } })) as
+    | IndexRow
+    | null;
+  if (!idx) throw new UserSkillNotFoundError(id);
+  if (opts.requireOwnerId && idx.ownerId !== opts.requireOwnerId) {
     throw new UserSkillPermissionError(
       `permission denied: skill belongs to a different owner`,
     );
   }
 
-  const data: Record<string, unknown> = {};
+  // Read current fs state — we'll merge patches into it.
+  const cur = await readSkill(idx.dirPath);
+  const fm = cur.frontmatter;
+
+  const dbData: Record<string, unknown> = {};
   if (patch.name !== undefined) {
     const newName = validateName(patch.name);
-    if (newName !== existing.name) {
+    if (newName !== idx.name) {
       const conflict = await prisma.userSkill.findFirst({
         where: {
-          ownerType: existing.ownerType,
-          ownerId: existing.ownerId,
+          ownerType: idx.ownerType,
+          ownerId: idx.ownerId,
           name: newName,
           NOT: { id },
         },
@@ -409,67 +515,76 @@ export async function updateUserSkill(
       });
       if (conflict) throw new UserSkillNameConflictError(newName);
     }
-    data.name = newName;
+    dbData.name = newName;
+    fm.name = newName;
   }
   if (patch.description !== undefined) {
-    data.description = validateDescription(patch.description);
+    fm.description = validateDescription(patch.description);
+    fm.when_to_use = fm.description;
   }
   if (patch.triggers !== undefined) {
-    data.triggers = validateTriggers(patch.triggers);
-  }
-  if (patch.promptFragment !== undefined) {
-    data.promptFragment = validatePromptFragment(patch.promptFragment);
-  }
-  if (patch.workflowDocs !== undefined) {
-    data.workflowDocs = (validateWorkflowDocsField(patch.workflowDocs) as any) ?? null;
+    fm.triggers = validateTriggers(patch.triggers);
   }
   if (patch.toolWhitelist !== undefined) {
-    data.toolWhitelist = (validateToolWhitelist(patch.toolWhitelist) as any) ?? null;
+    const tw = validateToolWhitelist(patch.toolWhitelist);
+    fm.allowed_tools = tw ?? undefined;
+  }
+  let nextBody = cur.body;
+  if (patch.promptFragment !== undefined) {
+    const pf = validatePromptFragment(patch.promptFragment);
+    nextBody = pf ?? "";
+  }
+  let nextDocs: WorkflowDoc[] | null = cur.workflowDocs.length > 0 ? cur.workflowDocs : null;
+  if (patch.workflowDocs !== undefined) {
+    nextDocs = validateWorkflowDocsField(patch.workflowDocs);
   }
   if (patch.enabled !== undefined) {
     if (typeof patch.enabled !== "boolean") {
       throw new UserSkillValidationError("enabled 必须是 boolean", "enabled");
     }
-    data.enabled = patch.enabled;
+    dbData.enabled = patch.enabled;
   }
 
-  // 至少一个 asset 非空 (取最终落库后的形态)
-  const finalPromptFragment =
-    "promptFragment" in data
-      ? (data.promptFragment as string | null)
-      : existing.promptFragment;
-  const finalWorkflowDocs =
-    "workflowDocs" in data
-      ? (data.workflowDocs as WorkflowDoc[] | null)
-      : (existing.workflowDocs as WorkflowDoc[] | null);
-  const finalToolWhitelist =
-    "toolWhitelist" in data
-      ? (data.toolWhitelist as string[] | null)
-      : (existing.toolWhitelist as string[] | null);
+  // After patch composition, re-check asset presence.
   assertAssetPresence({
-    promptFragment: finalPromptFragment,
-    workflowDocs: finalWorkflowDocs,
-    toolWhitelist: finalToolWhitelist,
+    promptFragment: nextBody.trim() ? nextBody : null,
+    workflowDocs: nextDocs,
+    toolWhitelist: fm.allowed_tools && fm.allowed_tools.length > 0
+      ? fm.allowed_tools
+      : null,
   });
 
-  const row = await prisma.userSkill.update({
-    where: { id },
-    data: data as any,
+  fm.updated_at = new Date().toISOString();
+  await writeSkill({
+    dirPath: idx.dirPath,
+    frontmatter: fm,
+    body: nextBody,
+    workflowDocs: nextDocs ?? [],
   });
-  return rowToDto(row);
+  const newIdx = (await prisma.userSkill.update({
+    where: { id },
+    data: dbData as any,
+  })) as IndexRow;
+  const newFs = await readSkill(idx.dirPath);
+  return composeRow(newIdx, newFs);
 }
 
 export async function deleteUserSkill(
   id: string,
   opts: { requireOwnerId?: string } = {},
 ): Promise<void> {
-  const existing = await prisma.userSkill.findUnique({ where: { id } });
-  if (!existing) throw new UserSkillNotFoundError(id);
-  if (opts.requireOwnerId && existing.ownerId !== opts.requireOwnerId) {
+  const idx = (await prisma.userSkill.findUnique({ where: { id } })) as
+    | IndexRow
+    | null;
+  if (!idx) throw new UserSkillNotFoundError(id);
+  if (opts.requireOwnerId && idx.ownerId !== opts.requireOwnerId) {
     throw new UserSkillPermissionError(
       `permission denied: skill belongs to a different owner`,
     );
   }
+  // Delete fs first (idempotent), then DB row. If DB delete fails, fs is
+  // already gone but next list will skip the broken index row + log.
+  await deleteSkillFs(idx.dirPath);
   await prisma.userSkill.delete({ where: { id } });
 }
 
@@ -478,24 +593,23 @@ export async function toggleUserSkillEnabled(
   enabled: boolean,
   opts: { requireOwnerId?: string } = {},
 ): Promise<UserSkillRow> {
-  const existing = await prisma.userSkill.findUnique({ where: { id } });
-  if (!existing) throw new UserSkillNotFoundError(id);
-  if (opts.requireOwnerId && existing.ownerId !== opts.requireOwnerId) {
+  const idx = (await prisma.userSkill.findUnique({ where: { id } })) as
+    | IndexRow
+    | null;
+  if (!idx) throw new UserSkillNotFoundError(id);
+  if (opts.requireOwnerId && idx.ownerId !== opts.requireOwnerId) {
     throw new UserSkillPermissionError(
       `permission denied: skill belongs to a different owner`,
     );
   }
-  const row = await prisma.userSkill.update({
+  const newIdx = (await prisma.userSkill.update({
     where: { id },
     data: { enabled },
-  });
-  return rowToDto(row);
+  })) as IndexRow;
+  const fsRec = await readSkill(idx.dirPath);
+  return composeRow(newIdx, fsRec);
 }
 
-/**
- * 在 workflow / 工具调用成功后调用,递增使用统计。失败时不要调（避免污染统计）。
- * 不抛错——统计写失败不影响主流程。
- */
 export async function recordUserSkillInvocation(id: string): Promise<void> {
   try {
     await prisma.userSkill.update({
@@ -510,7 +624,23 @@ export async function recordUserSkillInvocation(id: string): Promise<void> {
   }
 }
 
-// 测试 / 调试用 — 直接读 prisma instance
+/** Read just frontmatter for a single skill. Used by `list_my_skills` /
+ *  catalog rendering when full body isn't needed. Cheap. */
+export async function getUserSkillFrontmatter(
+  id: string,
+): Promise<{ idx: IndexRow; frontmatter: SkillFrontmatter } | null> {
+  const idx = (await prisma.userSkill.findUnique({ where: { id } })) as
+    | IndexRow
+    | null;
+  if (!idx) return null;
+  try {
+    const frontmatter = await readSkillFrontmatter(idx.dirPath);
+    return { idx, frontmatter };
+  } catch {
+    return null;
+  }
+}
+
 export function _getPrismaForTest(): PrismaClient {
   return prisma;
 }
