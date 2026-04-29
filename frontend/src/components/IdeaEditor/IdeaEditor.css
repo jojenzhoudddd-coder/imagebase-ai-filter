@@ -209,6 +209,27 @@
   padding: 1px 4px;
   border-radius: 3px;
 }
+/* Image wrapper — visual feedback when selected so user knows Backspace
+   will delete it. (2026-04-29) */
+.idea-preview-body .idea-image-wrap {
+  display: inline-block;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.idea-preview-body .idea-image-wrap:hover {
+  outline: 1px dashed var(--color-text-tertiary, #9ca3af);
+  outline-offset: 2px;
+}
+.idea-preview-body .idea-image-wrap img {
+  display: block;
+  max-width: 100%;
+}
+/* When the wrap is selected (via click handler), the browser draws the
+   selection highlight on its content. Reinforce with a visible outline. */
+.idea-preview-body .idea-image-wrap::selection,
+.idea-preview-body .idea-image-wrap *::selection {
+  background: rgba(20, 86, 240, 0.18);
+}
 .idea-preview-body pre {
   background: var(--color-bg-hover, var(--surface-1));
   padding: 12px;

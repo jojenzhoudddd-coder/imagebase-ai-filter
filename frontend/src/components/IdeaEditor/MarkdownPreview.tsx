@@ -385,6 +385,25 @@ const InnerMarkdown = memo(function InnerMarkdown({
             data-md-inline-start={node?.position?.start?.offset}
             data-md-inline-end={node?.position?.end?.offset}
             className="idea-image-wrap"
+            // 2026-04-29: make image selectable on click. Without this,
+            // contentEditable=false elements don't reliably accept caret
+            // (the click bubbles out to the contenteditable parent which
+            // resolves caret based on coordinates, often landing OUTSIDE
+            // the image's paragraph). Selecting the wrapper turns the
+            // image into a Backspace-deletable atomic — the user clicks
+            // it, sees the selection highlight, presses Backspace, and
+            // browser native delete fires `input` → commitEdits →
+            // rebuildFromDom drops `![alt](url)` from source.
+            onClick={(e) => {
+              e.stopPropagation();
+              const range = document.createRange();
+              range.selectNode(e.currentTarget);
+              const sel = window.getSelection();
+              if (sel) {
+                sel.removeAllRanges();
+                sel.addRange(range);
+              }
+            }}
           >
             <img src={src} alt={alt} {...rest} />
           </span>
@@ -719,17 +738,24 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
     }
   }, [source]);
 
-  // Initial caret on mount — in editable mode the user needs an immediate
-  // affordance that typing will insert text. Place the caret at the end of
-  // the rendered content so typing appends naturally. Runs once per mount;
-  // MarkdownPreview unmounts on mode toggle so we don't need to retrigger.
+  // Initial caret on mount — only auto-focus + place caret when the doc
+  // is genuinely EMPTY. For non-empty docs, leave focus + caret untouched
+  // so the user can read first and click where they want.
   //
-  // Special case (2026-04-29): when the doc is empty (rendered placeholder
-  // `<p data-idea-empty-line>`), placing the caret at "end of contents"
-  // lands it AFTER the placeholder text in the inline flow because the
-  // placeholder is implemented as a CSS `::before` pseudo-element. Visually
-  // the user sees the caret blinking past the hint, which reads as
-  // "something's already typed". Force caret-at-start in that case.
+  // Why this changed (2026-04-29): the previous behavior auto-focused the
+  // editor and placed the caret at end-of-doc on every mount. For docs
+  // ending with a trailing-empty placeholder `<p>` (any source ending in
+  // `\n\n`), this dropped the caret BELOW the visible content on a blank
+  // line — the user couldn't tell where the cursor was, and reported
+  // "光标位置不对，放在 placeholder 后面了". For empty docs the same code
+  // collapsed to end of an empty `<p data-idea-empty-line>` whose CSS
+  // ::before placeholder text sits in the inline flow, so the visible
+  // caret landed past the hint instead of at the start of where typing
+  // would go.
+  //
+  // New rule: empty doc → focus + caret at start of the empty paragraph
+  // (so the user can immediately type into the placeholder spot). Non-
+  // empty doc → no auto-caret. The user clicks where they want to edit.
   useEffect(() => {
     if (!editable) return;
     let cancelled = false;
@@ -741,18 +767,21 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
     schedule(() => {
       const root = rootRef.current;
       if (!root) return;
+      // Only auto-position when doc is empty (single empty-line placeholder).
+      const isEmpty =
+        root.childNodes.length === 1 &&
+        root.firstElementChild?.hasAttribute("data-idea-empty-line");
+      if (!isEmpty) return;
       try {
         root.focus({ preventScroll: true });
-        if (root.childNodes.length === 0) return;
+        const emptyP = root.firstElementChild as HTMLElement;
         const range = document.createRange();
-        range.selectNodeContents(root);
-        // Empty-doc placeholder: caret at start so the placeholder reads
-        // "type here…" instead of "you already typed". Other docs: caret
-        // at end so typing appends.
-        const isEmpty =
-          root.childNodes.length === 1 &&
-          root.firstElementChild?.hasAttribute("data-idea-empty-line");
-        range.collapse(isEmpty ? true : false);
+        // Caret INSIDE the empty <p>, before its <br> child. This way the
+        // browser puts the visible caret at the start-of-line position
+        // alongside the placeholder text (which is rendered via ::before
+        // and is `pointer-events:none; user-select:none`).
+        range.setStart(emptyP, 0);
+        range.collapse(true);
         const sel = window.getSelection();
         if (sel) {
           sel.removeAllRanges();
@@ -1450,6 +1479,89 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       const sel = window.getSelection();
       if (sel && sel.rangeCount > 0) {
         const range = sel.getRangeAt(0);
+        // 2026-04-29: also catch the "user clicked an image and the entire
+        // wrap is selected" case. Native Backspace would delete the wrap
+        // from DOM but our source-splicer doesn't notice the whole-block
+        // disappeared. Detect the exact selection of an idea-image-wrap
+        // and route through the same source-splice path the
+        // collapsed-Backspace branch uses.
+        if (
+          !range.collapsed &&
+          range.startContainer === range.endContainer &&
+          range.startContainer.nodeType === Node.ELEMENT_NODE &&
+          range.endOffset - range.startOffset === 1
+        ) {
+          const selectedNode = (range.startContainer as Element).childNodes[
+            range.startOffset
+          ];
+          if (
+            selectedNode instanceof HTMLElement &&
+            selectedNode.classList.contains("idea-image-wrap")
+          ) {
+            // Promote into the collapsed-Backspace path by manually
+            // arranging the right state: pick the wrap as the "atomic
+            // chip", and stash its parent block for whole-block deletion
+            // so the source splice fires.
+            e.preventDefault();
+            const wrap = selectedNode as HTMLElement;
+            const parentBlock = wrap.closest("p, h1, h2, h3, h4, h5, h6, blockquote, li") as HTMLElement | null;
+            if (parentBlock && onEditableInput) {
+              const bs = Number(parentBlock.getAttribute("data-md-start"));
+              const be = Number(parentBlock.getAttribute("data-md-end"));
+              if (Number.isFinite(bs) && Number.isFinite(be)) {
+                const src = sourceSnapshotRef.current;
+                let extEnd = be;
+                while (extEnd < src.length && src.charCodeAt(extEnd) === 10) extEnd++;
+                // Drop the wrap then drop the parent block if image-only.
+                wrap.remove();
+                const onlyEmptyTextLeft = Array.from(parentBlock.childNodes).every(
+                  (n) =>
+                    n.nodeType === Node.TEXT_NODE &&
+                    ((n as Text).data || "").trim() === "",
+                );
+                if (onlyEmptyTextLeft && parentBlock.parentNode) {
+                  parentBlock.parentNode.removeChild(parentBlock);
+                  // Splice source.
+                  const newSrc = src.slice(0, bs) + src.slice(extEnd);
+                  sourceSnapshotRef.current = newSrc;
+                  onEditableInput(newSrc);
+                  // Shift remaining offsets.
+                  const delta = extEnd - bs;
+                  if (rootRef.current) {
+                    rootRef.current
+                      .querySelectorAll<HTMLElement>("[data-md-start]")
+                      .forEach((el) => {
+                        const s = Number(el.getAttribute("data-md-start"));
+                        const e2 = Number(el.getAttribute("data-md-end"));
+                        if (Number.isFinite(s) && s >= extEnd) {
+                          el.setAttribute("data-md-start", String(s - delta));
+                        }
+                        if (Number.isFinite(e2) && e2 >= extEnd) {
+                          el.setAttribute("data-md-end", String(e2 - delta));
+                        }
+                      });
+                  }
+                } else {
+                  // Wrap was inside a paragraph that has other content;
+                  // commitEdits' rebuildFromDom path will pick up the
+                  // missing inline-src and splice correctly.
+                  commitEdits();
+                }
+                // Place caret where the wrap was.
+                try {
+                  const r = document.createRange();
+                  if (parentBlock.parentNode) {
+                    r.selectNodeContents(parentBlock.parentNode);
+                  }
+                  r.collapse(true);
+                  sel.removeAllRanges();
+                  sel.addRange(r);
+                } catch { /* ignore */ }
+                return;
+              }
+            }
+          }
+        }
         if (range.collapsed) {
           // Two possible caret-after-atomic shapes:
           //  (a) caret is at offset 0 of a text node whose previousSibling is an atomic
@@ -1476,9 +1588,110 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
               chip = prev;
             }
           }
+          // 2026-04-29: also catch "Backspace at start of a paragraph
+          // whose PREVIOUS PARAGRAPH is an image-only paragraph". Native
+          // Backspace there would merge the two `<p>`s, which leaves the
+          // image embedded inside the merged paragraph and the merged
+          // block's data-md-* attrs out of sync — commitEdits ends up
+          // with `![alt](url)end` instead of removing the image. Detect
+          // this case and delete the image paragraph instead. (Same
+          // rule applies if the user has a non-collapsed selection that
+          // spans the image — but that's caught natively, so only worry
+          // about the merge-from-below case here.)
+          if (!chip && range.collapsed) {
+            // Find the paragraph the caret currently lives in.
+            const ceRoot = rootRef.current;
+            let blockEl: HTMLElement | null = null;
+            let cur: Node | null = sc;
+            while (cur && cur !== ceRoot?.parentNode) {
+              if (
+                cur instanceof HTMLElement &&
+                /^(P|H[1-6]|BLOCKQUOTE|LI)$/.test(cur.tagName)
+              ) {
+                blockEl = cur;
+                break;
+              }
+              cur = cur.parentNode;
+            }
+            if (blockEl) {
+              // Caret at start of blockEl? Measure by comparing boundary
+              // points — direct (container, offset) reference equality
+              // fails because the caret's container is usually a text node
+              // descendant, not the block element itself, even when the
+              // visual position is identical.
+              let isAtBlockStart = false;
+              try {
+                const probe = document.createRange();
+                probe.setStart(blockEl, 0);
+                probe.setEnd(range.startContainer, range.startOffset);
+                isAtBlockStart = probe.toString() === "";
+              } catch { /* ignore — leave isAtBlockStart=false */ }
+              if (isAtBlockStart) {
+                const prevBlock = blockEl.previousElementSibling;
+                // Image-only paragraph = a `<p>` whose only meaningful
+                // child is `.idea-image-wrap` (we tolerate trailing text
+                // nodes that are pure whitespace from markdown rendering).
+                if (
+                  prevBlock instanceof HTMLElement &&
+                  prevBlock.tagName === "P" &&
+                  prevBlock.querySelector(":scope > .idea-image-wrap")
+                ) {
+                  const onlyImage = Array.from(prevBlock.childNodes).every(
+                    (n) =>
+                      (n instanceof HTMLElement &&
+                        n.classList.contains("idea-image-wrap")) ||
+                      (n.nodeType === Node.TEXT_NODE &&
+                        ((n as Text).data || "").trim() === ""),
+                  );
+                  if (onlyImage) {
+                    // Treat the image paragraph as the atomic to delete.
+                    chip = prevBlock.querySelector<HTMLElement>(".idea-image-wrap");
+                    // Removing the wrapper alone leaves an empty <p>
+                    // behind — clean it up so we don't end up with a
+                    // phantom blank line in source.
+                    if (chip) {
+                      // Stash the parent <p> so we can remove it after
+                      // the chip-removal handler below runs.
+                      (chip as any).__deleteParentBlockOnRemoval = prevBlock;
+                    }
+                  }
+                }
+              }
+            }
+          }
           if (chip) {
             e.preventDefault();
             const parent = chip.parentNode;
+            // Stashed by the image-only-paragraph branch above: when we're
+            // deleting an image whose paragraph contains nothing else, also
+            // wipe the now-empty paragraph so the source doesn't keep a
+            // phantom blank line.
+            const parentBlockToWipe: HTMLElement | undefined =
+              (chip as any).__deleteParentBlockOnRemoval;
+            // For the "delete image-only paragraph" path we ALSO need to
+            // splice the source ourselves — `commitEdits` operates on
+            // surviving `[data-md-start]` blocks, so a wholesale block
+            // deletion (the image's `<p>` is gone, not just modified)
+            // would leave the source's `![alt](url)\n\n` orphaned.
+            // Capture the block's source range BEFORE we mutate the DOM.
+            let blockSpliceRange: { start: number; end: number } | null = null;
+            if (parentBlockToWipe) {
+              const bs = Number(parentBlockToWipe.getAttribute("data-md-start"));
+              const be = Number(parentBlockToWipe.getAttribute("data-md-end"));
+              if (Number.isFinite(bs) && Number.isFinite(be)) {
+                // Extend `end` to swallow the trailing `\n\n` block separator
+                // so we don't leave a phantom blank line.
+                const src = sourceSnapshotRef.current;
+                let extendedEnd = be;
+                while (
+                  extendedEnd < src.length &&
+                  src.charCodeAt(extendedEnd) === 10 // \n
+                ) {
+                  extendedEnd++;
+                }
+                blockSpliceRange = { start: bs, end: extendedEnd };
+              }
+            }
             if (parent) {
               // Capture a reference to whatever sits immediately after the
               // chip so we can place the caret there after removal. If the
@@ -1487,7 +1700,12 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
               // strange, so we trim exactly one leading space when present.
               const nextNode = chip.nextSibling;
               parent.removeChild(chip);
-              if (nextNode && nextNode.nodeType === Node.TEXT_NODE) {
+              if (parentBlockToWipe && parentBlockToWipe.parentNode) {
+                // After chip removal, the wrap's host <p> is empty (or
+                // pure whitespace). Drop it entirely. Caret stays in the
+                // following block (which the user was at the start of).
+                parentBlockToWipe.parentNode.removeChild(parentBlockToWipe);
+              } else if (nextNode && nextNode.nodeType === Node.TEXT_NODE) {
                 const tn = nextNode as Text;
                 if (tn.data.startsWith(" ")) {
                   tn.deleteData(0, 1);
@@ -1508,7 +1726,36 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
                   sel.addRange(r);
                 } catch { /* ignore */ }
               }
-              commitEdits();
+              if (blockSpliceRange && onEditableInput) {
+                // Whole-block deletion: splice the source directly because
+                // commitEdits only walks surviving blocks.
+                const src = sourceSnapshotRef.current;
+                const newSrc =
+                  src.slice(0, blockSpliceRange.start) +
+                  src.slice(blockSpliceRange.end);
+                sourceSnapshotRef.current = newSrc;
+                onEditableInput(newSrc);
+                // Walk remaining [data-md-start] blocks AFTER the deleted
+                // range and shift their offsets back so subsequent
+                // commitEdits calls don't compute stale deltas.
+                const delta = blockSpliceRange.end - blockSpliceRange.start;
+                if (rootRef.current) {
+                  rootRef.current
+                    .querySelectorAll<HTMLElement>("[data-md-start]")
+                    .forEach((el) => {
+                      const s = Number(el.getAttribute("data-md-start"));
+                      const e2 = Number(el.getAttribute("data-md-end"));
+                      if (Number.isFinite(s) && s >= blockSpliceRange!.end) {
+                        el.setAttribute("data-md-start", String(s - delta));
+                      }
+                      if (Number.isFinite(e2) && e2 >= blockSpliceRange!.end) {
+                        el.setAttribute("data-md-end", String(e2 - delta));
+                      }
+                    });
+                }
+              } else {
+                commitEdits();
+              }
             }
             return;
           }
