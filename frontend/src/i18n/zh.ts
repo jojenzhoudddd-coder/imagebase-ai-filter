@@ -430,7 +430,7 @@ export const zh: TranslationKeys = {
   "idea.uploadAttachment": "上传",
   "idea.uploadFailed": "上传失败",
   // PR8: block-level menu
-  "blockMenu.handleTooltip": "拖动 / 点击菜单",
+  "blockMenu.handleTooltip": "点击查看菜单",
   "blockMenu.copyLink": "复制 block 链接",
   "blockMenu.copyLinkOk": "已复制链接",
   "blockMenu.copyLinkFail": "复制失败",

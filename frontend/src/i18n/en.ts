@@ -428,7 +428,7 @@ export const en = {
   "idea.uploadAttachment": "Upload",
   "idea.uploadFailed": "Upload failed",
   // PR8: block-level menu
-  "blockMenu.handleTooltip": "Drag / click menu",
+  "blockMenu.handleTooltip": "Click for menu",
   "blockMenu.copyLink": "Copy block link",
   "blockMenu.copyLinkOk": "Link copied",
   "blockMenu.copyLinkFail": "Copy failed",

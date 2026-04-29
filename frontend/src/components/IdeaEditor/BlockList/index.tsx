@@ -18,7 +18,10 @@ import MarkdownPreview from "../MarkdownPreview";
 import BlockMenu, { type BlockTransformTarget } from "./BlockMenu";
 import type { ParsedMention } from "../../Mention/mentionSyntax";
 import type { IdeaBlockBrief } from "../../../api";
-import { patchIdeaBlock, deleteIdeaBlock, moveIdeaBlock } from "../../../api";
+import { patchIdeaBlock, deleteIdeaBlock } from "../../../api";
+// `moveIdeaBlock` is kept available for the Agent's MCP tool path; the
+// FE drag-to-reorder UI was removed because it conflicted with text
+// selection and cluttered preview mode. (2026-04-29)
 import { useToast } from "../../Toast/index";
 import { useTranslation } from "../../../i18n/index";
 import "./BlockList.css";
@@ -70,8 +73,6 @@ export default function BlockList({
   // ── Block-link flash highlight ──
   const [flashId, setFlashId] = useState<string | null>(null);
   // ── Drag state ──
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [dropIndicator, setDropIndicator] = useState<{ blockId: string; pos: "above" | "below" } | null>(null);
 
   // ── Per-block byte offsets (for editable splice) ──
   // Source-of-truth invariant from PR6: blocks[i].content concatenated ===
@@ -210,76 +211,9 @@ export default function BlockList({
     [ideaId, refreshAfter, toast, t],
   );
 
-  // ── Drag handlers (HTML5 native, no extra deps) ──
-  const onDragStart = useCallback(
-    (e: React.DragEvent<HTMLElement>, blockId: string) => {
-      if (readOnly) {
-        e.preventDefault();
-        return;
-      }
-      e.dataTransfer.effectAllowed = "move";
-      // Required for Firefox to actually fire dragstart.
-      e.dataTransfer.setData("text/plain", `block-${blockId}`);
-      setDragId(blockId);
-    },
-    [readOnly],
-  );
-
-  const onDragOver = useCallback(
-    (e: React.DragEvent<HTMLDivElement>, blockId: string) => {
-      if (!dragId || dragId === blockId) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      const rect = e.currentTarget.getBoundingClientRect();
-      const midY = rect.top + rect.height / 2;
-      const pos: "above" | "below" = e.clientY < midY ? "above" : "below";
-      setDropIndicator({ blockId, pos });
-    },
-    [dragId],
-  );
-
-  const onDragLeave = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      // Only clear if we're actually leaving the row (prevent flicker on
-      // crossing children).
-      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-        setDropIndicator(null);
-      }
-    },
-    [],
-  );
-
-  const onDrop = useCallback(
-    async (e: React.DragEvent<HTMLDivElement>, targetBlockId: string) => {
-      e.preventDefault();
-      const draggedId = dragId;
-      const indicator = dropIndicator;
-      setDragId(null);
-      setDropIndicator(null);
-      if (!draggedId || draggedId === targetBlockId) return;
-
-      const fromIdx = blocks.findIndex((b) => b.id === draggedId);
-      const targetIdx = blocks.findIndex((b) => b.id === targetBlockId);
-      if (fromIdx === -1 || targetIdx === -1) return;
-      // toIndex semantics: where the dragged block lands AFTER removal.
-      // If dropping BELOW target and the dragged block was above the target,
-      // the target's index drops by 1 once we remove the source — so the
-      // final landing index is `targetIdx`. Otherwise it's `targetIdx + 1`.
-      let toIndex = targetIdx;
-      if (indicator?.pos === "below") {
-        toIndex = fromIdx < targetIdx ? targetIdx : targetIdx + 1;
-      } else {
-        toIndex = fromIdx < targetIdx ? targetIdx - 1 : targetIdx;
-      }
-      try {
-        await moveIdeaBlock(ideaId, draggedId, toIndex);
-        refreshAfter();
-      } catch (err) {
-        toast.error(`${t("blockMenu.moveFail")}: ${err instanceof Error ? err.message : err}`);
-      }
-    },
-    [blocks, dragId, dropIndicator, ideaId, refreshAfter, toast, t],
-  );
+  // (Drag-to-reorder removed 2026-04-29 — clashed with native text selection
+  // and added too much visual noise to preview mode. Block re-ordering still
+  // available via Agent's `move_idea_block` MCP tool.)
 
   if (blocks.length === 0) {
     return <div className="idea-block-list-empty">{placeholder ?? ""}</div>;
@@ -293,19 +227,10 @@ export default function BlockList({
         height: virtualizer.getTotalSize(),
         position: "relative",
       }}
-      onDragEnd={() => {
-        setDragId(null);
-        setDropIndicator(null);
-      }}
     >
       {virtualizer.getVirtualItems().map((vi) => {
         const block = blocks[vi.index];
         const isHover = hoverBlockId === block.id;
-        const isDragSource = dragId === block.id;
-        const showIndicatorAbove =
-          dropIndicator?.blockId === block.id && dropIndicator.pos === "above";
-        const showIndicatorBelow =
-          dropIndicator?.blockId === block.id && dropIndicator.pos === "below";
         return (
           <div
             key={vi.key}
@@ -324,10 +249,7 @@ export default function BlockList({
               "idea-block",
               `idea-block-${block.type}`,
               isHover ? "is-hover" : "",
-              isDragSource ? "is-drag-source" : "",
               flashId === block.id ? "is-flash" : "",
-              showIndicatorAbove ? "drop-indicator-above" : "",
-              showIndicatorBelow ? "drop-indicator-below" : "",
             ]
               .filter(Boolean)
               .join(" ")}
@@ -342,18 +264,14 @@ export default function BlockList({
             onMouseLeave={() => {
               setHoverBlockId((cur) => (cur === block.id ? null : cur));
             }}
-            onDragOver={(e) => onDragOver(e, block.id)}
-            onDragLeave={onDragLeave}
-            onDrop={(e) => onDrop(e, block.id)}
           >
-            {/* ⋮ handle — draggable + opens BlockMenu on click. Hidden when
-             * not hovering (pointer-events suppressed via CSS) so it doesn't
-             * disturb selection. */}
+            {/* ⋮ handle — opens BlockMenu on click. Hidden when not hovering
+             * (pointer-events suppressed via CSS) so it doesn't disturb
+             * selection. Drag-to-reorder removed 2026-04-29; reordering
+             * still available via Agent's move_idea_block MCP tool. */}
             {!readOnly && (
               <button
                 className="idea-block-handle"
-                draggable
-                onDragStart={(e) => onDragStart(e, block.id)}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
