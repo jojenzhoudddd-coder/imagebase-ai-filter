@@ -9,10 +9,53 @@
 
 | 阶段 | 重点 | 阻塞上线? | 时间预估 |
 |---|---|---|---|
+| **Pre-Launch Prep** | **架构对冲**:存储抽象层,让 launch 时切 S3 零代码 | 不阻塞,提前做 | 1-2 天 |
 | **Phase 0:不上线就完蛋的 P0** | 数据安全 + 限频 + 监控 + 安全基线 | ✅ 阻塞 | 1.5 周 |
 | **Phase 1:体验关卡** | CDN + admin / 隐私 + CI/CD | ✅ 阻塞 | 1 周 |
 | **Phase 2:规模化** | 多 region + 读写分离 + 配额看板 | 上线后做 | 2-3 周 |
 | **Phase 3:成熟期** | 审计 / 备份演练 / DR drill | DAU > 500 后 | 持续 |
+
+---
+
+## Pre-Launch Prep
+
+> **目的**:不等"上线启动"才开始建抽象层,而是**每写一行新 fs 代码,都已经走在抽象上**。这样 launch 时切 S3 / OSS 是 env 改一行 + 加一个 impl + 跑一次迁移脚本,**应用代码零 touch**。
+>
+> **触发**:加这个章节是因为 2026-04-28 启动的 Skill Creator V2(fs 化)+ Idea attachment 管线,这两个新功能都会写 fs。如果不先抽象,launch 时要回头改两个新功能,得不偿失。
+
+### P-prep.1 BlobStorage 抽象层(PR4-prep)
+
+**🛠 我来做(1.5 天)**
+- [ ] 新建 `backend/src/services/storage/blobStorage.ts`,定义 interface:
+  ```ts
+  export interface BlobStorage {
+    read(key: string): Promise<string>;
+    readBuffer(key: string): Promise<Buffer>;
+    write(key: string, content: string | Buffer): Promise<void>;
+    list(prefix: string): Promise<string[]>;
+    delete(key: string): Promise<void>;
+    exists(key: string): Promise<boolean>;
+    readStream(key: string): NodeJS.ReadableStream;
+    writeStream(key: string): NodeJS.WritableStream;
+  }
+  ```
+- [ ] 实现 `LocalFsStorage`(`fs.promises` + 流式 `createReadStream/WriteStream`)
+- [ ] env 切换:`BLOB_STORAGE_BACKEND=local|s3`(默认 local),`IMAGEBASE_HOME` 控制本地根目录
+- [ ] 收口现有 `fs.*` 调用(分两批,每批一个 PR):
+  - 批次 1:`agentService.ts`(soul / profile / config / memory / state)
+  - 批次 2:`demoRoutes.ts`(files / dist / published / preview)+ `tasteRoutes.ts`(SVG)+ `analyst/*`
+- [ ] `agent-worktrees/` + `analyst/sessions/*.duckdb` **保留直调 fs**(说明见 0.2 例外)
+- [ ] 单元测试:LocalFsStorage 跑通 read / write / list / delete / stream
+
+### P-prep.2 新功能首日就走 BlobStorage(PR4 / PR5 顺带)
+
+**🛠 我来做**
+- [ ] PR4 Skill fs 化:`userSkill/skillFs.ts` 全部走 BlobStorage,**不直接 import `fs`**
+- [ ] PR5 Idea attachment 管线:`ideaAttachmentService.ts` 同上
+
+**等 launch 时 (Phase 0.2) 加**:
+- 新增 `S3Storage implements BlobStorage`(用 AWS SDK v3)
+- env 改 `BLOB_STORAGE_BACKEND=s3`,**应用代码 0 改动**
 
 ---
 
@@ -39,27 +82,49 @@
 
 ### 0.2 文件存储迁 S3 / OSS
 
+> **2026-04-28 update**:存储抽象层 (`BlobStorage` interface) 已纳入"上线前的提前准备"
+> (PR4-prep,见下方 Pre-Launch Prep 段)。所有新 fs 写入(Skill / Idea attachments / etc.)
+> 从首日就走抽象层,等 launch 时只需加 `S3Storage` 实现 + env 切换 + 跑一次迁移脚本。
+> 这一节里以 ⏸ 标记的项目说明"PR4-prep 已经做完,launch 时无需重做"。
+
 **👤 你来做**
-- [ ] 开 **S3 bucket**(或阿里 OSS):`imagebase-prod-{agents,demos,analyst,worktrees}` 分别一个
+- [ ] 开 **S3 bucket**(或阿里 OSS):`imagebase-prod-{agents,skills,demos,idea-attachments,analyst,worktrees}` 分别一个
 - [ ] 开 **跨区复制 (CRR)** 雅加达 → 新加坡
 - [ ] 开 **Object Versioning**(误删恢复)
 - [ ] 开 **Lifecycle**:90 天前的 worktree / analyst snapshot 自动转 Glacier
 - [ ] 给 backend EC2 一个 IAM Role,只能 `s3:GetObject/PutObject` 这几个 bucket
 
 **🛠 我来做**
-- [ ] 抽象一个 `storage.ts` 接口:`readFile(prefix, key)` / `writeFile(prefix, key, content)` / `listFiles(prefix)`
-- [ ] 加 `STORAGE_BACKEND=local|s3` env 切换;dev 仍用本地,prod 用 S3
-- [ ] 改 `~/.imagebase/agents/` 路径 → `s3://imagebase-prod-agents/<agentId>/`
-  - `agentService.ts` (soul/profile/config/memory/state)
-- [ ] 改 `~/.imagebase/demos/` → `s3://imagebase-prod-demos/<demoId>/{files,dist,published}/`
-  - `demoRoutes.ts` 的 build/publish/preview/sdk 全要改读 S3
-  - `publicDemoRoutes.ts` (`/share/:slug/*`) 改 S3 redirect 或 stream
-- [ ] 改 `~/.imagebase/analyst/` → `s3://imagebase-prod-analyst/`
-  - `snapshotService.ts`(parquet 写 S3)
-  - `duckdbRuntime.ts`(DuckDB 支持 `s3://` 直接 attach,不用先下载)
-  - `resultCache.ts`
-- [ ] 改 `~/.imagebase/agent-worktrees/` → ⚠️ 这个特殊:git worktree 必须本地磁盘,**保持本地 + EFS/NFS** 或者把 worktree 挂在 backend 实例上,但要在 cleanup cron 里加"实例重启自动清理"
-- [ ] 写 一次性迁移脚本 `scripts/migrate-storage-to-s3.ts`
+- ⏸ ~~抽象一个 `storage.ts` 接口~~ → 已在 PR4-prep 落地为 `services/storage/blobStorage.ts`(LocalFsStorage 默认实现)
+- ⏸ ~~加 `STORAGE_BACKEND=local|s3` env 切换~~ → 已在 PR4-prep 完成接口,launch 时只需新增 `S3Storage` impl
+- [ ] **新增 `S3Storage implements BlobStorage`**(走 AWS SDK v3 / `@aws-sdk/client-s3`),覆盖 read / write / list / delete / readStream / writeStream
+- [ ] env 改 `BLOB_STORAGE_BACKEND=s3` + S3 配置,prod 全部 fs 写入瞬移到对象存储。app 代码 0 改动(已经统一走 BlobStorage)
+- [ ] 一次性迁移脚本 `scripts/migrate-storage-to-s3.ts`,把 prod host fs 上的所有资产 upload 到对应 bucket(顺序:agents → skills → demos → idea-attachments → tastes → analyst snapshots,worktree 跳过见下)
+
+**已知例外:agent-worktrees 不上 S3**
+- ⚠️ git worktree 必须挂载本地磁盘(SSH key / git config / Node modules 等都要 inode-level 操作),S3 不支持
+- 方案:**保持本地 fs + 把 worktree 挂在 backend 实例的 EBS gp3 卷上**,cleanup cron 加"实例重启自动清"
+- 走 BlobStorage 也覆盖不了这块,**worktree 例外保留 `fs.*` 直调**
+
+**走 BlobStorage 的资产清单(launch 时一并迁 S3)**
+
+| 资产 | 当前路径 | 目标 bucket | key prefix |
+|---|---|---|---|
+| Agent identity / memory / state | `~/.imagebase/agents/<id>/...` | `imagebase-prod-agents` | `<agentId>/...` |
+| Agent skills (PR4 fs 化) | `~/.imagebase/agents/<id>/skills/<skillId>/...` | `imagebase-prod-skills` | `<agentId>/<skillId>/...` |
+| Demo files / dist / published | `~/.imagebase/demos/<id>/...` | `imagebase-prod-demos` | `<demoId>/...` |
+| Idea attachments (PR5) | `~/.imagebase/idea-attachments/<wsId>/<hash>.<ext>` | `imagebase-prod-idea-attachments` | `<wsId>/<hash>.<ext>` |
+| Taste SVG | `~/.imagebase/.../tastes/*.svg` | `imagebase-prod-tastes` | `<designId>/<tasteId>.svg` |
+| Analyst snapshots / cache | `~/.imagebase/analyst/...` | `imagebase-prod-analyst` | `snapshots/...` / `cache/...` |
+| Analyst sessions (.duckdb) | `~/.imagebase/analyst/sessions/conv_*.duckdb` | **不上 S3**(同 worktree 例外,DuckDB 需要本地 fs) | — |
+
+**应用层改动量**:
+- `agentService.ts`(soul / profile / config / memory / state)→ 改成 `blobStorage.write/read`
+- `userSkill/skillFs.ts`(PR4)→ 直接走 BlobStorage,首日就对的
+- `demoRoutes.ts` build / publish / preview / sdk → 改 `blobStorage`,publicDemoRoutes serve `/share/:slug/*` 改 S3 redirect 或 stream proxy
+- `ideaAttachmentService.ts`(PR5)→ 直接走 BlobStorage,首日就对的
+- `analyst/snapshotService.ts` parquet 写 S3,`duckdbRuntime.ts` 用 DuckDB 原生 `s3://` attach
+- `analyst/resultCache.ts` 同上
 
 ---
 

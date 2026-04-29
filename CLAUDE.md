@@ -198,6 +198,7 @@ Domain: https://www.imagebase.cc
 - `docs/launch-checklist.md` - 上线 hardening checklist（DB managed 服务 + 跨区备份 + S3 文件存储 + Redis 限频/锁 + Sentry/pino + admin gate + CSRF/HSTS/CSP + Cloudflare + CI-CD + runbook + 多 region；Phase 0/1/2/3 分阶段，标注"你做"vs"我做"vs 月成本估算）
 - `docs/multi-conversation-plan.md` - Chatbot 多对话方案 (V3.0)：每 ChatBlock 多 conversation + per-conv working memory + multi-block sync(passive listener SSE) + append-while-generating 多 branch + synth 完整拼接 + WorkflowRun(append-batch) 观测；PR1-PR5 分期
 - `docs/skill-creator-plan.md` - Skill Creator + Workflow DSL 持久化方案：UserSkill 模型吸纳 SavedWorkflow + 三类资产(promptFragment / workflowDocs / scriptHandlers V2) + 6 个 Tier 0 MCP 工具(create / list / update / delete⚠ / enable / save_workflow_run_as_skill) + 全部对话内完成无前端 UI。**状态:V1 已上线 (2026-04-28)**,V1 只做 agent 级 ownership,scriptHandlers + workspace/global 共享留 V2。
+- `docs/roadmap-post-skill-v1.md` - V1 之后的完整 roadmap (~5 个月,11 个 PR):PR4-prep (BlobStorage 抽象) → PR4 (Skill fs 化 SKILL.md 双层结构) → PR5 (Idea attachment 管线) → PR6-PR10 (Idea block-based 改造,逐步对标 Notion / 飞书文档) → PR11 (CRDT,选做)。每个 PR 单独有产品价值且不阻塞下一个。
 
 ## Skills（自动加载的专业指令集）
 每个 Skill 在对应场景下会被 Claude Code 自动激活，无需手动引用。
