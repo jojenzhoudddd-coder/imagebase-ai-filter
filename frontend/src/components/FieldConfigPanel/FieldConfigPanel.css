@@ -29,7 +29,6 @@
  * still reads as a separate region. */
 .field-config-search {
   flex-shrink: 0;
-  padding: 4px 0;
   border-bottom: 1px solid var(--surface-3);
 }
 
