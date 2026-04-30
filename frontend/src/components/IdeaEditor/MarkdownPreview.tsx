@@ -946,14 +946,41 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       block.setAttribute("data-md-orig-text", currentText);
     });
 
-    if (edits.length === 0) return;
+    // Detect ORPHAN top-level elements — elements directly under root that
+    // don't carry `data-md-start`. Browsers introduce these in two main
+    // ways the per-block forEach above can't catch:
+    //
+    //   1. Native Enter splits a paragraph: the ORIGINAL `<p>` keeps its
+    //      data-md-start, but the SECOND half lands as a new sibling
+    //      `<p>` / `<div>` with no stamps. Without rescue the second-half
+    //      content is silently dropped from source.
+    //   2. Paste of formatted HTML / multi-line plain text: Chrome inserts
+    //      one or more sibling `<p>` / `<div>` after the caret block.
+    //      Same outcome — orphan content stays in DOM only, never round-
+    //      trips into source, and gets wiped the next time the doc
+    //      re-renders or autosave fires with the stale source.
+    //
+    // Skip BR / TEXT_NODE / known blocks. Only ELEMENT_NODE without
+    // data-md-start counts as an orphan worth rescuing. (We also filter
+    // out `data-idea-empty-line` placeholders we render ourselves.)
+    let hasOrphan = false;
+    for (const child of Array.from(root.childNodes)) {
+      if (child.nodeType !== Node.ELEMENT_NODE) continue;
+      const el = child as HTMLElement;
+      if (el.tagName === "BR") continue;
+      if (el.hasAttribute("data-md-start")) continue;
+      if (el.hasAttribute("data-idea-empty-line")) continue;
+      hasOrphan = true;
+      break;
+    }
+
+    if (edits.length === 0 && !hasOrphan) return;
 
     edits.sort((a, b) => b.start - a.start);
     let newSource = sourceSnapshotRef.current;
     for (const e of edits) {
       newSource = newSource.slice(0, e.start) + e.newSlice + newSource.slice(e.end);
     }
-    sourceSnapshotRef.current = newSource;
 
     // Propagate the offset shifts back into the block attrs so subsequent
     // edits + mention detection see fresh offsets. The InnerMarkdown memo
@@ -988,6 +1015,89 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       }
     });
 
+    // Orphan rescue: walk root in document order, splicing orphan content
+    // BETWEEN known-block source slices. Known blocks contribute their
+    // (now offset-correct) source range from `newSource`. Orphans contribute
+    // a flattened DOM walk with inline atomics preserved through their
+    // `data-md-inline-src` stamps + a best-effort block prefix from their
+    // tag (heading / blockquote / paragraph). Pure-source-only formatting
+    // (e.g. extra blank lines between paragraphs the browser collapsed in
+    // DOM) is not preserved across an orphan rescue — acceptable trade-off
+    // vs silently losing user-typed / pasted content.
+    if (hasOrphan) {
+      const flattenOrphan = (n: Node, into: string[]) => {
+        if (n.nodeType === Node.TEXT_NODE) {
+          into.push((n.textContent || "").replace(/ /g, " "));
+          return;
+        }
+        if (n instanceof HTMLElement) {
+          const inSrc = n.getAttribute("data-md-inline-src");
+          if (inSrc != null) { into.push(inSrc); return; }
+          if (n.tagName === "BR") { into.push("\n"); return; }
+          for (const c of Array.from(n.childNodes)) flattenOrphan(c, into);
+        }
+      };
+
+      const parts: string[] = [];
+      const childrenInOrder = Array.from(root.childNodes).filter(
+        (n): n is HTMLElement => n.nodeType === Node.ELEMENT_NODE,
+      );
+      for (const child of childrenInOrder) {
+        if (child.tagName === "BR") continue;
+        // Known block — both regular wrapped blocks AND the
+        // empty-line / trailing-empty placeholders the renderer emits
+        // (which carry both `data-md-start` AND `data-idea-empty-line`).
+        // The data-md-start path MUST run first so a placeholder that
+        // has just absorbed a typed character (or a paste's first line)
+        // contributes its actual spliced content from `newSource`,
+        // rather than being collapsed to a blank line.
+        if (child.hasAttribute("data-md-start")) {
+          const s = Number(child.getAttribute("data-md-start"));
+          const e = Number(child.getAttribute("data-md-end"));
+          if (Number.isFinite(s) && Number.isFinite(e)) {
+            // Normalise to a `\n\n` paragraph break so this block's slice
+            // joins cleanly with the next part. Why this matters: an
+            // empty-doc / trailing-empty placeholder has start=end (e.g.
+            // both 0); after a typed character or paste's first line is
+            // spliced in, the slice becomes the typed text WITHOUT a
+            // trailing newline. Concatenating it with the next orphan
+            // would mash them together ("firstsecond" instead of
+            // "first\n\nsecond"). Strip whatever trailing newlines the
+            // slice already has, append exactly two — idempotent for
+            // normal blocks (source paragraphs already end in `\n\n`).
+            const slice = newSource.slice(s, e).replace(/\n*$/, "") + "\n\n";
+            parts.push(slice);
+            continue;
+          }
+        }
+        // Orphan: flatten its DOM with chip preservation, prefix with the
+        // markdown operator that matches its tag, ensure paragraph break.
+        const buf: string[] = [];
+        for (const c of Array.from(child.childNodes)) flattenOrphan(c, buf);
+        let content = buf.join("");
+        // Drop any trailing newline so we can append our own consistent
+        // double-newline paragraph break.
+        content = content.replace(/\n+$/, "");
+        const tag = child.tagName.toLowerCase();
+        let prefix = "";
+        if (/^h[1-6]$/.test(tag)) {
+          prefix = "#".repeat(Number(tag[1])) + " ";
+        } else if (tag === "blockquote") {
+          prefix = "> ";
+        } else if (tag === "li") {
+          prefix = "- ";
+        }
+        if (content.length === 0 && prefix === "") {
+          // Truly empty orphan div — represents a blank line.
+          parts.push("\n");
+        } else {
+          parts.push(prefix + content + "\n\n");
+        }
+      }
+      newSource = parts.join("");
+    }
+
+    sourceSnapshotRef.current = newSource;
     onEditableInput(newSource);
   }, [editable, onEditableInput]);
 
@@ -1798,6 +1908,61 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
    * browsers that reconciliation drops the live selection even when the
    * same `<div>` node is kept. We snapshot the selection on copy and
    * re-apply it in rAF if it got cleared. No-op on the happy path. */
+  /** Paste handler — neutralises rich-clipboard HTML so it round-trips cleanly
+   * through `commitEdits`. Without this, Chrome inserts whatever HTML happens
+   * to be on the clipboard (e.g. `<p>`, `<h1>`, `<table>`, `<span style=...>`
+   * from a webpage / Word) directly into the contenteditable. Most of those
+   * sibling elements have no `data-md-start` so the orphan-rescue path in
+   * `commitEdits` would still handle them, but the rescue's flatten loop
+   * loses any inline atomics the pasted HTML happened to use AND throws away
+   * potentially useful semantic structure (lists, code blocks, etc.) by
+   * collapsing to plain text anyway.
+   *
+   * We just take `text/plain` from the clipboard and `execCommand("insertText")`
+   * — Chrome inserts literal characters at the caret (splitting blocks on `\n`
+   * naturally; `commitEdits` + orphan rescue then catch the result). No HTML
+   * sneaks in, no styles, no images-as-base64, no surprise rich text. Same
+   * behaviour Notion / Linear etc. settled on for their plain-text editors.
+   *
+   * Image paste from screenshot tools (`image/png`) is intentionally NOT
+   * supported here — that goes through the existing drag-drop / attachment
+   * upload pipeline. A dedicated screenshot-paste path can land in a follow-up.
+   */
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (!editable || !onEditableInput) return;
+    const text = e.clipboardData?.getData("text/plain");
+    if (text == null) return;
+    e.preventDefault();
+    // execCommand("insertText") is the simplest API that:
+    //   • respects current selection (replaces selected range, or inserts
+    //     at caret if collapsed),
+    //   • emits a synthetic `input` event so `handleInput` → `commitEdits`
+    //     fires next tick and rolls the new text into source.
+    // It IS deprecated, but every Chromium-based browser still supports
+    // it — Notion / Slack / Linear all rely on it for the same reason.
+    // The replacements (`InputEvent` / Selection API + manual DOM mutation)
+    // either don't fire `input` consistently or skip undo-stack integration.
+    try {
+      document.execCommand("insertText", false, text);
+    } catch {
+      // Extremely defensive — execCommand is missing or threw. Fall back
+      // to a manual range insertion. The browser still fires `input` after
+      // a `Range.deleteContents` + `Range.insertNode`, so commitEdits picks
+      // up the change.
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(document.createTextNode(text));
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      // Trigger a manual flush — synthetic `input` events vary across
+      // browsers; safer to call commitEdits directly.
+      commitEdits();
+    }
+  }, [editable, onEditableInput, commitEdits]);
+
   const handleCopy = useCallback(() => {
     if (!editable) return;
     const sel = window.getSelection();
@@ -2085,6 +2250,7 @@ const MarkdownPreview = forwardRef<MarkdownPreviewHandle, Props>(function Markdo
       onKeyUp={handleKeyUp}
       onMouseUp={handleMouseUp}
       onCopy={handleCopy}
+      onPaste={handlePaste}
       onCompositionStart={handleCompositionStart}
       onCompositionEnd={handleCompositionEnd}
     >
