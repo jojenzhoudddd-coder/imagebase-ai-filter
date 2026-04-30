@@ -578,7 +578,24 @@ export async function uploadTastes(designId: string, files: File[]): Promise<Tas
     method: "POST",
     body: fd,
   });
-  if (!res.ok) throw new Error("Failed to upload SVG files");
+  if (!res.ok) {
+    // Read the structured error body so the caller can map `code` to a
+    // toast i18n key. Most useful here: FILE_TOO_LARGE (HTTP 413) which
+    // we want surfaced as "this SVG is over 50MB" instead of a generic
+    // "Failed to upload" toast.
+    let code = "UPLOAD_FAILED";
+    let detail = "";
+    try {
+      const j = await res.json();
+      if (typeof j?.code === "string") code = j.code;
+      if (typeof j?.error === "string") detail = j.error;
+    } catch {
+      /* non-JSON body — fall through */
+    }
+    const err = new Error(detail || "Failed to upload SVG files") as Error & { code?: string };
+    err.code = code;
+    throw err;
+  }
   return res.json();
 }
 

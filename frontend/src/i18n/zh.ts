@@ -499,6 +499,7 @@ export const zh: TranslationKeys = {
   "design.importingFigma": "正在从 Figma 导入...",
   "design.figmaImportFailed": "Figma 导入失败",
   "design.uploadFailed": "SVG 上传失败",
+  "design.uploadFailedTooLarge": "SVG 文件过大（上限 50MB）",
   "design.emptyCanvas": "拖放 SVG 文件或点击上传开始",
   "design.figmaUrlPlaceholder": "粘贴 Figma 节点链接",
   "design.import": "导入",

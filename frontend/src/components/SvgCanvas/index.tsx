@@ -779,8 +779,16 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
           }),
         );
         setSvgContents((prev) => ({ ...prev, ...newContents }));
-      } catch {
-        toast.error(t("design.uploadFailed"));
+      } catch (err) {
+        // FILE_TOO_LARGE deserves a specific message — Figma exports
+        // routinely hit the server limit and a generic "upload failed"
+        // toast leaves the user wondering what went wrong.
+        const code = (err as Error & { code?: string })?.code;
+        if (code === "FILE_TOO_LARGE") {
+          toast.error(t("design.uploadFailedTooLarge"));
+        } else {
+          toast.error(t("design.uploadFailed"));
+        }
       }
     },
     [designId, toast, t],

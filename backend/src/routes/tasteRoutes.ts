@@ -43,7 +43,12 @@ const upload = multer({
       file.originalname.toLowerCase().endsWith(".svg");
     cb(null, isSvg);
   },
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
+  // 50MB per file. Figma exports ramp up fast — a single 1080×1080 design
+  // with a few illustrations + embedded raster images routinely lands at
+  // 8-30MB. The old 5MB cap rejected most real-world Figma uploads with
+  // a generic `File too large` 500. (2026-04-30: bumped after user smoke
+  // test on prod — see docs/changelog.md.)
+  limits: { fileSize: 50 * 1024 * 1024 },
 });
 
 // ─── Helpers ───
@@ -153,9 +158,31 @@ router.get("/:designId/tastes", async (req: Request, res: Response) => {
 });
 
 // POST /api/designs/:designId/tastes/upload — upload SVG file(s)
+//
+// We wrap multer in a try/catch-equivalent so a `File too large` (LIMIT_FILE_SIZE)
+// or `Unexpected field` error returns a clean 413/400 with a code the FE can
+// map to a toast, rather than the generic 500 + stack trace that bubbled up
+// before. Same shape as the rest of our error responses.
+const handleUpload = upload.array("files", 20);
 router.post(
   "/:designId/tastes/upload",
-  upload.array("files", 20),
+  (req: Request, res: Response, next: any) => {
+    handleUpload(req, res, (err: any) => {
+      if (!err) return next();
+      if (err.code === "LIMIT_FILE_SIZE") {
+        res.status(413).json({
+          error: "Uploaded file is too large (max 50MB)",
+          code: "FILE_TOO_LARGE",
+        });
+        return;
+      }
+      if (err instanceof Error) {
+        res.status(400).json({ error: err.message, code: "UPLOAD_ERROR" });
+        return;
+      }
+      res.status(500).json({ error: "Upload failed", code: "INTERNAL" });
+    });
+  },
   async (req: Request, res: Response) => {
     const { designId } = req.params;
     const files = req.files as Express.Multer.File[];

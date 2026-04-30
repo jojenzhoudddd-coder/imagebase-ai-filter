@@ -497,6 +497,7 @@ export const en = {
   "design.importingFigma": "Importing from Figma...",
   "design.figmaImportFailed": "Failed to import from Figma",
   "design.uploadFailed": "Failed to upload SVG",
+  "design.uploadFailedTooLarge": "SVG file too large (50 MB max)",
   "design.emptyCanvas": "Drop SVG files or click Upload to get started",
   "design.figmaUrlPlaceholder": "Paste Figma node URL",
   "design.import": "Import",
