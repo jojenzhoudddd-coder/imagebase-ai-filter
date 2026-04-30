@@ -33,6 +33,7 @@
     "playwright-core": "^1.59.1",
     "pngjs": "^7.0.0",
     "prisma": "^7.7.0",
+    "saxes": "^6.0.0",
     "sharp": "^0.34.5",
     "turndown": "^7.2.4",
     "uuid": "^9.0.0",

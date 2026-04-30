@@ -38,7 +38,7 @@
  * debug.)
  */
 
-import { XMLParser } from "fast-xml-parser";
+import { SaxesParser, type SaxesAttributeNS } from "saxes";
 import { createHash } from "crypto";
 
 export interface SvgNode {
@@ -74,47 +74,132 @@ interface ParseOpts {
  * (typically by surfacing "unsupported SVG" to user). svgAnalyzer's
  * "best-effort partial report" pattern doesn't fit here because the
  * downstream pipeline assumes a complete tree.
+ *
+ * Implementation note (2026-04-30): originally used fast-xml-parser's
+ * `parse()` which is internally recursive. Real-world Figma exports
+ * have 30+ levels of `<g>` nesting and can easily blow Node's default
+ * 1MB stack ("Maximum call stack size exceeded"). Switched to SAX-style
+ * streaming via `saxes` — events fire flat, the open/close stack is
+ * O(depth) which only matters for OUR own walk, not the parser's
+ * internals. Our walks (walkAndFinalize, inlineUses) remain recursive
+ * but are safe at typical Figma depths.
  */
 export function parseSvgTree(svg: string, opts: ParseOpts = {}): SvgNode {
   const { pruneNonVisual = true } = opts;
-  const parser = new XMLParser({
-    ignoreAttributes: false,
-    attributeNamePrefix: "",
-    preserveOrder: true,
-    // We want both <rect/> and <rect></rect> to parse the same way.
-    trimValues: false,
-    // Some Figma exports declare the SVG namespace with prefix. Don't
-    // mangle attribute keys.
-    removeNSPrefix: false,
-  });
 
-  // preserveOrder=true returns an array of {tagName: [children...], ":@": attrs}
-  // The root array typically has [{ ?xml: [], ":@": {...} }, { svg: [...] }]
-  // when there's a <?xml … ?> declaration, or just [{ svg: [...] }] otherwise.
-  let parsed: any[];
+  let rawRoot: RawNode | null;
   try {
-    parsed = parser.parse(svg) as any[];
+    rawRoot = buildRawTreeWithSax(svg);
   } catch (err) {
     throw new Error(
       `parseSvgTree: malformed XML — ${err instanceof Error ? err.message : err}`,
     );
   }
-
-  const svgEntry = parsed.find((entry) => entry && Object.keys(entry).some((k) => k === "svg"));
-  if (!svgEntry) {
+  if (!rawRoot) {
     throw new Error("parseSvgTree: no <svg> root element found");
   }
 
-  // First pass: build a temporary, non-id'd tree to resolve <use> references.
-  // Second pass: walk that tree assigning stable ids + computing bboxes.
-  // This split is necessary because <use href> can refer forward-declared
-  // <defs> elements in the SVG; we need the full document available before
-  // we can inline.
-  const rawRoot = buildRawNode(svgEntry, /*childIndex*/ 0, /*parentPath*/ "");
+  // Two further passes:
+  //   - <use> inlining: resolves `<use href="#x">` → clone of the
+  //     referenced subtree. Needs the full doc available, hence after
+  //     parse.
+  //   - walkAndFinalize: assign stable ids + compute bboxes.
   const refMap = collectRefMap(rawRoot);
   const inlinedRoot = inlineUses(rawRoot, refMap);
   const finalRoot = walkAndFinalize(inlinedRoot, /*parentTransform*/ identityMatrix(), pruneNonVisual);
   return finalRoot;
+}
+
+/**
+ * SAX-driven build of the raw node tree. Uses an explicit stack of
+ * "currently-open" nodes; saxes emits opentag / closetag / text events
+ * which we map to push/pop/append on the stack. No recursion, no stack
+ * overflow on deeply-nested SVGs.
+ *
+ * pathInTree (used as the seed for stable-id hashing) is computed
+ * incrementally: each newly-opened node's path = parent.pathInTree +
+ * "/" + childIndexWithinParent. The first-encountered <svg> element
+ * becomes the returned root; we ignore any sibling text/comments
+ * outside the root element.
+ */
+function buildRawTreeWithSax(svg: string): RawNode | null {
+  const parser = new SaxesParser({
+    xmlns: false,
+    // We tolerate unbalanced whitespace and trailing content (Figma
+    // exports occasionally have trailing newlines after </svg>).
+    fragment: false,
+  });
+
+  let root: RawNode | null = null;
+  /** Stack of open ancestors. Top = current parent. Empty when we're
+   *  outside any element (between top-level events). */
+  const stack: RawNode[] = [];
+
+  parser.on("opentag", (node) => {
+    const parent = stack[stack.length - 1];
+    const childIndex = parent ? parent.children.length : 0;
+    const pathInTree = parent
+      ? `${parent.pathInTree}/${childIndex}`
+      : String(childIndex);
+    const attrs: Record<string, string> = {};
+    // saxes emits attributes as a record of {name → value} when xmlns:false.
+    // (When xmlns:true it'd be SaxesAttributeNS; we don't need that.)
+    const rawAttrs = node.attributes as Record<string, string | SaxesAttributeNS>;
+    for (const k of Object.keys(rawAttrs)) {
+      const v = rawAttrs[k];
+      // With xmlns:false, the values are plain strings. Defensive: also
+      // handle the namespace shape just in case the type widens.
+      attrs[k] = typeof v === "string" ? v : (v?.value ?? "");
+    }
+    const newNode: RawNode = {
+      tag: node.name.toLowerCase(),
+      attrs,
+      children: [],
+      childIndex,
+      pathInTree,
+    };
+    if (parent) {
+      parent.children.push(newNode);
+    } else if (newNode.tag === "svg") {
+      // Capture the first <svg> we encounter at the top as our root.
+      root = newNode;
+    }
+    // Push regardless — even if we discard root candidates above, we
+    // still want to track depth so closetag pops correctly.
+    stack.push(newNode);
+  });
+
+  parser.on("closetag", () => {
+    stack.pop();
+  });
+
+  parser.on("text", (text) => {
+    const trimmed = text.trim();
+    if (trimmed === "") return; // skip pure-whitespace formatting between elements
+    const parent = stack[stack.length - 1];
+    if (!parent) return; // text outside the document root — ignore
+    // Match the original parser's behaviour: store text as a synthetic
+    // child with tag="#text" so walkAndFinalize can later fold it into
+    // the parent's `text` field.
+    const childIndex = parent.children.length;
+    const pathInTree = `${parent.pathInTree}/${childIndex}`;
+    parent.children.push({
+      tag: "#text",
+      attrs: {},
+      text,
+      children: [],
+      childIndex,
+      pathInTree,
+    });
+  });
+
+  parser.on("error", (err) => {
+    // Re-throw via write() — saxes doesn't unwind the stack on its own.
+    throw err;
+  });
+
+  parser.write(svg).close();
+  return root;
 }
 
 // ─── Phase 1: raw tree construction (no ids, no bboxes) ─────────────────
@@ -131,52 +216,8 @@ interface RawNode {
   pathInTree: string;
 }
 
-function buildRawNode(entry: any, childIndex: number, parentPath: string): RawNode {
-  // entry shape from preserveOrder=true: { tagName: [child entries], ":@": attrs }
-  // OR { "#text": "string" } for text nodes.
-  if ("#text" in entry) {
-    return {
-      tag: "#text",
-      attrs: {},
-      text: String(entry["#text"] ?? ""),
-      children: [],
-      childIndex,
-      pathInTree: parentPath ? `${parentPath}/${childIndex}` : String(childIndex),
-    };
-  }
-  const tagName = Object.keys(entry).find((k) => k !== ":@");
-  if (!tagName) {
-    return {
-      tag: "#unknown",
-      attrs: {},
-      children: [],
-      childIndex,
-      pathInTree: parentPath ? `${parentPath}/${childIndex}` : String(childIndex),
-    };
-  }
-  const attrsRaw = (entry[":@"] ?? {}) as Record<string, unknown>;
-  const attrs: Record<string, string> = {};
-  for (const k of Object.keys(attrsRaw)) {
-    attrs[k] = String(attrsRaw[k]);
-  }
-  const childrenRaw = (entry[tagName] ?? []) as any[];
-  const myPath = parentPath ? `${parentPath}/${childIndex}` : String(childIndex);
-  const children: RawNode[] = [];
-  childrenRaw.forEach((c, i) => {
-    const child = buildRawNode(c, i, myPath);
-    // Keep #text nodes ONLY if they carry non-whitespace (so we don't pollute
-    // the tree with formatting whitespace; SVG renders ignore it anyway).
-    if (child.tag === "#text" && (child.text ?? "").trim() === "") return;
-    children.push(child);
-  });
-  return {
-    tag: tagName.toLowerCase(),
-    attrs,
-    children,
-    childIndex,
-    pathInTree: myPath,
-  };
-}
+// (legacy fast-xml-parser-based buildRawNode removed 2026-04-30 in favour
+//  of the saxes-driven buildRawTreeWithSax above — see parseSvgTree.)
 
 // ─── Phase 2: <use> inlining ────────────────────────────────────────────
 
