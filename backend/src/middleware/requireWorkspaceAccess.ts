@@ -25,8 +25,18 @@ export async function requireWorkspaceAccess(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  // 关键: 这里的中间件挂在 `app.use("/api", ...)` 上, Express 会把
+  // `/api` 这段从 req.path 里剥掉(所以 req.path 是 "/tables/xxx" 不是
+  // "/api/tables/xxx")。要拿到完整路径必须用 req.originalUrl,否则下面
+  // 所有以 "/api/" 起头的正则全部不匹配 → 安全检查变成 no-op。这是
+  // 2026-04-30 修复的跨用户数据泄漏的根因 —— 之前 prefix 错配导致 路径
+  // 匹配统统失败, requireArtifactAccess 也 silently 放过了所有 artifact
+  // 级请求。 originalUrl 包含 query string, 我们只想匹配 path 部分,
+  // 用 split("?") 切一刀。
+  const fullPath = req.originalUrl.split("?")[0];
+
   // 豁免：公共路径不做检查
-  if (PUBLIC_PREFIXES.some((p) => req.path.startsWith(p))) {
+  if (PUBLIC_PREFIXES.some((p) => fullPath.startsWith(p))) {
     next();
     return;
   }
@@ -36,7 +46,7 @@ export async function requireWorkspaceAccess(
   //   /api/sync/workspaces/:workspaceId/events
   //   /api/workspaces/:workspaceId/mentions/search
   let urlWorkspaceId: string | undefined;
-  const m = req.path.match(
+  const m = fullPath.match(
     /^\/api\/(?:sync\/)?workspaces\/([^/]+)/,
   );
   if (m) urlWorkspaceId = m[1];

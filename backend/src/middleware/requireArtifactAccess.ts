@@ -99,8 +99,14 @@ export async function requireArtifactAccess(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  // 关键: 中间件挂在 `app.use("/api", ...)`, Express 把 `/api` 段从
+  // req.path 里剥掉。要匹配 PATH_RULES 里写好的 `/^\/api\/...` 模式,
+  // 必须用 req.originalUrl(包含 query string,split 切一刀)。这是
+  // 2026-04-30 修复的跨用户数据泄漏的根因。
+  const fullPath = req.originalUrl.split("?")[0];
+
   // 豁免公共路径
-  if (PUBLIC_PREFIXES.some((p) => req.path.startsWith(p))) {
+  if (PUBLIC_PREFIXES.some((p) => fullPath.startsWith(p))) {
     next();
     return;
   }
@@ -109,7 +115,7 @@ export async function requireArtifactAccess(
   let paramName: string | null = null;
   let artifactId: string | null = null;
   for (const rule of PATH_RULES) {
-    const m = req.path.match(rule.pattern);
+    const m = fullPath.match(rule.pattern);
     if (m) {
       paramName = rule.param;
       artifactId = m[1];
