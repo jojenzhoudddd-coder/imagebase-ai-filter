@@ -183,44 +183,52 @@ export async function runFaithfulConversion(
   const baselineCss = await demoFileStore.readFile(baseline.demoId, "style.css");
   const fullViewBox = (tree.bbox ?? [0, 0, 800, 600]) as [number, number, number, number];
 
-  const baselineDiffs: Array<{ chunk: SvgChunk; ratio: number; problemBoxes: any[] }> = [];
+  // PERF: render baseline HTML once and reuse for every chunk's crop+diff.
+  // Previously diffChunk re-rendered the whole HTML to PNG per chunk, which
+  // for an N-chunk doc meant N × playwright launches × ~1-2s = easily 50s+.
+  // Now: 1 render of the full baseline + N tiny sharp.extract crops.
+  let baselineHtmlPng: Buffer | null = null;
   let browserAvailable = true;
-  for (let i = 0; i < chunks.length; i++) {
-    if (composedSignal.aborted) break;
-    const chunk = chunks[i];
-    onProgress({ phase: "diff-baseline", current: i + 1, total: chunks.length });
-    if (!chunk.rootNode.bbox || chunk.keepAsSvgIsland) {
-      // Definition nodes / island chunks — never refine. Defs don't paint;
-      // islands are inline SVG verbatim so their pixel diff is 0 by
-      // construction.
-      baselineDiffs.push({ chunk, ratio: 0, problemBoxes: [] });
-      continue;
+  try {
+    baselineHtmlPng = await renderHtmlToPng(baselineHtml, baselineCss, {
+      viewport: [fullViewBox[2], fullViewBox[3]],
+    });
+  } catch (err: any) {
+    if (err?.code === "BROWSER_UNAVAILABLE") {
+      browserAvailable = false;
+      warnings.push("Headless browser unavailable; skipped pixel diff and LLM refinement");
+    } else {
+      warnings.push(`Baseline render failed: ${err?.message ?? err}`);
+      browserAvailable = false;
     }
-    try {
-      const diff = await diffChunk({
-        svg: input.svg,
-        chunk,
-        baselineHtml,
-        baselineCss,
-        fullViewBox,
-      });
-      baselineDiffs.push({ chunk, ratio: diff.ratio, problemBoxes: diff.problemBoxes });
-    } catch (err: any) {
-      if (err?.code === "BROWSER_UNAVAILABLE") {
-        browserAvailable = false;
-        warnings.push("Headless browser unavailable; skipped pixel diff and LLM refinement");
-        // Mark all chunks as "good enough" — falls back to baseline.
+  }
+
+  const baselineDiffs: Array<{ chunk: SvgChunk; ratio: number; problemBoxes: any[] }> = [];
+  if (!browserAvailable || !baselineHtmlPng) {
+    // Mark every chunk as "good enough" — falls back to baseline.
+    for (const chunk of chunks) {
+      baselineDiffs.push({ chunk, ratio: 0, problemBoxes: [] });
+    }
+  } else {
+    for (let i = 0; i < chunks.length; i++) {
+      if (composedSignal.aborted) break;
+      const chunk = chunks[i];
+      onProgress({ phase: "diff-baseline", current: i + 1, total: chunks.length });
+      if (!chunk.rootNode.bbox || chunk.keepAsSvgIsland) {
         baselineDiffs.push({ chunk, ratio: 0, problemBoxes: [] });
-        // Don't re-attempt — break the loop and short-circuit.
-        for (let j = i + 1; j < chunks.length; j++) {
-          baselineDiffs.push({ chunk: chunks[j], ratio: 0, problemBoxes: [] });
-        }
-        break;
+        continue;
       }
-      // Single-chunk diff error — log and pass through with ratio=Infinity
-      // so the chunk gets refined (best effort).
-      warnings.push(`diff error for ${chunk.id}: ${err?.message ?? err}`);
-      baselineDiffs.push({ chunk, ratio: Number.POSITIVE_INFINITY, problemBoxes: [] });
+      try {
+        const diff = await diffChunkAgainstPrerendered({
+          svg: input.svg,
+          chunk,
+          baselineHtmlPng,
+        });
+        baselineDiffs.push({ chunk, ratio: diff.ratio, problemBoxes: diff.problemBoxes });
+      } catch (err: any) {
+        warnings.push(`diff error for ${chunk.id}: ${err?.message ?? err}`);
+        baselineDiffs.push({ chunk, ratio: Number.POSITIVE_INFINITY, problemBoxes: [] });
+      }
     }
   }
 
@@ -350,33 +358,27 @@ export async function runFaithfulConversion(
 
 // ─── Diff a single chunk's bounding-box region ─────────────────────────
 
-interface DiffChunkInput {
+/**
+ * Diff a chunk against an ALREADY-rendered baseline HTML PNG. The caller
+ * owns the lifecycle of the buffer — we just sharp.extract a crop.
+ *
+ * This is the hot path during Phase 3: for an N-chunk doc, called N times
+ * but with zero playwright launches (just N tiny sharp crops + N small
+ * SVG renders + N pixelmatch calls — all sub-100ms).
+ */
+async function diffChunkAgainstPrerendered(input: {
   svg: string;
   chunk: SvgChunk;
-  baselineHtml: string;
-  baselineCss: string;
-  fullViewBox: [number, number, number, number];
-}
-
-async function diffChunk(input: DiffChunkInput) {
+  baselineHtmlPng: Buffer;
+}) {
   const bbox = input.chunk.rootNode.bbox;
-  if (!bbox) {
-    return { ratio: 0, problemBoxes: [] };
-  }
-  // Render the original SVG cropped to this chunk's bbox by setting
-  // viewBox = bbox.
+  if (!bbox) return { ratio: 0, problemBoxes: [] as any[] };
   const svgPng = await renderSvgToPng(input.svg, {
     viewBox: bbox,
     outputWidth: Math.max(64, bbox[2]),
   });
-  // Render the BASELINE HTML at full size, then crop to bbox afterward.
-  // Simpler than computing a per-chunk HTML extract.
-  const htmlPng = await renderHtmlToPng(input.baselineHtml, input.baselineCss, {
-    viewport: [input.fullViewBox[2], input.fullViewBox[3]],
-  });
-  // Crop htmlPng to the chunk bbox using sharp.
   const sharp = (await import("sharp")).default;
-  const cropped = await sharp(htmlPng)
+  const cropped = await sharp(input.baselineHtmlPng)
     .extract({
       left: Math.max(0, Math.round(bbox[0])),
       top: Math.max(0, Math.round(bbox[1])),
@@ -385,12 +387,11 @@ async function diffChunk(input: DiffChunkInput) {
     })
     .png()
     .toBuffer();
-  const diff = await pixelDiff(svgPng, cropped, {
+  return pixelDiff(svgPng, cropped, {
     threshold: 0.15,
     clusterRadius: 8,
     emitDiffPng: false,
   });
-  return diff;
 }
 
 // ─── LLM refinement for a single chunk ────────────────────────────────
@@ -452,6 +453,8 @@ async function refineChunkWithLlm(
     }
 
     // Diff the refined chunk to see if it actually improved.
+    // Render the stitched HTML once (one playwright launch per refine
+    // attempt — bounded by maxRetries × number of refining chunks).
     try {
       const stitched = stitchHtml({
         baselineHtml: input.baselineHtml,
@@ -459,12 +462,13 @@ async function refineChunkWithLlm(
         refinedChunks: new Map([[chunk.id, { html: modelOut.html, css: modelOut.css }]]),
         svg: input.baselineSvg,
       });
-      const diff = await diffChunk({
+      const stitchedHtmlPng = await renderHtmlToPng(stitched.html, stitched.css, {
+        viewport: [input.fullViewBox[2], input.fullViewBox[3]],
+      });
+      const diff = await diffChunkAgainstPrerendered({
         svg: input.baselineSvg,
         chunk,
-        baselineHtml: stitched.html,
-        baselineCss: stitched.css,
-        fullViewBox: input.fullViewBox,
+        baselineHtmlPng: stitchedHtmlPng,
       });
       if (diff.ratio <= input.retryThreshold) {
         return { ok: true, html: modelOut.html, css: modelOut.css };
@@ -523,12 +527,12 @@ function buildRefinePrompt(p: BuildRefinePromptInput): string {
     ``,
     `**Baseline HTML attempt (had visual diff issues):**`,
     `\`\`\`html`,
-    p.baselineHtml.slice(0, 4000),
+    p.baselineHtml.slice(0, 2500),
     `\`\`\``,
     ``,
-    `**Baseline CSS attempt:**`,
+    `**Baseline CSS attempt (chunk-scoped):**`,
     `\`\`\`css`,
-    p.baselineCss.slice(0, 4000),
+    p.baselineCss.slice(0, 2500),
     `\`\`\`${problemHint}${retryHint}`,
     ``,
     `Return only the JSON object.`,
@@ -737,17 +741,77 @@ function escapeRegExp(s: string): string {
 
 // ─── Best-effort baseline extracts (passed to LLM as context) ───────
 
+/**
+ * Try to extract the baseline HTML segment matching this chunk's rootNode.
+ * Path A's converter stamps `data-md-svg-id="<node.id>"` on the wrapper
+ * element it emits per node, so we can locate the chunk's HTML by stable id
+ * and return just that subtree.
+ *
+ * This trims the LLM prompt from ~30KB whole-document HTML to typically
+ * <2KB per-chunk HTML — important because (a) many models charge by token
+ * and (b) huge prompts confuse the model into rewriting unrelated regions.
+ *
+ * If we can't locate the segment (chunk root may be a `<g>` wrapper that
+ * didn't get its own DOM node), fall back to a small slice of the full
+ * baseline so the model still has SOME context.
+ */
 function extractHtmlForChunk(baselineHtml: string, chunk: SvgChunk): string {
-  // For Phase 2 V1 we just send the whole baseline html (truncated by
-  // buildRefinePrompt). A future optimization is to extract the element
-  // matching chunk.rootNode.id only.
-  void chunk;
-  return baselineHtml;
+  const id = chunk.rootNode.id;
+  if (!id) return baselineHtml.slice(0, 2000);
+  const re = new RegExp(
+    `<(?:div|span|svg|p|h[1-6]|button|img)[^>]*data-md-svg-id="${escapeRegExp(id)}"[^>]*>`,
+    "i",
+  );
+  const m = re.exec(baselineHtml);
+  if (!m) return baselineHtml.slice(0, 2000);
+  const startIdx = m.index;
+  const endIdx = findMatchingClose(baselineHtml, startIdx, m[0]);
+  if (endIdx === -1) {
+    return baselineHtml.slice(startIdx, Math.min(baselineHtml.length, startIdx + 2000));
+  }
+  return baselineHtml.slice(startIdx, endIdx);
 }
 
+/**
+ * Best-effort CSS extract: return only rules that mention any of the SVG
+ * ids appearing in the chunk's HTML segment. Path A emits per-element
+ * rules keyed by `[data-md-svg-id="..."]` selectors plus shared `:root`
+ * custom-property pools, so this regex match is good enough.
+ *
+ * Always include `:root { ... }` (the var pool) since the chunk's local
+ * rules reference these vars.
+ */
 function extractCssForChunk(baselineCss: string, chunk: SvgChunk): string {
-  void chunk;
-  return baselineCss;
+  const idsInChunk = collectChunkIds(chunk.rootNode);
+  if (idsInChunk.size === 0) return baselineCss.slice(0, 2000);
+
+  // 1) Always include the :root rule (variable pool).
+  const out: string[] = [];
+  const rootRe = /:root\s*\{[\s\S]*?\}/;
+  const rootMatch = rootRe.exec(baselineCss);
+  if (rootMatch) out.push(rootMatch[0]);
+
+  // 2) Walk every CSS rule, keep ones whose selector mentions any chunk id.
+  const ruleRe = /([^{}]+)\{([^}]*)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = ruleRe.exec(baselineCss))) {
+    const selector = m[1].trim();
+    if (selector === ":root") continue; // already added
+    for (const id of idsInChunk) {
+      if (selector.includes(id)) {
+        out.push(m[0]);
+        break;
+      }
+    }
+  }
+  const joined = out.join("\n");
+  return joined.length > 0 ? joined : baselineCss.slice(0, 2000);
+}
+
+function collectChunkIds(n: SvgNode, acc: Set<string> = new Set()): Set<string> {
+  if (n.id) acc.add(n.id);
+  for (const c of n.children) collectChunkIds(c, acc);
+  return acc;
 }
 
 // ─── Tiny utilities ────────────────────────────────────────────────────

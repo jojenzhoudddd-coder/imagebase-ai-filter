@@ -515,13 +515,28 @@ demoWriteTools.push({
     if (typeof args.refineThreshold === "number") body.refineThreshold = args.refineThreshold;
     if (typeof args.retryThreshold === "number") body.retryThreshold = args.retryThreshold;
     if (typeof args.concurrency === "number") body.concurrency = args.concurrency;
-    // Long-task: this can take 60+ seconds. Notify the long-task tracker
-    // so the SSE keepalive stays warm.
+    // Long-task: this can take 60+ seconds for the LLM-refinement path.
+    // The MCP HTTP call to /faithful is opaque (no streaming progress yet),
+    // so we drive the LongTaskTracker from this side: emit one progress
+    // event up front, then a recurring heartbeat every 8s. LongTaskTracker
+    // resets its 15s silence timer on every progress() call, so this keeps
+    // the SSE warm and avoids the 180s no-progress timeout. We clear the
+    // interval in finally regardless of success/failure.
     ctx?.progress?.({
       phase: "starting",
       message: `Path C 高保真转换 ${tasteId}`,
     });
-    const data = await apiRequest<{
+    const startedAt = Date.now();
+    const heartbeat = setInterval(() => {
+      const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+      ctx?.progress?.({
+        phase: "running",
+        message: `Path C 转换进行中 (${elapsedSec}s)…`,
+      });
+    }, 8000);
+    // Don't keep the event loop alive on shutdown.
+    if (typeof (heartbeat as any).unref === "function") (heartbeat as any).unref();
+    let data: {
       ok: boolean;
       demoId: string;
       finalDiffRatio: number;
@@ -530,10 +545,24 @@ demoWriteTools.push({
       chunkFailures: Record<string, string>;
       warnings: string[];
       durationMs: number;
-    }>(`/api/svg-to-demo/from-taste/${encodeURIComponent(tasteId)}/faithful`, {
-      method: "POST",
-      body: Object.keys(body).length > 0 ? body : ({} as any),
-    });
+    };
+    try {
+      data = await apiRequest<{
+        ok: boolean;
+        demoId: string;
+        finalDiffRatio: number;
+        refinedChunks: number;
+        totalChunks: number;
+        chunkFailures: Record<string, string>;
+        warnings: string[];
+        durationMs: number;
+      }>(`/api/svg-to-demo/from-taste/${encodeURIComponent(tasteId)}/faithful`, {
+        method: "POST",
+        body: Object.keys(body).length > 0 ? body : ({} as any),
+      });
+    } finally {
+      clearInterval(heartbeat);
+    }
     return toolResult({
       demoId: data.demoId,
       finalDiffPct: (data.finalDiffRatio * 100).toFixed(2) + "%",
