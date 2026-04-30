@@ -383,4 +383,91 @@ export const demoWriteTools: ToolDefinition[] = [
       return toolResult({ ok: true });
     },
   },
+
+  // ─── SVG → Demo (Path A) ───────────────────────────────────────────────
+  // Same backend pipeline as the UI right-click "Make interactive" (Path B);
+  // both endpoints converge on createDemoFromSvg. See
+  // docs/svg-to-demo-plan.md.
+  //
+  // The Agent invokes this when the user says "把这个 taste 做成 demo" /
+  // "convert this design to a runnable demo" without explicit "100% 还原"
+  // wording. For pixel-perfect requests the Agent should switch to the
+  // svg_to_demo_faithful workflow (Phase 2 — not yet shipped).
+  {
+    name: "create_demo_from_taste",
+    description:
+      "把一个 Taste 的 SVG 通过服务端确定性转换变成可运行的 Demo（Path A）。" +
+      "简单 UI / Auto Layout 设计稿 95%+ 还原；复杂插画里的曲线 / mask 会保留为 inline SVG island。" +
+      "返回 { demoId, droppedFeatures, manifestSummary, hint }。" +
+      "之后通常调 write_demo_file 加交互 → build_demo → 用户预览。" +
+      "如果用户明确要求像素级还原，改用 svg_to_demo_faithful workflow（Phase 2）。",
+    inputSchema: {
+      type: "object",
+      required: ["tasteId"],
+      properties: {
+        tasteId: {
+          type: "string",
+          description: "源 Taste id。Agent 通常先从 list_tastes / get_taste 拿到。",
+        },
+        name: {
+          type: "string",
+          description: "Demo 名称（可选）。默认 '<taste 名> Demo'。",
+        },
+      },
+    },
+    handler: async (args) => {
+      const tasteId = String(args.tasteId);
+      const body: Record<string, string> = {};
+      if (typeof args.name === "string" && args.name.trim()) body.name = args.name;
+      const data = await apiRequest<{
+        demoId: string;
+        filesWritten: string[];
+        manifest: Array<{ htmlId: string; type: string; figmaName?: string }>;
+        droppedFeatures: string[];
+        stats: {
+          htmlBytes: number;
+          cssBytes: number;
+          elements: number;
+          islands: number;
+          cssVars: number;
+        };
+      }>(`/api/svg-to-demo/from-taste/${encodeURIComponent(tasteId)}`, {
+        method: "POST",
+        body: Object.keys(body).length > 0 ? body : ({} as any),
+      });
+      // Compact the manifest so token cost on the Agent's next turn stays
+      // low. Full manifest is in `~/.imagebase/demos/<id>/files/manifest.json`
+      // — Agent can `read_demo_file('manifest.json')` for details.
+      const manifestSummary = summarizeManifest(data.manifest);
+      const hint =
+        data.droppedFeatures.length > 0
+          ? "部分元素保留为内嵌 SVG（详见 droppedFeatures）。如需 100% 视觉还原，可改用 svg_to_demo_faithful workflow。"
+          : null;
+      return toolResult({
+        demoId: data.demoId,
+        filesWritten: data.filesWritten,
+        droppedFeatures: data.droppedFeatures,
+        manifestSummary,
+        stats: data.stats,
+        hint,
+      });
+    },
+  },
 ];
+
+/** Group manifest entries by type for compact display in the Agent's
+ *  conversation: "12 rect, 8 text, 1 image, 3 island" instead of
+ *  dumping 30+ rows. The full manifest is on disk at
+ *  files/manifest.json — the Agent can read it on demand. */
+function summarizeManifest(manifest: Array<{ type: string; figmaName?: string }>): {
+  byType: Record<string, number>;
+  named: string[];
+} {
+  const byType: Record<string, number> = {};
+  const named: string[] = [];
+  for (const m of manifest) {
+    byType[m.type] = (byType[m.type] ?? 0) + 1;
+    if (m.figmaName && named.length < 12) named.push(m.figmaName);
+  }
+  return { byType, named };
+}

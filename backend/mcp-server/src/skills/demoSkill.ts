@@ -27,6 +27,22 @@ export const DEMO_SKILL_PROMPT = `## Demo 基本流程
 5. Demo 可在 /workspace/:workspaceId/demo/:demoId 预览
 6. 用户满意后：\`publish_demo(demoId)\` 生成公开 URL /share/:slug
 
+## 从 Taste（设计稿）起 Demo
+
+用户说"把这个 taste 做成 demo / 把这张设计稿变成可交互的页面 / convert this design to a runnable page"时：
+
+1. \`create_demo_from_taste(tasteId)\` —— **不要走 create_demo 然后从零写**，直接用这个工具。
+   服务端会自动 SVG → HTML+CSS（确定性规则映射，简单 UI 95%+ 还原），生成 \`index.html\` / \`style.css\` / \`script.js\` / \`canvas.svg\` / \`manifest.json\` 五个文件，返回 \`{demoId, droppedFeatures, manifestSummary}\`。
+2. 看 \`droppedFeatures\` —— 复杂曲线 / 滤镜 / mask 会保留为 inline SVG island。如果用户不在意可以跳过，在意就告诉他可以走 svg_to_demo_faithful workflow（高保真，跑 30-90s）。
+3. 加交互：\`read_demo_file(demoId, "manifest.json")\` 拿到所有 element 的稳定 id（\`el-rect-X\` / \`el-text-X\`）和 figmaName（如 \`Login_Button\`），然后 \`write_demo_file(demoId, "script.js", ...)\` 用 \`document.getElementById\` 或 \`document.querySelector("[data-figma-name='Login_Button']")\` 绑事件。
+4. 数据接入：用 \`update_demo_capabilities\` 声明要用的 table / idea，然后在 script.js 里调 \`window.ImageBase.query(...)\` 等 SDK 方法。
+5. 如果 \`droppedFeatures\` 里的元素必须 100% 还原 → 切换到 svg_to_demo_faithful workflow，否则继续在当前 demo 上加交互。
+
+**触发对话样例**：
+- "把刚才的设计稿做成 demo" → \`create_demo_from_taste\`
+- "登录按钮点击弹出对话框" → \`read_demo_file\` 看 manifest 找按钮 id → \`write_demo_file\` 改 script.js → \`build_demo\`
+- "和原图一模一样" / "像素级还原" → svg_to_demo_faithful workflow（Phase 2）
+
 ## window.ImageBase SDK（Demo 代码里用）
 
 注入为 window.ImageBase。根据 capabilities 动态生成——你**没声明的方法在 SDK 上不存在**。

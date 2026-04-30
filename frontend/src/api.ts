@@ -1782,6 +1782,62 @@ export async function createDemo(
   return res.json();
 }
 
+/**
+ * Create a new Demo from a Taste's SVG using server-side deterministic
+ * conversion (Path B in docs/svg-to-demo-plan.md). Returns the new
+ * demoId plus a summary of what was kept as inline SVG islands —
+ * caller should show that as a toast subtitle so the user knows what
+ * may not look pixel-perfect.
+ */
+export interface MakeDemoFromTasteResponse {
+  demoId: string;
+  filesWritten: string[];
+  /** Compact element list. Caller usually doesn't display this; the
+   *  Demo's manifest.json on disk has the full version. */
+  manifest: Array<{
+    htmlId: string;
+    svgNodeId: string;
+    type: "rect" | "text" | "image" | "group" | "island" | "shape";
+    figmaName?: string;
+    bbox: [number, number, number, number];
+    text?: string;
+  }>;
+  /** Human-readable list, e.g. ["3 个曲线路径", "1 个复杂滤镜"]. */
+  droppedFeatures: string[];
+  stats: {
+    htmlBytes: number;
+    cssBytes: number;
+    elements: number;
+    islands: number;
+    cssVars: number;
+  };
+}
+
+export async function makeDemoFromTaste(
+  tasteId: string,
+  opts?: { name?: string }
+): Promise<MakeDemoFromTasteResponse> {
+  const res = await mutationFetch(
+    `${BASE}/svg-to-demo/from-taste/${encodeURIComponent(tasteId)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(opts ?? {}),
+    },
+  );
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const j = await res.json();
+      detail = j?.error || j?.detail || "";
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`Failed to make demo from taste${detail ? ": " + detail : ""}`);
+  }
+  return res.json();
+}
+
 export async function renameDemo(demoId: string, name: string): Promise<void> {
   const res = await mutationFetch(`${BASE}/demos/${encodeURIComponent(demoId)}`, {
     method: "PATCH",

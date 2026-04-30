@@ -13,6 +13,7 @@ import {
   batchUpdateTastes,
   deleteTaste,
   updateTaste,
+  makeDemoFromTaste,
   CLIENT_ID,
 } from "../../api";
 import type { TasteBrief } from "../../api";
@@ -78,6 +79,18 @@ const RENAME_ICON = (
 const DELETE_ICON = (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
     <path d="M6 2a1 1 0 00-1 1h6a1 1 0 00-1-1H6zM4 4h8v9a1 1 0 01-1 1H5a1 1 0 01-1-1V4zM3 4h10V3H3v1zM6.5 6v5M9.5 6v5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+  </svg>
+);
+
+// 4-pointed star sparkle — standard "magic / generated" affordance, shared
+// with the AI-create button in Sidebar. Used here for "Make interactive
+// demo" since the resulting Demo has script.js generated from SVG.
+const SPARKLE_ICON = (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+    <path
+      d="M8 1.5L9.4 6.6L14.5 8L9.4 9.4L8 14.5L6.6 9.4L1.5 8L6.6 6.6L8 1.5Z"
+      fill="currentColor"
+    />
   </svg>
 );
 
@@ -557,9 +570,16 @@ interface Props {
   hidden?: boolean;
   /** Workspace this canvas lives under; required for SSE subscription. */
   workspaceId?: string;
+  /** Called after the right-click "Make interactive" flow generates a
+   *  Demo from a Taste. Caller decides whether to swap the active
+   *  artifact within the same MagicCanvas block (ArtifactBlock.handleSelectItem)
+   *  or navigate via URL (App.tsx navigateToArtifact). When omitted the
+   *  menu item is hidden — keeps embedded canvases (e.g. preview-only
+   *  contexts) from offering a feature their host can't fulfill. */
+  onNavigateToDemo?: (demoId: string) => void;
 }
 
-export default function SvgCanvas({ designId, designName, onRename, hidden = false, workspaceId = "doc_default" }: Props) {
+export default function SvgCanvas({ designId, designName, onRename, hidden = false, workspaceId = "doc_default", onNavigateToDemo }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1006,6 +1026,45 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
     if (taste) setDeleteConfirm({ id: taste.id, name: taste.name });
   }, [ctxMenu, tastes]);
 
+  // ─── Make Demo (right-click → POST /api/svg-to-demo/from-taste/:id) ───
+  // Path B in docs/svg-to-demo-plan.md. Server runs the deterministic SVG
+  // → HTML+CSS converter and creates a new Demo artifact in the workspace.
+  // We close the menu immediately, show a loading toast, navigate to the
+  // new Demo on success. Toast subtitle surfaces droppedFeatures so the
+  // user knows what may not look pixel-perfect (e.g. "3 个曲线路径")
+  // and can fall back to the workflow path C if needed.
+  const [makeDemoLoading, setMakeDemoLoading] = useState<string | null>(null);
+  const handleCtxMakeDemo = useCallback(async () => {
+    if (!ctxMenu) return;
+    const taste = tastes.find((t) => t.id === ctxMenu.tasteId);
+    setCtxMenu(null);
+    if (!taste) return;
+    setMakeDemoLoading(taste.id);
+    // We don't have a "loading toast that auto-dismisses on next toast"
+    // primitive; just emit info on start and a final success/warning on
+    // completion. The user sees both briefly which is fine.
+    toast.info(t("taste.makeDemo.creating"));
+    try {
+      const result = await makeDemoFromTaste(taste.id);
+      if (result.droppedFeatures.length > 0) {
+        toast.warning(
+          t("taste.makeDemo.partial", {
+            count: result.droppedFeatures.join(" / "),
+          }),
+        );
+      } else {
+        toast.success(t("taste.makeDemo.success"));
+      }
+      onNavigateToDemo?.(result.demoId);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[SvgCanvas] makeDemoFromTaste failed:", err);
+      toast.error(t("taste.makeDemo.failed"));
+    } finally {
+      setMakeDemoLoading(null);
+    }
+  }, [ctxMenu, tastes, toast, t, onNavigateToDemo]);
+
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteConfirm) return;
     const id = deleteConfirm.id;
@@ -1349,6 +1408,22 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
               {RENAME_ICON}
               <span>{t("contextMenu.rename")}</span>
             </button>
+            {/* "Make interactive demo" — Path B in svg-to-demo-plan. Hidden
+             *  when the host doesn't provide an `onNavigateToDemo` callback
+             *  (e.g. preview-only embeds where there's nowhere to navigate). */}
+            {onNavigateToDemo && (
+              <>
+                <div className="taste-context-menu-sep" />
+                <button
+                  className="taste-context-menu-item"
+                  onClick={handleCtxMakeDemo}
+                  disabled={makeDemoLoading === ctxMenu.tasteId}
+                >
+                  {SPARKLE_ICON}
+                  <span>{t("taste.makeDemo")}</span>
+                </button>
+              </>
+            )}
             <div className="taste-context-menu-sep" />
             <button className="taste-context-menu-item" onClick={handleCtxDelete}>
               {DELETE_ICON}

@@ -376,6 +376,13 @@ export const zh: TranslationKeys = {
   "contextMenu.moveTo": "移动到",
   "contextMenu.moveToRoot": "根目录",
 
+  // Taste → Demo conversion (right-click on a taste in SvgCanvas)
+  "taste.makeDemo": "生成可交互 Demo",
+  "taste.makeDemo.creating": "正在生成 Demo...",
+  "taste.makeDemo.success": "Demo 已生成",
+  "taste.makeDemo.partial": "Demo 已生成（{{count}}）",
+  "taste.makeDemo.failed": "Demo 生成失败",
+
   // Delete table
   "app.deleteTable": "删除数据表",
   "app.deleteTableMsg": "确定要删除数据表「{{name}}」吗？删除后不可恢复。",

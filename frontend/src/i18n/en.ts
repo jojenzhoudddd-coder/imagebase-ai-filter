@@ -374,6 +374,13 @@ export const en = {
   "contextMenu.moveTo": "Move to",
   "contextMenu.moveToRoot": "Root",
 
+  // Taste → Demo conversion (right-click on a taste in SvgCanvas)
+  "taste.makeDemo": "Make interactive demo",
+  "taste.makeDemo.creating": "Generating demo…",
+  "taste.makeDemo.success": "Demo generated",
+  "taste.makeDemo.partial": "Demo generated ({{count}})",
+  "taste.makeDemo.failed": "Failed to generate demo",
+
   // Delete table
   "app.deleteTable": "Delete Table",
   "app.deleteTableMsg": "Are you sure you want to delete table \"{{name}}\"? This cannot be undone.",

@@ -35,6 +35,7 @@ import analystRoutes from "./routes/analystRoutes.js";
 import demoRoutes from "./routes/demoRoutes.js";
 import demoRuntimeRoutes from "./routes/demoRuntimeRoutes.js";
 import publicDemoRoutes from "./routes/publicDemoRoutes.js";
+import svgToDemoRoutes from "./routes/svgToDemoRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import { attachUser, ensureSeedUserCredentials } from "./services/authService.js";
 import { requireWorkspaceAccess } from "./middleware/requireWorkspaceAccess.js";
@@ -171,6 +172,10 @@ app.use("/api/analyst", analystRoutes);
 app.use("/api/demos", demoRoutes);
 app.use("/api/demo-runtime", demoRuntimeRoutes);
 app.use("/share", publicDemoRoutes);
+// SVG → Demo conversion entries (Path B's UI right-click "Make interactive"
+// uses this; Path A's MCP `create_demo_from_taste` proxies to it via HTTP).
+// See docs/svg-to-demo-plan.md.
+app.use("/api/svg-to-demo", svgToDemoRoutes);
 
 // Serve uploaded SVG files
 app.use("/uploads", express.static(path.resolve(__dirname, "../../uploads")));
