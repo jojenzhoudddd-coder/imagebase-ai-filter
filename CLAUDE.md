@@ -199,6 +199,7 @@ Domain: https://www.imagebase.cc
 - `docs/multi-conversation-plan.md` - Chatbot 多对话方案 (V3.0)：每 ChatBlock 多 conversation + per-conv working memory + multi-block sync(passive listener SSE) + append-while-generating 多 branch + synth 完整拼接 + WorkflowRun(append-batch) 观测；PR1-PR5 分期
 - `docs/skill-creator-plan.md` - Skill Creator + Workflow DSL 持久化方案：UserSkill 模型吸纳 SavedWorkflow + 三类资产(promptFragment / workflowDocs / scriptHandlers V2) + 6 个 Tier 0 MCP 工具(create / list / update / delete⚠ / enable / save_workflow_run_as_skill) + 全部对话内完成无前端 UI。**状态:V1 已上线 (2026-04-28)**,V1 只做 agent 级 ownership,scriptHandlers + workspace/global 共享留 V2。
 - `docs/roadmap-post-skill-v1.md` - V1 之后的完整 roadmap (~5 个月,11 个 PR):PR4-prep (BlobStorage 抽象) → PR4 (Skill fs 化 SKILL.md 双层结构) → PR5 (Idea attachment 管线) → PR6-PR10 (Idea block-based 改造,逐步对标 Notion / 飞书文档) → PR11 (CRDT,选做)。每个 PR 单独有产品价值且不阻塞下一个。
+- `docs/svg-to-demo-plan.md` - **SVG → Demo 三路径并行方案 (2026-04-30 已上线 Phase 0-2)**:Path A (`create_demo_from_taste` MCP,服务端确定性 SVG→HTML+CSS,1-3s,95%+ 还原) / Path B (Taste UI 右键 "Make interactive demo",共享 A 的后端) / Path C (`convert_taste_to_demo_faithful`,LLM 精修 + 像素 diff 反馈回路,30-90s,99%+)。共用基础设施:`backend/src/services/svgToDemo/{parseSvgTree,splitSvgTree,svgConverter,visualDiff,createDemoFromSvg,faithfulConversion}.ts`。Path C 不走现成 WorkflowDoc DSL(parallel 节点 fixed branch list 不能 fan-out + loop 硬顶 10),改用纯代码 + Semaphore + onProgress 回调。验证 fixture(simple-card / dashboard / illustration)0.44%-1.21% 像素差全过阈值。
 
 ## Skills（自动加载的专业指令集）
 每个 Skill 在对应场景下会被 Claude Code 自动激活，无需手动引用。

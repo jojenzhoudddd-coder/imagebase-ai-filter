@@ -5,6 +5,73 @@
 
 ---
 
+## 2026-04-30 (Feature · SVG → Demo 三路径并行方案)
+
+### feat(svg-to-demo): 把用户上传的 Taste SVG 一键变可运行 Demo
+
+完整方案见 `docs/svg-to-demo-plan.md`。落地为三条共用底层基建的路径:
+
+| 路径 | 入口 | 后端 | 用时 | 保真度 | 适用 |
+|---|---|---|---|---|---|
+| **A** `create_demo_from_taste` | Agent 对话 | 服务端确定性转换 | 1-3s | 95%+ | 大部分 Figma 导出 |
+| **B** Taste 右键菜单 "Make interactive demo" | UI | 同 A 共用 | 1-3s | 95%+ | 用户视觉操作 |
+| **C** `convert_taste_to_demo_faithful` | Agent 对话 | LLM 精修 + 像素 diff | 30-90s | 99%+ | 像素级还原 / 复杂插画 |
+
+**Phase 0 (ea26f5b)** — 五个纯函数模块基建:
+- `parseSvgTree.ts` fast-xml-parser → 节点树 + 稳定 hash id + transform 累乘 bbox + inline `<use>`
+- `splitSvgTree.ts` 沿 `<g>` 边界贪心切分 + defs 全局集中(non-mutating extraction)+ island 规则
+- `svgConverter.ts` 确定性 SVG→HTML 规则映射 + 渐变 → CSS gradient + text 基线偏移 + CSS var 池化
+- `visualDiff.ts` sharp 渲 SVG / playwright 渲 HTML / pixelmatch + flood-fill 聚类 problemBoxes
+- `createDemoFromSvg.ts` 高层入口:parse → convert → 创建 Demo 行 → 写 5 文件 → 自动 build
+
+冒烟验收:simple-card 0.64% / dashboard 1.21% / illustration 0.44% diff,全过阈值。
+
+**Phase 1 (cf11ebb)** — Path A + Path B 共享后端:
+- `POST /api/svg-to-demo/from-taste/:tasteId` REST 入口(Path B)
+- MCP `create_demo_from_taste` 工具(Path A,挂在 demo-skill)
+- `demoSkill.promptFragment` 加 "从 Taste 起 Demo" 决策表 + 触发样例
+- 前端 SvgCanvas 右键菜单 "Make interactive demo" + SPARKLE_ICON
+- ArtifactBlock + App.tsx 注入 onNavigateToDemo callback
+- i18n zh/en 5 个新 key
+- 自动 buildDemo 让 preview 立即可用
+
+**Phase 2 (74d6c1a)** — Path C 高保真 LLM 精修:
+- `services/svgToDemo/faithfulConversion.ts` (650 行) 7 阶段 orchestration
+- 不走 WorkflowDoc DSL(parallel 节点是 fixed branch list 不能 fan-out;
+  loop 硬顶 10 iterations 撑不住 50+ chunks)。改用纯代码 + Semaphore
+- `convert_taste_to_demo_faithful` MCP 工具,返回 { finalDiffPct, hint }
+- 失败模式覆盖:浏览器不可用 → 降级 + warning;LLM 错 → 该 chunk 用 baseline;
+  wall-clock 超时 → 干净 abort + 已完成 chunks 保留
+
+**开发过程踩坑修了的真实 bug**:
+1. `splitSvgTree` 原本 mutate caller tree(strip defs in place),导致后续
+   `convertSvgToHtml(tree)` 看不到 defs,gradient ref 全 dangle,illustration 70% 像素差。
+   改成返回 shallow-cloned root。
+2. Path bbox 漏算控制点 → bezier 曲线高度低估 ~50%,island viewBox 裁切。
+   改成把 C/Q/A 控制点纳入(过估安全)。
+3. CSS var 池化阈值 ≥3 才 :root 声明 vs ≥2 就发 var(),`#1456F0` 用 2 次时
+   var(--svg-color-2) 引用未定义,按钮没背景色。两边统一 ≥2。
+
+新增 MCP 工具:`create_demo_from_taste` / `convert_taste_to_demo_faithful`
+(都挂 demo-skill,Tier 2)。
+
+依赖新增:`pixelmatch` `pngjs` + `@types/*`。`@xmldom/xmldom` 用现成的
+`fast-xml-parser` 替代;`@resvg/resvg-js` 用现成的 `sharp`;`puppeteer-core`
+用现成的 `playwright-core`。
+
+文件清单:
+- 新建:5 个 svgToDemo 服务模块、3 个 fixture SVG、1 个 smoke 脚本、
+  1 个 REST 路由、1 个 MCP 工具增量、1 个 docs/svg-to-demo-plan.md
+- 修改:demoSkill promptFragment、SvgCanvas、ArtifactBlock、App.tsx、
+  api.ts、i18n zh/en、index.ts (注册路由)
+
+Phase 3 上线后续优化:
+- chunk 内 baseline HTML 提取(目前传整篇 baseline 给 LLM)
+- LLM 用 sonnet 而非 opus 跑 chunk-level
+- ChatSidebar ToolCallCard 接 chunk 进度条
+
+---
+
 ## 2026-04-29 (Hotfix #2 · Idea preview Enter→Backspace→Enter 整页崩溃)
 
 ### fix(idea): 移除 Enter 拦截器,改走浏览器原生 Enter,避免 React fiber/DOM 失同步导致的整页 unmount
