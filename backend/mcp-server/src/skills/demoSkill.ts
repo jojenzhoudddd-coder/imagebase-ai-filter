@@ -39,9 +39,20 @@ export const DEMO_SKILL_PROMPT = `## Demo 基本流程
 5. 如果 \`droppedFeatures\` 里的元素必须 100% 还原 → 切换到 svg_to_demo_faithful workflow，否则继续在当前 demo 上加交互。
 
 **触发对话样例**：
-- "把刚才的设计稿做成 demo" → \`create_demo_from_taste\`
+- "把刚才的设计稿做成 demo" → \`create_demo_from_taste\`（Path A，秒级）
 - "登录按钮点击弹出对话框" → \`read_demo_file\` 看 manifest 找按钮 id → \`write_demo_file\` 改 script.js → \`build_demo\`
-- "和原图一模一样" / "像素级还原" → svg_to_demo_faithful workflow（Phase 2）
+- "和原图一模一样" / "像素级还原" / "100% 还原" / "高保真" → \`convert_taste_to_demo_faithful\`（Path C，30-90s,LLM 精修）
+
+**Path A vs Path C 决策表**:
+| 用户语气 | 选 |
+|---|---|
+| "做成 demo" / "搭起来" / 没说还原度 | A (\`create_demo_from_taste\`) |
+| Auto Layout / 简单 UI / 表单类 | A |
+| 复杂插画 / 包含很多 path 曲线 | C (\`convert_taste_to_demo_faithful\`) |
+| 明确说"一致 / 一模一样 / 像素级 / 高保真" | C |
+| Path A 的 droppedFeatures 列表很长 | C |
+
+Path C 失败模式: 服务端没装无头浏览器时自动降级为 Path A 输出 + warning,Agent 看到 \`finalDiffPct === "-100%"\` 就知道发生了降级,告诉用户。
 
 ## window.ImageBase SDK（Demo 代码里用）
 

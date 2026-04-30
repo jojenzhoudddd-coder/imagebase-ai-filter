@@ -471,3 +471,84 @@ function summarizeManifest(manifest: Array<{ type: string; figmaName?: string }>
   }
   return { byType, named };
 }
+
+// Append the faithful-conversion (Path C) tool to the export. We keep it
+// in this file rather than a separate module because it shares the
+// "tasteId → Demo" semantic with create_demo_from_taste; conceptually
+// they're the same operation at different fidelity levels.
+demoWriteTools.push({
+  name: "convert_taste_to_demo_faithful",
+  description:
+    "把一个 Taste 的 SVG 通过 **LLM-driven 高保真转换** 变成 Demo（Path C）。" +
+    "比 create_demo_from_taste 更慢（30-90s）但视觉差异 < 2%。" +
+    "适用于:像素级还原 / 复杂插画 / 用户明确说\"和原图一模一样\"的场景。" +
+    "" +
+    "工作流程: 先跑 Path A 的确定性基线 → 切分 SVG 为多个 chunk → 对每个 chunk 与原图做" +
+    "像素 diff → 超阈值的 chunk 用 LLM 重生成 HTML/CSS → 拼接 → 重新 build。" +
+    "" +
+    "返回 { demoId, finalDiffRatio, refinedChunks, totalChunks, warnings, durationMs }。" +
+    "如果服务端没装无头浏览器,会自动降级为 Path A 的纯确定性输出 + warning。",
+  inputSchema: {
+    type: "object",
+    required: ["tasteId"],
+    properties: {
+      tasteId: { type: "string", description: "源 Taste id" },
+      name: { type: "string", description: "Demo 名称（可选）。默认 '<taste 名> Demo (faithful)'" },
+      refineThreshold: {
+        type: "number",
+        description: "chunk 像素 diff 比例超此值就触发 LLM 重生成。默认 0.05 (5%)。",
+      },
+      retryThreshold: {
+        type: "number",
+        description: "重生成后再 diff 仍超此值就再 retry 一次。默认 0.05。",
+      },
+      concurrency: {
+        type: "number",
+        description: "并发 LLM 调用数。默认 4,上限 8。",
+      },
+    },
+  },
+  handler: async (args, ctx) => {
+    const tasteId = String(args.tasteId);
+    const body: Record<string, any> = {};
+    if (typeof args.name === "string" && args.name.trim()) body.name = args.name;
+    if (typeof args.refineThreshold === "number") body.refineThreshold = args.refineThreshold;
+    if (typeof args.retryThreshold === "number") body.retryThreshold = args.retryThreshold;
+    if (typeof args.concurrency === "number") body.concurrency = args.concurrency;
+    // Long-task: this can take 60+ seconds. Notify the long-task tracker
+    // so the SSE keepalive stays warm.
+    ctx?.progress?.({
+      phase: "starting",
+      message: `Path C 高保真转换 ${tasteId}`,
+    });
+    const data = await apiRequest<{
+      ok: boolean;
+      demoId: string;
+      finalDiffRatio: number;
+      refinedChunks: number;
+      totalChunks: number;
+      chunkFailures: Record<string, string>;
+      warnings: string[];
+      durationMs: number;
+    }>(`/api/svg-to-demo/from-taste/${encodeURIComponent(tasteId)}/faithful`, {
+      method: "POST",
+      body: Object.keys(body).length > 0 ? body : ({} as any),
+    });
+    return toolResult({
+      demoId: data.demoId,
+      finalDiffPct: (data.finalDiffRatio * 100).toFixed(2) + "%",
+      refinedChunks: data.refinedChunks,
+      totalChunks: data.totalChunks,
+      warnings: data.warnings,
+      durationSec: (data.durationMs / 1000).toFixed(1),
+      hint:
+        data.finalDiffRatio < 0
+          ? "服务端无头浏览器不可用，已降级为 Path A 输出（无 LLM 精修）。"
+          : data.finalDiffRatio < 0.02
+          ? "✓ 视觉吻合度 ≥ 98%，与原图一致"
+          : data.finalDiffRatio < 0.05
+          ? "视觉吻合度 ≥ 95%，可接受范围"
+          : "局部仍有偏差，可能需要手工精修或再轮 refine",
+    });
+  },
+});

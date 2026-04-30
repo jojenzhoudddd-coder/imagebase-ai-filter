@@ -29,6 +29,7 @@ import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { createDemoFromSvg } from "../services/svgToDemo/createDemoFromSvg.js";
+import { runFaithfulConversion } from "../services/svgToDemo/faithfulConversion.js";
 import { currentUser, userCanAccessWorkspace } from "../services/authService.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -148,6 +149,81 @@ router.post("/from-taste/:tasteId", async (req: Request, res: Response) => {
     console.error("[svg-to-demo:from-taste]", err);
     res.status(500).json({
       error: "Failed to create demo",
+      code: "INTERNAL",
+      detail: typeof err?.message === "string" ? err.message : String(err),
+    });
+  }
+});
+
+/**
+ * POST /api/svg-to-demo/from-taste/:tasteId/faithful
+ *
+ * Path C: LLM-driven high-fidelity conversion. See
+ * services/svgToDemo/faithfulConversion.ts for the orchestration model.
+ * 30-90s wall-clock; this endpoint is synchronous (HTTP keeps the
+ * connection open). For UI use, prefer the MCP-tool surface so progress
+ * can stream over the chat SSE; this endpoint is for direct integration
+ * tests + curl-driven smoke runs.
+ *
+ * Body: { name?, modelId?, refineThreshold?, retryThreshold?, concurrency? }
+ *
+ * Response (success):
+ *   { ok, demoId, finalDiffRatio, refinedChunks, totalChunks, warnings, durationMs }
+ */
+router.post("/from-taste/:tasteId/faithful", async (req: Request, res: Response) => {
+  const { tasteId } = req.params;
+  const body = (req.body ?? {}) as {
+    name?: string;
+    modelId?: string;
+    refineThreshold?: number;
+    retryThreshold?: number;
+    concurrency?: number;
+    timeoutMs?: number;
+  };
+
+  // Same auth + lookup as Path B above.
+  const taste = await prisma.taste.findUnique({
+    where: { id: tasteId },
+    include: { design: { select: { id: true, workspaceId: true, name: true } } },
+  });
+  if (!taste) {
+    res.status(404).json({ error: "Taste not found", code: "TASTE_NOT_FOUND" });
+    return;
+  }
+  const user = currentUser(req);
+  if (!user) {
+    res.status(401).json({ error: "Not authenticated", code: "NOT_AUTHENTICATED" });
+    return;
+  }
+  const wsOk = await userCanAccessWorkspace(user.id, taste.design.workspaceId);
+  if (!wsOk) {
+    res.status(403).json({ error: "Forbidden", code: "WORKSPACE_DENIED" });
+    return;
+  }
+  const svg = await readTasteSvg(taste);
+  if (!svg) {
+    res.status(422).json({ error: "Taste has no readable SVG", code: "TASTE_NO_SVG" });
+    return;
+  }
+
+  try {
+    const result = await runFaithfulConversion({
+      workspaceId: taste.design.workspaceId,
+      name: body.name ?? `${taste.name} Demo (faithful)`,
+      svg,
+      sourceTasteId: tasteId,
+      modelId: body.modelId ?? null,
+      refineThreshold: body.refineThreshold,
+      retryThreshold: body.retryThreshold,
+      concurrency: body.concurrency,
+      timeoutMs: body.timeoutMs,
+    });
+    res.status(201).json(result);
+  } catch (err: any) {
+    // eslint-disable-next-line no-console
+    console.error("[svg-to-demo:faithful]", err);
+    res.status(500).json({
+      error: "Faithful conversion failed",
       code: "INTERNAL",
       detail: typeof err?.message === "string" ? err.message : String(err),
     });
