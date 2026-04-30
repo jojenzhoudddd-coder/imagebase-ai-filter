@@ -2091,6 +2091,33 @@ export default function App() {
             setActiveItemType("table");
             void switchTable(tableId);
           }}
+          onDemoCreated={(demoId) => {
+            // Defensive fallback: SSE `demo:create` should normally land
+            // through useWorkspaceSync and append to documentDemos. If the
+            // event was missed (event loop blocked during a Path C run,
+            // SSE reconnect, etc.), this hook re-fetches the demo list so
+            // the just-created demo appears in the sidebar without a page
+            // refresh. Idempotent — fetchDemo + listDemos are safe to
+            // call repeatedly; setDocumentDemos overwrites with canonical
+            // server state.
+            void (async () => {
+              try {
+                const demos = await listDemos(WORKSPACE_ID);
+                setDocumentDemos(
+                  demos.map((d) => ({
+                    id: d.id,
+                    name: d.name,
+                    order: d.order,
+                    parentId: d.parentId ?? null,
+                    publishSlug: d.publishSlug ?? null,
+                  })),
+                );
+              } catch {
+                /* network blip — useWorkspaceSync will catch it next time */
+              }
+              void demoId; // declared so signature stays stable; not used
+            })();
+          }}
         />
       </div>
     ),
@@ -2218,11 +2245,13 @@ function PerBlockChatSidebar({
   workspaceId,
   agentId,
   onActiveTableChange,
+  onDemoCreated,
 }: {
   blockId: string;
   workspaceId: string;
   agentId: string;
   onActiveTableChange?: (tableId: string) => void;
+  onDemoCreated?: (demoId: string) => void;
 }) {
   const canvas = useCanvas();
   const blockState = canvas.state.blockStates[blockId] as ChatBlockStateLike | undefined;
@@ -2245,6 +2274,7 @@ function PerBlockChatSidebar({
       onConversationChange={handleConversationChange}
       onClose={() => { /* BlockShell 处理 */ }}
       onActiveTableChange={onActiveTableChange}
+      onDemoCreated={onDemoCreated}
     />
   );
 }

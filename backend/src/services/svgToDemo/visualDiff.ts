@@ -216,25 +216,63 @@ export interface PixelDiffOpts {
   /** Cluster mismatching pixels into rects with this radius (in px).
    *  Larger = fewer boxes, each bigger. Default 8. */
   clusterRadius?: number;
+  /** Cap the longer image side before pixelmatch. pixelmatch + PNG.sync
+   *  are pure-JS synchronous → block the Node event loop. For a 1440×900
+   *  image (1.3M px) the call freezes the loop for ~80-150ms; for a
+   *  3000×2000 Figma export (6M px) it's 400-600ms. While the loop is
+   *  blocked NO other express request gets served → nginx returns 504 to
+   *  unrelated traffic. We downscale large inputs to a max dimension
+   *  before diffing — sub-pixel fidelity isn't useful for visual-quality
+   *  scoring at the chunk level anyway. Default 768. */
+  maxSide?: number;
+}
+
+/**
+ * Yield to the event loop. setImmediate runs pending I/O callbacks
+ * (the SSE writes, other express requests) before the next iteration
+ * of our heavy CPU loop. Cheap (~1ms) but critical for keeping the
+ * server responsive during a long Path C run.
+ */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 export async function pixelDiff(a: Buffer, b: Buffer, opts: PixelDiffOpts = {}): Promise<PixelDiffResult> {
   const threshold = opts.threshold ?? 0.1;
   const emitDiffPng = opts.emitDiffPng ?? true;
   const clusterRadius = opts.clusterRadius ?? 8;
+  const maxSide = opts.maxSide ?? 768;
 
-  const imgA = PNG.sync.read(a);
-  let imgB = PNG.sync.read(b);
-
-  // If sizes don't match we can't pixel-diff directly. The convention
-  // here is that the CALLER aligns sizes (renderSvgToPng + renderHtmlToPng
-  // with same viewport). If they slipped, resize the smaller to match —
-  // safer than throwing, and the tiny sub-pixel error from one resize
-  // is below pixelmatch threshold.
-  if (imgA.width !== imgB.width || imgA.height !== imgB.height) {
-    const resized = await sharp(b).resize(imgA.width, imgA.height, { fit: "fill" }).png().toBuffer();
-    imgB = PNG.sync.read(resized);
+  // Step 1: peek dimensions cheaply via sharp (async, doesn't block).
+  // We need to know the size to decide whether downscaling is worth it,
+  // and to align imgB to imgA when they differ.
+  const metaA = await sharp(a).metadata();
+  const targetW = metaA.width ?? 0;
+  const targetH = metaA.height ?? 0;
+  // Bail out trivially on empty inputs.
+  if (!targetW || !targetH) {
+    return { ratio: 0, diffPixels: 0, totalPixels: 0, problemBoxes: [] };
   }
+  const longSide = Math.max(targetW, targetH);
+  const scale = longSide > maxSide ? maxSide / longSide : 1;
+  const scaledW = Math.max(1, Math.round(targetW * scale));
+  const scaledH = Math.max(1, Math.round(targetH * scale));
+
+  // Step 2: align both to (scaledW, scaledH) via sharp (async, threadpool).
+  // Even at scale=1 we still pipe through sharp.resize for B if its size
+  // doesn't match A — this consolidates the two cases into one path.
+  const aResized = scale < 1 ? await sharp(a).resize(scaledW, scaledH, { fit: "fill" }).png().toBuffer() : a;
+  const bResized = await sharp(b).resize(scaledW, scaledH, { fit: "fill" }).png().toBuffer();
+
+  // Yield BEFORE the synchronous decode + pixelmatch chunk so the event
+  // loop can serve any queued requests first.
+  await yieldToEventLoop();
+
+  const imgA = PNG.sync.read(aResized);
+  const imgB = PNG.sync.read(bResized);
+
+  // Yield again before pixelmatch — PNG.sync.read just blocked.
+  await yieldToEventLoop();
 
   const { width, height } = imgA;
   const totalPixels = width * height;
@@ -244,6 +282,10 @@ export async function pixelDiff(a: Buffer, b: Buffer, opts: PixelDiffOpts = {}):
     includeAA: false,
   });
   const ratio = totalPixels === 0 ? 0 : diffPixels / totalPixels;
+
+  // Yield once more before clusterDiffPixels (another full-image walk) +
+  // PNG.sync.write at the end.
+  await yieldToEventLoop();
 
   // Cluster mismatched pixels into bounding boxes. Walk the diff data,
   // for each "diff" pixel (non-zero in red channel of the diff image),

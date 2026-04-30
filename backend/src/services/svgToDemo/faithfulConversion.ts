@@ -229,6 +229,12 @@ export async function runFaithfulConversion(
         warnings.push(`diff error for ${chunk.id}: ${err?.message ?? err}`);
         baselineDiffs.push({ chunk, ratio: Number.POSITIVE_INFINITY, problemBoxes: [] });
       }
+      // Yield after every chunk so the express event loop can serve
+      // unrelated requests (sidebar fetches, SSE writes, etc.) instead
+      // of stacking them up while we synchronously crunch pixels.
+      // Without this yield, a 50-chunk diff phase takes ~5s of clock
+      // time during which NO other request gets handled → nginx 504.
+      await new Promise((r) => setImmediate(r));
     }
   }
 
@@ -317,8 +323,13 @@ export async function runFaithfulConversion(
   }
 
   // Phase 7: final whole-document diff for the user-facing fidelity score.
+  // We SKIP this if no chunks were actually refined — the per-chunk diff
+  // we already computed is the same baseline data, and the avg over
+  // chunk ratios is representative enough. This saves a full playwright
+  // launch + pixelDiff pass (~3-5s on large SVGs) on the common case
+  // where Path A baseline already passed the bar everywhere.
   let finalDiffRatio = -1;
-  if (browserAvailable) {
+  if (browserAvailable && refinedHtml.size > 0) {
     try {
       const finalHtml = await demoFileStore.readFile(baseline.demoId, "index.html");
       const finalCss = await demoFileStore.readFile(baseline.demoId, "style.css");
@@ -335,6 +346,18 @@ export async function runFaithfulConversion(
     } catch (err) {
       warnings.push(`Final diff failed: ${err instanceof Error ? err.message : err}`);
     }
+  } else if (browserAvailable) {
+    // No refinement happened → derive a representative ratio from chunk diffs.
+    // Weight each chunk by its bbox area so big regions dominate the score.
+    let weightedSum = 0;
+    let totalArea = 0;
+    for (const d of baselineDiffs) {
+      const bbox = d.chunk.rootNode.bbox;
+      const area = bbox ? Math.max(1, bbox[2] * bbox[3]) : 1;
+      weightedSum += (Number.isFinite(d.ratio) ? d.ratio : 0) * area;
+      totalArea += area;
+    }
+    finalDiffRatio = totalArea > 0 ? weightedSum / totalArea : 0;
   }
 
   onProgress({

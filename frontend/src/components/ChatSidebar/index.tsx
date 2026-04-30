@@ -184,6 +184,16 @@ interface Props {
   onActiveTableChange?: (tableId: string) => void;
 
   /**
+   * Fired when a tool call has just produced a NEW demo (Path A / Path C
+   * conversion, plain create_demo). Parent uses this to defensively
+   * refresh the sidebar's demo list — covers the case where the SSE
+   * `demo:create` broadcast was missed (event loop blocked / nginx
+   * hiccup / SSE reconnect during the agent turn). Idempotent on the
+   * parent side: if the demo already exists in the list, no-op.
+   */
+  onDemoCreated?: (demoId: string) => void;
+
+  /**
    * V3.0 PR1: per-block conversation override.
    * 当父级(App.tsx 通过 ChatBlockState)指定要打开哪个 conversation 时传入;
    * 不传则 ChatSidebar 自己挑(沿用 V2 行为:cache 或 first 或新建)。
@@ -215,12 +225,41 @@ function extractTableIdFromCall(
   return undefined;
 }
 
+/**
+ * Demo-creating tools all return { demoId } in their result. We surface
+ * this to the parent so it can refresh the demo sidebar list — defensive
+ * fallback for the case where the SSE `demo:create` event was missed
+ * (e.g. the express loop was busy when the broadcast fired, or nginx
+ * hiccupped during the agent turn). Without this hook a freshly-created
+ * Path A / Path C demo wouldn't appear until the user refreshed.
+ *
+ * Tool names enumerated rather than substring-matched so we don't react
+ * to unrelated tools that happen to mention "demo" in their result.
+ */
+const DEMO_CREATE_TOOLS = new Set([
+  "create_demo_from_taste",
+  "convert_taste_to_demo_faithful",
+  "create_demo",
+]);
+
+function extractCreatedDemoId(tool: string, result?: unknown): string | undefined {
+  if (!DEMO_CREATE_TOOLS.has(tool)) return undefined;
+  if (!result || typeof result !== "object") return undefined;
+  // Tool result wrapper from dataStoreClient.toolResult is either
+  // `{ data: {...inner} }` or just the inner object directly. Accept both.
+  const r = result as Record<string, unknown>;
+  const inner = (r.data && typeof r.data === "object" ? r.data : r) as Record<string, unknown>;
+  if (typeof inner.demoId === "string" && inner.demoId) return inner.demoId;
+  return undefined;
+}
+
 export default function ChatSidebar({
   open,
   workspaceId,
   agentId = "agent_default",
   onClose,
   onActiveTableChange,
+  onDemoCreated,
   conversationId: propConversationId,
   onConversationChange,
 }: Props) {
@@ -696,6 +735,7 @@ export default function ChatSidebar({
       onToolResult: (callId, success, result) => {
         setMessages((prev) => {
           let pointerTid: string | undefined;
+          let createdDemoId: string | undefined;
           const next = prev.map((m) =>
             m.role === "assistant"
               ? {
@@ -706,6 +746,9 @@ export default function ChatSidebar({
                     // the target tableId only in the result, not the args.
                     if (!pointerTid) {
                       pointerTid = extractTableIdFromCall(tc.tool, tc.args, result);
+                    }
+                    if (!createdDemoId && success) {
+                      createdDemoId = extractCreatedDemoId(tc.tool, result);
                     }
                     return {
                       ...tc,
@@ -719,6 +762,7 @@ export default function ChatSidebar({
               : m
           );
           if (pointerTid) onActiveTableChange?.(pointerTid);
+          if (createdDemoId) onDemoCreated?.(createdDemoId);
           return next;
         });
       },
@@ -960,7 +1004,7 @@ export default function ChatSidebar({
         try { window.dispatchEvent(new CustomEvent("workspace-stats-changed")); } catch { /* noop */ }
       },
     });
-  }, [activeConv, inputValue, streaming, onActiveTableChange]);
+  }, [activeConv, inputValue, streaming, onActiveTableChange, onDemoCreated]);
 
   const handleConfirm = useCallback(
     (confirmed: boolean) => {
@@ -1025,6 +1069,7 @@ export default function ChatSidebar({
         onToolResult: (callId, success, result) => {
           setMessages((prev) => {
             let pointerTid: string | undefined;
+            let createdDemoId: string | undefined;
             const next = prev.map((m) =>
               m.role === "assistant"
                 ? {
@@ -1034,12 +1079,16 @@ export default function ChatSidebar({
                       if (!pointerTid) {
                         pointerTid = extractTableIdFromCall(tc.tool, tc.args, result);
                       }
+                      if (!createdDemoId && success) {
+                        createdDemoId = extractCreatedDemoId(tc.tool, result);
+                      }
                       return { ...tc, status: (success ? "success" : "error") as ChatToolCall["status"] };
                     }),
                   }
                 : m
             );
             if (pointerTid) onActiveTableChange?.(pointerTid);
+            if (createdDemoId) onDemoCreated?.(createdDemoId);
             return next;
           });
         },
@@ -1050,7 +1099,7 @@ export default function ChatSidebar({
         },
       });
     },
-    [activeConv, pendingConfirm, onActiveTableChange]
+    [activeConv, pendingConfirm, onActiveTableChange, onDemoCreated]
   );
 
   const handleStop = useCallback(() => {
