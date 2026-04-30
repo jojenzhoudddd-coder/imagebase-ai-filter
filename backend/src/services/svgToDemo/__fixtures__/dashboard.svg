@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480" width="800" height="480">
+  <rect id="Background" x="0" y="0" width="800" height="480" fill="#F8F9FA"/>
+
+  <g id="Header">
+    <rect id="Header_Bar" x="0" y="0" width="800" height="56" fill="#FFFFFF"/>
+    <text id="Logo_Text" x="20" y="36" font-family="Inter" font-size="18" font-weight="700" fill="#1F2329">Dashboard</text>
+    <circle id="Avatar_Circle" cx="760" cy="28" r="14" fill="#1456F0"/>
+  </g>
+
+  <g id="Sidebar">
+    <rect id="Sidebar_Bg" x="0" y="56" width="200" height="424" fill="#FFFFFF"/>
+    <rect id="Nav_Item_1" x="12" y="76" width="176" height="36" rx="6" fill="#E8F1FF"/>
+    <text id="Nav_Label_1" x="32" y="99" font-family="Inter" font-size="13" font-weight="500" fill="#1456F0">Overview</text>
+    <text id="Nav_Label_2" x="32" y="135" font-family="Inter" font-size="13" fill="#646A73">Reports</text>
+    <text id="Nav_Label_3" x="32" y="167" font-family="Inter" font-size="13" fill="#646A73">Settings</text>
+  </g>
+
+  <g id="Main_Content">
+    <text id="Page_Title" x="232" y="100" font-family="Inter" font-size="24" font-weight="600" fill="#1F2329">Welcome back</text>
+    <text id="Page_Subtitle" x="232" y="128" font-family="Inter" font-size="14" fill="#646A73">Here is a snapshot of your projects.</text>
+
+    <g id="Card_1">
+      <rect id="Card_1_Bg" x="232" y="160" width="180" height="100" rx="8" fill="#FFFFFF"/>
+      <text id="Card_1_Label" x="248" y="186" font-family="Inter" font-size="11" fill="#646A73">REVENUE</text>
+      <text id="Card_1_Value" x="248" y="220" font-family="Inter" font-size="24" font-weight="700" fill="#1F2329">$24.5k</text>
+      <text id="Card_1_Trend" x="248" y="244" font-family="Inter" font-size="11" fill="#16A34A">+12% vs last month</text>
+    </g>
+
+    <g id="Card_2">
+      <rect id="Card_2_Bg" x="424" y="160" width="180" height="100" rx="8" fill="#FFFFFF"/>
+      <text id="Card_2_Label" x="440" y="186" font-family="Inter" font-size="11" fill="#646A73">USERS</text>
+      <text id="Card_2_Value" x="440" y="220" font-family="Inter" font-size="24" font-weight="700" fill="#1F2329">1,284</text>
+      <text id="Card_2_Trend" x="440" y="244" font-family="Inter" font-size="11" fill="#16A34A">+8.3%</text>
+    </g>
+
+    <g id="Card_3">
+      <rect id="Card_3_Bg" x="616" y="160" width="164" height="100" rx="8" fill="#FFFFFF"/>
+      <text id="Card_3_Label" x="632" y="186" font-family="Inter" font-size="11" fill="#646A73">ACTIVE</text>
+      <text id="Card_3_Value" x="632" y="220" font-family="Inter" font-size="24" font-weight="700" fill="#1F2329">87</text>
+      <text id="Card_3_Trend" x="632" y="244" font-family="Inter" font-size="11" fill="#DC2626">-2 today</text>
+    </g>
+
+    <rect id="Bottom_Banner" x="232" y="288" width="548" height="160" rx="8" fill="#FFFFFF"/>
+    <text id="Banner_Title" x="252" y="320" font-family="Inter" font-size="16" font-weight="600" fill="#1F2329">Get started</text>
+    <text id="Banner_Body" x="252" y="346" font-family="Inter" font-size="13" fill="#646A73">Connect a data source to see live numbers here.</text>
+    <rect id="CTA_Button" x="252" y="380" width="120" height="36" rx="6" fill="#1456F0"/>
+    <text id="CTA_Label" x="282" y="403" font-family="Inter" font-size="13" font-weight="500" fill="#FFFFFF">Connect</text>
+  </g>
+</svg>

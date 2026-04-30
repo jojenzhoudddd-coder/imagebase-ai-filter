@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" width="400" height="240">
+  <rect id="Card_Background" x="0" y="0" width="400" height="240" rx="12" fill="#FFFFFF"/>
+  <rect id="Avatar" x="20" y="20" width="48" height="48" rx="24" fill="#1456F0"/>
+  <text id="Title" x="80" y="44" font-family="Inter" font-size="16" font-weight="600" fill="#1F2329">
+    Hello world
+  </text>
+  <text id="Subtitle" x="80" y="64" font-family="Inter" font-size="12" fill="#646A73">
+    A simple card
+  </text>
+  <rect id="Primary_Button" x="20" y="180" width="160" height="40" rx="6" fill="#1456F0"/>
+  <text id="Button_Label" x="58" y="205" font-family="Inter" font-size="14" font-weight="500" fill="#FFFFFF">
+    Click me
+  </text>
+  <rect id="Divider" x="20" y="92" width="360" height="1" fill="#E5E6EB"/>
+</svg>
