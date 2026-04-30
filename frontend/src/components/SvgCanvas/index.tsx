@@ -375,17 +375,28 @@ function useCanvasTransform() {
   };
 
   // ── Keyboard: space for pan mode ──
+  // 2026-04-30 fix: also skip when focus is inside a contenteditable
+  // region. Chat input is a `contenteditable <div>`, not an
+  // HTMLInputElement / HTMLTextAreaElement, so the old guard let Space
+  // bubble up here and `preventDefault()` swallowed every space the user
+  // typed in chat. Walk up the DOM checking `isContentEditable` on each
+  // ancestor — the `contenteditable` attribute inherits, so the deepest
+  // editable wrapper is what we care about.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || e.repeat) return;
+      const t = e.target as Element | null;
       if (
-        e.code === "Space" &&
-        !e.repeat &&
-        !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
+        t instanceof HTMLInputElement ||
+        t instanceof HTMLTextAreaElement ||
+        (t instanceof HTMLElement && t.isContentEditable) ||
+        (t && t.closest("[contenteditable='true'], [contenteditable='']"))
       ) {
-        e.preventDefault();
-        spaceHeldRef.current = true;
-        setSpaceHeld(true);
+        return;
       }
+      e.preventDefault();
+      spaceHeldRef.current = true;
+      setSpaceHeld(true);
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") {
@@ -878,12 +889,20 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
   }, [hidden, handleSvgPaste]);
 
   // ─── Alt key for distance measurement ───
+  // 2026-04-30: same contenteditable-aware guard as the Space handler
+  // above. Without it, holding Alt while typing in chat / IdeaEditor
+  // ate the OS-level Alt-modified character (e.g. Mac Option+8 = "•").
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const held = e.type === "keydown" && e.key === "Alt";
-      setAltHeld(e.key === "Alt" ? e.type === "keydown" : altHeld);
+    const isEditableTarget = (t: EventTarget | null): boolean =>
+      t instanceof HTMLInputElement ||
+      t instanceof HTMLTextAreaElement ||
+      (t instanceof HTMLElement && t.isContentEditable) ||
+      !!(t instanceof Element && t.closest("[contenteditable='true'], [contenteditable='']"));
+    const down = (e: KeyboardEvent) => {
+      if (e.key !== "Alt" || isEditableTarget(e.target)) return;
+      e.preventDefault();
+      setAltHeld(true);
     };
-    const down = (e: KeyboardEvent) => { if (e.key === "Alt") { e.preventDefault(); setAltHeld(true); } };
     const up = (e: KeyboardEvent) => { if (e.key === "Alt") setAltHeld(false); };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -1177,6 +1196,43 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
     },
     [spaceHeld, isEmptyCanvasTarget],
   );
+
+  // Click ANYWHERE outside the canvas (chat sidebar, app sidebar, top bar,
+  // any other artifact block) also deselects. Without this, the user could
+  // select a taste, click off into chat to type, but visually the taste
+  // stayed highlighted as if it were still the active selection.
+  // Implementation: document-level mousedown listener, only mounted while
+  // a taste is selected. Inside-canvas clicks fall through (handled by
+  // handleCanvasClick + handleItemMouseDown below). Overlays anchored to
+  // the canvas (context menu / mention picker / confirmation dialog) are
+  // exempted so clicking a menu item doesn't drop the taste reference
+  // mid-flow. (2026-04-30 user request.)
+  useEffect(() => {
+    if (!selectedId) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      const target = e.target as Element | null;
+      if (!target) return;
+      // Inside the canvas surface — handleCanvasClick / handleItemMouseDown
+      // already do the right thing (deselect on empty area, switch on
+      // a different taste, no-op on the selected taste).
+      if (target.closest(".svg-canvas-panel")) return;
+      // Linked overlays — keep selection so user can complete the flow.
+      if (
+        target.closest(".taste-context-menu") ||
+        target.closest(".mention-picker") ||
+        target.closest(".confirm-dialog")
+      ) {
+        return;
+      }
+      // Mid-drag clicks shouldn't drop selection (would yank focus away
+      // from the active drag). itemDragging is the existing flag.
+      if (itemDragging) return;
+      setSelectedId(null);
+      setCtxMenu(null);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [selectedId, itemDragging]);
 
   const hideStyle = hidden ? ({ display: "none" } as const) : undefined;
 
