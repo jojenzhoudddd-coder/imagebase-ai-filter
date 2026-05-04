@@ -709,33 +709,44 @@ export default function ChatSidebar({
         //  1) First turn — replace the local `assistantMsgId` placeholder with
         //     the server-assigned id.
         //  2) Queued turn — the current turn finished (`done` already arrived,
-        //     placeholder is gone), now a NEW assistant turn begins on the
-        //     same SSE. We need to push a fresh streaming asst bubble for it.
+        //     placeholder frozen), a NEW assistant turn begins on the same SSE.
+        //     Insert a fresh streaming asst bubble RIGHT AFTER its user query
+        //     (the first user without an asst between it and the next user)
+        //     so visual order stays Q1→A1→Q2→A2→Q3→A3, not Q1→A1→Q2→Q3→A2→A3.
         setMessages((prev) => {
-          // Find the most recent streaming asst (from current turn) — if it
-          // still has the local placeholder id, this is the first turn.
           const localPlaceholderIdx = prev.findIndex((m) => m.id === assistantMsgId);
           if (localPlaceholderIdx >= 0) {
             return prev.map((m, idx) => (idx === localPlaceholderIdx ? { ...m, id: serverId } : m));
           }
-          // Subsequent turn (queue drain): start a fresh streaming bubble.
-          return [
-            ...prev,
-            {
-              id: serverId,
-              role: "assistant",
-              content: "",
-              toolCalls: [],
-              streaming: true,
-              turnMeta: {
-                startedAt: Date.now(),
-                completionTokens: 0,
-                phase: "generating",
-              },
+          // Find the first orphan user (no asst between it and the next user).
+          let insertAfterIdx = -1;
+          for (let i = 0; i < prev.length; i++) {
+            if (prev[i].role !== "user") continue;
+            let hasAsstBeforeNextUser = false;
+            for (let j = i + 1; j < prev.length; j++) {
+              if (prev[j].role === "user") break;
+              if (prev[j].role === "assistant") { hasAsstBeforeNextUser = true; break; }
+            }
+            if (!hasAsstBeforeNextUser) { insertAfterIdx = i; break; }
+          }
+          const newAsst: UiMessage = {
+            id: serverId,
+            role: "assistant",
+            content: "",
+            toolCalls: [],
+            streaming: true,
+            turnMeta: {
+              startedAt: Date.now(),
+              completionTokens: 0,
+              phase: "generating",
             },
-          ];
+          };
+          if (insertAfterIdx >= 0) {
+            return [...prev.slice(0, insertAfterIdx + 1), newAsst, ...prev.slice(insertAfterIdx + 1)];
+          }
+          // Fallback (no orphan): append at end.
+          return [...prev, newAsst];
         });
-        stickToBottomRef.current = true;
       },
       onMessage: (delta) => {
         setMessages((prev) => {
