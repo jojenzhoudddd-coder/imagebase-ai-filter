@@ -1727,6 +1727,21 @@ async function* runAgentImpl(
   ];
   const availableSkillsByNameForTurn = buildAvailableSkillsByName(userSkillsForTurn);
   const skillNameForToolForTurn = buildSkillNameForTool(userSkillsForTurn);
+  // Per-turn tool lookup map. Builtin `toolsByName` only knows static
+  // tools (tier0/tier1 + builtin skills' tools). User skills' synthesized
+  // `invoke_skill_workflow_<id>_<i>` tools are created at runtime via
+  // `toSkillDefinition()` from DB rows — they don't exist in the static
+  // map. Without this merge, when the model calls a user-skill workflow
+  // tool, `toolsByName[fc.name]` returns undefined → UNKNOWN_TOOL error,
+  // even though `resolveActiveTools` happily handed that tool to the model
+  // in the round's tool list. Build a per-turn override map that mirrors
+  // the static one + user skill tools, then use it for execution lookup.
+  const toolsByNameForTurn: Record<string, ToolDefinition> = { ...toolsByName };
+  for (const skill of userSkillsForTurn) {
+    for (const t of skill.tools) {
+      toolsByNameForTurn[t.name] = t;
+    }
+  }
   const autoActivated = autoActivateByTriggers(
     skillState,
     userMessage,
@@ -2349,7 +2364,10 @@ async function* runAgentImpl(
         continue;
       }
 
-      const tool = toolsByName[fc.name];
+      // Look up via the per-turn map (builtin + user skill workflow tools).
+      // Falling back to module-level toolsByName here would still miss
+      // user skills — keep them at parity by reading from the merged map.
+      const tool = toolsByNameForTurn[fc.name];
       if (!tool) {
         const msg = `未知工具: ${fc.name}`;
         yield { event: "error", data: { code: "UNKNOWN_TOOL", message: msg } };
@@ -2811,7 +2829,31 @@ async function* resumeAfterConfirmImpl(
     return;
   }
 
-  const tool = toolsByName[pending.tool];
+  // V3.0 fix:在 lookup `pending.tool` 前先加载 user skills,因为危险确认
+  // 可能落在 user skill 的 invoke_skill_workflow_<id>_<i> 上(虽然当前那
+  // 个 dispatcher 工具自身不带 danger,但 workflow 里 spawn 的子工具被
+  // model 路由到 confirmation 的边缘场景仍存在)。也兼顾未来可能的
+  // user-skill-defined danger tool。一并构建 per-resume 的 tools 查找
+  // 表,把 user skill 工具合并进去。
+  const resumeAgentId = ctx.agentId || DEFAULT_AGENT_ID;
+  // Reuse the per-conversation skill state so that if the confirmed tool
+  // happens to be a skill-router tool (today none are danger=true, but keep
+  // it defensively consistent), activation callbacks still mutate the same
+  // state the next turn will read.
+  const resumeSkillState = getOrInitSkillState(ctx.conversationId);
+  let resumeUserSkills: SkillDefinition[] = [];
+  try {
+    resumeUserSkills = await loadUserSkills(resumeAgentId);
+  } catch {
+    /* ignore */
+  }
+  const resumeToolsByName: Record<string, ToolDefinition> = { ...toolsByName };
+  for (const s of resumeUserSkills) {
+    for (const t of s.tools) {
+      resumeToolsByName[t.name] = t;
+    }
+  }
+  const tool = resumeToolsByName[pending.tool];
   if (!tool) {
     yield { event: "error", data: { code: "UNKNOWN_TOOL", message: `未知工具: ${pending.tool}` } };
     return;
@@ -2820,21 +2862,6 @@ async function* resumeAfterConfirmImpl(
   yield { event: "tool_start", data: { callId, tool: pending.tool, args: pending.args } };
   let output: string;
   let success = true;
-  const resumeAgentId = ctx.agentId || DEFAULT_AGENT_ID;
-  // Reuse the per-conversation skill state so that if the confirmed tool
-  // happens to be a skill-router tool (today none are danger=true, but keep
-  // it defensively consistent), activation callbacks still mutate the same
-  // state the next turn will read.
-  const resumeSkillState = getOrInitSkillState(ctx.conversationId);
-  // Load user skills for the resume so onActivateSkill knows about names that
-  // only exist in this agent's UserSkill table (e.g. user skill became danger
-  // and was deferred to this confirmation round). Best-effort.
-  let resumeUserSkills: SkillDefinition[] = [];
-  try {
-    resumeUserSkills = await loadUserSkills(resumeAgentId);
-  } catch {
-    /* ignore */
-  }
   const resumeAvailableSkillsByName = buildAvailableSkillsByName(resumeUserSkills);
   const resumeToolCtx: ToolContext = {
     agentId: resumeAgentId,
