@@ -155,6 +155,19 @@ function readCache(workspaceId: string): CachedState | null {
       toolCalls: (m.toolCalls || []).map((tc) =>
         tc.status === "running" ? { ...tc, status: "error" as const } : tc
       ),
+      // Schema migration:cache 里旧版 turnMeta 用 totalTokens,新版用
+      // completionTokens。读到旧 shape 时 completionTokens = undefined,
+      // GeneratingMeta 里 .toLocaleString() 会炸。这里把旧字段映射过来,
+      // 同时兜底成 0,保证组件 props 类型契约。
+      turnMeta: m.turnMeta
+        ? {
+            ...m.turnMeta,
+            completionTokens:
+              (m.turnMeta as any).completionTokens
+              ?? (m.turnMeta as any).totalTokens
+              ?? 0,
+          }
+        : undefined,
     }));
     return parsed;
   } catch {

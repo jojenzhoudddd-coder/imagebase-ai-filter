@@ -53,7 +53,7 @@ interface Props {
 export default function GeneratingMeta({
   phase,
   startedAt,
-  completionTokens,
+  completionTokens = 0,
   frozenDurationMs,
 }: Props) {
   const { t } = useTranslation();
@@ -82,7 +82,11 @@ export default function GeneratingMeta({
 
   // Number formatting: tokens use `,` thousand separators (1,234) so
   // the strip reads naturally even at 100k+ tokens. seconds stays raw.
-  const tokensStr = completionTokens.toLocaleString();
+  // Defensive ?? 0 fallback covers stale localStorage cache from before
+  // the totalTokens → completionTokens rename — old shapes deserialize with
+  // completionTokens undefined; without this guard `.toLocaleString()` on
+  // undefined throws a TypeError that crashes the whole message tree.
+  const tokensStr = (completionTokens ?? 0).toLocaleString();
 
   return (
     <div className={`chat-generating-meta phase-${phase}`}>
