@@ -1822,19 +1822,27 @@ function serverToUi(m: ChatMessage): UiMessage {
 }
 
 /**
- * V2.1 A5: merge server-fetched messages with local state. Server is the
- * source of truth EXCEPT in two cases:
+ * V2.1 A5 / V3.0 PR4 修订: merge server-fetched messages with local state.
+ * Server is the source of truth EXCEPT:
  *   1) Local message marked `streaming: true` → keep local (server hasn't
  *      persisted the final yet).
  *   2) Local message has subagentRuns / workflowRuns that server doesn't
  *      have yet (streaming-tail race window) → keep local for those fields.
+ *   3) **Local-only streaming messages must survive the merge** — listener
+ *      事件触发的 forceReload 在主流尚未结束时拉 DB,而 backend 是 turn 结束
+ *      才把 assistant 消息写库 (runAgent 末尾 convStore.appendMessage)。所以
+ *      server 那时根本没这条 assistant,如果 merge 只 server.map 输出,本地
+ *      正在流式累积内容的 assistant 气泡会从 UI 里消失,token 继续从 SSE 流
+ *      进来累加却没有可见容器,直到用户点 Stop / 自然 done 才"复活"。修复:
+ *      把 local 里 streaming:true 但 server 里没有的消息 append 到结果末尾。
  *
  * Pure: takes new (server) + old (local), returns merged array preserving
- * server order.
+ * server order, with any orphan-streaming local entries appended at the end.
  */
 function mergeServerWithLocal(server: UiMessage[], local: UiMessage[]): UiMessage[] {
   const localById = new Map(local.map((m) => [m.id, m]));
-  return server.map((s) => {
+  const serverIds = new Set(server.map((s) => s.id));
+  const merged = server.map((s) => {
     const l = localById.get(s.id);
     if (!l) return s;
     if (l.streaming) return l; // keep streaming local intact
@@ -1847,6 +1855,19 @@ function mergeServerWithLocal(server: UiMessage[], local: UiMessage[]): UiMessag
       workflowRuns: (s.workflowRuns?.length ?? 0) > 0 ? s.workflowRuns : l.workflowRuns,
     };
   });
+  // (3) 把 local 里 streaming:true 但 server 不认识的消息追到末尾。典型场景:
+  //   - 主线 fetch SSE 还在跑,assistant 气泡 (streaming:true) 持续累积 token
+  //   - 用户 append → branch_started → forceReload → 拉 DB
+  //   - server 那时还没 assistant,直接 server.map 会把 assistant 整条丢掉
+  //   - 加这一段后,local-only streaming 消息会被 keep,UI 维持显示
+  // 注意只 keep "streaming:true",已结束的 local-only(理论上不该有)被忽略,
+  // 防止 race 留下脏数据。
+  for (const l of local) {
+    if (l.streaming && !serverIds.has(l.id)) {
+      merged.push(l);
+    }
+  }
+  return merged;
 }
 
 /** Backend WorkflowEvent kind names ↔ UI nodeEvent kind names. */
