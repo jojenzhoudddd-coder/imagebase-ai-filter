@@ -1900,13 +1900,12 @@
   padding: 4px 0;
 }
 .chat-generating-meta.phase-generated { color: var(--text-muted); }
+/* "Generating" / "Generated" 文字 —— 跟右侧的秒数/token 数字一致风格,
+ * 不再抢眼(去掉 font-weight:500 + text-primary)。整条 meta 现在视觉上
+ * 是同色同字重的次要信息,只有蓝点呼吸一处提示"在跑"。 */
 .chat-generating-meta-label {
-  font-weight: 500;
-  color: var(--text-primary);
-}
-.chat-generating-meta.phase-generated .chat-generating-meta-label {
-  color: var(--text-muted);
-  font-weight: 400;
+  font-weight: inherit;
+  color: inherit;
 }
 .chat-generating-meta-sep { color: var(--text-muted); }
 .chat-generating-meta-unit {
