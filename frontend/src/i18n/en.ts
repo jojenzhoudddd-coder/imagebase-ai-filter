@@ -584,6 +584,7 @@ export const en = {
   "chat.meta.tokens": "tokens",
   "chat.preSynth.expand": "Show original main reply",
   "chat.preSynth.collapse": "Hide original main reply",
+  "chat.append.ack": "Got it: \"{{query}}\". I'll finish the previous reply first, while a parallel branch handles this new one. Merged answer comes when both finish.",
   "chat.thinking.caption": "Analyzing your request",
   "chat.thinking.collapsed": "Deep thinking",
   "chat.tool.status.running": "Running",

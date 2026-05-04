@@ -1155,13 +1155,17 @@ export default function ChatSidebar({
   const handleAppendSend = useCallback(
     (convId: string, text: string) => {
       const userMsgId = `u_append_${Date.now()}`;
+      const ackMsgId = `a_branchack_${Date.now()}`;
       stickToBottomRef.current = true;
-      // 本地乐观渲染时就打 branchTag="appended",FE fold 规则立刻生效:
-      // append 完毕的瞬间(server ack 之前)同 turn 的 main asst 就会被
-      // 折叠成卡片,UI 重心立刻转到新提问 + 后续 synth 答复。
+      // 本地乐观渲染:加 user 气泡(branchTag="appended" 让 fold 规则立即
+      // 生效,折叠正在流式的 main asst)+ branch-ack 占位气泡 —— 一段固定
+      // 文字告诉用户"我已经在并发处理两条 query,完成后会合并"。两个一起
+      // push 让 UI 一次到位,不出现"user 气泡先,半秒后 ack 再来"的闪。
+      const ackText = t("chat.append.ack", { query: text.slice(0, 30) });
       setMessages((prev) => [
         ...prev,
         { id: userMsgId, role: "user", content: text, toolCalls: [], branchTag: "appended" },
+        { id: ackMsgId, role: "assistant", content: ackText, toolCalls: [] },
       ]);
       setInputValue("");
       setError(null);
@@ -1169,16 +1173,16 @@ export default function ChatSidebar({
       const mentions = extractMentionPayloads(text);
       // 只跑一次 streamChatMessage,但服务端会在 yield branch_started 后
       // 立刻 res.end(),所以这里 onDone 几乎立刻触发。我们什么都不做 —
-      // 让 listener 接管后续 branch 事件。失败则把刚加的 user 气泡撤回。
+      // 让 listener 接管后续 branch 事件。失败则把刚加的 user + ack 撤回。
       streamChatMessage({
         conversationId: convId,
         message: text,
         mentions,
         onError: (code, message) => {
           setError(friendlyError(code, message));
-          // append 失败 → 撤回乐观渲染的 user 气泡,避免给用户"已发出"的
-          // 错觉。把消息内容回填到输入框让 ta 不必重打。
-          setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
+          // append 失败 → 撤回乐观渲染的 user + ack 气泡,避免给用户"已发出"
+          // 的错觉。把消息内容回填到输入框让 ta 不必重打。
+          setMessages((prev) => prev.filter((m) => m.id !== userMsgId && m.id !== ackMsgId));
           setInputValue((v) => (v.trim() ? v : text));
         },
         onDone: () => {
@@ -1754,35 +1758,49 @@ export default function ChatSidebar({
             {/* 800px 居中:用一个 inner wrapper 限制宽度 */}
             <div className="chat-messages-inner">
               {(() => {
-                // V3.0 multi-conv 折叠规则(immediate):每当遇到 branchTag
-                // ==="appended" 的 user 消息(= 用户在 main 还没结束时追加
-                // 了一条),立即把它前面**同 turn 内**的所有 assistant 消息
-                // 标为 foldable。"同 turn 内" = 一直回溯到撞上一条非
-                // appended 的 user 消息为止。
+                // V3.0 multi-conv 折叠规则(group-based):把消息按"non-
+                // appended user 起头"分组,每组覆盖到下一个 non-appended
+                // user(或末尾)。如果一组里出现过 branchTag="appended" 的
+                // user,组内所有 main assistant 都标为 foldable。
                 //
-                // 立即触发 vs 等 synth 完成的区别:
-                //   - 立即触发(现在):用户刚 append 完,main 还在流式产
-                //     字,UI 立刻把 main bubble 折叠成卡片,腾位置给 append
-                //     branch / synth 的内容。视觉重心立刻转到"新提问 +
-                //     最终聚合答复"。
-                //   - 等 synth 完成(旧规则):main 一直完整可见到 synth
-                //     落库才折叠,中间一段时间 UI 上 main + synth 内容大段
-                //     重复。
+                // 为什么要 group 而不是 walk-back:server DB seq 顺序是按
+                // 持久化时间走的 —— main turn 的 asst 在结束时才落库,这时
+                // 用户可能已经 append 过了,导致 DB 顺序变成
+                //   user_main → user_append → asst_main → asst_synth
+                // (asst_main 的 seq 反而比 user_append 大)。如果用旧的
+                // walk-back 规则从 user_append 往前找,只会撞到 user_main
+                // 直接 break,asst_main 永远不被识别。改成 group-based 后
+                // 不论 asst_main 在 user_append 之前(实时态)还是之后
+                // (持久化态),都能被正确归到这一组并 fold。
                 //
-                // synth-finished 也覆盖在这条规则里 —— 因为 synth 必然意味
-                // 着先有过 appended user(否则不会进 synth 路径),所以
-                // append 触发的 fold 把同 turn 的 main asst 都折掉了,synth
-                // 自己不会被折(synthesis 的 user 父消息是原 main user,不是
-                // appended user)。
+                // 不折叠的:
+                //   - synthesis 消息(最终聚合答复,要看)
+                //   - branch-ack 占位(id 前缀 a_branchack_,等待提示)
                 const foldedIds = new Set<string>();
+                let groupHasAppendedUser = false;
+                let groupAsstIds: string[] = [];
+                const commitGroup = () => {
+                  if (groupHasAppendedUser) {
+                    groupAsstIds.forEach((id) => foldedIds.add(id));
+                  }
+                };
                 for (let i = 0; i < messages.length; i++) {
-                  if (messages[i].role !== "user") continue;
-                  if (messages[i].branchTag !== "appended") continue;
-                  for (let j = i - 1; j >= 0; j--) {
-                    if (messages[j].role === "user") break;
-                    if (messages[j].role === "assistant") foldedIds.add(messages[j].id);
+                  const m = messages[i];
+                  if (m.role === "user") {
+                    if (m.branchTag === "appended") {
+                      groupHasAppendedUser = true;
+                    } else {
+                      commitGroup();
+                      groupHasAppendedUser = false;
+                      groupAsstIds = [];
+                    }
+                  } else if (m.role === "assistant") {
+                    const isSynth = m.branchTag === "synthesis";
+                    const isAck = m.id.startsWith("a_branchack_");
+                    if (!isSynth && !isAck) groupAsstIds.push(m.id);
                   }
                 }
+                commitGroup();
                 return messages.map((m) => (
                   <MessageBlock key={m.id} msg={m} foldedAsPreSynth={foldedIds.has(m.id)} />
                 ));
@@ -1978,6 +1996,20 @@ function mergeServerWithLocal(server: UiMessage[], local: UiMessage[]): UiMessag
       (s) => s.role === "user" && s.branchTag === "appended" && s.content === l.content,
     );
     if (!serverHasMatching) merged.push(l);
+  }
+  // (5) 保住 branch-ack 占位气泡:append 时本地 push 的 a_branchack_<ts>
+  // 是一段固定文字"已记下,正在并发处理"。它在等 server 的 synth 消息回来
+  // 之前一直可见。一旦 server 出现任何 branchTag="synthesis" 的 assistant
+  // 消息,视为合并答复已就绪 → 丢掉 ack,让 synth 消息成为最终答复。
+  const serverHasSynth = server.some(
+    (s) => s.role === "assistant" && s.branchTag === "synthesis",
+  );
+  if (!serverHasSynth) {
+    for (const l of local) {
+      if (!l.id.startsWith("a_branchack_")) continue;
+      if (serverIds.has(l.id)) continue;
+      merged.push(l);
+    }
   }
   return merged;
 }
