@@ -1976,6 +1976,26 @@ function normalizeServerNodeEvent(e: any): UiWorkflowRun["nodeEvents"][number] |
  *   - Tool-call cards render after the answer text, in the order they
  *     arrived from the stream.
  */
+/** 折叠态 main 气泡的 icon —— 简单的对话气泡 + 折叠箭头,暗示"原始
+ *  回复在这里,点击展开"。视觉跟 ToolCallCard 的 ToolGlyph 同 14×14
+ *  描边风格。 */
+function PreSynthIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M3 3.5h8a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H6L4 11V9.5H3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <circle cx="5.5" cy="6.5" r="0.6" fill="currentColor" />
+      <circle cx="7.5" cy="6.5" r="0.6" fill="currentColor" />
+      <circle cx="9.5" cy="6.5" r="0.6" fill="currentColor" />
+    </svg>
+  );
+}
+
 function MessageBlock({
   msg,
   foldedAsPreSynth = false,
@@ -1991,21 +2011,33 @@ function MessageBlock({
 
   // V3.0:折叠态 —— 默认收起,点击切换展开。展开后内容用同一个 MessageBlock
   // 渲染逻辑,只是不再被 fold 包住。
+  // 视觉复用 .chat-expand-card / .chat-expand-card-header(工具卡的样子),
+  // 跟 ThinkingIndicator 折叠态、ToolCallCard 同一视觉家族。
   if (foldedAsPreSynth && !preSynthExpanded) {
     return (
-      <button
-        type="button"
-        className="chat-presynth-fold"
-        onClick={() => setPreSynthExpanded(true)}
-        aria-label={t("chat.preSynth.expand")}
-      >
-        <span className="chat-presynth-fold-icon" aria-hidden="true">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="m4 5.5 3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <div className="chat-expand-card chat-presynth-card">
+        <button
+          type="button"
+          className="chat-expand-card-header"
+          onClick={() => setPreSynthExpanded(true)}
+          aria-label={t("chat.preSynth.expand")}
+        >
+          <span className="chat-expand-card-icon" aria-hidden="true">
+            <PreSynthIcon />
+          </span>
+          <span className="chat-expand-card-title">{t("chat.preSynth.expand")}</span>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            className="chat-expand-card-chevron"
+            aria-hidden="true"
+          >
+            <path d="m5 6 3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-        </span>
-        <span>{t("chat.preSynth.expand")}</span>
-      </button>
+        </button>
+      </div>
     );
   }
 

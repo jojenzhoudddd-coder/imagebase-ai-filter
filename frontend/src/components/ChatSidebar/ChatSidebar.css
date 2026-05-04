@@ -1890,30 +1890,14 @@
  * bubble while a turn is in flight, then freezes into the same row with
  * muted styling once `done` lands. Sits where the old skeleton preview
  * used to. Single line, no wrap; emphasizes time + token tally. */
-/* V3.0 multi-conv 折叠:被 synthesis 取代的 main 气泡默认折叠成一行
- * 浅色按钮,点击展开成完整 MessageBlock。视觉上跟普通气泡保持距离感,
- * 不抢眼,但又能让用户知道"还有原始流式回复可看"。 */
-.chat-presynth-fold {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-light);
-  border-radius: 999px;
-  font-size: 12px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background 100ms ease, color 100ms ease;
-  align-self: flex-start;
-}
-.chat-presynth-fold:hover {
-  background: var(--surface-3);
-  color: var(--text-secondary);
-}
-.chat-presynth-fold-icon {
-  display: inline-flex;
-  align-items: center;
+/* V3.0 multi-conv 折叠:被 synthesis 取代的 main 气泡默认折叠成与
+ * ToolCallCard / ThinkingIndicator(collapsed)同款 .chat-expand-card
+ * 视觉,头部一个小 icon + 标题 + chevron。点击展开成完整 MessageBlock。
+ * 不需要单独写样式,完全复用 .chat-expand-card / .chat-expand-card-header
+ * / .chat-expand-card-icon / .chat-expand-card-title /
+ * .chat-expand-card-chevron。 */
+.chat-presynth-card {
+  /* width: 100% 已经从 .chat-expand-card 继承,这里留 hook 以便日后微调 */
 }
 
 .chat-generating-meta {
