@@ -772,7 +772,10 @@
   transform: rotate(180deg);
 }
 .chat-expand-card-body {
-  padding: 8px 12px 12px 14px;
+  /* 左 padding 跟 header(.chat-expand-card-header 的 12px)对齐,正文不再
+   * 视觉上比 header 偏 2px 进去。原值 14px 是早期跟左侧 quote bar 共存
+   * 时留的视觉补偿,bar 移除后保留 14 显得 body 比 header 略缩进。 */
+  padding: 8px 12px 12px 12px;
   font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   font-size: 12px;
   line-height: 20px;
