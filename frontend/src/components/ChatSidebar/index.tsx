@@ -705,11 +705,37 @@ export default function ChatSidebar({
       message: text,
       mentions,
       onStart: (serverId) => {
-        // Replace pending id with the server-assigned one so subsequent
-        // events can correlate.
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantMsgId ? { ...m, id: serverId } : m))
-        );
+        // V3.0 (queue model): a `start` event can mean two things:
+        //  1) First turn — replace the local `assistantMsgId` placeholder with
+        //     the server-assigned id.
+        //  2) Queued turn — the current turn finished (`done` already arrived,
+        //     placeholder is gone), now a NEW assistant turn begins on the
+        //     same SSE. We need to push a fresh streaming asst bubble for it.
+        setMessages((prev) => {
+          // Find the most recent streaming asst (from current turn) — if it
+          // still has the local placeholder id, this is the first turn.
+          const localPlaceholderIdx = prev.findIndex((m) => m.id === assistantMsgId);
+          if (localPlaceholderIdx >= 0) {
+            return prev.map((m, idx) => (idx === localPlaceholderIdx ? { ...m, id: serverId } : m));
+          }
+          // Subsequent turn (queue drain): start a fresh streaming bubble.
+          return [
+            ...prev,
+            {
+              id: serverId,
+              role: "assistant",
+              content: "",
+              toolCalls: [],
+              streaming: true,
+              turnMeta: {
+                startedAt: Date.now(),
+                completionTokens: 0,
+                phase: "generating",
+              },
+            },
+          ];
+        });
+        stickToBottomRef.current = true;
       },
       onMessage: (delta) => {
         setMessages((prev) => {
@@ -1105,92 +1131,97 @@ export default function ChatSidebar({
         );
       },
       onDone: (summary) => {
-        setStreaming(false);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.role === "assistant" && m.streaming
-              ? {
-                  ...m,
-                  streaming: false,
-                  // V3.0 UX: freeze turnMeta — flip phase generating →
-                  // generated, lock in server's authoritative durationMs
-                  // and completionTokens (overrides the live client tally).
-                  turnMeta: m.turnMeta
-                    ? {
-                        ...m.turnMeta,
-                        phase: "generated",
-                        durationMs: summary?.durationMs ?? (Date.now() - m.turnMeta.startedAt),
-                        completionTokens: summary?.completionTokens ?? m.turnMeta.completionTokens,
-                      }
-                    : undefined,
-                  // Belt-and-braces: if `done` arrives but a toolCall never
-                  // got its `tool_result` (e.g. backend yielded done before
-                  // settling — shouldn't happen, but guards against future
-                  // regressions), don't leave a running spinner. Same
-                  // sanitization as the onError path.
-                  toolCalls: m.toolCalls.map((tc) =>
-                    tc.status === "running"
-                      ? { ...tc, status: "error", progress: undefined, heartbeat: undefined }
-                      : tc,
-                  ),
-                }
-              : m,
-          ),
-        );
-        // Turn just ended — the model may have called update_agent_name. Poke
-        // the pill to re-fetch so the header label catches up.
-        setAgentRefreshToken((n) => n + 1);
-        // 通知 TopBar 刷新 token / artifacts 统计（chat 刚消耗 token，artifact
-        // 也可能被改了；TopBar 监听这个 window 事件做即时 refetch）
-        try { window.dispatchEvent(new CustomEvent("workspace-stats-changed")); } catch { /* noop */ }
+        // V3.0 (queue model): one fetch SSE may carry multiple turns
+        // (current turn + drained queue). Distinguish:
+        //  - `summary` present  → a `done` SSE event for ONE turn. Freeze
+        //    that turn's streaming asst (turnMeta → "generated") but keep
+        //    `streaming` flag true — more turns may follow on the same SSE.
+        //  - `summary` absent   → the SSE itself closed (no more turns).
+        //    Set `streaming` flag false and sanitize any orphaned tools.
+        if (summary) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.role === "assistant" && m.streaming
+                ? {
+                    ...m,
+                    streaming: false,
+                    turnMeta: m.turnMeta
+                      ? {
+                          ...m.turnMeta,
+                          phase: "generated",
+                          durationMs: summary.durationMs ?? (Date.now() - m.turnMeta.startedAt),
+                          completionTokens: summary.completionTokens ?? m.turnMeta.completionTokens,
+                        }
+                      : undefined,
+                    toolCalls: m.toolCalls.map((tc) =>
+                      tc.status === "running"
+                        ? { ...tc, status: "error", progress: undefined, heartbeat: undefined }
+                        : tc,
+                    ),
+                  }
+                : m,
+            ),
+          );
+        } else {
+          // SSE closed — done with all turns.
+          setStreaming(false);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.role === "assistant" && m.streaming
+                ? {
+                    ...m,
+                    streaming: false,
+                    turnMeta: m.turnMeta
+                      ? {
+                          ...m.turnMeta,
+                          phase: "generated",
+                          durationMs: m.turnMeta.durationMs ?? (Date.now() - m.turnMeta.startedAt),
+                        }
+                      : undefined,
+                    toolCalls: m.toolCalls.map((tc) =>
+                      tc.status === "running"
+                        ? { ...tc, status: "error", progress: undefined, heartbeat: undefined }
+                        : tc,
+                    ),
+                  }
+                : m,
+            ),
+          );
+          setAgentRefreshToken((n) => n + 1);
+          try { window.dispatchEvent(new CustomEvent("workspace-stats-changed")); } catch { /* noop */ }
+        }
       },
     });
   }, [activeConv, inputValue, streaming, onActiveTableChange, onDemoCreated]);
 
-  // V3.0 PR4: append 路径 —— streaming 期间用户继续输入触发的 second submit。
-  // 不开 fetch SSE 长连接,只 POST + 期望立刻收到 branch_started ack 后 close。
-  // branch 内部事件(subagent_message / branch_finished / synth_*)走 listener
-  // 推送到 UI。这里只负责:(a) 把 user 气泡先 push 进 messages,(b) 触发 POST,
-  // (c) 失败时回滚气泡。
+  // V3.0 (queue model): append 路径 —— streaming 期间用户继续输入。
+  // 不打断当前回复,只 push user 气泡 + POST。后端入队,turn_pending ack 立刻
+  // 关流。当前主线的 fetch SSE 跑完当前 turn 后,会在同一条流上继续 drain
+  // queue,emit `start` → onStart 自动 push 新的 streaming asst 气泡。
   const handleAppendSend = useCallback(
     (convId: string, text: string) => {
       const userMsgId = `u_append_${Date.now()}`;
-      const ackMsgId = `a_branchack_${Date.now()}`;
       stickToBottomRef.current = true;
-      // 本地乐观渲染:加 user 气泡(branchTag="appended" 让 fold 规则立即
-      // 生效,折叠正在流式的 main asst)+ branch-ack 占位气泡 —— 一段固定
-      // 文字告诉用户"我已经在并发处理两条 query,完成后会合并"。两个一起
-      // push 让 UI 一次到位,不出现"user 气泡先,半秒后 ack 再来"的闪。
-      const ackText = t("chat.append.ack", { query: text.slice(0, 30) });
       setMessages((prev) => [
         ...prev,
-        { id: userMsgId, role: "user", content: text, toolCalls: [], branchTag: "appended" },
-        { id: ackMsgId, role: "assistant", content: ackText, toolCalls: [] },
+        { id: userMsgId, role: "user", content: text, toolCalls: [] },
       ]);
       setInputValue("");
       setError(null);
 
       const mentions = extractMentionPayloads(text);
-      // 只跑一次 streamChatMessage,但服务端会在 yield branch_started 后
-      // 立刻 res.end(),所以这里 onDone 几乎立刻触发。我们什么都不做 —
-      // 让 listener 接管后续 branch 事件。失败则把刚加的 user + ack 撤回。
       streamChatMessage({
         conversationId: convId,
         message: text,
         mentions,
         onError: (code, message) => {
           setError(friendlyError(code, message));
-          // append 失败 → 撤回乐观渲染的 user + ack 气泡,避免给用户"已发出"
-          // 的错觉。把消息内容回填到输入框让 ta 不必重打。
-          setMessages((prev) => prev.filter((m) => m.id !== userMsgId && m.id !== ackMsgId));
+          // 排队失败 → 撤回 user 气泡,内容回填输入框。
+          setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
           setInputValue((v) => (v.trim() ? v : text));
         },
-        onDone: () => {
-          // append 路径下,onDone 表示后端已 ack branch_started 并关流;
-          // 主线 fetch SSE 仍在跑(由原来的 handleSend 持有),listener 会
-          // 把 branch_finished / synth_* 事件投给所有人。这里不动 streaming,
-          // 也不动主消息状态。
-        },
+        // 不需要 onDone — 这条 fetch 只接 turn_pending 后立即关流,
+        // 后续真正的 turn 事件走 handleSend 持有的主 fetch SSE。
       });
     },
     [setMessages, setInputValue, setError],
@@ -1426,13 +1457,12 @@ export default function ChatSidebar({
     const off = listenChatShared(convId, {
       // main-flow 类 — 自己 fetch SSE 已投递
       onMessagePersisted: gatedReload,
-      // V3.0 multi-conv 类 — 必须无条件 reload,否则 append branch 的发起方
-      // 自己就看不到 branch 进度 / 合成结果
-      onBranchStarted: forceReload,
-      onBranchFinished: forceReload,
-      onTurnPromoted: forceReload,
-      onSynthFinished: forceReload,
-      onTurnPending: forceReload,
+      // V3.0 multi-conv 队列模型:turn_pending / turn_promoted 用来同步多
+      // ChatBlock 视图(其他 block 上的同 conv 看到 user 消息排队 / 升级)。
+      // 发起方自己的 fetch SSE 已经处理了 user 气泡 + 流式 asst,这里
+      // gatedReload 即可(streaming 期间不抢拉,turn 结束后自动 catch up)。
+      onTurnPending: gatedReload,
+      onTurnPromoted: gatedReload,
       // V1 backward-compat events (assistant 流式 done / tool_result):
       // 仍走 gated reload(发起方 fetch SSE 已投递了真实事件)
       onEvent: (name: string) => {
@@ -1757,98 +1787,9 @@ export default function ChatSidebar({
 
             {/* 800px 居中:用一个 inner wrapper 限制宽度 */}
             <div className="chat-messages-inner">
-              {(() => {
-                // V3.0 multi-conv 折叠规则 + 渲染顺序重排。
-                //
-                // 折叠规则(group-based):把消息按"non-appended user 起头"
-                // 分组,每组覆盖到下一个 non-appended user(或末尾)。组内
-                // 出现过 branchTag="appended" 的 user → 组内所有 main asst
-                // 都标 foldable。不折叠 synthesis(最终答复)和 a_branchack_
-                // 占位(进度提示)。
-                //
-                // 为什么要 group 而不是 walk-back:DB seq 持久化顺序导致
-                // asst_main(seq=2)出现在 user_append(seq=1)之后,旧的
-                // walk-back 规则永远找不到 asst_main。
-                //
-                // 渲染顺序重排:为了让"所有 fold 卡片统一出现在主对话下方"
-                // (用户预期),把消息分两批渲染:
-                //   - regular: 不被折叠的消息 → 按原 seq 顺序在上
-                //   - folded:  被折叠的消息 → 一并放到末尾
-                // ack 占位顺便接管 streaming 主线的 turnMeta,这样
-                // "Generating · Xs · Y tokens" 进度条始终在主对话流可见,
-                // 不会因为 main asst 被折进卡里而消失。
-                const foldedIds = new Set<string>();
-                let groupHasAppendedUser = false;
-                let groupAsstIds: string[] = [];
-                const commitGroup = () => {
-                  if (groupHasAppendedUser) {
-                    groupAsstIds.forEach((id) => foldedIds.add(id));
-                  }
-                };
-                for (let i = 0; i < messages.length; i++) {
-                  const m = messages[i];
-                  if (m.role === "user") {
-                    if (m.branchTag === "appended") {
-                      groupHasAppendedUser = true;
-                    } else {
-                      commitGroup();
-                      groupHasAppendedUser = false;
-                      groupAsstIds = [];
-                    }
-                  } else if (m.role === "assistant") {
-                    const isSynth = m.branchTag === "synthesis";
-                    const isAck = m.id.startsWith("a_branchack_");
-                    if (!isSynth && !isAck) groupAsstIds.push(m.id);
-                  }
-                }
-                commitGroup();
-
-                // 抓"被折叠且仍在 streaming"的 main asst 的 turnMeta —— 这
-                // 是 GeneratingMeta 的活数据源。append 之后它本来藏在 fold
-                // 卡里看不见,我们把它"抬"到 ack 占位上重渲。
-                let liveTurnMetaForAck: UiMessage["turnMeta"] | undefined;
-                let liveTurnMetaIsStreaming = false;
-                for (const m of messages) {
-                  if (!foldedIds.has(m.id)) continue;
-                  if (!m.turnMeta) continue;
-                  liveTurnMetaForAck = m.turnMeta;
-                  liveTurnMetaIsStreaming = Boolean(m.streaming);
-                  break;
-                }
-
-                const regular: UiMessage[] = [];
-                const folded: UiMessage[] = [];
-                for (const m of messages) {
-                  if (foldedIds.has(m.id)) folded.push(m);
-                  else regular.push(m);
-                }
-
-                return (
-                  <>
-                    {regular.map((m) => {
-                      // ack 占位 + 有活 turnMeta → 把 meta 注入,组件就会
-                      // 渲染 "Generating · Xs · Y tokens" 进度条。
-                      if (m.id.startsWith("a_branchack_") && liveTurnMetaForAck) {
-                        return (
-                          <MessageBlock
-                            key={m.id}
-                            msg={{
-                              ...m,
-                              turnMeta: liveTurnMetaForAck,
-                              streaming: liveTurnMetaIsStreaming,
-                            }}
-                            foldedAsPreSynth={false}
-                          />
-                        );
-                      }
-                      return <MessageBlock key={m.id} msg={m} foldedAsPreSynth={false} />;
-                    })}
-                    {folded.map((m) => (
-                      <MessageBlock key={m.id} msg={m} foldedAsPreSynth={true} />
-                    ))}
-                  </>
-                );
-              })()}
+              {messages.map((m) => (
+                <MessageBlock key={m.id} msg={m} />
+              ))}
 
               {pendingConfirm && (
                 <ConfirmCard
@@ -2013,47 +1954,28 @@ function mergeServerWithLocal(server: UiMessage[], local: UiMessage[]): UiMessag
   });
   // (3) 把 local 里 streaming:true 但 server 不认识的消息追到末尾。典型场景:
   //   - 主线 fetch SSE 还在跑,assistant 气泡 (streaming:true) 持续累积 token
-  //   - 用户 append → branch_started → forceReload → 拉 DB
-  //   - server 那时还没 assistant,直接 server.map 会把 assistant 整条丢掉
+  //   - 用户 append → forceReload → 拉 DB
+  //   - server 那时还没 assistant (turn 结束才入库),直接 server.map 会把
+  //     assistant 整条丢掉
   //   - 加这一段后,local-only streaming 消息会被 keep,UI 维持显示
-  // 注意只 keep "streaming:true",已结束的 local-only(理论上不该有)被忽略,
-  // 防止 race 留下脏数据。
   for (const l of local) {
     if (l.streaming && !serverIds.has(l.id)) {
       merged.push(l);
     }
   }
-  // (4) 同样保住乐观渲染的 appended user 气泡。handleAppendSend 在 server
-  // 持久化前就先 push 一条 id=`u_append_<ts>` 的 user 消息,branchTag
-  // ="appended"。listener 收到 server 的 branch_started 立刻 forceReload
-  // 拉 DB,但 server 的 user_message 还在 IO 中,fetch 拿到的 messages 不包
-  // 含它 → server.map 输出不会有这条 → mergeServerWithLocal 只走规则 (3) 的
-  // 话只 keep streaming asst,丢掉 user_append → 用户看到自己刚发的消息一闪
-  // 就消失。
-  // dedup 策略:server 一旦有同 content + branchTag="appended" 的 user 消息,
-  // 视为它已经持久化(只是 id 不同),把 local 那条丢掉,避免出现重复。
+  // (4) 保住乐观渲染的 queued (append) user 气泡。handleAppendSend 在 server
+  // 持久化前就先 push 一条 id=`u_append_<ts>` 的 user 消息。listener 收到
+  // turn_pending / turn_promoted 立刻 forceReload 拉 DB,但 server 那时还没
+  // 把这条 user 消息写库(只在被 drain 出队时才入库),merge 后不能丢失。
+  // dedup:一旦 server 出现同 content 的 user 消息,视为已持久化,丢掉 local。
   for (const l of local) {
     if (l.role !== "user") continue;
-    if (l.branchTag !== "appended") continue;
+    if (!l.id.startsWith("u_append_")) continue;
     if (serverIds.has(l.id)) continue;
     const serverHasMatching = server.some(
-      (s) => s.role === "user" && s.branchTag === "appended" && s.content === l.content,
+      (s) => s.role === "user" && s.content === l.content,
     );
     if (!serverHasMatching) merged.push(l);
-  }
-  // (5) 保住 branch-ack 占位气泡:append 时本地 push 的 a_branchack_<ts>
-  // 是一段固定文字"已记下,正在并发处理"。它在等 server 的 synth 消息回来
-  // 之前一直可见。一旦 server 出现任何 branchTag="synthesis" 的 assistant
-  // 消息,视为合并答复已就绪 → 丢掉 ack,让 synth 消息成为最终答复。
-  const serverHasSynth = server.some(
-    (s) => s.role === "assistant" && s.branchTag === "synthesis",
-  );
-  if (!serverHasSynth) {
-    for (const l of local) {
-      if (!l.id.startsWith("a_branchack_")) continue;
-      if (serverIds.has(l.id)) continue;
-      merged.push(l);
-    }
   }
   return merged;
 }
@@ -2088,45 +2010,9 @@ function normalizeServerNodeEvent(e: any): UiWorkflowRun["nodeEvents"][number] |
  *   - Tool-call cards render after the answer text, in the order they
  *     arrived from the stream.
  */
-/** 折叠态 main 气泡的 icon —— 简单的对话气泡 + 折叠箭头,暗示"原始
- *  回复在这里,点击展开"。视觉跟 ToolCallCard 的 ToolGlyph 同 14×14
- *  描边风格。 */
-function PreSynthIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path
-        d="M3 3.5h8a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H6L4 11V9.5H3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <circle cx="5.5" cy="6.5" r="0.6" fill="currentColor" />
-      <circle cx="7.5" cy="6.5" r="0.6" fill="currentColor" />
-      <circle cx="9.5" cy="6.5" r="0.6" fill="currentColor" />
-    </svg>
-  );
-}
-
-function MessageBlock({
-  msg,
-  foldedAsPreSynth = false,
-}: {
-  msg: UiMessage;
-  /** V3.0 折叠:此消息是被 synthesis 取代的中间产物(main 流式气泡 / branch
-   *  内容),默认折叠成可点击展开的"展开查看主线"按钮。 */
-  foldedAsPreSynth?: boolean;
-}) {
+function MessageBlock({ msg }: { msg: UiMessage }) {
   const { t } = useTranslation();
-  const [preSynthExpanded, setPreSynthExpanded] = useState(false);
   if (msg.role === "user") return <UserBubble content={msg.content} />;
-
-  // V3.0:折叠态 —— 默认收起卡片,点击 header 切换展开/收起。展开时卡片
-  // 仍在,内容渲染在 .chat-expand-card-body 里,chevron 旋转 180° 表示可
-  // 收起。视觉跟 ToolCallCard / ThinkingIndicator(collapsed) 一致。
-  // 注意:折叠态 return 提前;展开态会**穿过这里继续往下走**,把 card
-  // 头放在最上面,然后正常渲染消息内容,但被 .chat-expand-card-body 包住。
-  // 这部分逻辑放在 render 末尾(下方)。
 
   const hasThinking = Boolean(msg.thinking && msg.thinking.length > 0);
   const hasAnswer = msg.content.length > 0;
@@ -2196,41 +2082,7 @@ function MessageBlock({
     </div>
   );
 
-  // 非折叠态:直接返回 body
-  if (!foldedAsPreSynth) return assistantBody;
-
-  // 折叠态:包一层 .chat-expand-card 卡片;header 始终在,可点击切换;
-  // 展开时把 body 渲染进 .chat-expand-card-body。chevron 旋转表达开合。
-  return (
-    <div className={`chat-expand-card chat-presynth-card${preSynthExpanded ? " expanded" : ""}`}>
-      <button
-        type="button"
-        className="chat-expand-card-header"
-        onClick={() => setPreSynthExpanded((v) => !v)}
-        aria-expanded={preSynthExpanded}
-      >
-        <span className="chat-expand-card-icon" aria-hidden="true">
-          <PreSynthIcon />
-        </span>
-        <span className="chat-expand-card-title">
-          {preSynthExpanded ? t("chat.preSynth.collapse") : t("chat.preSynth.expand")}
-        </span>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 16 16"
-          fill="none"
-          className={`chat-expand-card-chevron${preSynthExpanded ? " expanded" : ""}`}
-          aria-hidden="true"
-        >
-          <path d="m5 6 3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-      {preSynthExpanded && (
-        <div className="chat-expand-card-body">{assistantBody}</div>
-      )}
-    </div>
-  );
+  return assistantBody;
 }
 
 function interleaveOrchestration(

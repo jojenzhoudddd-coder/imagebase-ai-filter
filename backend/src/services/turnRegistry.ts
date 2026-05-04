@@ -1,33 +1,18 @@
 /**
- * V3.0 PR4: TurnRegistry — multi-branch chat turn orchestrator.
+ * V3.0 PR4 (simplified 2026-05-04): TurnRegistry — single inflight turn per conv +
+ * a pending-message queue for serial processing.
  *
- * Tracks one InflightTurn per conversation:
- *  - mainBranch: original user query (host agent stream)
- *  - appendedBranches: queries arriving while main + branches are still running
- *  - pendingQueue: queries arriving DURING synth (deferred to next batch)
- *  - synthesisStarted: once true, new messages go to pendingQueue
+ * 设计变化:之前为每条 user message 起 branch/synth,现在简化为"一次只跑一个
+ * turn,inflight 时新 message 仅入队,turn 完成后逐个 drain"。
  *
- * 与 chatAgentService 的关系:chatAgentService 仍负责单 turn 的 host agent
- * 主流程(就是这里说的 mainBranch);TurnRegistry 在它之上加上"来 second
- * message 时起 branch、batch 完了起 synth、synth 中暂存"的 orchestrate 逻辑。
+ *  - inflight: 当前正在跑的 turn (有 abortController)
+ *  - pendingQueue: turn 进行中收到的 user messages,按到达顺序 drain
  *
- * V3.0 PR4 V1: 支持任意多 branch / 任意多 pendingQueue 长度,但只在单进程内
- *   同步(in-memory Map)。多 region 时改 Redis pubsub + locks。
+ * 与 chatAgentService 的关系:chatAgentService 仍负责单 turn 的 host agent 主流程;
+ * turnOrchestrator 在它之上加上"inflight 时入队、完成后逐个 drain"的 orchestrate 逻辑。
+ *
+ * V1: 单进程内同步(in-memory Map),多 region 时改 Redis pubsub + locks。
  */
-
-export interface BranchState {
-  branchId: string;
-  userMessageId: string;
-  queryText: string;
-  modelId: string;
-  startedAt: number;
-  status: "running" | "success" | "error" | "aborted";
-  finalText?: string;
-  errorMessage?: string;
-  /** Promise resolves when this branch's underlying agent loop finishes. */
-  completion: Promise<{ branchId: string; finalText: string; success: boolean; errorMessage?: string }>;
-  subagentRunId?: string;
-}
 
 export interface PendingMessage {
   userMessageId: string;
@@ -40,20 +25,10 @@ export interface InflightTurn {
   convId: string;
   agentId: string;
   startedAt: number;
-  /** WorkflowRun.id (PR5 will create one); V1 may be null for simplicity. */
-  workflowRunId?: string;
-  /** AbortController for the whole turn (main + branches + synth). */
+  /** AbortController for the whole turn (host agent + all queued drains). */
   abortController: AbortController;
 
-  mainBranch: BranchState;
-  appendedBranches: BranchState[];
-
-  /** True after all branches resolved + synth has been kicked off. */
-  synthesisStarted: boolean;
-  /** Set once synth completes (success / error). */
-  synthesisDone: boolean;
-
-  /** Messages received during synth — process as a new batch after synth. */
+  /** Messages received while a turn is inflight — drained serially after current turn. */
   pendingQueue: PendingMessage[];
 }
 
@@ -75,11 +50,13 @@ export function turnExists(convId: string): boolean {
   return turns.has(convId);
 }
 
-/** abort 当前 conv 的所有 inflight (main + branches + synth) */
+/** abort 当前 conv 的所有 inflight (含尚未 drain 的 pendingQueue) */
 export function abortTurn(convId: string, reason: string = "user_stop"): boolean {
   const t = turns.get(convId);
   if (!t) return false;
   t.abortController.abort(reason);
+  // 清掉 pendingQueue 防止 abort 后还继续 drain
+  t.pendingQueue.length = 0;
   return true;
 }
 
@@ -87,12 +64,3 @@ export function abortTurn(convId: string, reason: string = "user_stop"): boolean
 export function turnRegistryStats(): { active: number; conversations: string[] } {
   return { active: turns.size, conversations: [...turns.keys()] };
 }
-
-/**
- * 把 user message append 到当前 turn(添加 branch 或入 pendingQueue)。
- * 由 chatAgentService 调用,根据状态自动决定路由。
- */
-export type AppendResult =
-  | { mode: "main"; turn: InflightTurn }              // 没有 inflight,起新 main turn (caller 决定后续)
-  | { mode: "branch"; branch: BranchState; turn: InflightTurn } // 加为 appended branch
-  | { mode: "queued"; pending: PendingMessage; turn: InflightTurn }; // synth 中,入 queue
