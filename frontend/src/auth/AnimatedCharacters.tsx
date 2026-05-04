@@ -178,12 +178,20 @@ interface AnimatedCharactersProps {
   isTyping?: boolean;
   showPassword?: boolean;
   passwordLength?: number;
+  /** When set to a truthy value (a tick / nonce from the parent), all four
+   *  characters do a brief side-to-side head-shake. Used by LoginPage on
+   *  INVALID_CREDENTIALS to give visual feedback in addition to the toast.
+   *  Pass a number that increments on every wrong attempt — the shake
+   *  wrapper's React `key` is bound to it so the keyframes re-fire even
+   *  on back-to-back failures. Pass 0 / undefined to leave them still. */
+  wrongPasswordTick?: number;
 }
 
 export function AnimatedCharacters({
   isTyping = false,
   showPassword = false,
   passwordLength = 0,
+  wrongPasswordTick = 0,
 }: AnimatedCharactersProps) {
   const [mouseX, setMouseX] = useState<number>(0);
   const [mouseY, setMouseY] = useState<number>(0);
@@ -284,10 +292,28 @@ export function AnimatedCharacters({
 
   const isHidingPassword = passwordLength > 0 && !showPassword;
 
+  // Wrong-password shake. The CSS class is applied directly to each body
+  // div so the @keyframes' `transform: translateX(...)` takes effect for
+  // the 550ms duration. Important caveat: the keyframes' transform will
+  // OVERRIDE the inline `skewX(...)` mouse-follow transform during the
+  // shake — that's fine, the shake is the louder feedback. After the
+  // animation ends the inline skew comes back automatically.
+  //
+  // To make the animation re-fire on back-to-back wrong attempts (e.g.
+  // user types wrong password twice in a row), each shake-able element
+  // is keyed to the tick. When the tick increments React unmounts the
+  // div and creates a fresh one — the new node starts the animation from
+  // frame 0. Without the key trick a CSS animation that's already
+  // applied to a node won't restart just because the className changes.
+  const shakeKey = `tick-${wrongPasswordTick}`;
+  const shakeClass = wrongPasswordTick > 0 ? "auth-shake-no" : undefined;
+
   return (
     <div style={{ position: "relative", width: "550px", height: "400px" }}>
       {/* Purple tall rectangle — back layer */}
       <div
+        key={`purple-${shakeKey}`}
+        className={shakeClass}
         ref={purpleRef}
         style={{
           position: "absolute",
@@ -370,6 +396,8 @@ export function AnimatedCharacters({
 
       {/* Black tall rectangle — middle layer */}
       <div
+        key={`black-${shakeKey}`}
+        className={shakeClass}
         ref={blackRef}
         style={{
           position: "absolute",
@@ -446,6 +474,8 @@ export function AnimatedCharacters({
 
       {/* Orange semi-circle — front left */}
       <div
+        key={`orange-${shakeKey}`}
+        className={shakeClass}
         ref={orangeRef}
         style={{
           position: "absolute",
@@ -500,6 +530,8 @@ export function AnimatedCharacters({
 
       {/* Yellow tall rectangle — front right */}
       <div
+        key={`yellow-${shakeKey}`}
+        className={shakeClass}
         ref={yellowRef}
         style={{
           position: "absolute",

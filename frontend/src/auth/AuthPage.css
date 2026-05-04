@@ -432,3 +432,34 @@
 [data-theme="dark"] .auth-input:focus {
   box-shadow: 0 0 0 2px rgba(74, 130, 255, 0.25);
 }
+
+/* ─── Wrong-password shake animation ─────────────────────────────────────
+ *
+ * Triggered when LoginPage catches an INVALID_CREDENTIALS error: all four
+ * characters do a brief side-to-side head-shake "no". The wrapper class
+ * sits on each character's outer div so the animation's translate doesn't
+ * stack with the inline `skewX(...)` mouse-follow transform on the body —
+ * the wrapper translates, the body keeps skewing.
+ *
+ * Re-fire pattern: LoginPage clears the prop after 600ms, so even
+ * back-to-back wrong attempts retrigger the keyframes (animation runs to
+ * completion, prop flips off, prop flips on next time → animation
+ * re-applied). 600ms ≈ animation duration + a small buffer.
+ *
+ * Easing: 4 quick reversals over 550ms with cubic-bezier so the swing
+ * decelerates at extremes — feels like a real head-shake, not a uniform
+ * vibration. Translate amplitude 8px is enough to read at the auth
+ * page's scale without dislodging the eye-tracking gaze.
+ */
+@keyframes auth-shake-no {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-8px); }
+  35% { transform: translateX(8px); }
+  55% { transform: translateX(-5px); }
+  75% { transform: translateX(4px); }
+  90% { transform: translateX(-2px); }
+}
+
+.auth-shake-no {
+  animation: auth-shake-no 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}

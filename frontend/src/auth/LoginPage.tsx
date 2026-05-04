@@ -40,6 +40,11 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // 监控登录失败次数 —— 每次失败都自增,作为 AnimatedCharacters 的 shake
+  // 触发 nonce。React 看到 prop 变化 → 子组件用新 key 重新挂载对应 div →
+  // CSS @keyframes 重新从 frame 0 跑。普通 boolean 在连续两次错误时不会
+  // 重新触发动画 (true→true 不变),所以用单调递增的 number。
+  const [wrongPasswordTick, setWrongPasswordTick] = useState(0);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -59,6 +64,8 @@ export default function LoginPage() {
       const authErr = err as AuthError;
       const key = codeToToastKey(authErr.code);
       toast.error(t(key));
+      // 触发四个角色摇头动画 —— 视觉反馈,弥补只有 toast 的弱提示
+      setWrongPasswordTick((t) => t + 1);
     } finally {
       setSubmitting(false);
     }
@@ -80,6 +87,7 @@ export default function LoginPage() {
             isTyping={isTyping}
             showPassword={showPassword}
             passwordLength={password.length}
+            wrongPasswordTick={wrongPasswordTick}
           />
         </div>
 
