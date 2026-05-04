@@ -40,9 +40,11 @@ interface Props {
   phase: "generating" | "generated";
   /** UNIX ms when the turn started. Used for the live timer. */
   startedAt: number;
-  /** Cumulative tokens from the latest server `turn_usage` (live mode)
-   *  or the final `done` payload (completed mode). */
-  totalTokens: number;
+  /** **Completion** tokens for this turn (model output only, not counting
+   *  prompt/context which gets re-counted across multi-round tool calls).
+   *  Updated live by `turn_usage` events; finalized on `done` payload.
+   *  与 timer 类似 —— 是"本次对话轮次的纯增量",不是跨轮的累加和。 */
+  completionTokens: number;
   /** Server-reported final duration. ONLY used in "generated" phase. In
    *  "generating" phase the timer is client-side from `startedAt`. */
   frozenDurationMs?: number;
@@ -51,7 +53,7 @@ interface Props {
 export default function GeneratingMeta({
   phase,
   startedAt,
-  totalTokens,
+  completionTokens,
   frozenDurationMs,
 }: Props) {
   const { t } = useTranslation();
@@ -80,7 +82,7 @@ export default function GeneratingMeta({
 
   // Number formatting: tokens use `,` thousand separators (1,234) so
   // the strip reads naturally even at 100k+ tokens. seconds stays raw.
-  const tokensStr = totalTokens.toLocaleString();
+  const tokensStr = completionTokens.toLocaleString();
 
   return (
     <div className={`chat-generating-meta phase-${phase}`}>

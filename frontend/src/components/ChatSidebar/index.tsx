@@ -73,8 +73,14 @@ interface UiMessage {
   // "Generating · Xs · Y tokens" → "Generated · Xs · Y tokens".
   turnMeta?: {
     startedAt: number;
-    /** Cumulative tokens — updated live by turn_usage, finalized on done. */
-    totalTokens: number;
+    /** Tokens shown next to the timer. We use `completionTokens` (本轮模型
+     *  实际产出的 output 字数),不用 totalTokens —— totalTokens = prompt +
+     *  completion,prompt 在多轮 tool_call 时被反复计入(每个 provider round
+     *  的 prompt 都包含上一轮的 history),视觉上看起来"跨轮累加",其实是同
+     *  一段 history 被多次计费。completionTokens 没有重复计数,纯粹是"本次
+     *  generation 输出了多少 token",和 timer 一样是"这次对话轮次内的纯增
+     *  量"。 */
+    completionTokens: number;
     /** Server-reported final duration in ms. Only set after done. */
     durationMs?: number;
     /** Lifecycle marker: "generating" while in-flight, "generated" after done. */
@@ -647,7 +653,7 @@ export default function ChatSidebar({
         streaming: true,
         turnMeta: {
           startedAt: turnStartedAt,
-          totalTokens: 0,
+          completionTokens: 0,
           phase: "generating",
         },
       },
@@ -1075,7 +1081,7 @@ export default function ChatSidebar({
         setMessages((prev) =>
           prev.map((m) =>
             m.role === "assistant" && m.streaming && m.turnMeta
-              ? { ...m, turnMeta: { ...m.turnMeta, totalTokens: usage.totalTokens } }
+              ? { ...m, turnMeta: { ...m.turnMeta, completionTokens: usage.completionTokens } }
               : m,
           ),
         );
@@ -1090,13 +1096,13 @@ export default function ChatSidebar({
                   streaming: false,
                   // V3.0 UX: freeze turnMeta — flip phase generating →
                   // generated, lock in server's authoritative durationMs
-                  // and totalTokens (overrides the live client tally).
+                  // and completionTokens (overrides the live client tally).
                   turnMeta: m.turnMeta
                     ? {
                         ...m.turnMeta,
                         phase: "generated",
                         durationMs: summary?.durationMs ?? (Date.now() - m.turnMeta.startedAt),
-                        totalTokens: summary?.totalTokens ?? m.turnMeta.totalTokens,
+                        completionTokens: summary?.completionTokens ?? m.turnMeta.completionTokens,
                       }
                     : undefined,
                   // Belt-and-braces: if `done` arrives but a toolCall never
@@ -1947,7 +1953,7 @@ function MessageBlock({ msg }: { msg: UiMessage }) {
         <GeneratingMeta
           phase={msg.turnMeta.phase}
           startedAt={msg.turnMeta.startedAt}
-          totalTokens={msg.turnMeta.totalTokens}
+          completionTokens={msg.turnMeta.completionTokens}
           frozenDurationMs={msg.turnMeta.durationMs}
         />
       ) : waitingForFirstResponse ? (
