@@ -865,6 +865,10 @@ export interface ChatMessage {
   toolCalls?: ChatToolCall[];
   toolResult?: unknown;
   timestamp: number;
+  // V3.0 multi-conv branch 标记 —— UI 用它来判断是否折叠 main 气泡
+  // (synthesis 消息出现后,前面的 main 气泡折叠成"展开查看主线")
+  branchTag?: "main" | "appended" | "synthesis" | null;
+  parentMessageId?: string | null;
   // V3.0 UX 持久化的 per-turn meta(只在 assistant 消息且 turn 自然结束时有值)
   durationMs?: number;
   promptTokens?: number;

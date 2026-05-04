@@ -33,6 +33,9 @@ export interface Message {
   toolCalls?: ToolCall[];
   toolResult?: unknown;
   timestamp: number;
+  // V3.0 multi-conv:branch 标记 + 父消息引用
+  branchTag?: "main" | "appended" | "synthesis" | null;
+  parentMessageId?: string | null;
   // V3.0 UX:per-turn meta(GeneratingMeta freeze 后的最终值)
   durationMs?: number;
   promptTokens?: number;
@@ -98,6 +101,8 @@ function toMessage(row: {
   toolCalls: unknown;
   toolResult: unknown;
   timestamp: Date;
+  branchTag?: string | null;
+  parentMessageId?: string | null;
   durationMs?: number | null;
   promptTokens?: number | null;
   completionTokens?: number | null;
@@ -111,6 +116,8 @@ function toMessage(row: {
     toolCalls: (row.toolCalls as ToolCall[] | null) ?? undefined,
     toolResult: row.toolResult ?? undefined,
     timestamp: row.timestamp.getTime(),
+    branchTag: (row.branchTag as Message["branchTag"]) ?? null,
+    parentMessageId: row.parentMessageId ?? null,
     durationMs: row.durationMs ?? undefined,
     promptTokens: row.promptTokens ?? undefined,
     completionTokens: row.completionTokens ?? undefined,

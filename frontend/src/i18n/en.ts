@@ -582,6 +582,7 @@ export const en = {
   "chat.meta.generated": "Generated",
   "chat.meta.seconds": "s",
   "chat.meta.tokens": "tokens",
+  "chat.preSynth.expand": "Show original main reply",
   "chat.thinking.caption": "Analyzing your request",
   "chat.thinking.collapsed": "Deep thinking",
   "chat.tool.status.running": "Running",

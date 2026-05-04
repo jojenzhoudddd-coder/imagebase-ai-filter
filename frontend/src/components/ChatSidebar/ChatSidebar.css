@@ -1890,6 +1890,32 @@
  * bubble while a turn is in flight, then freezes into the same row with
  * muted styling once `done` lands. Sits where the old skeleton preview
  * used to. Single line, no wrap; emphasizes time + token tally. */
+/* V3.0 multi-conv 折叠:被 synthesis 取代的 main 气泡默认折叠成一行
+ * 浅色按钮,点击展开成完整 MessageBlock。视觉上跟普通气泡保持距离感,
+ * 不抢眼,但又能让用户知道"还有原始流式回复可看"。 */
+.chat-presynth-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+  align-self: flex-start;
+}
+.chat-presynth-fold:hover {
+  background: var(--surface-3);
+  color: var(--text-secondary);
+}
+.chat-presynth-fold-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
 .chat-generating-meta {
   display: inline-flex;
   align-items: center;

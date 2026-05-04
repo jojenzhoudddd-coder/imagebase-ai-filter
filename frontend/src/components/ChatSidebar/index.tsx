@@ -67,6 +67,11 @@ interface UiMessage {
   workflowRuns?: UiWorkflowRun[];
   streaming?: boolean;
   error?: { code: string; message: string };
+  // V3.0 multi-conv branch 标记 —— UI 用它来折叠"被 synth 取代"的 main
+  // 气泡。null / "main" / undefined = 老主线;"appended" = 用户追加的 user;
+  // "synthesis" = 多分支合成后的最终回复(出现后前面的 main 折叠)。
+  branchTag?: "main" | "appended" | "synthesis" | null;
+  parentMessageId?: string | null;
   // V3.0 UX: per-turn meta strip data. Set on the streaming assistant
   // message at handleSend time; updated during the turn from `turn_usage`
   // events; frozen on `done` payload so the strip flips from
@@ -1740,9 +1745,25 @@ export default function ChatSidebar({
 
             {/* 800px 居中:用一个 inner wrapper 限制宽度 */}
             <div className="chat-messages-inner">
-              {messages.map((m) => (
-                <MessageBlock key={m.id} msg={m} />
-              ))}
+              {(() => {
+                // V3.0 multi-conv 折叠规则:从每个 synthesis 消息向上回溯,直到
+                // 撞到 user 消息为止;把途中所有 **assistant** 消息(synthesis 自
+                // 己除外)标为 foldable —— 这些都是被 synthesis 取代的中间产物
+                // (流式 main 气泡 / branch 中间消息),内容已经被 synthesis
+                // 整段重述,默认折叠成"展开查看主线"按钮,避免重复占屏。
+                const foldedIds = new Set<string>();
+                for (let i = 0; i < messages.length; i++) {
+                  if (messages[i].role !== "assistant") continue;
+                  if (messages[i].branchTag !== "synthesis") continue;
+                  for (let j = i - 1; j >= 0; j--) {
+                    if (messages[j].role === "user") break;
+                    if (messages[j].role === "assistant") foldedIds.add(messages[j].id);
+                  }
+                }
+                return messages.map((m) => (
+                  <MessageBlock key={m.id} msg={m} foldedAsPreSynth={foldedIds.has(m.id)} />
+                ));
+              })()}
 
               {pendingConfirm && (
                 <ConfirmCard
@@ -1823,6 +1844,8 @@ function serverToUi(m: ChatMessage): UiMessage {
     content: m.content,
     thinking: m.thinking,
     toolCalls: (m.toolCalls || []).map((tc) => ({ ...tc })),
+    branchTag: m.branchTag ?? null,
+    parentMessageId: m.parentMessageId ?? null,
     turnMeta,
     subagentRuns: sRuns.length
       ? sRuns.map((r: any): UiSubagentRun => ({
@@ -1948,9 +1971,38 @@ function normalizeServerNodeEvent(e: any): UiWorkflowRun["nodeEvents"][number] |
  *   - Tool-call cards render after the answer text, in the order they
  *     arrived from the stream.
  */
-function MessageBlock({ msg }: { msg: UiMessage }) {
+function MessageBlock({
+  msg,
+  foldedAsPreSynth = false,
+}: {
+  msg: UiMessage;
+  /** V3.0 折叠:此消息是被 synthesis 取代的中间产物(main 流式气泡 / branch
+   *  内容),默认折叠成可点击展开的"展开查看主线"按钮。 */
+  foldedAsPreSynth?: boolean;
+}) {
   const { t } = useTranslation();
+  const [preSynthExpanded, setPreSynthExpanded] = useState(false);
   if (msg.role === "user") return <UserBubble content={msg.content} />;
+
+  // V3.0:折叠态 —— 默认收起,点击切换展开。展开后内容用同一个 MessageBlock
+  // 渲染逻辑,只是不再被 fold 包住。
+  if (foldedAsPreSynth && !preSynthExpanded) {
+    return (
+      <button
+        type="button"
+        className="chat-presynth-fold"
+        onClick={() => setPreSynthExpanded(true)}
+        aria-label={t("chat.preSynth.expand")}
+      >
+        <span className="chat-presynth-fold-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="m4 5.5 3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+        <span>{t("chat.preSynth.expand")}</span>
+      </button>
+    );
+  }
 
   const hasThinking = Boolean(msg.thinking && msg.thinking.length > 0);
   const hasAnswer = msg.content.length > 0;

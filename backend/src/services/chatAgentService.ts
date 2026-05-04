@@ -2654,11 +2654,14 @@ async function* runAgentImpl(
   // Persist the assistant message (aggregated text + thinking + tool calls).
   // V3.0 UX:把本 turn 的 duration + token 使用量也一并落库,刷新页面后
   // 历史 assistant 气泡仍能渲染 "Generated · X 秒 · Y tokens"。
+  // V3.0 multi-conv:打 branchTag="main",方便 FE 折叠规则识别"被 synth
+  // 取代的主线流式气泡"(synth 出现后此条折叠成可展开按钮)。
   const persistedAssistantMsg = await convStore.appendMessage(conversationId, {
     role: "assistant",
     content: accumulatedText,
     thinking: accumulatedThinking || undefined,
     toolCalls: accumulatedToolCalls,
+    branchTag: "main",
     durationMs: Date.now() - turnStartedAt,
     promptTokens: turnPromptTokens,
     completionTokens: turnCompletionTokens,
