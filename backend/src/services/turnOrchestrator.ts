@@ -192,6 +192,12 @@ async function* startMainTurn(opts: {
   let mainAccText = "";
   let mainSuccess = false;
   let mainErrorMessage: string | undefined;
+  // V3.0 UX: 抓 runAgent 的 done payload(它已经带 durationMs / totalTokens
+  // 给前端 GeneratingMeta freeze 用)。turnOrchestrator 不直接把那个 done
+  // 透传出去 —— 我们要先等 branches + synth 跑完再 emit 自己的 done。所以
+  // 这里 capture 下来,在最终的 main-only done 里 forward;synth-complete
+  // done 里不传(因为 synth 之后是另一段对话,token 计数已经不准)。
+  let mainDonePayload: Record<string, unknown> | null = null;
   // 存 promise 以便 appended branch 的等待逻辑用
   let mainResolve: (v: { branchId: string; finalText: string; success: boolean; errorMessage?: string }) => void;
   turn.mainBranch.completion = new Promise((res) => { mainResolve = res; });
@@ -205,6 +211,7 @@ async function* startMainTurn(opts: {
       }
       if (ev.event === "done") {
         mainSuccess = true;
+        mainDonePayload = (ev.data as Record<string, unknown>) || {};
         // 不 yield done 出去! 因为后面还有 branches + synth 要走完。
         // 把 done 推迟到全部完成后由 orchestrator 自己 emit。
         continue;
@@ -251,7 +258,13 @@ async function* startMainTurn(opts: {
   // 如果只有主线没有 branch → 不需要 synth,也不需要 WorkflowRun,直接 done
   if (turn.appendedBranches.length === 0) {
     deleteTurn(convId);
-    yield { event: "done", data: { reason: "main-only" } };
+    // V3.0 UX: forward runAgent 已经填好的 durationMs/promptTokens/
+    // completionTokens/totalTokens — 否则前端 GeneratingMeta freeze 时
+    // 拿不到 server 权威值,只能 fallback 到客户端 tickMs。
+    yield {
+      event: "done",
+      data: { reason: "main-only", ...(mainDonePayload || {}) },
+    };
     return;
   }
 
@@ -349,7 +362,20 @@ async function* startMainTurn(opts: {
     });
   }
 
-  yield { event: "done", data: { reason: "synth-complete" } };
+  // V3.0 UX: synth-complete done 也带上 main turn 的 token+duration 摘要。
+  // 不严格反映 branch + synth 的额外开销(它们走 SubagentRun 自己计 token,
+  // 没有累加进 mainDonePayload),但比完全空 payload 强 —— 至少 main 部分
+  // 准确,FE freeze 时不会回退到纯客户端时间。
+  // durationMs 用 turn.startedAt → now 让用户看到从点击到 synth 完成的总
+  // 耗时,比 main 部分单独 durationMs 更贴合主观感受。
+  yield {
+    event: "done",
+    data: {
+      reason: "synth-complete",
+      ...(mainDonePayload || {}),
+      durationMs: Date.now() - turn.startedAt,
+    },
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
