@@ -1758,24 +1758,25 @@ export default function ChatSidebar({
             {/* 800px 居中:用一个 inner wrapper 限制宽度 */}
             <div className="chat-messages-inner">
               {(() => {
-                // V3.0 multi-conv 折叠规则(group-based):把消息按"non-
-                // appended user 起头"分组,每组覆盖到下一个 non-appended
-                // user(或末尾)。如果一组里出现过 branchTag="appended" 的
-                // user,组内所有 main assistant 都标为 foldable。
+                // V3.0 multi-conv 折叠规则 + 渲染顺序重排。
                 //
-                // 为什么要 group 而不是 walk-back:server DB seq 顺序是按
-                // 持久化时间走的 —— main turn 的 asst 在结束时才落库,这时
-                // 用户可能已经 append 过了,导致 DB 顺序变成
-                //   user_main → user_append → asst_main → asst_synth
-                // (asst_main 的 seq 反而比 user_append 大)。如果用旧的
-                // walk-back 规则从 user_append 往前找,只会撞到 user_main
-                // 直接 break,asst_main 永远不被识别。改成 group-based 后
-                // 不论 asst_main 在 user_append 之前(实时态)还是之后
-                // (持久化态),都能被正确归到这一组并 fold。
+                // 折叠规则(group-based):把消息按"non-appended user 起头"
+                // 分组,每组覆盖到下一个 non-appended user(或末尾)。组内
+                // 出现过 branchTag="appended" 的 user → 组内所有 main asst
+                // 都标 foldable。不折叠 synthesis(最终答复)和 a_branchack_
+                // 占位(进度提示)。
                 //
-                // 不折叠的:
-                //   - synthesis 消息(最终聚合答复,要看)
-                //   - branch-ack 占位(id 前缀 a_branchack_,等待提示)
+                // 为什么要 group 而不是 walk-back:DB seq 持久化顺序导致
+                // asst_main(seq=2)出现在 user_append(seq=1)之后,旧的
+                // walk-back 规则永远找不到 asst_main。
+                //
+                // 渲染顺序重排:为了让"所有 fold 卡片统一出现在主对话下方"
+                // (用户预期),把消息分两批渲染:
+                //   - regular: 不被折叠的消息 → 按原 seq 顺序在上
+                //   - folded:  被折叠的消息 → 一并放到末尾
+                // ack 占位顺便接管 streaming 主线的 turnMeta,这样
+                // "Generating · Xs · Y tokens" 进度条始终在主对话流可见,
+                // 不会因为 main asst 被折进卡里而消失。
                 const foldedIds = new Set<string>();
                 let groupHasAppendedUser = false;
                 let groupAsstIds: string[] = [];
@@ -1801,9 +1802,52 @@ export default function ChatSidebar({
                   }
                 }
                 commitGroup();
-                return messages.map((m) => (
-                  <MessageBlock key={m.id} msg={m} foldedAsPreSynth={foldedIds.has(m.id)} />
-                ));
+
+                // 抓"被折叠且仍在 streaming"的 main asst 的 turnMeta —— 这
+                // 是 GeneratingMeta 的活数据源。append 之后它本来藏在 fold
+                // 卡里看不见,我们把它"抬"到 ack 占位上重渲。
+                let liveTurnMetaForAck: UiMessage["turnMeta"] | undefined;
+                let liveTurnMetaIsStreaming = false;
+                for (const m of messages) {
+                  if (!foldedIds.has(m.id)) continue;
+                  if (!m.turnMeta) continue;
+                  liveTurnMetaForAck = m.turnMeta;
+                  liveTurnMetaIsStreaming = Boolean(m.streaming);
+                  break;
+                }
+
+                const regular: UiMessage[] = [];
+                const folded: UiMessage[] = [];
+                for (const m of messages) {
+                  if (foldedIds.has(m.id)) folded.push(m);
+                  else regular.push(m);
+                }
+
+                return (
+                  <>
+                    {regular.map((m) => {
+                      // ack 占位 + 有活 turnMeta → 把 meta 注入,组件就会
+                      // 渲染 "Generating · Xs · Y tokens" 进度条。
+                      if (m.id.startsWith("a_branchack_") && liveTurnMetaForAck) {
+                        return (
+                          <MessageBlock
+                            key={m.id}
+                            msg={{
+                              ...m,
+                              turnMeta: liveTurnMetaForAck,
+                              streaming: liveTurnMetaIsStreaming,
+                            }}
+                            foldedAsPreSynth={false}
+                          />
+                        );
+                      }
+                      return <MessageBlock key={m.id} msg={m} foldedAsPreSynth={false} />;
+                    })}
+                    {folded.map((m) => (
+                      <MessageBlock key={m.id} msg={m} foldedAsPreSynth={true} />
+                    ))}
+                  </>
+                );
               })()}
 
               {pendingConfirm && (
