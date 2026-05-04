@@ -1439,35 +1439,40 @@ export default function ChatSidebar({
   }, [open, activeConv?.id]);
 
   // V3.0 PR1 切换到指定 conversation
+  //
+  // ⚠️ "后台运行"功能临时回退 ⚠️
+  // 真正的"切走时不打断生成 + 切回来恢复进度"需要 per-conv 的 messages /
+  // streaming 状态结构(messagesByConv: Record<convId, UiMessage[]> +
+  // streamingByConv),涉及 53 个 setMessages 调用点逐一加 convId 守卫。
+  // 当前用全局 messages 单数组无法区分"哪条 conv 的状态",导致:
+  //   - 旧 fetch reader 的回调污染新 conv 的 UI 状态
+  //   - 切回来后 server 上的旧 turn 仍在跑,FE 状态不知道,新 send 走了
+  //     append branch 路径但 FE 期望 main 流式 → bubble 永远填不上内容
+  //   - 死锁:button 看似可点但没反应,工具卡片永远 loading
+  //
+  // 为消除死锁,先恢复"切换 = 干净中止"的 V2 行为(handleStop 同步 abort
+  // turn + cancel fetch + 清状态)。代价是失去后台运行(切走会终止生成),
+  // 但状态机始终自洽,不会卡死。
+  //
+  // server 端 res.on("close") 不再 abort 的改动保留 —— 关 tab / 网络抖动
+  // 仍然不会丢已生成的内容,只有 explicit /stop 才会终止 turn。"切换对话"
+  // 现在显式调 /stop,符合用户意图。
+  //
+  // TODO(per-conv-state):做完整的 messagesByConv refactor 后再上线真后台
+  // 运行。详细方案见 docs/multi-conversation-plan.md V3.1 章节(待写)。
   const handleSwitchConversation = useCallback(async (convId: string) => {
     if (convId === activeConv?.id) {
       setConvListOpen(false);
       return;
     }
-    // V3.0 后台运行:切换对话 = 仅 detach 当前 block 的 fetch SSE,**不**
-    // 调 stopChatTurn 服务端 abortTurn。原 conversation 的 turn 在 server
-    // 上继续跑,事件继续 publish 到 chatPubsub。切回来时 listener forceReload
-    // 拉 DB 拿到最终结果(如果 turn 已结束)或继续接收 pubsub 事件。
-    //
-    // 这里不调 cancelRef.current() 的原因:fetch reader 的 closure 持有
-    // 一个 setMessages 引用,如果继续跑会污染新 conv 的本地 state。但同时
-    // 主动 cancel 会 abort 服务端 fetch,违反"后台运行"目标。折中:在
-    // streamChatMessage 里把 setMessages 调用 gate 到 "active conv match"
-    // 校验上 —— 这是更大的改造,V1 先用简单方案:cancel 本地 fetch reader
-    // (服务器侧 turn 不受影响,因为 stopChatTurn 没调),让旧 conv 的事件
-    // 全靠 pubsub 重放给 listener。
-    if (cancelRef.current) {
-      cancelRef.current();
-      cancelRef.current = null;
-    }
-    setStreaming(false);
+    if (streaming) handleStop();
     stickToBottomRef.current = true;
     setMessages([]);
     setPendingConfirm(null);
     setError(null);
     setActiveConv({ id: convId } as ChatConversation);
     setConvListOpen(false);
-  }, [activeConv?.id]);
+  }, [activeConv?.id, streaming, handleStop]);
 
   // V3.0.3 删除当前 conv → 切到列表里的下一条/上一条
   // 最后一条不能删(用户改用"清空对话"重置内容)。
