@@ -89,5 +89,41 @@ export const workflowSkill: SkillDefinition = {
      \`match(s,"regex")\` / 三元 \`a ? b : c\` / 数组 \`[1,2,3]\`
    - 复杂语义判断用 \`{mode:"llm", prompt:"..."}\`,LLM 输出 YES/NO 决定
 6. **不要把简单任务套 workflow** —— "帮我读这张表" 直接调 \`get_table\`,不要起 workflow
+
+## 防止 workflow 跑出空 finalText —— 必读
+
+弱模型(GPT-5.5 / Claude Opus 4.6)有一个高发失败模式:**给它工具就把所有
+maxRounds 全花在 tool_call 上,不给自己留下"写答案"的回合**。结果 finalText
+是空字符串或只有一句开场白,下游汇总节点拿到空内容后全场失败。Claude 4.7
+是唯一能稳定自主收口的。
+
+**写 workflow 时必须做到**:
+
+1. **工具型 subagent 给充足 maxRounds**:
+   - 联网调研(\`web_search\` / \`web_fetch\`):**maxRounds ≥ 16**
+   - 数据查询(\`get_table\` / \`list_*\`):maxRounds ≥ 8
+   - 纯写作(\`allowedTools: []\`):maxRounds 2 即可
+
+2. **工具任务优先拆 search → write 两阶段**:
+   单个 subagent 同时调工具+写答案对弱模型不友好。改成 sequence 节点:
+   - search 节点:\`allowedTools: [...], maxRounds: 16\`,prompt 硬约束
+     "最多调用 N 次工具后必须停止,开始写笔记"
+   - write 节点:\`allowedTools: [], maxRounds: 2\`,inputBinding 用
+     \`\${search_alias.finalText}\`,prompt 写"如果原始笔记为空,基于训练
+     知识补充并明确标注;绝不返回空字符串"
+
+   parallel 的 branches 数组接受 sequence 节点 id —— 每个 branch 自己拆两段。
+
+3. **summarize / aggregator 节点用 \`claude-opus-4.7\` + \`allowedTools: []\`**,
+   maxRounds 4 已足够。汇总专心整理,不要又回去搜资料。
+
+4. **inputBinding 拼上游 finalText 时给降级提示**:
+   汇总 prompt 里写"如果某分支返回空/失败说明,在开头声明 X 家中 Y 家未产出",
+   让汇总者能识别上游断流并向用户透明披露,不要凭空编。
+
+5. **选 subagentModel 时考虑"自主收口"能力**:
+   - 强(自己会停手写答案):claude-opus-4.7
+   - 中(给它充足 maxRounds 也行):claude-opus-4.6
+   - 弱(必须拆两阶段才稳):gpt-5.5、gpt-5.4-mini、doubao-2.0
 `,
 };

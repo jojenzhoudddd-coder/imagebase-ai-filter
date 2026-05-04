@@ -137,7 +137,37 @@ export const workflowTools: ToolDefinition[] = [
       "    action  = { kind:'action', type:'subagent', subagentModel, userPrompt|inputBinding{userPrompt}, outputAlias?, allowedTools?, maxRounds?, next? }\n" +
       "  Condition = { mode:'expression', expr:'...' } | { mode:'llm', prompt:'...', model? }\n" +
       "  inputBinding 内的 ${alias.field} 会从 ctx.scope 取值。\n" +
-      "**安全 / 限制**: 总节点访问 ≤ 200, loop 最多 10, parallel ≤ 8 分支。subagent 危险动作走 V2.4 上抛协议。" +
+      "**安全 / 限制**: 总节点访问 ≤ 200, loop 最多 10, parallel ≤ 8 分支。subagent 危险动作走 V2.4 上抛协议。\n" +
+      "\n" +
+      "## 防御式 DSL 编写规则(必须遵守,否则会出现 finalText 为空的失败模式)\n" +
+      "\n" +
+      "**1. 工具型 subagent 必须给充足的 maxRounds 额度。**\n" +
+      "   带 `allowedTools` 的 subagent 会先把 maxRounds 大量耗在 tool_call → tool_result\n" +
+      "   循环里。如果 maxRounds 卡得太死,模型还没轮到\"写最终答案\"那一回合就被截断,\n" +
+      "   finalText 直接空字符串(GPT-5 系列 / Claude 4.6 都中过招;只有 Claude 4.7 能稳定\n" +
+      "   自主收口)。规则:\n" +
+      "     - 联网/搜索类(web_search / web_fetch):maxRounds ≥ 16\n" +
+      "     - 纯 read 类(read_idea / get_table / list_*):maxRounds ≥ 8\n" +
+      "     - 不允许工具(allowedTools:[])的纯写作 subagent:maxRounds 2 即可\n" +
+      "\n" +
+      "**2. 工具型任务优先拆 search/write 两阶段。**\n" +
+      "   单个 subagent 既调工具又写答案,弱模型(opus-4.6 / gpt-5.5)很容易把额度全花在\n" +
+      "   工具调用上、不留写作回合。**强烈推荐**改成 sequence(search → write)结构:\n" +
+      "     - search 节点:`allowedTools: [...], maxRounds: 16`,prompt 里硬约束\n" +
+      "       \"最多调用 N 次工具后必须停止搜索写笔记\"\n" +
+      "     - write 节点:`allowedTools: [], maxRounds: 2`,inputBinding 用\n" +
+      "       `${search_alias.finalText}`,prompt 里写\"如果原始笔记为空,基于训练知识补\n" +
+      "       充并明确标注;绝不返回空字符串\"\n" +
+      "   parallel 的 branches 数组也接受 sequence 节点 id —— 每个 branch 自己拆两段。\n" +
+      "\n" +
+      "**3. summarize / aggregator 节点用强模型 + 无工具。**\n" +
+      "   汇总节点 `subagentModel: 'claude-opus-4.7'`(或 doubao-2.0 兜底),\n" +
+      "   `allowedTools: []`,maxRounds 4 已足够。让汇总专心整理,不要又回去搜资料。\n" +
+      "\n" +
+      "**4. inputBinding 拼上游 finalText 时给降级提示。**\n" +
+      "   prompt 里写一句\"如果某个分支返回空内容/失败说明,在汇总开头声明X家中Y家未\n" +
+      "   产出\",这样汇总者能识别上游断流并向用户透明披露,而不是凭空编。\n" +
+      "\n" +
       "失败时(schema 不合法 / 找不到节点 / 工具 unknown)会立即返回 error,host 应改 DSL 重试。",
     inputSchema: {
       type: "object",
