@@ -534,7 +534,25 @@ export default function DemoPreviewPanel({ demoId, workspaceId, onRename }: Demo
             ref={iframeRef}
             className="demo-panel-iframe"
             src={`/api/demos/${encodeURIComponent(demo.id)}/preview/`}
-            sandbox="allow-scripts allow-forms allow-popups"
+            // V3.0 fix:加 allow-same-origin。原版本沙箱不带这个 token,
+            // iframe 拿到 opaque origin。后果:
+            //   1. SDK 里 location.origin === "null"(已在 sdkInjector 用
+            //      字符串校验 fallback 兜住)
+            //   2. **更要命**:sub-resource fetch(bundle.js / sdk.js)
+            //      从 opaque origin 出去 → 浏览器不发 cookie → server 端
+            //      attachUser 拿不到 user → requireArtifactAccess 401
+            //      Unauthorized → bundle 加载失败 → demo 整个空白
+            // 加 allow-same-origin 让 iframe 跑在 imagebase.cc 自身 origin
+            // 下,cookie / fetch / location.origin 全部恢复正常。
+            //
+            // 安全考量:
+            //   - 这是"自己看自己 demo"的私有预览面板,demo 是用户自己写
+            //     的代码,不存在"陌生人 demo 读你 cookie"的攻击面
+            //   - 公开发布的 demo 走 /share/<slug>/ 顶层窗口,根本没沙箱,
+            //     威胁模型早就一致
+            //   - 没给 allow-top-navigation,demo 里的 JS 仍不能 navigate
+            //     掉父页面;没给 allow-modals,也不能 alert/confirm 阻塞
+            sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
             title={`Demo preview: ${demo.name}`}
           />
         ) : demo.lastBuildStatus === "error" ? (
