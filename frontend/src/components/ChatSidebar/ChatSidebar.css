@@ -1898,6 +1898,11 @@
   line-height: 1.4;
   color: var(--text-secondary);
   padding: 4px 0;
+  /* 父级 .chat-msg-assistant-block 的 gap 是 12px,所有 children 之间默认
+   * 12px 空隙。Meta strip 下面想留 8px(更紧贴 AssistantText / 工具卡),
+   * 用负 margin-bottom = -4px 抵消父 gap 的 4px,得到 8px 实际间距。其它
+   * children 之间不受影响 —— 仅这一处显式收紧。 */
+  margin-bottom: -4px;
 }
 .chat-generating-meta.phase-generated { color: var(--text-muted); }
 /* "Generating" / "Generated" 文字 —— 跟右侧的秒数/token 数字一致风格,
