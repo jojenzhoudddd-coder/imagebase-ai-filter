@@ -1961,6 +1961,24 @@ function mergeServerWithLocal(server: UiMessage[], local: UiMessage[]): UiMessag
       merged.push(l);
     }
   }
+  // (4) 同样保住乐观渲染的 appended user 气泡。handleAppendSend 在 server
+  // 持久化前就先 push 一条 id=`u_append_<ts>` 的 user 消息,branchTag
+  // ="appended"。listener 收到 server 的 branch_started 立刻 forceReload
+  // 拉 DB,但 server 的 user_message 还在 IO 中,fetch 拿到的 messages 不包
+  // 含它 → server.map 输出不会有这条 → mergeServerWithLocal 只走规则 (3) 的
+  // 话只 keep streaming asst,丢掉 user_append → 用户看到自己刚发的消息一闪
+  // 就消失。
+  // dedup 策略:server 一旦有同 content + branchTag="appended" 的 user 消息,
+  // 视为它已经持久化(只是 id 不同),把 local 那条丢掉,避免出现重复。
+  for (const l of local) {
+    if (l.role !== "user") continue;
+    if (l.branchTag !== "appended") continue;
+    if (serverIds.has(l.id)) continue;
+    const serverHasMatching = server.some(
+      (s) => s.role === "user" && s.branchTag === "appended" && s.content === l.content,
+    );
+    if (!serverHasMatching) merged.push(l);
+  }
   return merged;
 }
 
