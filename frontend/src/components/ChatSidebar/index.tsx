@@ -990,11 +990,56 @@ export default function ChatSidebar({
       },
       onError: (code, message) => {
         setError(friendlyError(code, message));
+        // Stream-level error (e.g. backend dispatchMessage threw, provider
+        // dropped) carries no callId, so we can't surface it on a specific
+        // card — but every tool call that was still "running" at the moment
+        // the stream died will obviously never receive its tool_result. If
+        // we don't flip them now, the cards spin forever and only the
+        // global error toast says anything happened. Sanitize all in-flight
+        // tool calls on the streaming assistant message → status="error",
+        // mirroring what readCache does on a stale-cache load.
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant" && m.streaming
+              ? {
+                  ...m,
+                  toolCalls: m.toolCalls.map((tc) =>
+                    tc.status === "running"
+                      ? {
+                          ...tc,
+                          status: "error",
+                          progress: undefined,
+                          heartbeat: undefined,
+                          result: tc.result ?? JSON.stringify({ error: `STREAM_${code}: ${message}` }),
+                        }
+                      : tc,
+                  ),
+                }
+              : m,
+          ),
+        );
       },
       onDone: () => {
         setStreaming(false);
         setMessages((prev) =>
-          prev.map((m) => (m.role === "assistant" && m.streaming ? { ...m, streaming: false } : m))
+          prev.map((m) =>
+            m.role === "assistant" && m.streaming
+              ? {
+                  ...m,
+                  streaming: false,
+                  // Belt-and-braces: if `done` arrives but a toolCall never
+                  // got its `tool_result` (e.g. backend yielded done before
+                  // settling — shouldn't happen, but guards against future
+                  // regressions), don't leave a running spinner. Same
+                  // sanitization as the onError path.
+                  toolCalls: m.toolCalls.map((tc) =>
+                    tc.status === "running"
+                      ? { ...tc, status: "error", progress: undefined, heartbeat: undefined }
+                      : tc,
+                  ),
+                }
+              : m,
+          ),
         );
         // Turn just ended — the model may have called update_agent_name. Poke
         // the pill to re-fetch so the header label catches up.
@@ -1092,9 +1137,51 @@ export default function ChatSidebar({
             return next;
           });
         },
-        onError: (code, message) => setError(friendlyError(code, message)),
+        onError: (code, message) => {
+          setError(friendlyError(code, message));
+          // Mirror the sendMessage path: flip any tool that was still
+          // running when the resume stream died into `error` so cards
+          // don't spin forever. Resume only ever has one in-flight
+          // toolCall (the danger tool the user just confirmed), so this
+          // narrows the search but the shape is identical.
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.role === "assistant"
+                ? {
+                    ...m,
+                    toolCalls: m.toolCalls.map((tc) =>
+                      tc.status === "running"
+                        ? {
+                            ...tc,
+                            status: "error",
+                            progress: undefined,
+                            heartbeat: undefined,
+                            result: tc.result ?? JSON.stringify({ error: `STREAM_${code}: ${message}` }),
+                          }
+                        : tc,
+                    ),
+                  }
+                : m,
+            ),
+          );
+        },
         onDone: () => {
           setStreaming(false);
+          // Belt-and-braces sanitisation; same reasoning as the main flow.
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.role === "assistant"
+                ? {
+                    ...m,
+                    toolCalls: m.toolCalls.map((tc) =>
+                      tc.status === "running"
+                        ? { ...tc, status: "error", progress: undefined, heartbeat: undefined }
+                        : tc,
+                    ),
+                  }
+                : m,
+            ),
+          );
           try { window.dispatchEvent(new CustomEvent("workspace-stats-changed")); } catch { /* noop */ }
         },
       });
