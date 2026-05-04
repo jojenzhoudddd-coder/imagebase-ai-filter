@@ -1929,8 +1929,28 @@ async function* runAgentImpl(
         let result = { runId: "spawn_failed", finalText: "", success: false };
         let next = await stream.next();
         while (!next.done) {
-          queuedEvents.push(next.value);
+          const ev = next.value;
+          queuedEvents.push(ev);
           signalQueue();
+          // V3.0 fix:把 workflow-spawned subagent 的流式 token 算作 parent
+          // 工具(compose_workflow / execute_workflow_template)的 progress。
+          // 不加这一段,parent 工具的 idle timer 只在 workflow 节点边界事件
+          // (workflow_node_start / workflow_branch_start / workflow_node_end)
+          // 重置;长 subagent 内部连续跑 web_search + web_fetch + 多轮 LLM
+          // 时,节点边界之间能 silent 60+ 秒,触发 compose_workflow 的 60s
+          // idle 超时 → 整个 workflow 被强 settle。
+          // 镜像 toolCtx.spawnSubagent 直接路径(下方 2060 行附近)的处理。
+          if (
+            toolCtx.callId &&
+            (ev.event === "subagent_message" ||
+              ev.event === "subagent_thinking" ||
+              ev.event === "subagent_tool_result")
+          ) {
+            longTask.emitProgress(toolCtx.callId, {
+              phase: "workflow-subagent",
+              message: `subagent ${ev.event.replace("subagent_", "")} ...`,
+            });
+          }
           next = await stream.next();
         }
         if (next.value) result = next.value as typeof result;
