@@ -258,6 +258,14 @@ model Message {
   parentMessageId String?  // synthesis 指向被合成主线 user message;branch 也可指向
   seq             Int      @default(0)  // per-conv 单调递增,前端按此排序
 
+  // V3.0 UX: 把 GeneratingMeta 的最终值持久化,刷新页面后历史 assistant
+  // 气泡仍能渲染 "Generated · X 秒 · Y tokens"。只在 turn 自然结束(done)
+  // 时由 chatAgentService 写入,turn 跑到一半的中间态不写(避免脏数据)。
+  // 三列都允许 null —— user message / 旧消息 / 中断的 turn 都没有 meta。
+  durationMs       Int?
+  promptTokens     Int?
+  completionTokens Int?
+
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, timestamp])

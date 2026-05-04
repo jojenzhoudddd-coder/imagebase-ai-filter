@@ -69,7 +69,16 @@ function setupSse(res: Response) {
 }
 
 function writeEvent(res: Response, e: SseEvent) {
-  res.write(`event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`);
+  // V3.0 后台运行:不再在 res.on("close") 里 abort turn,所以 turn 可能在
+  // FE 断连后继续 publish 事件。res.write 写到已断开的 socket 在 Node
+  // 高版本里会抛 ERR_STREAM_WRITE_AFTER_END。守一下,断连后只让事件走
+  // pubsub(writeEventBoth 的另一支),不再 fetch SSE 投递。
+  if (res.writableEnded || res.destroyed) return;
+  try {
+    res.write(`event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`);
+  } catch {
+    /* socket already closed — fine, listener carries the rest */
+  }
 }
 
 /**
@@ -382,11 +391,19 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
     const state = getOrCreateTurnState(req.params.id);
     const ac = resetAbortController(req.params.id);
 
-    // Client disconnect → abort
+    // V3.0 后台运行:client 断连(包括 chatBlock 切换对话、刷新页面、关
+    // 标签页)时**不**主动 abort turn。让 turn 在 server 上继续跑完,事件
+    // 继续 publish 到 chatPubsub。listener 订阅同 conv 的客户端(切回来
+    // 的本 block / 其它 block)还能收到剩余事件。
+    //
+    // 唯一显式中止路径仍是 POST /stop → state.abortController.abort() →
+    // 通过 turnRegistry 的 abortTurn 把整个 turn 干掉。这条路径不变。
+    //
+    // trade-off:浏览器关掉 tab 后,turn 仍跑完(浪费一部分 compute)。
+    // 但 runAgent 本身有 MAX_TOOL_ROUNDS=50 + longTask idle timeout 兜底,
+    // 不会真"挂尸"。换 conv / 刷新都是用户预期保留进度的场景,这个 trade
+    // 是值的。
     let responseEnded = false;
-    res.on("close", () => {
-      if (!responseEnded) ac.abort();
-    });
 
     const ctx: AgentContext = {
       conversationId: req.params.id,
@@ -466,10 +483,9 @@ router.post("/conversations/:id/confirm", async (req: Request, res: Response) =>
 
     const state = getOrCreateTurnState(req.params.id);
     const ac = resetAbortController(req.params.id);
+    // V3.0 后台运行:不再 res.on("close") → ac.abort()。同上方 messages
+    // 端点的注释逻辑 —— 切换对话 / 刷新 / 关 tab 都不该 abort turn。
     let responseEnded = false;
-    res.on("close", () => {
-      if (!responseEnded) ac.abort();
-    });
 
     const ctx: AgentContext = {
       conversationId: req.params.id,

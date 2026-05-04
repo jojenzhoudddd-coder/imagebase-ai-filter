@@ -865,6 +865,10 @@ export interface ChatMessage {
   toolCalls?: ChatToolCall[];
   toolResult?: unknown;
   timestamp: number;
+  // V3.0 UX 持久化的 per-turn meta(只在 assistant 消息且 turn 自然结束时有值)
+  durationMs?: number;
+  promptTokens?: number;
+  completionTokens?: number;
 }
 
 export interface ChatConversation {

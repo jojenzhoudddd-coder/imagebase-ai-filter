@@ -1439,14 +1439,30 @@ export default function ChatSidebar({
       setConvListOpen(false);
       return;
     }
-    if (streaming) handleStop();
+    // V3.0 后台运行:切换对话 = 仅 detach 当前 block 的 fetch SSE,**不**
+    // 调 stopChatTurn 服务端 abortTurn。原 conversation 的 turn 在 server
+    // 上继续跑,事件继续 publish 到 chatPubsub。切回来时 listener forceReload
+    // 拉 DB 拿到最终结果(如果 turn 已结束)或继续接收 pubsub 事件。
+    //
+    // 这里不调 cancelRef.current() 的原因:fetch reader 的 closure 持有
+    // 一个 setMessages 引用,如果继续跑会污染新 conv 的本地 state。但同时
+    // 主动 cancel 会 abort 服务端 fetch,违反"后台运行"目标。折中:在
+    // streamChatMessage 里把 setMessages 调用 gate 到 "active conv match"
+    // 校验上 —— 这是更大的改造,V1 先用简单方案:cancel 本地 fetch reader
+    // (服务器侧 turn 不受影响,因为 stopChatTurn 没调),让旧 conv 的事件
+    // 全靠 pubsub 重放给 listener。
+    if (cancelRef.current) {
+      cancelRef.current();
+      cancelRef.current = null;
+    }
+    setStreaming(false);
     stickToBottomRef.current = true;
     setMessages([]);
     setPendingConfirm(null);
     setError(null);
     setActiveConv({ id: convId } as ChatConversation);
     setConvListOpen(false);
-  }, [activeConv?.id, streaming, handleStop]);
+  }, [activeConv?.id]);
 
   // V3.0.3 删除当前 conv → 切到列表里的下一条/上一条
   // 最后一条不能删(用户改用"清空对话"重置内容)。
@@ -1789,12 +1805,25 @@ function serverToUi(m: ChatMessage): UiMessage {
   // payload so history reload re-renders SubagentBlock + WorkflowBlock.
   const sRuns = (m as any).subagentRuns ?? [];
   const wRuns = (m as any).workflowRuns ?? [];
+  // V3.0 UX:把后端持久化的 durationMs / completionTokens 还原成 turnMeta,
+  // 让历史 assistant 气泡刷新后仍能渲染 "Generated · X 秒 · Y tokens"。
+  // startedAt 取 timestamp - durationMs(消息 createdAt 减去 turn 时长 ≈ turn 起点)。
+  const turnMeta: UiMessage["turnMeta"] =
+    m.role === "assistant" && (m.durationMs != null || m.completionTokens != null)
+      ? {
+          phase: "generated",
+          startedAt: m.timestamp - (m.durationMs ?? 0),
+          durationMs: m.durationMs ?? 0,
+          completionTokens: m.completionTokens ?? 0,
+        }
+      : undefined;
   return {
     id: m.id,
     role: m.role === "user" ? "user" : "assistant",
     content: m.content,
     thinking: m.thinking,
     toolCalls: (m.toolCalls || []).map((tc) => ({ ...tc })),
+    turnMeta,
     subagentRuns: sRuns.length
       ? sRuns.map((r: any): UiSubagentRun => ({
           runId: r.id,

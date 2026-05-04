@@ -33,6 +33,10 @@ export interface Message {
   toolCalls?: ToolCall[];
   toolResult?: unknown;
   timestamp: number;
+  // V3.0 UX:per-turn meta(GeneratingMeta freeze 后的最终值)
+  durationMs?: number;
+  promptTokens?: number;
+  completionTokens?: number;
 }
 
 export interface Conversation {
@@ -94,6 +98,9 @@ function toMessage(row: {
   toolCalls: unknown;
   toolResult: unknown;
   timestamp: Date;
+  durationMs?: number | null;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
 }): Message {
   return {
     id: row.id,
@@ -104,6 +111,9 @@ function toMessage(row: {
     toolCalls: (row.toolCalls as ToolCall[] | null) ?? undefined,
     toolResult: row.toolResult ?? undefined,
     timestamp: row.timestamp.getTime(),
+    durationMs: row.durationMs ?? undefined,
+    promptTokens: row.promptTokens ?? undefined,
+    completionTokens: row.completionTokens ?? undefined,
   };
 }
 
@@ -220,6 +230,10 @@ export async function appendMessage(
     // V3.0 multi-conv 字段
     branchTag?: string | null;
     parentMessageId?: string | null;
+    // V3.0 UX:per-turn meta(GeneratingMeta freeze 后的最终值)
+    durationMs?: number | null;
+    promptTokens?: number | null;
+    completionTokens?: number | null;
   }
 ): Promise<Message | undefined> {
   // Ensure the conversation exists — keeps the old Map-era null-return behavior.
@@ -251,6 +265,10 @@ export async function appendMessage(
         branchTag: msg.branchTag ?? null,
         parentMessageId: msg.parentMessageId ?? null,
         seq: nextSeq,
+        // V3.0 UX per-turn meta (freezed values from done event)
+        durationMs: msg.durationMs ?? null,
+        promptTokens: msg.promptTokens ?? null,
+        completionTokens: msg.completionTokens ?? null,
       },
     });
     const count = await tx.message.count({ where: { conversationId } });
