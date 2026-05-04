@@ -144,7 +144,21 @@ export function buildSdkJs(opts: BuildSdkOptions): string {
 // Capabilities declared at build time; methods you don't see here do not exist.
 (function() {
   var DEMO_ID = ${JSON.stringify(demoId)};
-  var BASE = location.origin + ${JSON.stringify(base)} + "/" + DEMO_ID;
+  // BASE 同时兼容两种部署:
+  //   - 在 /api/demos/<id>/preview/ 沙箱 iframe 里运行(sandbox 没有
+  //     allow-same-origin → location.origin 在 Chrome 里返回字符串 "null"
+  //     在 Firefox 里抛 SecurityError)
+  //   - 在 /share/<slug>/ 顶层窗口里运行(location.origin 是真实 origin)
+  // 用 try/catch + 字符串校验:能拿到合法 origin 就拼绝对 URL,拿不到就退
+  // 化为绝对路径(浏览器会按 document URL 解析,iframe / 顶层都解析到同一
+  // 个 host)。绝对路径方案对 fetch/XHR 同样有效,因为这两条 URL 都解析
+  // 到 https://<imagebase-host>/api/demo-runtime/<id>/...,而 cors() 全
+  // 局中间件已经允许 Origin: null 的跨源请求(响应头 *)。
+  var __org;
+  try { __org = location.origin; } catch (_e) { __org = "null"; }
+  var BASE = (__org && __org !== "null" && __org.indexOf("http") === 0)
+    ? __org + ${JSON.stringify(base)} + "/" + DEMO_ID
+    : ${JSON.stringify(base)} + "/" + DEMO_ID;
 
   // ─── Runtime error overlay ─────────────────────────────────────────────
   // Agent-generated Demo code frequently throws on unexpected data shapes
