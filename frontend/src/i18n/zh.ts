@@ -585,6 +585,7 @@ export const zh: TranslationKeys = {
   "chat.meta.seconds": "秒",
   "chat.meta.tokens": "token",
   "chat.preSynth.expand": "展开查看主线回复",
+  "chat.preSynth.collapse": "收起主线回复",
   "chat.thinking.caption": "正在分析需求",
   "chat.thinking.collapsed": "深度思考",
   "chat.tool.status.running": "执行中",

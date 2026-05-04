@@ -1156,9 +1156,12 @@ export default function ChatSidebar({
     (convId: string, text: string) => {
       const userMsgId = `u_append_${Date.now()}`;
       stickToBottomRef.current = true;
+      // 本地乐观渲染时就打 branchTag="appended",FE fold 规则立刻生效:
+      // append 完毕的瞬间(server ack 之前)同 turn 的 main asst 就会被
+      // 折叠成卡片,UI 重心立刻转到新提问 + 后续 synth 答复。
       setMessages((prev) => [
         ...prev,
-        { id: userMsgId, role: "user", content: text, toolCalls: [] },
+        { id: userMsgId, role: "user", content: text, toolCalls: [], branchTag: "appended" },
       ]);
       setInputValue("");
       setError(null);
@@ -1751,15 +1754,30 @@ export default function ChatSidebar({
             {/* 800px 居中:用一个 inner wrapper 限制宽度 */}
             <div className="chat-messages-inner">
               {(() => {
-                // V3.0 multi-conv 折叠规则:从每个 synthesis 消息向上回溯,直到
-                // 撞到 user 消息为止;把途中所有 **assistant** 消息(synthesis 自
-                // 己除外)标为 foldable —— 这些都是被 synthesis 取代的中间产物
-                // (流式 main 气泡 / branch 中间消息),内容已经被 synthesis
-                // 整段重述,默认折叠成"展开查看主线"按钮,避免重复占屏。
+                // V3.0 multi-conv 折叠规则(immediate):每当遇到 branchTag
+                // ==="appended" 的 user 消息(= 用户在 main 还没结束时追加
+                // 了一条),立即把它前面**同 turn 内**的所有 assistant 消息
+                // 标为 foldable。"同 turn 内" = 一直回溯到撞上一条非
+                // appended 的 user 消息为止。
+                //
+                // 立即触发 vs 等 synth 完成的区别:
+                //   - 立即触发(现在):用户刚 append 完,main 还在流式产
+                //     字,UI 立刻把 main bubble 折叠成卡片,腾位置给 append
+                //     branch / synth 的内容。视觉重心立刻转到"新提问 +
+                //     最终聚合答复"。
+                //   - 等 synth 完成(旧规则):main 一直完整可见到 synth
+                //     落库才折叠,中间一段时间 UI 上 main + synth 内容大段
+                //     重复。
+                //
+                // synth-finished 也覆盖在这条规则里 —— 因为 synth 必然意味
+                // 着先有过 appended user(否则不会进 synth 路径),所以
+                // append 触发的 fold 把同 turn 的 main asst 都折掉了,synth
+                // 自己不会被折(synthesis 的 user 父消息是原 main user,不是
+                // appended user)。
                 const foldedIds = new Set<string>();
                 for (let i = 0; i < messages.length; i++) {
-                  if (messages[i].role !== "assistant") continue;
-                  if (messages[i].branchTag !== "synthesis") continue;
+                  if (messages[i].role !== "user") continue;
+                  if (messages[i].branchTag !== "appended") continue;
                   for (let j = i - 1; j >= 0; j--) {
                     if (messages[j].role === "user") break;
                     if (messages[j].role === "assistant") foldedIds.add(messages[j].id);
@@ -2009,37 +2027,12 @@ function MessageBlock({
   const [preSynthExpanded, setPreSynthExpanded] = useState(false);
   if (msg.role === "user") return <UserBubble content={msg.content} />;
 
-  // V3.0:折叠态 —— 默认收起,点击切换展开。展开后内容用同一个 MessageBlock
-  // 渲染逻辑,只是不再被 fold 包住。
-  // 视觉复用 .chat-expand-card / .chat-expand-card-header(工具卡的样子),
-  // 跟 ThinkingIndicator 折叠态、ToolCallCard 同一视觉家族。
-  if (foldedAsPreSynth && !preSynthExpanded) {
-    return (
-      <div className="chat-expand-card chat-presynth-card">
-        <button
-          type="button"
-          className="chat-expand-card-header"
-          onClick={() => setPreSynthExpanded(true)}
-          aria-label={t("chat.preSynth.expand")}
-        >
-          <span className="chat-expand-card-icon" aria-hidden="true">
-            <PreSynthIcon />
-          </span>
-          <span className="chat-expand-card-title">{t("chat.preSynth.expand")}</span>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            className="chat-expand-card-chevron"
-            aria-hidden="true"
-          >
-            <path d="m5 6 3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      </div>
-    );
-  }
+  // V3.0:折叠态 —— 默认收起卡片,点击 header 切换展开/收起。展开时卡片
+  // 仍在,内容渲染在 .chat-expand-card-body 里,chevron 旋转 180° 表示可
+  // 收起。视觉跟 ToolCallCard / ThinkingIndicator(collapsed) 一致。
+  // 注意:折叠态 return 提前;展开态会**穿过这里继续往下走**,把 card
+  // 头放在最上面,然后正常渲染消息内容,但被 .chat-expand-card-body 包住。
+  // 这部分逻辑放在 render 末尾(下方)。
 
   const hasThinking = Boolean(msg.thinking && msg.thinking.length > 0);
   const hasAnswer = msg.content.length > 0;
@@ -2065,7 +2058,7 @@ function MessageBlock({
 
   // Wrap in a single block so the inner gap (text ↔ tool cards = 12px) is
   // tighter than the outer message gap (28px between successive messages).
-  return (
+  const assistantBody = (
     <div className="chat-msg-assistant-block">
       {thinkingCollapsed && (
         <ThinkingIndicator
@@ -2105,6 +2098,42 @@ function MessageBlock({
         entry.kind === "workflow"
           ? <WorkflowBlock key={`wf-${entry.run.runId}`} run={entry.run} />
           : <SubagentBlock key={`sa-${entry.run.runId}`} run={entry.run} />
+      )}
+    </div>
+  );
+
+  // 非折叠态:直接返回 body
+  if (!foldedAsPreSynth) return assistantBody;
+
+  // 折叠态:包一层 .chat-expand-card 卡片;header 始终在,可点击切换;
+  // 展开时把 body 渲染进 .chat-expand-card-body。chevron 旋转表达开合。
+  return (
+    <div className={`chat-expand-card chat-presynth-card${preSynthExpanded ? " expanded" : ""}`}>
+      <button
+        type="button"
+        className="chat-expand-card-header"
+        onClick={() => setPreSynthExpanded((v) => !v)}
+        aria-expanded={preSynthExpanded}
+      >
+        <span className="chat-expand-card-icon" aria-hidden="true">
+          <PreSynthIcon />
+        </span>
+        <span className="chat-expand-card-title">
+          {preSynthExpanded ? t("chat.preSynth.collapse") : t("chat.preSynth.expand")}
+        </span>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          className={`chat-expand-card-chevron${preSynthExpanded ? " expanded" : ""}`}
+          aria-hidden="true"
+        >
+          <path d="m5 6 3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {preSynthExpanded && (
+        <div className="chat-expand-card-body">{assistantBody}</div>
       )}
     </div>
   );
