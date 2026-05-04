@@ -13,6 +13,7 @@ import ChatInput from "./ChatInput";
 import UserBubble from "./ChatMessage/UserBubble";
 import AssistantText from "./ChatMessage/AssistantText";
 import ThinkingIndicator from "./ChatMessage/ThinkingIndicator";
+import GeneratingMeta from "./ChatMessage/GeneratingMeta";
 import ToolCallCard from "./ChatMessage/ToolCallCard";
 import SubagentBlock from "./ChatMessage/SubagentBlock";
 import WorkflowBlock from "./ChatMessage/WorkflowBlock";
@@ -66,6 +67,19 @@ interface UiMessage {
   workflowRuns?: UiWorkflowRun[];
   streaming?: boolean;
   error?: { code: string; message: string };
+  // V3.0 UX: per-turn meta strip data. Set on the streaming assistant
+  // message at handleSend time; updated during the turn from `turn_usage`
+  // events; frozen on `done` payload so the strip flips from
+  // "Generating · Xs · Y tokens" → "Generated · Xs · Y tokens".
+  turnMeta?: {
+    startedAt: number;
+    /** Cumulative tokens — updated live by turn_usage, finalized on done. */
+    totalTokens: number;
+    /** Server-reported final duration in ms. Only set after done. */
+    durationMs?: number;
+    /** Lifecycle marker: "generating" while in-flight, "generated" after done. */
+    phase: "generating" | "generated";
+  };
 }
 
 export interface UiWorkflowRun {
@@ -586,11 +600,30 @@ export default function ChatSidebar({
   }, []);
 
   // ─── Send / confirm / stop ──────────────────────────────────────────
+  // V3.0 PR4 FE 补完:handleSend 现在区分两种路径:
+  //   - 首次提交(`!streaming`):走老逻辑,起新 user + streaming-assistant
+  //     气泡,fetch SSE 流读取所有 main turn 事件,完成后 freeze 成 done
+  //   - 追加提交(`streaming`):**只**追 user 气泡 + POST 后端,后端 ack
+  //     `branch_started` 立刻关流。branch 内部事件全部走 pubsub listener,
+  //     最终的合成回复(synthesis)由 listener 收到 synth 事件后通过
+  //     triggerReload 拉 DB 渲染。**不创建第二个 streaming-assistant 占位**
+  //     —— 否则 UI 会出两个空气泡,且和 fetch SSE 的 main 流抢 setMessages
+  //     状态。
+  // streaming flag 反映"当前 block 是否有正在跑的 fetch SSE 流",由 main
+  // 路径独占。append 路径触发的二次 fetch 是短连接(只读到 branch_started
+  // 后立刻 close),不动 streaming flag。
   const handleSend = useCallback(() => {
     if (!activeConv) return;
     const text = inputValue.trim();
-    if (!text || streaming) return;
+    if (!text) return;  // V3.0:streaming 时也允许发(走 append 路径)
 
+    // ── append 路径:正在 streaming + 用户继续输入 ──
+    if (streaming) {
+      handleAppendSend(activeConv.id, text);
+      return;
+    }
+
+    // ── main 路径:idle 状态起新 turn(老行为) ──
     const userMsgId = `u_${Date.now()}`;
     const assistantMsgId = `a_${Date.now()}_pending`;
 
@@ -599,10 +632,25 @@ export default function ChatSidebar({
     // reply in sequence even if they'd scrolled up in a previous turn.
     stickToBottomRef.current = true;
 
+    // V3.0 UX: 给新 streaming assistant 气泡挂上 turnMeta — GeneratingMeta
+    // 组件读这个对象渲染 "Generating · 0s · 0 tokens" placeholder,turn_usage
+    // 事件会更新 totalTokens,done 事件会切到 phase="generated"。
+    const turnStartedAt = Date.now();
     setMessages((prev) => [
       ...prev,
       { id: userMsgId, role: "user", content: text, toolCalls: [] },
-      { id: assistantMsgId, role: "assistant", content: "", toolCalls: [], streaming: true },
+      {
+        id: assistantMsgId,
+        role: "assistant",
+        content: "",
+        toolCalls: [],
+        streaming: true,
+        turnMeta: {
+          startedAt: turnStartedAt,
+          totalTokens: 0,
+          phase: "generating",
+        },
+      },
     ]);
     setInputValue("");
     setStreaming(true);
@@ -1019,7 +1067,20 @@ export default function ChatSidebar({
           ),
         );
       },
-      onDone: () => {
+      // V3.0 UX: live token tally — backend emits turn_usage after every
+      // provider round. Update the streaming assistant message's turnMeta
+      // so the GeneratingMeta strip refreshes "X tokens" without needing
+      // any extra refresh.
+      onTurnUsage: (usage) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === "assistant" && m.streaming && m.turnMeta
+              ? { ...m, turnMeta: { ...m.turnMeta, totalTokens: usage.totalTokens } }
+              : m,
+          ),
+        );
+      },
+      onDone: (summary) => {
         setStreaming(false);
         setMessages((prev) =>
           prev.map((m) =>
@@ -1027,6 +1088,17 @@ export default function ChatSidebar({
               ? {
                   ...m,
                   streaming: false,
+                  // V3.0 UX: freeze turnMeta — flip phase generating →
+                  // generated, lock in server's authoritative durationMs
+                  // and totalTokens (overrides the live client tally).
+                  turnMeta: m.turnMeta
+                    ? {
+                        ...m.turnMeta,
+                        phase: "generated",
+                        durationMs: summary?.durationMs ?? (Date.now() - m.turnMeta.startedAt),
+                        totalTokens: summary?.totalTokens ?? m.turnMeta.totalTokens,
+                      }
+                    : undefined,
                   // Belt-and-braces: if `done` arrives but a toolCall never
                   // got its `tool_result` (e.g. backend yielded done before
                   // settling — shouldn't happen, but guards against future
@@ -1050,6 +1122,48 @@ export default function ChatSidebar({
       },
     });
   }, [activeConv, inputValue, streaming, onActiveTableChange, onDemoCreated]);
+
+  // V3.0 PR4: append 路径 —— streaming 期间用户继续输入触发的 second submit。
+  // 不开 fetch SSE 长连接,只 POST + 期望立刻收到 branch_started ack 后 close。
+  // branch 内部事件(subagent_message / branch_finished / synth_*)走 listener
+  // 推送到 UI。这里只负责:(a) 把 user 气泡先 push 进 messages,(b) 触发 POST,
+  // (c) 失败时回滚气泡。
+  const handleAppendSend = useCallback(
+    (convId: string, text: string) => {
+      const userMsgId = `u_append_${Date.now()}`;
+      stickToBottomRef.current = true;
+      setMessages((prev) => [
+        ...prev,
+        { id: userMsgId, role: "user", content: text, toolCalls: [] },
+      ]);
+      setInputValue("");
+      setError(null);
+
+      const mentions = extractMentionPayloads(text);
+      // 只跑一次 streamChatMessage,但服务端会在 yield branch_started 后
+      // 立刻 res.end(),所以这里 onDone 几乎立刻触发。我们什么都不做 —
+      // 让 listener 接管后续 branch 事件。失败则把刚加的 user 气泡撤回。
+      streamChatMessage({
+        conversationId: convId,
+        message: text,
+        mentions,
+        onError: (code, message) => {
+          setError(friendlyError(code, message));
+          // append 失败 → 撤回乐观渲染的 user 气泡,避免给用户"已发出"的
+          // 错觉。把消息内容回填到输入框让 ta 不必重打。
+          setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
+          setInputValue((v) => (v.trim() ? v : text));
+        },
+        onDone: () => {
+          // append 路径下,onDone 表示后端已 ack branch_started 并关流;
+          // 主线 fetch SSE 仍在跑(由原来的 handleSend 持有),listener 会
+          // 把 branch_finished / synth_* 事件投给所有人。这里不动 streaming,
+          // 也不动主消息状态。
+        },
+      });
+    },
+    [setMessages, setInputValue, setError],
+  );
 
   const handleConfirm = useCallback(
     (confirmed: boolean) => {
@@ -1235,41 +1349,63 @@ export default function ChatSidebar({
   }, [workspaceId, agentId, streaming, handleStop]);
 
   // V3.0 PR3: passive listener — 同 conv 在多个 ChatBlock 时,非发起方通过 SSE
-  // 接收对方触发的事件,延迟 200ms 后从 server 重拉 messages。streaming 期间
-  // (本 block 是发起方) 不应用 listener 事件,避免重复。
+  // 接收对方触发的事件,延迟 200ms 后从 server 重拉 messages。
+  //
+  // V3.0 PR4 FE 补完:之前所有 listener 事件都被 `streamingRef.current` 一刀
+  // 切了 —— 理由是"本 block 是 main 流发起方,fetch SSE 已在投递事件,避免
+  // 重复"。但 V3.0 引入 append 路径后,branch_started / branch_finished /
+  // synth_* / turn_pending 这几类事件 **只走 listener** 不走 fetch SSE
+  // (append 的 fetch 立刻 close 后由 pubsub 接管)。因此需要把 reload 触发
+  // 分两类:
+  //   - "main-flow 类" 事件(message_persisted / 通用 done / tool_result / start):
+  //     发起方自己已经收到,reload 多余 + 容易和正在跑的 fetch 抢 setMessages
+  //     状态 → 仍然 streamingRef 守卫
+  //   - "multi-conv 类" 事件(branch_*  / synth_* / turn_*):
+  //     这些事件**不会**通过本 block 的 fetch SSE 投递(只有 append branch 的
+  //     发起 block 看不到自己 branch 的 token 流),必须 reload 才能拿到 server
+  //     的 SubagentRun 持久化数据 → 直接放行
   useEffect(() => {
     if (!open) return;
     const convId = activeConv?.id;
     if (!convId) return;
     let reloadTimer: ReturnType<typeof setTimeout> | null = null;
-    const triggerReload = () => {
-      if (streamingRef.current) return;  // 本 block 在发,自己有 fetch SSE
+
+    // forceReload:不看 streamingRef,无条件触发(给 V3.0 multi-conv 事件用)
+    const forceReload = () => {
       if (reloadTimer) clearTimeout(reloadTimer);
       reloadTimer = setTimeout(async () => {
-        if (streamingRef.current) return;
         try {
           const { messages: msgs, hasMore } = await getConversationMessages(convId, { limit: 20 });
           setHasMoreHistory(hasMore);
-          if (!streamingRef.current) {
-            setMessages((prev) => mergeServerWithLocal(msgs.map(serverToUi), prev));
-          }
+          // mergeServerWithLocal 已经会保护 streaming:true 的本地消息不被
+          // server 的 placeholder 覆盖,所以这里 streaming 状态下也安全 merge
+          setMessages((prev) => mergeServerWithLocal(msgs.map(serverToUi), prev));
         } catch {
           // ignore — 下次事件还会触发
         }
       }, 200);
     };
+
+    // gatedReload:streaming 期间不拉(避免和发起方自己的 fetch 抢)
+    const gatedReload = () => {
+      if (streamingRef.current) return;
+      forceReload();
+    };
+
     const off = listenChatShared(convId, {
-      // Token-level deltas 频率太高,不触发 reload(token-by-token sync 是 V2 优化)
-      // 只在消息边界事件触发 reload
-      onMessagePersisted: triggerReload,
-      onBranchStarted: triggerReload,
-      onBranchFinished: triggerReload,
-      onTurnPromoted: triggerReload,
-      onSynthFinished: triggerReload,
-      onTurnPending: triggerReload,
+      // main-flow 类 — 自己 fetch SSE 已投递
+      onMessagePersisted: gatedReload,
+      // V3.0 multi-conv 类 — 必须无条件 reload,否则 append branch 的发起方
+      // 自己就看不到 branch 进度 / 合成结果
+      onBranchStarted: forceReload,
+      onBranchFinished: forceReload,
+      onTurnPromoted: forceReload,
+      onSynthFinished: forceReload,
+      onTurnPending: forceReload,
       // V1 backward-compat events (assistant 流式 done / tool_result):
+      // 仍走 gated reload(发起方 fetch SSE 已投递了真实事件)
       onEvent: (name: string) => {
-        if (name === "done" || name === "tool_result" || name === "start") triggerReload();
+        if (name === "done" || name === "tool_result" || name === "start") gatedReload();
       },
     });
     return () => {
@@ -1780,7 +1916,22 @@ function MessageBlock({ msg }: { msg: UiMessage }) {
           thinking={msg.thinking}
         />
       )}
-      {waitingForFirstResponse && <ThinkingIndicator mode="active" text={t("chat.thinking.caption")} />}
+      {/* V3.0 UX: per-turn meta strip replaces the old "Analyzing your
+       *  request · skeleton" placeholder. Always shown on a streaming
+       *  assistant message, AND kept on the message after done as the
+       *  frozen "Generated · Xs · Y tokens" footer. The legacy
+       *  ThinkingIndicator active mode is only used as a fallback for
+       *  history messages that have no turnMeta (pre-V3.0 saved rows). */}
+      {msg.turnMeta ? (
+        <GeneratingMeta
+          phase={msg.turnMeta.phase}
+          startedAt={msg.turnMeta.startedAt}
+          totalTokens={msg.turnMeta.totalTokens}
+          frozenDurationMs={msg.turnMeta.durationMs}
+        />
+      ) : waitingForFirstResponse ? (
+        <ThinkingIndicator mode="active" text={t("chat.thinking.caption")} />
+      ) : null}
       <AssistantText content={msg.content} streaming={msg.streaming} />
       {groups.map((g, i) =>
         g.items.length === 1 ? (

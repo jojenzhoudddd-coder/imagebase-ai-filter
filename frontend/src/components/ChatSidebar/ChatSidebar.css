@@ -574,6 +574,11 @@
   align-items: stretch;
   gap: 12px;
   width: 100%;
+  /* V3.0 UX: 让 children(代码块 / 表格 / 引用)按 chat block 实际宽度
+   * 自适应,防止超长内容把 flex 容器撑大溢出。min-width:0 是 flex 子元素
+   * 让 overflow 生效的关键(默认 min-width:auto 会按内容测量)。 */
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* ─── Assistant text ───────────────────────────────────────────────
@@ -916,20 +921,35 @@
   border-radius: 3px;
   font-size: 12px;
   font-family: "SF Mono", ui-monospace, monospace;
+  /* V3.0 UX: 行内代码超长(URL / 哈希 / 长 token)时按字符换行,不爆出气泡。
+   * `word-break: break-all` 会在任意字符间断,对中英文混排影响可控,而且
+   * 行内 code 通常本身就是不可读的 token,断行优于撑爆容器。 */
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 .chat-msg-assistant-md pre {
   background: var(--surface-1);
   border: 1px solid var(--border-light);
   border-radius: 6px;
   padding: 6px 8px;
+  /* V3.0 UX: 代码块根据 chat block 宽度自适应。max-width:100% 避免被
+   * inline-size 化的 flex 父级撑大;overflow-x:auto 让超长行内出滚动条
+   * 而不是溢出气泡;width:100% 保证窄行的代码块也占满宽度,视觉一致。 */
+  max-width: 100%;
+  width: 100%;
   overflow-x: auto;
   font-size: 12px;
   line-height: 1.45;
   margin: 4px 0;
+  box-sizing: border-box;
 }
 .chat-msg-assistant-md pre code {
   background: transparent;
   padding: 0;
+  /* pre 已 overflow-x:auto,这里恢复 word-break 默认,让代码行不被强行
+   * 折断(语法高亮 / 缩进 / 注释会变难读)。pre 的滚动条接管溢出。 */
+  word-break: normal;
+  white-space: pre;
 }
 .chat-msg-assistant-md em {
   font-style: normal;
@@ -954,8 +974,13 @@
   margin: 3px 0;
   color: var(--text-muted);
   font-size: 12px;
+  /* V3.0 UX: 引用框内长 URL / 长英文不强制换行会撑出溢出 → 启用
+   * 自然断词,与正文 p 的换行行为一致。 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
-.chat-msg-assistant-md blockquote > p { margin: 0; }
+.chat-msg-assistant-md blockquote > p { margin: 0; overflow-wrap: anywhere; word-break: break-word; }
 .chat-msg-assistant-md hr {
   border: 0;
   border-top: 1px solid var(--border-light);
@@ -980,6 +1005,11 @@
   border-radius: 6px;
   background: var(--surface-2);
   font-size: 12px;
+  /* V3.0 UX: 让 block 自身永远适配 chat 气泡宽度,内部表格再交给
+   * .chat-table-block-scroll 横向滚动。flex / grid 父级会按 inner-content
+   * 撑大子元素,加 max-width 锁死。 */
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .chat-table-block-caption {
   padding: 6px 10px;
@@ -990,6 +1020,9 @@
 .chat-table-block-scroll {
   overflow: auto;
   border-radius: 6px;
+  /* 显式 max-width 才能让 overflow 真正生效:flex 子元素默认会按内容
+   * 测量,导致 overflow 失效。 */
+  max-width: 100%;
 }
 .chat-table {
   width: 100%;
@@ -1825,6 +1858,22 @@
 }
 .chat-input-send.stop:hover { background: var(--text-secondary); }
 
+/* V3.0 4-state submit (mode-* on the same .chat-input-send pill).
+ *   - send-disabled: 35% blue (matches the existing disabled affordance)
+ *   - send:          full primary blue
+ *   - stop:          神色 muted — visual cue "soft interrupt", aligned with
+ *                    AI filter's stop button so users get the same mental model
+ *   - append:        primary blue same as send (action == fire), but the
+ *                    icon (上箭头 + 加号小角标) signals "追加而非新轮"
+ */
+.chat-input-send.mode-send-disabled { background: rgba(20, 86, 240, 0.35); cursor: not-allowed; }
+.chat-input-send.mode-send,
+.chat-input-send.mode-append          { background: var(--primary); }
+.chat-input-send.mode-send:hover,
+.chat-input-send.mode-append:hover    { background: var(--primary-pressed); }
+.chat-input-send.mode-stop            { background: var(--text-muted); }
+.chat-input-send.mode-stop:hover      { background: var(--text-secondary); }
+
 .chat-generating-hint {
   font-size: 12px;
   color: var(--text-muted);
@@ -1832,6 +1881,51 @@
   align-items: center;
   gap: 4px;
   margin-right: 8px;
+}
+
+/* V3.0 UX: per-turn meta strip — shows above the streaming assistant
+ * bubble while a turn is in flight, then freezes into the same row with
+ * muted styling once `done` lands. Sits where the old skeleton preview
+ * used to. Single line, no wrap; emphasizes time + token tally. */
+.chat-generating-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  padding: 4px 0;
+}
+.chat-generating-meta.phase-generated { color: var(--text-muted); }
+.chat-generating-meta-label {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.chat-generating-meta.phase-generated .chat-generating-meta-label {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.chat-generating-meta-sep { color: var(--text-muted); }
+.chat-generating-meta-unit {
+  margin-left: 1px;
+  color: var(--text-muted);
+}
+.chat-generating-meta-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  display: inline-block;
+  animation: chat-generating-meta-pulse 1.4s ease-in-out infinite;
+}
+.chat-generating-meta.phase-generated .chat-generating-meta-pulse {
+  background: var(--text-muted);
+  animation: none;
+  opacity: 0.5;
+}
+@keyframes chat-generating-meta-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.35; transform: scale(0.7); }
 }
 
 /* Voice / microphone button — lives in .chat-input-tools-left alongside the

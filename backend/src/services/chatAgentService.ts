@@ -1052,6 +1052,8 @@ export interface SseEvent {
     | "synth_thinking_delta"
     | "synth_message_delta"
     | "synth_finished"
+    // V3.0 UX: per-turn token + duration meta strip (live updates during turn)
+    | "turn_usage"
     | "connected";
   data: Record<string, unknown>;
 }
@@ -2111,6 +2113,15 @@ async function* runAgentImpl(
   let accumulatedText = "";
   let accumulatedThinking = "";
   const accumulatedToolCalls: ToolCall[] = [];
+  // V3.0 UX: track per-turn duration + token tally so the FE can render
+  // a "Generating · Xs · Y tokens" meta strip during the turn and freeze
+  // the final values into "Generated · Xs · Y tokens" at the end. Tokens
+  // come from the provider adapter's `usage` field on the `done` event of
+  // each round. We accumulate across all rounds (a single user turn can
+  // fan out to many provider calls when tools are involved).
+  const turnStartedAt = Date.now();
+  let turnPromptTokens = 0;
+  let turnCompletionTokens = 0;
 
   // V2 streaming write: when the Agent calls `begin_idea_stream_write`, we
   // pin the returned sessionId here and route subsequent `text_delta` events
@@ -2198,6 +2209,24 @@ async function* runAgentImpl(
           streamErrored = ev.message;
           break;
         } else if (ev.kind === "done") {
+          // V3.0 UX: surface incremental token usage as soon as a round
+          // finishes so the "Generating · Xs · Y tokens" strip stays
+          // honest live. We emit it BEFORE breaking so the FE sees the
+          // bump even when the next thing is a tool call (which can take
+          // tens of seconds before the next round produces text).
+          if (ev.usage) {
+            turnPromptTokens += ev.usage.promptTokens ?? 0;
+            turnCompletionTokens += ev.usage.completionTokens ?? 0;
+            yield {
+              event: "turn_usage",
+              data: {
+                promptTokens: turnPromptTokens,
+                completionTokens: turnCompletionTokens,
+                totalTokens: turnPromptTokens + turnCompletionTokens,
+                durationMs: Date.now() - turnStartedAt,
+              },
+            };
+          }
           break;
         }
       }
@@ -2666,7 +2695,21 @@ async function* runAgentImpl(
   // Release the long-task tracker's timers (heartbeat + timeout).
   longTask.dispose();
 
-  yield { event: "done", data: { messageId: assistantMsgId } };
+  yield {
+    event: "done",
+    data: {
+      messageId: assistantMsgId,
+      // V3.0 UX: attach final per-turn meta so FE can flip the "Generating"
+      // strip to "Generated · <duration> · <tokens>" without an extra round
+      // trip. durationMs is from the FIRST byte the route handler started
+      // streaming until now (i.e. wall-clock for the whole turn including
+      // tool calls). totalTokens sums across all provider rounds.
+      durationMs: Date.now() - turnStartedAt,
+      promptTokens: turnPromptTokens,
+      completionTokens: turnCompletionTokens,
+      totalTokens: turnPromptTokens + turnCompletionTokens,
+    },
+  };
   logAgent({
     event: "turn_end",
     conversationId,

@@ -916,6 +916,7 @@ export function subscribeChatListen(
     onSynthStarted?: (data: any) => void;
     onSynthDelta?: (data: any) => void;
     onSynthFinished?: (data: any) => void;
+    onTurnUsage?: (data: any) => void;
     onError?: (data: any) => void;
     onConnected?: (data: any) => void;
     /** generic — 任何未单独 handle 的事件走这里 */
@@ -939,6 +940,7 @@ export function subscribeChatListen(
   wire("synth_message_delta", handlers.onSynthDelta);
   wire("synth_thinking_delta", handlers.onSynthDelta);
   wire("synth_finished", handlers.onSynthFinished);
+  wire("turn_usage", handlers.onTurnUsage);
   wire("error", handlers.onError);
   wire("connected", handlers.onConnected);
   // generic catch-all (DOM EventSource 不支持 *,只能列举常用的 fallthrough)
@@ -946,7 +948,7 @@ export function subscribeChatListen(
     const known = new Set([
       "message_persisted", "turn_pending", "branch_started", "branch_finished",
       "turn_promoted", "synth_started", "synth_message_delta",
-      "synth_thinking_delta", "synth_finished", "error", "connected",
+      "synth_thinking_delta", "synth_finished", "turn_usage", "error", "connected",
     ]);
     es.onmessage = (e: MessageEvent) => {
       // default "message" event — just forward
@@ -1150,7 +1152,12 @@ export interface StreamChatOptions {
   onToolResult?: (callId: string, success: boolean, result: unknown) => void;
   onConfirm?: (pending: PendingConfirm) => void;
   onError?: (code: string, message: string) => void;
-  onDone?: () => void;
+  // V3.0 UX: per-turn meta. `onTurnUsage` fires multiple times during a
+  // turn (after every provider round) with cumulative usage; `onDone`
+  // also receives the final values via its summary param so the FE can
+  // freeze the meta strip into "Generated · Xs · Y tokens".
+  onTurnUsage?: (usage: TurnUsage) => void;
+  onDone?: (summary?: TurnDoneSummary) => void;
   // ── PR3 Subagent SSE callbacks ──
   onSubagentStart?: (ev: SubagentStartEvent) => void;
   onSubagentThinking?: (runId: string, text: string) => void;
@@ -1169,6 +1176,24 @@ export interface StreamChatOptions {
   onWorkflowEnd?: (runId: string, durationMs: number) => void;
   onWorkflowError?: (runId: string, error: string, nodeId?: string) => void;
   onWorkflowAborted?: (runId: string, reason: string) => void;
+}
+
+/** V3.0 UX: cumulative usage delta emitted after each provider round. */
+export interface TurnUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  /** Wall-clock ms since the turn started (server-measured). */
+  durationMs: number;
+}
+
+/** V3.0 UX: final per-turn summary attached to the `done` event. */
+export interface TurnDoneSummary {
+  messageId?: string;
+  durationMs: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
 }
 
 export interface WorkflowStartEvent {
@@ -1291,8 +1316,22 @@ async function readChatSseStream(
           case "error":
             handlers.onError?.(data.code || "UNKNOWN", data.message || "");
             break;
+          case "turn_usage":
+            handlers.onTurnUsage?.({
+              promptTokens: typeof data.promptTokens === "number" ? data.promptTokens : 0,
+              completionTokens: typeof data.completionTokens === "number" ? data.completionTokens : 0,
+              totalTokens: typeof data.totalTokens === "number" ? data.totalTokens : 0,
+              durationMs: typeof data.durationMs === "number" ? data.durationMs : 0,
+            });
+            break;
           case "done":
-            handlers.onDone?.();
+            handlers.onDone?.({
+              messageId: typeof data.messageId === "string" ? data.messageId : undefined,
+              durationMs: typeof data.durationMs === "number" ? data.durationMs : 0,
+              promptTokens: typeof data.promptTokens === "number" ? data.promptTokens : 0,
+              completionTokens: typeof data.completionTokens === "number" ? data.completionTokens : 0,
+              totalTokens: typeof data.totalTokens === "number" ? data.totalTokens : 0,
+            });
             break;
           // ── PR3 Subagent events ──
           case "subagent_start":
