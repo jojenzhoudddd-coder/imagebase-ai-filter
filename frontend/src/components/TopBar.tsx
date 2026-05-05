@@ -441,11 +441,6 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
               width="20"
               height="20"
             />
-            {agentUnreadCount && agentUnreadCount > 0 ? (
-              <span className="topbar-agent-badge" aria-label={`${agentUnreadCount} unread`}>
-                {agentUnreadCount > 9 ? "9+" : agentUnreadCount}
-              </span>
-            ) : null}
           </button>
         </div>
         <span className="topbar-divider" />
