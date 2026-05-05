@@ -69,6 +69,8 @@ interface Props {
   attachments?: ChatAttachment[];
   onAttachmentsChange?: (attachments: ChatAttachment[]) => void;
   onFileDrop?: (files: File[]) => void;
+  /** External drag state (sidebar-level drag detected) */
+  externalDragging?: boolean;
 }
 
 interface MentionQueryState {
@@ -190,6 +192,7 @@ export default function ChatInput({
   attachments,
   onAttachmentsChange,
   onFileDrop,
+  externalDragging,
 }: Props) {
   const { t } = useTranslation();
   const editorRef = useRef<HTMLDivElement>(null);
@@ -650,7 +653,7 @@ export default function ChatInput({
             </button>
           </div>
         </div>
-        {dragging && (
+        {(dragging || externalDragging) && (
           <div className="chat-input-drag-overlay">
             {t("chat.input.dropFiles")}
           </div>

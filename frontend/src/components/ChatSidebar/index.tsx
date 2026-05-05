@@ -383,6 +383,7 @@ export default function ChatSidebar({
     }
   }, []);
 
+  const [sidebarDragging, setSidebarDragging] = useState(false);
   const [streaming, setStreaming] = useState(false);
   // Live ref to `streaming` so effects that run on prop-id changes (the
   // [open, workspaceId] revalidation) can check the CURRENT value without
@@ -1674,7 +1675,13 @@ export default function ChatSidebar({
   // to silence TS until we decide whether to add a close affordance back.
   void onClose;
   return (
-    <aside className={`chat-sidebar${open ? " open" : ""}`} aria-hidden={!open}>
+    <aside
+      className={`chat-sidebar${open ? " open" : ""}`}
+      aria-hidden={!open}
+      onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setSidebarDragging(true); }}
+      onDragLeave={(e) => { e.preventDefault(); setSidebarDragging(false); }}
+      onDrop={(e) => { e.preventDefault(); setSidebarDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) void handleFileDrop(files); }}
+    >
       <header className="chat-header">
         {/* Left cluster: Agent name pill (double-click to rename, also kept in
             sync with chat-initiated renames via `update_agent_name` tool) then
@@ -1885,6 +1892,7 @@ export default function ChatSidebar({
                   attachments={attachments}
                   onAttachmentsChange={setAttachments}
                   onFileDrop={handleFileDrop}
+                  externalDragging={sidebarDragging}
                 />
               </div>
             </div>
@@ -1933,6 +1941,7 @@ export default function ChatSidebar({
             attachments={attachments}
             onAttachmentsChange={setAttachments}
             onFileDrop={handleFileDrop}
+            externalDragging={sidebarDragging}
           />
         </>
       )}
