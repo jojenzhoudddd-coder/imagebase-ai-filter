@@ -76,6 +76,13 @@
   background: var(--surface-3);
   display: block;
 }
+.ab-hero-avatar-skeleton {
+  animation: ab-skeleton-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ab-skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
 
 .ab-hero-avatar-overlay {
   position: absolute;

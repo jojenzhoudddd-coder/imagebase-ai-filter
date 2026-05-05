@@ -169,13 +169,17 @@ export default function AgentBlock({ blockId }: Props) {
       {/* Hero */}
       <div className="ab-hero">
         <div className="ab-hero-avatar-wrap" title={t("topbar.changeAvatar") as string}>
-          <img
-            key={agent?.avatarUrl}
-            className="ab-hero-avatar"
-            src={agent?.avatarUrl || FALLBACK_AVATAR}
-            alt=""
-            onError={(e) => { (e.currentTarget as HTMLImageElement).src = FALLBACK_AVATAR; }}
-          />
+          {agent ? (
+            <img
+              key={agent.avatarUrl}
+              className="ab-hero-avatar"
+              src={agent.avatarUrl || FALLBACK_AVATAR}
+              alt=""
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = FALLBACK_AVATAR; }}
+            />
+          ) : (
+            <div className="ab-hero-avatar ab-hero-avatar-skeleton" />
+          )}
           <div className="ab-hero-avatar-overlay">
             {uploading ? (
               <span>…</span>

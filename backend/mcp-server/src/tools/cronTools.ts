@@ -162,7 +162,7 @@ export const cronTools: ToolDefinition[] = [
   {
     name: "update_scheduled_task",
     description:
-      "修改一条已有的定时任务。可以改执行时间（schedule）、任务描述（prompt）、开关（enabled）。调用时机：用户说'把 XX 改成每天 9 点' 或 '暂停 XX 习惯' 或 '帮我改一下 XX 的描述'。调用前建议先 list_scheduled_tasks 确认 jobId。",
+      "修改一条已有的定时任务。可以改执行时间（schedule）和开关（enabled）。用户自建的任务还可以改描述（prompt），但系统 habit 的描述不可修改。调用时机：用户说'把 XX 改成每天 9 点' 或 '暂停 XX 习惯'。调用前建议先 list_scheduled_tasks 确认 jobId。",
     inputSchema: {
       type: "object",
       properties: {
@@ -184,6 +184,7 @@ export const cronTools: ToolDefinition[] = [
       const job = cronFile.jobs.find((j: any) => j.id === jobId);
       if (!job) return JSON.stringify({ ok: false, error: "找不到这个 jobId" });
 
+      const isSystem = job.type === "system";
       const updates: string[] = [];
 
       if (typeof args.schedule === "string" && args.schedule.trim()) {
@@ -193,6 +194,9 @@ export const cronTools: ToolDefinition[] = [
         updates.push(`schedule → ${job.schedule}`);
       }
       if (typeof args.prompt === "string" && args.prompt.trim()) {
+        if (isSystem) {
+          return JSON.stringify({ ok: false, error: "系统 habit 的内容不允许修改，只能修改执行时间和开关" });
+        }
         job.prompt = args.prompt.trim();
         updates.push("prompt updated");
       }
