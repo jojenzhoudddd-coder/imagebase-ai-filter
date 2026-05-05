@@ -1556,6 +1556,24 @@ export async function updateAgent(
   return res.json();
 }
 
+/** Upload + crop result already as data URL. Mirrors POST /api/auth/avatar. */
+export async function uploadAgentAvatar(
+  agentId: string,
+  dataUrl: string,
+): Promise<AgentMeta> {
+  const res = await mutationFetch(`${BASE}/agents/${encodeURIComponent(agentId)}/avatar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dataUrl }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return data.agent as AgentMeta;
+}
+
 export async function getAgentIdentity(agentId: string): Promise<AgentIdentity> {
   const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/identity`);
   if (!res.ok) throw new Error("Failed to load agent identity");

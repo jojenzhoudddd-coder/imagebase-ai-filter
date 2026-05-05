@@ -32,6 +32,10 @@
  */
 
 import express, { type Request, type Response } from "express";
+import path from "path";
+import fsp from "fs/promises";
+import crypto from "crypto";
+import { fileURLToPath } from "url";
 import {
   listAgents,
   getAgent,
@@ -54,6 +58,9 @@ import {
   setModelStrengthOverride,
   type AgentConfig,
 } from "../services/agentService.js";
+
+// ESM shim — same pattern as authRoutes for resolving the avatars upload dir.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import {
   addCronJob,
   removeCronJob,
@@ -160,6 +167,44 @@ router.put("/:agentId", async (req: Request, res: Response) => {
     return;
   }
   res.json(agent);
+});
+
+// ─── POST /api/agents/:agentId/avatar ───
+// Body: { dataUrl }  — data URL (PNG/JPG/GIF/WebP),已由 FE 完成裁剪 + 压缩
+// 镜像 /api/auth/avatar 的实现:解码 → 写盘到 /uploads/avatars → 更新 Agent.avatarUrl
+router.post("/:agentId/avatar", async (req: Request, res: Response) => {
+  const agentId = req.params.agentId;
+  const existing = await getAgent(agentId);
+  if (!existing) {
+    res.status(404).json({ error: "agent not found" });
+    return;
+  }
+  const { dataUrl } = req.body ?? {};
+  if (typeof dataUrl !== "string") {
+    res.status(400).json({ error: "dataUrl required", code: "MISSING_FIELDS" });
+    return;
+  }
+  const m = /^data:(image\/(png|jpe?g|gif|webp));base64,(.+)$/.exec(dataUrl);
+  if (!m) {
+    res.status(400).json({ error: "unsupported image format", code: "AVATAR_INVALID" });
+    return;
+  }
+  const ext = m[2] === "jpeg" ? "jpg" : m[2];
+  const bytes = Buffer.from(m[3], "base64");
+  if (bytes.length > 2 * 1024 * 1024) {
+    res.status(413).json({ error: "avatar too large (max 2MB)", code: "AVATAR_TOO_LARGE" });
+    return;
+  }
+  // 与 authRoutes 用同一个 dir,这样静态 mount 不需要新增配置
+  const dir = path.resolve(__dirname, "../../../uploads/avatars");
+  await fsp.mkdir(dir, { recursive: true });
+  const hash = crypto.createHash("sha1").update(bytes).digest("hex").slice(0, 12);
+  const fileName = `agent_${agentId}_${hash}.${ext}`;
+  const abs = path.join(dir, fileName);
+  await fsp.writeFile(abs, bytes);
+  const avatarUrl = `/uploads/avatars/${fileName}`;
+  const updated = await updateAgent(agentId, { avatarUrl });
+  res.json({ agent: updated });
 });
 
 router.delete("/:agentId", async (req: Request, res: Response) => {

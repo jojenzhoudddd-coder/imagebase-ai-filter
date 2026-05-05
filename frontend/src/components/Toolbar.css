@@ -12,7 +12,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  /* 左/右 8px ——
+     · 左侧:sidebar-expand icon 28×28 直接贴 padding 边缘 → hover 热区距 block 左缘 8px;
+     · 右侧:close-X / 末尾按钮 hover 热区距 block 右缘 8px(详见 BlockShell). */
+  padding: 0 8px;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
@@ -22,7 +25,7 @@
 .table-topbar-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px; /* sidebar icon ↔ artifact name 距离 */
   min-width: 0;
   flex: 1;
 }
@@ -41,9 +44,8 @@
 
 /* Artifact topbar 的 sidebar 展开按钮 —— 全局样式（4 类 artifact topbar 共用）。
    尺寸完全对齐其它 artifact topbar 图标按钮（28×28 / 14×14 svg / radius-s）。
-   margin-left: -4px 让按钮左边缘距离 topbar 左缘 8px(topbar 自带 padding-left
-   是 12px,负 margin 4 → 8px),不动 padding 也就不动 sidebar 展开时 title 的
-   12px 位置。 */
+   现在 topbar padding-left 已经是 8px,所以按钮直接贴 padding 边缘即可,不
+   再需要负 margin 偏移。 */
 .artifact-sidebar-expand-btn {
   display: inline-flex;
   align-items: center;
@@ -57,7 +59,6 @@
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
   flex-shrink: 0;
-  margin-left: -4px;
 }
 .artifact-sidebar-expand-btn:hover {
   background: var(--surface-3);

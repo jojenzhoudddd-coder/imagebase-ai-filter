@@ -5,8 +5,10 @@
  * 行为：
  *   · 用户上传任意图片（大小由调用方把关），本组件接 dataUrl
  *   · 渲染图片到 canvas-sized 预览区（最大 360×360），保持原比例
- *   · 一个方形选框叠在图片上，用户可以拖动（只支持平移，不支持改尺寸 —
- *     尺寸固定为图片较短边，这样永远能选满；简单够用）
+ *   · 一个方形选框叠在图片上：
+ *       - 选框内部拖动 → 平移
+ *       - 4 个角 (12×12 把手) 拖动 → 改尺寸（保持正方形,头像渲染是圆的)
+ *     选框可以缩到 32px 最小,大可以撑满图片较短边。
  *   · "确定"按钮 → 从原图按视觉选框对应的真实坐标切出来、缩到 256 JPEG，
  *     交给 onConfirm(croppedDataUrl)
  *   · "取消" → onCancel()
@@ -30,18 +32,27 @@ interface Props {
 const PREVIEW_SIZE = 360; // 预览区最大边长
 const OUTPUT_SIZE = 256;  // 最终输出正方形边长
 const OUTPUT_QUALITY = 0.85;
+const MIN_CROP_SIZE = 32; // 选框最小边长
+
+type Corner = "nw" | "ne" | "sw" | "se";
+type DragKind = { kind: "move" } | { kind: "resize"; corner: Corner };
 
 export default function AvatarCropDialog({ sourceDataUrl, onConfirm, onCancel }: Props) {
   const { t } = useTranslation();
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
   /** 预览区实际渲染尺寸（保持比例，≤ PREVIEW_SIZE）。 */
   const [previewSize, setPreviewSize] = useState<{ w: number; h: number }>({ w: PREVIEW_SIZE, h: PREVIEW_SIZE });
-  /** 选框左上角相对预览区的像素坐标。 */
-  const [cropXY, setCropXY] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  /** 选框边长 —— = min(preview.w, preview.h)。 */
-  const cropSize = Math.min(previewSize.w, previewSize.h);
+  /** 选框 left/top/size —— 全部相对预览区像素坐标,size 是边长(始终正方形)。 */
+  const [crop, setCrop] = useState<{ x: number; y: number; size: number }>({ x: 0, y: 0, size: 0 });
   const imgRef = useRef<HTMLImageElement>(null);
-  const dragStateRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const dragRef = useRef<{
+    kind: DragKind;
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+    origSize: number;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // 图片加载后：计算预览尺寸 + 把裁剪框居中到图像中间
@@ -57,37 +68,75 @@ export default function AvatarCropDialog({ sourceDataUrl, onConfirm, onCancel }:
     const ph = Math.round(h * scale);
     setPreviewSize({ w: pw, h: ph });
     const cs = Math.min(pw, ph);
-    setCropXY({ x: Math.round((pw - cs) / 2), y: Math.round((ph - cs) / 2) });
+    setCrop({
+      x: Math.round((pw - cs) / 2),
+      y: Math.round((ph - cs) / 2),
+      size: cs,
+    });
   }, []);
 
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
+  /** 通用 pointerdown 处理 —— 接受 DragKind 决定是平移还是改尺寸。 */
+  const startDrag = useCallback((kind: DragKind, e: React.MouseEvent) => {
     e.preventDefault();
-    dragStateRef.current = {
+    e.stopPropagation();
+    dragRef.current = {
+      kind,
       startX: e.clientX,
       startY: e.clientY,
-      origX: cropXY.x,
-      origY: cropXY.y,
+      origX: crop.x,
+      origY: crop.y,
+      origSize: crop.size,
     };
     const onMove = (ev: MouseEvent) => {
-      const ds = dragStateRef.current;
+      const ds = dragRef.current;
       if (!ds) return;
       const dx = ev.clientX - ds.startX;
       const dy = ev.clientY - ds.startY;
-      const maxX = previewSize.w - cropSize;
-      const maxY = previewSize.h - cropSize;
-      setCropXY({
-        x: Math.max(0, Math.min(maxX, ds.origX + dx)),
-        y: Math.max(0, Math.min(maxY, ds.origY + dy)),
-      });
+
+      if (ds.kind.kind === "move") {
+        const maxX = previewSize.w - ds.origSize;
+        const maxY = previewSize.h - ds.origSize;
+        setCrop({
+          x: Math.max(0, Math.min(maxX, ds.origX + dx)),
+          y: Math.max(0, Math.min(maxY, ds.origY + dy)),
+          size: ds.origSize,
+        });
+        return;
+      }
+
+      // resize:保持正方形 —— 取 dx/dy 中"扩张"的一方为主导(用户感知更顺)。
+      // 用 max(|dx|,|dy|) 决定 size 增量,根据 corner 方向决定符号 + 锚点。
+      const corner = ds.kind.corner;
+      // 锚点 = 选框对角(不动那个角的预览坐标)
+      const anchorX = corner === "nw" || corner === "sw" ? ds.origX + ds.origSize : ds.origX;
+      const anchorY = corner === "nw" || corner === "ne" ? ds.origY + ds.origSize : ds.origY;
+      // 主导方向上的拖动距离(向"远离锚点"为正,放大;向"靠近锚点"为负,缩小)
+      const signX = corner === "ne" || corner === "se" ? 1 : -1;
+      const signY = corner === "sw" || corner === "se" ? 1 : -1;
+      const dragX = signX * dx;
+      const dragY = signY * dy;
+      // 取主导(用户拖得更远的那个轴)作为 size delta —— 视觉跟手
+      const delta = Math.abs(dragX) > Math.abs(dragY) ? dragX : dragY;
+      let newSize = ds.origSize + delta;
+      // 边界:不能小于 MIN,不能让选框越出图像
+      const maxSize = Math.min(
+        signX > 0 ? previewSize.w - anchorX : anchorX,
+        signY > 0 ? previewSize.h - anchorY : anchorY,
+      );
+      newSize = Math.max(MIN_CROP_SIZE, Math.min(maxSize, newSize));
+      // 由 anchor + size + 方向反推新的 left/top
+      const newX = signX > 0 ? anchorX : anchorX - newSize;
+      const newY = signY > 0 ? anchorY : anchorY - newSize;
+      setCrop({ x: newX, y: newY, size: newSize });
     };
     const onUp = () => {
-      dragStateRef.current = null;
+      dragRef.current = null;
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [cropXY.x, cropXY.y, cropSize, previewSize.w, previewSize.h]);
+  }, [crop.x, crop.y, crop.size, previewSize.w, previewSize.h]);
 
   // ESC 关闭
   useEffect(() => {
@@ -105,9 +154,9 @@ export default function AvatarCropDialog({ sourceDataUrl, onConfirm, onCancel }:
       // 视觉坐标 → 原图真实像素坐标（按缩放比反推）
       const scaleX = naturalSize.w / previewSize.w;
       const scaleY = naturalSize.h / previewSize.h;
-      const sx = cropXY.x * scaleX;
-      const sy = cropXY.y * scaleY;
-      const sSize = cropSize * scaleX; // scaleX === scaleY 因为保比缩放
+      const sx = crop.x * scaleX;
+      const sy = crop.y * scaleY;
+      const sSize = crop.size * scaleX; // scaleX === scaleY 因为保比缩放
 
       const canvas = document.createElement("canvas");
       canvas.width = OUTPUT_SIZE;
@@ -126,6 +175,13 @@ export default function AvatarCropDialog({ sourceDataUrl, onConfirm, onCancel }:
       setSubmitting(false);
     }
   }
+
+  const corners: Array<{ corner: Corner; style: React.CSSProperties; cursor: string }> = [
+    { corner: "nw", style: { left: -6, top: -6 }, cursor: "nwse-resize" },
+    { corner: "ne", style: { right: -6, top: -6 }, cursor: "nesw-resize" },
+    { corner: "sw", style: { left: -6, bottom: -6 }, cursor: "nesw-resize" },
+    { corner: "se", style: { right: -6, bottom: -6 }, cursor: "nwse-resize" },
+  ];
 
   return createPortal(
     <div className="avatar-crop-overlay" onMouseDown={onCancel}>
@@ -147,18 +203,27 @@ export default function AvatarCropDialog({ sourceDataUrl, onConfirm, onCancel }:
           <div
             className="avatar-crop-box"
             style={{
-              left: cropXY.x,
-              top: cropXY.y,
-              width: cropSize,
-              height: cropSize,
+              left: crop.x,
+              top: crop.y,
+              width: crop.size,
+              height: crop.size,
             }}
-            onMouseDown={onMouseDown}
-          />
+            onMouseDown={(e) => startDrag({ kind: "move" }, e)}
+          >
+            {corners.map((c) => (
+              <div
+                key={c.corner}
+                className={`avatar-crop-handle handle-${c.corner}`}
+                style={{ ...c.style, cursor: c.cursor }}
+                onMouseDown={(e) => startDrag({ kind: "resize", corner: c.corner }, e)}
+              />
+            ))}
+          </div>
           {/* 4 条 dim mask：选框外 4 块半透明黑，视觉上突出选区 */}
-          <div className="avatar-crop-dim" style={{ left: 0, top: 0, width: previewSize.w, height: cropXY.y }} />
-          <div className="avatar-crop-dim" style={{ left: 0, top: cropXY.y + cropSize, width: previewSize.w, height: previewSize.h - cropXY.y - cropSize }} />
-          <div className="avatar-crop-dim" style={{ left: 0, top: cropXY.y, width: cropXY.x, height: cropSize }} />
-          <div className="avatar-crop-dim" style={{ left: cropXY.x + cropSize, top: cropXY.y, width: previewSize.w - cropXY.x - cropSize, height: cropSize }} />
+          <div className="avatar-crop-dim" style={{ left: 0, top: 0, width: previewSize.w, height: crop.y }} />
+          <div className="avatar-crop-dim" style={{ left: 0, top: crop.y + crop.size, width: previewSize.w, height: previewSize.h - crop.y - crop.size }} />
+          <div className="avatar-crop-dim" style={{ left: 0, top: crop.y, width: crop.x, height: crop.size }} />
+          <div className="avatar-crop-dim" style={{ left: crop.x + crop.size, top: crop.y, width: previewSize.w - crop.x - crop.size, height: crop.size }} />
         </div>
         <div className="avatar-crop-actions">
           <button type="button" className="avatar-crop-btn avatar-crop-btn-cancel" onClick={onCancel} disabled={submitting}>

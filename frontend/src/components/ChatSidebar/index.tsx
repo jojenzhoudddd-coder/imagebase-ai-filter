@@ -22,6 +22,7 @@ import ConfirmCard from "./ChatMessage/ConfirmCard";
 import ChatModelPicker from "./ChatModelPicker";
 import BlockCloseButton from "../BlockCloseButton";
 import AgentNamePill from "./AgentNamePill";
+import AgentAvatarMenu from "./AgentAvatarMenu";
 import { MoreIcon, RefreshIcon, PlusIcon, HistoryIcon, TrashIcon } from "./icons";
 import DropdownMenu from "../DropdownMenu";
 import ConfirmDialog from "../ConfirmDialog";
@@ -1619,6 +1620,11 @@ export default function ChatSidebar({
             the model picker. Both are hidden behind `open` so we don't hit
             /api/agents/* on every mount. */}
         <div className="chat-header-left">
+          <AgentAvatarMenu
+            agentId={agentId}
+            open={open}
+            refreshToken={agentRefreshToken}
+          />
           <AgentNamePill
             agentId={agentId}
             open={open}

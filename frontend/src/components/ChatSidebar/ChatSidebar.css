@@ -29,23 +29,57 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* 自管 padding —— 不再继承 .chat-part 的左右 20px。
-     left 20: title 距左缘 20px(对齐 chat 内容区的左边距);
-     right 8: 让最右"更多"按钮的 hover 热区右缘距 sidebar 右缘 8px
-              (28px 按钮不再需要负 margin —— 容器 padding-right 已经收紧). */
-  padding: 0 8px 0 20px;
+  /* 自管 padding ——
+     left 12: avatar(28×28)左缘距 block 边缘 12px;
+     right 8:  最右"更多"按钮的 hover 热区右缘距 sidebar 右缘 8px. */
+  padding: 0 8px 0 12px;
   background: var(--surface-2);
   gap: 16px;
 }
 
-/* Left cluster inside the header: Agent name pill + model picker side-by-side.
- * Uses min-width:0 so children can truncate within the 350px sidebar. */
+/* Left cluster inside the header: Agent avatar + name pill + model picker
+ * side-by-side, 8px gap between siblings. min-width:0 lets children truncate
+ * within the 350px sidebar. */
 .chat-header-left {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
   flex: 1 1 auto;
+}
+
+/* Agent avatar button —— 28×28 圆形,默认无边框/无背景,hover 时一圈
+ *  surface-3 表示可点。点击 → 弹 .chat-agent-popover. */
+.chat-agent-avatar-btn {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: background 100ms ease, box-shadow 100ms ease;
+}
+.chat-agent-avatar-btn:hover {
+  box-shadow: 0 0 0 2px var(--surface-3);
+}
+.chat-agent-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+/* Popover —— 复用 .topbar-profile-popover 类的视觉 (TopBar.css 里),
+ *  但比 user popover 略窄一点(没那么多分组)。 */
+.chat-agent-popover {
+  width: 240px;
+  z-index: 3000;
 }
 
 /* Agent name title — leftmost item in the header. Matches the

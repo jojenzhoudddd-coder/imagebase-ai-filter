@@ -47,11 +47,21 @@
   position: absolute;
   border: 2px solid var(--surface-2);
   box-sizing: border-box;
-  cursor: grab;
+  cursor: move;
   box-shadow: 0 0 0 9999px transparent;
   z-index: 2;
 }
 .avatar-crop-box:active { cursor: grabbing; }
+/* 4 个角的 resize 把手 —— 12×12 白色方块,稍微比选框边框溢出一点便于抓取 */
+.avatar-crop-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--surface-2);
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 2px;
+  z-index: 3;
+}
 /* 选框外的 dim mask */
 .avatar-crop-dim {
   position: absolute;
