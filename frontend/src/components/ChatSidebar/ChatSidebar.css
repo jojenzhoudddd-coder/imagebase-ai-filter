@@ -2811,7 +2811,7 @@
   border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
-/* Drag overlay — covers the entire chat-input-box (16px radius) */
+/* Drag overlay — small one on input box (kept for local drag) */
 .chat-input-drag-overlay {
   position: absolute;
   inset: 0;
@@ -2825,5 +2825,25 @@
   font-size: 13px;
   font-weight: 500;
   z-index: 10;
+  pointer-events: none;
+}
+
+/* Drag overlay — full sidebar overlay (excluding topbar) */
+.chat-sidebar-drag-overlay {
+  position: absolute;
+  top: 44px; /* skip topbar height */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(20, 86, 240, 0.06);
+  border: 2px dashed var(--primary);
+  border-radius: 0 0 8px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 50;
   pointer-events: none;
 }

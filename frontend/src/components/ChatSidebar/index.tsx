@@ -765,7 +765,7 @@ export default function ChatSidebar({
 
     cancelRef.current = streamChatMessage({
       conversationId: activeConv.id,
-      message: text,
+      message: fullContent,
       mentions,
       onStart: (serverId) => {
         // V3.0 (queue model): a `start` event can mean two things:
@@ -1678,10 +1678,14 @@ export default function ChatSidebar({
     <aside
       className={`chat-sidebar${open ? " open" : ""}`}
       aria-hidden={!open}
+      style={{ position: "relative" }}
       onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setSidebarDragging(true); }}
-      onDragLeave={(e) => { e.preventDefault(); setSidebarDragging(false); }}
-      onDrop={(e) => { e.preventDefault(); setSidebarDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) void handleFileDrop(files); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSidebarDragging(false); }}
+      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setSidebarDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) void handleFileDrop(files); }}
     >
+      {sidebarDragging && (
+        <div className="chat-sidebar-drag-overlay">Drop files here</div>
+      )}
       <header className="chat-header">
         {/* Left cluster: Agent name pill (double-click to rename, also kept in
             sync with chat-initiated renames via `update_agent_name` tool) then

@@ -535,12 +535,7 @@ export default function ChatInput({
 
   return (
     <div className="chat-input-wrap">
-      <div
-        className="chat-input-box"
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
+      <div className="chat-input-box">
         <div className="chat-input-content">
           {/* Attachment thumbnails inside editor area, above text */}
           {attachments && attachments.length > 0 && (
@@ -653,11 +648,6 @@ export default function ChatInput({
             </button>
           </div>
         </div>
-        {(dragging || externalDragging) && (
-          <div className="chat-input-drag-overlay">
-            {t("chat.input.dropFiles")}
-          </div>
-        )}
       </div>
     </div>
   );
