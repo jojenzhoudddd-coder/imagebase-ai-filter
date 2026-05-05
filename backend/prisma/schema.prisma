@@ -30,11 +30,38 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orgs       OrgMember[]
-  workspaces Workspace[]
-  agents     Agent[]
+  orgs         OrgMember[]
+  workspaces   Workspace[]
+  agents       Agent[]
+  customModels CustomModel[]
 
   @@map("users")
+}
+
+// ─── CustomModel（用户自定义模型，per-user，跨 agent 共享） ───
+
+model CustomModel {
+  id              String   @id @default(cuid())
+  userId          String
+  modelId         String   // 用户定义的 model ID（如 "my-gpt4"）
+  displayName     String
+  provider        String   // "openai-compatible" | "anthropic" | "custom"
+  baseUrl         String   // API base URL
+  apiKey          String   // 加密存储的 API key
+  providerModelId String   // 实际发给 provider 的 model name
+  capabilities    Json     @default("{}")  // { thinking, toolUse, contextWindow }
+  group           String   @default("custom")
+  specialty       String?
+  visible         Boolean  @default(true)
+  available       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, modelId])
+  @@index([userId])
+  @@map("custom_models")
 }
 
 // ─── Agent（属于用户，跨 Workspace 的长期 Agent 身份） ───
@@ -265,6 +292,12 @@ model Message {
   durationMs       Int?
   promptTokens     Int?
   completionTokens Int?
+  /// Model ID used for this turn (e.g. "claude-opus-4.7", "doubao-2.0").
+  /// Only set on assistant messages at turn completion.
+  modelId          String?
+  /// Source context: active skill names or habit ID for this turn.
+  /// Format: "skill:table-skill,analyst-skill" or "habit:habit_system_evolve" or null.
+  source           String?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -635,4 +668,26 @@ model Demo {
   @@index([workspaceId])
   @@index([publishSlug])
   @@map("demos")
+}
+
+// ─── KnowledgeEntry（Agent 知识库 — RAG 存储） ───
+// embedding 开发期用 Json 数组存储，生产切 pgvector 时改为 vector(1536)
+
+model KnowledgeEntry {
+  id         String   @id @default(cuid())
+  agentId    String
+  title      String
+  content    String   // Markdown 正文（已分块）
+  sourceUrl  String?  // 来源 URL
+  sourceType String   @default("web") // "web" | "chat" | "manual"
+  tags       String[] @default([])
+  embedding  Json?    // number[] — 开发期 JSON 存储，生产切 pgvector
+  chunkIndex Int      @default(0)
+  parentId   String?  // 同源分块共享 parentId
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([agentId, createdAt])
+  @@map("knowledge_entries")
 }

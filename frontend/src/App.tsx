@@ -2256,6 +2256,7 @@ function PerBlockChatSidebar({
   const canvas = useCanvas();
   const blockState = canvas.state.blockStates[blockId] as ChatBlockStateLike | undefined;
   const conversationId = blockState?.conversationId ?? null;
+  const prefillMessage = blockState?.prefillMessage ?? undefined;
 
   const handleConversationChange = useCallback(
     (convId: string | null) => {
@@ -2265,12 +2266,19 @@ function PerBlockChatSidebar({
     [blockId, canvas],
   );
 
+  // Clear prefillMessage after it's consumed (so it doesn't persist on reload)
+  const handlePrefillConsumed = useCallback(() => {
+    canvas.patchBlockState(blockId, { prefillMessage: undefined });
+  }, [blockId, canvas]);
+
   return (
     <ChatSidebar
       open={true}
       workspaceId={workspaceId}
       agentId={agentId}
       conversationId={conversationId}
+      prefillMessage={prefillMessage}
+      onPrefillConsumed={handlePrefillConsumed}
       onConversationChange={handleConversationChange}
       onClose={() => { /* BlockShell 处理 */ }}
       onActiveTableChange={onActiveTableChange}
@@ -2281,4 +2289,5 @@ function PerBlockChatSidebar({
 
 interface ChatBlockStateLike {
   conversationId?: string;
+  prefillMessage?: string;
 }

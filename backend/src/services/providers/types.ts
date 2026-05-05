@@ -76,7 +76,7 @@ export interface ProviderStreamParams {
 
 export interface ProviderAdapter {
   /** Short, stable id used in the registry dispatch table. */
-  readonly name: "ark" | "oneapi";
+  readonly name: "ark" | "oneapi" | "ark-image" | "ark-video";
   /**
    * Open a streaming request to the provider and yield canonical events.
    * The generator must terminate on `done`, `error`, or when the underlying

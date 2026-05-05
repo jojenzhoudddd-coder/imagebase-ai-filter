@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import ChatTableBlock from "./ChatTableBlock";
+import ChatMediaPreview, { isMediaUrl } from "./ChatMediaPreview";
 
 // Vega ships ~800KB — lazy-load so messages without charts don't pay the cost.
 const ChatChartBlock = lazy(() => import("./ChatChartBlock"));
@@ -50,6 +51,12 @@ function looksLikeMarkdown(s: string): boolean {
  */
 function normalizeChatMarkdown(input: string): string {
   if (!input) return input;
+  // Convert bare media URLs to markdown links so react-markdown's `a` handler can detect them.
+  // Matches URLs on their own line or surrounded by whitespace that end with media extensions.
+  input = input.replace(
+    /(?<![(\[])(https?:\/\/\S+?\.(?:mp4|webm|mov|png|jpe?g|gif|webp|mp3|wav|pdf)(?:\?[^\s)]*)?)/gi,
+    (url) => `[${url.includes("video") || /\.mp4|\.webm|\.mov/i.test(url) ? "Video" : /\.mp3|\.wav/i.test(url) ? "Audio" : /\.pdf/i.test(url) ? "PDF" : "Image"}](${url})`,
+  );
   // Split on fenced code blocks; odd indices are code content, preserve them.
   const parts = input.split(/(```[\s\S]*?```)/g);
   for (let i = 0; i < parts.length; i++) {
@@ -148,6 +155,11 @@ const chatMarkdownComponents = {
     return <code className={className}>{props.children}</code>;
   },
   // Inline code and block code get light styling via CSS — plain passthrough.
+  // Images: auto-detect and render media preview
+  img({ src, alt }: any) {
+    if (src) return <ChatMediaPreview src={src} alt={alt} />;
+    return <img src={src} alt={alt} />;
+  },
   a({ href, children }: any) {
     const isMention = typeof href === "string" && href.startsWith("mention://");
     if (isMention) {
@@ -156,6 +168,10 @@ const chatMarkdownComponents = {
           {children}
         </span>
       );
+    }
+    // Auto-detect media URLs in links
+    if (typeof href === "string" && isMediaUrl(href)) {
+      return <ChatMediaPreview src={href} alt={typeof children === "string" ? children : undefined} />;
     }
     return (
       <a href={href} target="_blank" rel="noreferrer noopener">

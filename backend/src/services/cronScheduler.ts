@@ -196,7 +196,7 @@ export interface EvaluateCronResult {
   }>;
   skipped: Array<{
     job: CronJob;
-    reason: "not-due" | "invalid-expression" | "never-fires";
+    reason: "not-due" | "invalid-expression" | "never-fires" | "disabled";
   }>;
 }
 
@@ -221,6 +221,11 @@ export async function evaluateCron(
   let dirty = false;
 
   for (const job of cron.jobs) {
+    // Skip disabled habits
+    if ((job as any).enabled === false) {
+      result.skipped.push({ job, reason: "disabled" });
+      continue;
+    }
     const parsed = parseCron(job.schedule);
     if (!parsed) {
       result.skipped.push({ job, reason: "invalid-expression" });

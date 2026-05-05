@@ -21,6 +21,9 @@ import sseRoutes from "./routes/sseRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import folderRoutes from "./routes/folderRoutes.js";
 import agentRoutes from "./routes/agentRoutes.js";
+import customModelRoutes from "./routes/customModelRoutes.js";
+import knowledgeRoutes from "./routes/knowledgeRoutes.js";
+import chatAttachmentRoutes, { serveChatUploads } from "./routes/chatAttachmentRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import designRoutes from "./routes/designRoutes.js";
 import tasteRoutes from "./routes/tasteRoutes.js";
@@ -144,6 +147,10 @@ app.use("/api/sync", sseRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/folders", folderRoutes);
 app.use("/api/agents", agentRoutes);
+app.use("/api/models/custom", customModelRoutes);
+app.use("/api/knowledge", knowledgeRoutes);
+app.use("/api/chat/attachments", chatAttachmentRoutes);
+app.use("/uploads/chat", serveChatUploads());
 // V2.7 admin: SubagentRun / WorkflowRun list + aggregated metrics. Read-only.
 // Auth currently inherits from `attachUser` upstream; tighten before prod.
 app.use("/api/admin", adminRoutes);
