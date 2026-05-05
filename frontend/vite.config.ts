@@ -39,14 +39,10 @@ export default defineConfig({
           if (id.match(/node_modules[\\/](react-markdown|remark-.*|rehype-.*|micromark.*|mdast-.*|hast-.*|unist-.*|unified|vfile.*|character-entities.*|decode-named-character-reference|trim-lines|space-separated-tokens|comma-separated-tokens|property-information|html-url-attributes|zwitch|longest-streak|markdown-table|ccount|escape-string-regexp)[\\/]/)) {
             return "vendor-markdown";
           }
-          // CodeMirror —— IdeaEditor source 模式才用,可以独立缓存
-          if (id.match(/node_modules[\\/](@codemirror|@lezer|codemirror|@uiw[\\/]react-codemirror)[\\/]/)) {
-            return "vendor-codemirror";
-          }
-          // Tiptap / ProseMirror —— IdeaEditor preview 模式 (Phase 2)
-          if (id.match(/node_modules[\\/](@tiptap|prosemirror-.*|tiptap-markdown|markdown-it|mdurl|uc\.micro|entities|linkify-it)[\\/]/)) {
-            return "vendor-tiptap";
-          }
+          // CodeMirror + Tiptap/ProseMirror — IdeaEditor 编辑器依赖。
+          // 合入通用 vendor 避免循环 chunk 问题（CM 和 vendor 之间有共享依赖）。
+          // 不再单独拆 chunk — 构建时 "Circular chunk" 警告导致运行时
+          // "Cannot access 'Xt' before initialization" 崩溃。
           // Vega 系列 —— 在 ChatChartBlock 里 dynamic import,绝对不能合到主
           // vendor。返回 undefined 让 vite 按 import 关系自然分块（保留它独立
           // 的 chunk,在显示图表时才拉）。所有 vega-* / d3-* / topojson-* / fast-deep-equal
