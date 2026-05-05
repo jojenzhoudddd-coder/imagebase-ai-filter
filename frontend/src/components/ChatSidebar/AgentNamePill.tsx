@@ -26,6 +26,9 @@ interface Props {
   /** Bumped by the parent after a streaming turn ends, so we re-fetch the
    * agent in case `update_agent_name` was invoked mid-turn. */
   refreshToken?: number;
+  /** Bumped by the parent (e.g. from AgentAvatarMenu's "Rename" item) to
+   * imperatively trigger inline edit mode. Each tick = one edit start. */
+  editTick?: number;
   /** True while a turn is actively streaming. Disables rename starts to
    * avoid racing with an in-flight `update_agent_name` tool call. */
   disabled?: boolean;
@@ -33,7 +36,7 @@ interface Props {
 
 const MAX_NAME_LEN = 40;
 
-export default function AgentNamePill({ agentId, open, refreshToken, disabled }: Props) {
+export default function AgentNamePill({ agentId, open, refreshToken, editTick, disabled }: Props) {
   const [name, setName] = useState<string>("");
   const [editing, setEditing] = useState(false);
 
@@ -59,6 +62,14 @@ export default function AgentNamePill({ agentId, open, refreshToken, disabled }:
     if (!open || refreshToken === undefined) return;
     void loadName();
   }, [open, refreshToken, loadName]);
+
+  // Imperative rename trigger from AgentAvatarMenu — each editTick bump
+  // enters editing mode (gated by disabled to avoid racing mid-turn).
+  useEffect(() => {
+    if (editTick === undefined) return;
+    if (disabled) return;
+    setEditing(true);
+  }, [editTick, disabled]);
 
   const handleSave = useCallback(
     async (next: string) => {

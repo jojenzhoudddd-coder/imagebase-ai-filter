@@ -377,6 +377,9 @@ export default function ChatSidebar({
   // Bumped after each streamed turn finishes, so AgentNamePill can re-fetch
   // and pick up any rename performed by the `update_agent_name` tool call.
   const [agentRefreshToken, setAgentRefreshToken] = useState(0);
+  // Bumped when AgentAvatarMenu's "Rename" item is clicked — AgentNamePill
+  // listens via the editTick prop and enters edit mode imperatively.
+  const [agentNameEditTick, setAgentNameEditTick] = useState(0);
 
   // NOTE: Agent identity (soul.md / profile.md) is intentionally NOT exposed
   // as an interactive UI surface in Phase 1. Users can only inspect or modify
@@ -1624,11 +1627,13 @@ export default function ChatSidebar({
             agentId={agentId}
             open={open}
             refreshToken={agentRefreshToken}
+            onRenameRequest={() => setAgentNameEditTick((n) => n + 1)}
           />
           <AgentNamePill
             agentId={agentId}
             open={open}
             refreshToken={agentRefreshToken}
+            editTick={agentNameEditTick}
             disabled={streaming}
           />
           <ChatModelPicker agentId={agentId} open={open} disabled={streaming} />

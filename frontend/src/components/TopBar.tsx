@@ -164,7 +164,13 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
         throw new Error(err.error || "upload failed");
       }
       const data = await res.json();
-      patchUser({ avatarUrl: data.user.avatarUrl });
+      // Cache-bust 防止浏览器命中旧 src 缓存 —— 即使后端返回 hash-based 文件
+      // 名(同张图永远一样的 URL),query string 让 React 看到的 src 不同,
+      // 强制 <img> 重新 fetch。reload 页面时 URL 不带 ?v= 后缀正常缓存。
+      const cacheBusted = data.user.avatarUrl
+        ? `${data.user.avatarUrl}${data.user.avatarUrl.includes("?") ? "&" : "?"}v=${Date.now()}`
+        : data.user.avatarUrl;
+      patchUser({ avatarUrl: cacheBusted });
       toast.success(t("topbar.avatarSaved"));
     } catch (err: any) {
       toast.error(err?.message || "upload failed");

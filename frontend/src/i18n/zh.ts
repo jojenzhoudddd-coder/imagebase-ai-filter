@@ -537,14 +537,8 @@ export const zh: TranslationKeys = {
   "chat.list.untitled": "未命名对话",
   "chat.list.newChat": "新建对话",
   "chat.menu.clearCurrent": "清空当前对话",
-  // Chat agent avatar popover —— 7 个占位菜单项,功能待接
-  "chat.agent.menu.nature": "性格",
-  "chat.agent.menu.models": "模型",
-  "chat.agent.menu.activities": "活动",
-  "chat.agent.menu.skills": "技能",
-  "chat.agent.menu.acknowledge": "了解我",
-  "chat.agent.menu.habits": "习惯",
-  "chat.agent.menu.integrations": "集成",
+  // Chat agent avatar popover
+  "chat.agent.deleteUnsupported": "默认 agent 不可删除",
   "chat.clear.confirm.title": "清空当前对话?",
   "chat.clear.confirm.message": "对话内的所有消息将被永久删除,但对话本身保留。此操作不可撤销。",
   "chat.clear.confirm.ok": "清空",
