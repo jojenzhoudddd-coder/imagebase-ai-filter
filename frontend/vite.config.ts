@@ -5,14 +5,15 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5173,
+    // IdeaRebuild worktree —— 独立端口避免与主 worktree (5173) 冲突
+    port: 5174,
     proxy: {
       "/api": {
-        target: "http://localhost:3001",
+        target: "http://localhost:3002",
         changeOrigin: true,
       },
       "/uploads": {
-        target: "http://localhost:3001",
+        target: "http://localhost:3002",
         changeOrigin: true,
       },
     },
@@ -41,6 +42,10 @@ export default defineConfig({
           // CodeMirror —— IdeaEditor source 模式才用,可以独立缓存
           if (id.match(/node_modules[\\/](@codemirror|@lezer|codemirror|@uiw[\\/]react-codemirror)[\\/]/)) {
             return "vendor-codemirror";
+          }
+          // Tiptap / ProseMirror —— IdeaEditor preview 模式 (Phase 2)
+          if (id.match(/node_modules[\\/](@tiptap|prosemirror-.*|tiptap-markdown|markdown-it|mdurl|uc\.micro|entities|linkify-it)[\\/]/)) {
+            return "vendor-tiptap";
           }
           // Vega 系列 —— 在 ChatChartBlock 里 dynamic import,绝对不能合到主
           // vendor。返回 undefined 让 vite 按 import 关系自然分块（保留它独立

@@ -131,6 +131,171 @@
   cursor: progress;
 }
 
+/* CodeMirror source mode (Phase 1 replacement for textarea) */
+.idea-editor-source-streaming .cm-editor {
+  background: linear-gradient(90deg, rgba(20, 86, 240, 0.03), transparent 60%);
+  cursor: progress;
+}
+
+/* ─── CodeMirror Source Mode ─── */
+.idea-editor-source {
+  padding: 60px;
+  min-height: 100%;
+  background: var(--surface-2);
+}
+.idea-editor-source .cm-editor {
+  min-height: 200px;
+  outline: none;
+}
+.idea-editor-source-streaming .cm-editor {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* ─── Tiptap Preview Mode ─── */
+.idea-preview-body {
+  padding: 60px;
+  min-height: 100%;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.idea-preview-body:focus,
+.idea-preview-body:focus-visible {
+  outline: none;
+}
+.idea-preview-body h1 { font-size: 28px; font-weight: 600; margin: 24px 0 12px; }
+.idea-preview-body h2 { font-size: 22px; font-weight: 600; margin: 20px 0 10px; }
+.idea-preview-body h3 { font-size: 18px; font-weight: 600; margin: 16px 0 8px; }
+.idea-preview-body p { margin: 8px 0; }
+.idea-preview-body ul, .idea-preview-body ol { padding-left: 24px; margin: 8px 0; }
+.idea-preview-body ul { list-style-type: disc; }
+.idea-preview-body ol { list-style-type: decimal; }
+.idea-preview-body li { margin: 4px 0; }
+.idea-preview-body blockquote {
+  border-left: 3px solid var(--border-strong);
+  padding-left: 16px;
+  color: var(--text-secondary);
+  margin: 8px 0;
+}
+.idea-preview-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  background: var(--surface-3);
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+.idea-preview-body pre {
+  background: var(--surface-inset);
+  border-radius: 6px;
+  padding: 16px;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+.idea-preview-body pre code {
+  background: transparent;
+  padding: 0;
+}
+.idea-preview-body img {
+  max-width: 100%;
+  border-radius: 4px;
+}
+.idea-preview-body img.ProseMirror-selectednode {
+  outline: 2px solid var(--primary);
+}
+.idea-preview-body a {
+  color: var(--primary);
+  text-decoration: none;
+}
+.idea-preview-body a:hover {
+  text-decoration: underline;
+}
+/* Empty paragraph: ensure visible height so blank lines show up */
+.idea-preview-body p:empty,
+.idea-preview-body p:has(> br:only-child) {
+  min-height: 1.7em;
+}
+
+/* Tiptap placeholder */
+.idea-preview-body p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-placeholder);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+/* Mention links */
+.idea-preview-body a[href^="mention://"] {
+  color: var(--primary);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* ─── Dark mode: Tiptap Preview ─── */
+[data-theme="dark"] .idea-preview-body {
+  color: var(--text-primary);
+}
+[data-theme="dark"] .idea-preview-body code {
+  background: var(--surface-3);
+  color: var(--text-secondary);
+}
+[data-theme="dark"] .idea-preview-body pre {
+  background: var(--surface-inset);
+}
+[data-theme="dark"] .idea-preview-body blockquote {
+  border-left-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+[data-theme="dark"] .idea-preview-body a {
+  color: var(--primary);
+}
+
+
+/* Dark mode: CodeMirror uses CSS custom properties from tokens.css
+   (--text-primary, --primary, --text-muted, etc.) which automatically
+   switch between LM/DM values. No extra overrides needed here — the
+   ideaHighlight HighlightStyle in CodeMirrorSource.tsx references
+   these vars and they resolve correctly in both themes. */
+
+/* ─── Tiptap / ProseMirror overrides (Phase 2) ─── */
+/* Tiptap wraps content in a .tiptap class alongside our .idea-preview-body.
+   ProseMirror's default placeholder uses .is-editor-empty::before. */
+.idea-preview-body.ProseMirror {
+  outline: none;
+  min-height: 200px;
+}
+.idea-preview-body.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--color-text-placeholder);
+  pointer-events: none;
+  user-select: none;
+  float: left;
+  height: 0;
+}
+/* Tiptap images */
+.idea-preview-body.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+.idea-preview-body.ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--primary);
+  border-radius: 4px;
+}
+/* Mention links rendered as chips — Tiptap renders them as <a> with mention:// href.
+   We style them the same as the old .idea-mention-chip buttons. */
+.idea-preview-body.ProseMirror a[href^="mention://"] {
+  display: inline;
+  color: var(--primary);
+  text-decoration: none;
+  cursor: pointer;
+  font-weight: 500;
+}
+.idea-preview-body.ProseMirror a[href^="mention://"]:hover {
+  text-decoration: underline;
+}
+
 .idea-editor-textarea::placeholder {
   color: var(--color-text-placeholder);
   font-family: inherit;
