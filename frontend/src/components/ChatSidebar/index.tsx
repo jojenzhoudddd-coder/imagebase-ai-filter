@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import "./ChatSidebar.css";
 import ChatInput from "./ChatInput";
 import UserBubble from "./ChatMessage/UserBubble";
@@ -383,6 +384,7 @@ export default function ChatSidebar({
     }
   }, []);
 
+  const sidebarRef = useRef<HTMLElement>(null);
   const [sidebarDragging, setSidebarDragging] = useState(false);
   const [streaming, setStreaming] = useState(false);
   // Live ref to `streaming` so effects that run on prop-id changes (the
@@ -1676,13 +1678,18 @@ export default function ChatSidebar({
   void onClose;
   return (
     <aside
+      ref={sidebarRef}
       className={`chat-sidebar${open ? " open" : ""}`}
       aria-hidden={!open}
-      style={{ position: "relative" }}
       onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setSidebarDragging(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSidebarDragging(false); }}
       onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setSidebarDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) void handleFileDrop(files); }}
     >
+      {/* Drag overlay portaled to .chat-part parent so it covers the full block including bottom padding */}
+      {sidebarDragging && sidebarRef.current?.parentElement && createPortal(
+        <div className="chat-sidebar-drag-overlay">Drop files here</div>,
+        sidebarRef.current.parentElement,
+      )}
       <header className="chat-header">
         {/* Left cluster: Agent name pill (double-click to rename, also kept in
             sync with chat-initiated renames via `update_agent_name` tool) then
@@ -1746,9 +1753,6 @@ export default function ChatSidebar({
           <BlockCloseButton />
         </div>
       </header>
-      {sidebarDragging && (
-        <div className="chat-sidebar-drag-overlay">Drop files here</div>
-      )}
       {/* Agent meta menu —— 7 个占位项,功能待接;onSelect 仅 console.info */}
       {agentMetaMenuOpen && agentMetaBtnRef.current && (
         <DropdownMenu

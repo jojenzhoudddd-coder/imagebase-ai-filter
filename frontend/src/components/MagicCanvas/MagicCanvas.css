@@ -251,7 +251,6 @@
   border-radius: 0 !important;
   position: static;
   order: unset;
-  padding-bottom: 0 !important; /* no extra bottom padding in canvas mode — BlockShell handles spacing */
 }
 
 /* ─── Add block menu ─── */
