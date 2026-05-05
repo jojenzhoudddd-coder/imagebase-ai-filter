@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { listAgentSkills, type AgentSkillSummary } from "../../api";
+import { useTranslation } from "../../i18n";
 
 interface Props {
   agentId: string;
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export default function SkillPicker({ agentId, query, atRect, onSelect, onClose }: Props) {
+  const { t } = useTranslation();
   const [skills, setSkills] = useState<AgentSkillSummary[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -29,15 +31,24 @@ export default function SkillPicker({ agentId, query, atRect, onSelect, onClose 
       .catch(() => setSkills([]));
   }, [agentId]);
 
-  // Filter by query
+  // i18n-aware name/desc
+  const localName = (s: AgentSkillSummary) => {
+    const key = `skill.${s.id}.name` as any;
+    const v = t(key);
+    return v !== key ? v : (s.displayName || s.name);
+  };
+  const localDesc = (s: AgentSkillSummary) => {
+    const key = `skill.${s.id}.desc` as any;
+    const v = t(key);
+    return v !== key ? v : s.description;
+  };
+
+  // Filter by query (search both i18n and raw values)
   const filtered = skills.filter((s) => {
     if (!query) return true;
     const q = query.toLowerCase();
-    return (
-      s.name.toLowerCase().includes(q) ||
-      (s.displayName || "").toLowerCase().includes(q) ||
-      s.description.toLowerCase().includes(q)
-    );
+    const haystack = `${s.name} ${s.displayName || ""} ${s.description} ${localName(s)} ${localDesc(s)} ${s.triggers.join(" ")}`.toLowerCase();
+    return haystack.includes(q);
   });
 
   // Reset active index on query change
@@ -111,8 +122,12 @@ export default function SkillPicker({ agentId, query, atRect, onSelect, onClose 
           onMouseEnter={() => setActiveIdx(i)}
           onClick={() => onSelect(s)}
         >
-          <span className="chat-skill-picker-name">/{s.displayName || s.name}</span>
-          <span className="chat-skill-picker-desc">{s.description}</span>
+          <span className="chat-skill-picker-name" title={localDesc(s)}>
+            {localName(s)}
+          </span>
+          {localName(s) !== s.name && (
+            <span className="chat-skill-picker-id">{s.name}</span>
+          )}
         </div>
       ))}
     </div>,

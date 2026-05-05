@@ -30,7 +30,7 @@
 import type { ProviderAdapter } from "./providers/types.js";
 
 export type ModelGroup = "volcano" | "anthropic" | "openai";
-export type ModelProvider = "ark" | "oneapi";
+export type ModelProvider = "ark" | "oneapi" | "ark-image" | "ark-video";
 
 export interface ModelCapabilities {
   /** Model supports extended thinking / reasoning (Claude thinking, o-series reasoning). */
@@ -275,12 +275,12 @@ export const MODELS: ModelEntry[] = [
     parallelLimit: 8,
   },
 
-  // ── Volcano ARK — Content Generation (非对话模型) ─────────────────────
+  // ── Volcano ARK — Content Generation (独立 provider，非 chat API) ────
   {
     id: "seedance-2.0",
     displayName: "Seedance 2.0",
-    provider: "ark",
-    providerModelId: "ep-20260505181511-8lsxw",
+    provider: "ark-video",
+    providerModelId: process.env.ARK_SEEDANCE_MODEL || "ep-20260505181511-8lsxw",
     capabilities: { thinking: false, toolUse: false, contextWindow: 0 },
     defaults: { temperature: 0, maxOutputTokens: 0 },
     group: "volcano",
@@ -294,8 +294,8 @@ export const MODELS: ModelEntry[] = [
   {
     id: "seedream-5.0-lite",
     displayName: "Seedream 5.0 Lite",
-    provider: "ark",
-    providerModelId: "ep-20260505181559-s5r44",
+    provider: "ark-image",
+    providerModelId: process.env.ARK_SEEDREAM_MODEL || "ep-20260505181559-s5r44",
     capabilities: { thinking: false, toolUse: false, contextWindow: 0 },
     defaults: { temperature: 0, maxOutputTokens: 0 },
     group: "volcano",

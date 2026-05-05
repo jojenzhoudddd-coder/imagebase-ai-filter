@@ -111,7 +111,6 @@ export const tier0Tools: ToolDefinition[] = [
   ...memoryTools,
   ...skillRouterTools,
   ...cronTools,
-  ...userSkillTools,
   ...modelTools,
   ...knowledgeTools,
 ];

@@ -1789,8 +1789,9 @@
   overflow-wrap: break-word;
   cursor: text;
 }
-/* Force plain text appearance — strip pasted color/bg from any child */
-.chat-input-editor * {
+/* Force plain text appearance — strip pasted color/bg from any child.
+   Exclude mention/skill chips which have their own intentional colors. */
+.chat-input-editor *:not(.chat-mention-chip):not(.chat-skill-chip) {
   color: inherit !important;
   background: transparent !important;
   font-size: inherit !important;
@@ -2594,51 +2595,69 @@
 /* ═══════════════════════════════════════════════════════════════════
    Chat Skill chip (/ trigger)
    ═══════════════════════════════════════════════════════════════════ */
+/* Skill chip in input + assistant messages */
 .chat-skill-chip {
   display: inline;
   color: var(--primary);
   font-weight: 500;
   cursor: default;
 }
+/* Skill chip in user bubble */
+.chat-msg-user .chat-skill-chip {
+  color: var(--primary);
+  font-weight: 600;
+}
+/* Mention chip in user bubble */
+.chat-msg-user .chat-mention-chip {
+  color: var(--primary);
+  font-weight: 600;
+}
 
-/* Skill picker (/ trigger) */
+/* Skill picker (/ trigger) — matches idea-mention-picker styles */
 .chat-skill-picker {
   position: fixed;
-  z-index: 1200;
-  background: var(--surface-base);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.05);
-  padding: 4px;
-  min-width: 220px;
+  z-index: 1000;
+  min-width: 240px;
   max-width: 320px;
-  max-height: 260px;
+  max-height: 320px;
   overflow-y: auto;
+  background: var(--color-bg-elevated, var(--surface-2));
+  border: 1px solid var(--color-border, var(--border-default));
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(31, 35, 41, 0.12);
+  padding: 4px;
+  font-size: 13px;
+  scrollbar-width: none;
 }
+.chat-skill-picker::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
 .chat-skill-picker-item {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px;
-  border-radius: 6px;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
   cursor: pointer;
-  transition: background 0.1s;
+  color: var(--color-text-primary, var(--text-primary));
 }
-.chat-skill-picker-item:hover,
-.chat-skill-picker-item.active {
-  background: var(--surface-1);
+.chat-skill-picker-item.active,
+.chat-skill-picker-item:hover {
+  background: var(--color-bg-hover, var(--surface-3));
 }
+
 .chat-skill-picker-name {
   font-size: 13px;
-  font-weight: 500;
-  color: var(--primary);
-}
-.chat-skill-picker-desc {
-  font-size: 11px;
-  color: var(--text-muted);
+  color: var(--color-text-primary, var(--text-primary));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.chat-skill-picker-id {
+  font-size: 11px;
+  color: var(--color-text-tertiary, var(--text-muted));
+  white-space: nowrap;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════

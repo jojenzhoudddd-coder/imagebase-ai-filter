@@ -40,8 +40,25 @@ function timeAgo(ts: string | null): string {
   return `${days}d ago`;
 }
 
+function useSkillI18n() {
+  const { t } = useTranslation();
+  return {
+    name: (s: AgentSkillSummary) => {
+      const key = `skill.${s.id}.name` as any;
+      const translated = t(key);
+      return translated !== key ? translated : (s.displayName || s.name);
+    },
+    desc: (s: AgentSkillSummary) => {
+      const key = `skill.${s.id}.desc` as any;
+      const translated = t(key);
+      return translated !== key ? translated : s.description;
+    },
+  };
+}
+
 export default function SkillsTab({ agentId, blockId }: Props) {
   const { t } = useTranslation();
+  const { name: localName, desc: localDesc } = useSkillI18n();
   const { workspaceId } = useAuth();
   const { addBlock, patchBlockState } = useCanvas();
   const toast = useToast();
@@ -106,12 +123,12 @@ export default function SkillsTab({ agentId, blockId }: Props) {
           <div className="ab-card-head">
             <div className="ab-card-title-block">
               <div className="ab-card-title-row">
-                <Tooltip title={s.displayName || s.name}><h4 className="ab-card-title">{s.displayName || s.name}</h4></Tooltip>
+                <Tooltip title={localName(s)}><h4 className="ab-card-title">{localName(s)}</h4></Tooltip>
                 <span className={`ab-card-state ${s.type === "builtin" ? "ab-card-state-primary" : "ab-card-state-muted"}`}>
                   {s.type === "builtin" ? t("agent.card.official") : t("agent.card.custom")}
                 </span>
               </div>
-              {s.description && <Tooltip title={s.description}><p className="ab-card-desc">{s.description}</p></Tooltip>}
+              {localDesc(s) && <Tooltip title={localDesc(s)}><p className="ab-card-desc">{localDesc(s)}</p></Tooltip>}
             </div>
             <div className="ab-card-controls">
               <button

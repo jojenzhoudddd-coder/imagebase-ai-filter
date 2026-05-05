@@ -1856,6 +1856,7 @@ export default function ChatSidebar({
                   streaming={streaming}
                   disabled={!activeConv}
                   workspaceId={workspaceId}
+                  agentId={agentId}
                 />
               </div>
             </div>
@@ -1900,6 +1901,7 @@ export default function ChatSidebar({
             streaming={streaming}
             disabled={!activeConv}
             workspaceId={workspaceId}
+            agentId={agentId}
           />
         </>
       )}

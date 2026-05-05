@@ -50,8 +50,25 @@ function timeAgo(ts: string | null | undefined): string {
   return `${days}d ago`;
 }
 
+function useHabitI18n() {
+  const { t } = useTranslation();
+  return {
+    name: (h: HabitSummary) => {
+      const key = `habit.${h.id}.name` as any;
+      const translated = t(key);
+      return translated !== key ? translated : (h.displayName || h.prompt);
+    },
+    desc: (h: HabitSummary) => {
+      const key = `habit.${h.id}.desc` as any;
+      const translated = t(key);
+      return translated !== key ? translated : h.description;
+    },
+  };
+}
+
 export default function HabitsTab({ agentId, blockId }: Props) {
   const { t } = useTranslation();
+  const { name: localName, desc: localDesc } = useHabitI18n();
   const { workspaceId } = useAuth();
   const { addBlock, patchBlockState } = useCanvas();
   const toast = useToast();
@@ -117,16 +134,16 @@ export default function HabitsTab({ agentId, blockId }: Props) {
               <div className="ab-card-head">
                 <div className="ab-card-title-block">
                   <div className="ab-card-title-row">
-                    <Tooltip title={h.displayName || h.prompt}>
-                      <h4 className="ab-card-title">{h.displayName || h.prompt}</h4>
+                    <Tooltip title={localName(h)}>
+                      <h4 className="ab-card-title">{localName(h)}</h4>
                     </Tooltip>
                     <span className={`ab-card-state ${h.type === "system" ? "ab-card-state-primary" : "ab-card-state-muted"}`}>
                       {h.type === "system" ? t("agent.card.official") : t("agent.card.custom")}
                     </span>
                   </div>
-                  {h.description && (
-                    <Tooltip title={h.description}>
-                      <p className="ab-card-desc">{h.description}</p>
+                  {localDesc(h) && (
+                    <Tooltip title={localDesc(h)}>
+                      <p className="ab-card-desc">{localDesc(h)}</p>
                     </Tooltip>
                   )}
                 </div>

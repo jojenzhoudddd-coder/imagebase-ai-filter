@@ -12,18 +12,24 @@
 
 import { Fragment } from "react";
 
-const MENTION_RE = /\[([^\]]+)\]\((mention:\/\/[^)]+)\)/g;
+// Matches both [@label](mention://...) and [/label](skill://...)
+const CHIP_RE = /\[([^\]]+)\]\(((mention|skill):\/\/[^)]+)\)/g;
 
-function renderUserContentWithMentions(text: string): React.ReactNode[] {
+function renderUserContentWithChips(text: string): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
-  MENTION_RE.lastIndex = 0;
-  while ((m = MENTION_RE.exec(text)) !== null) {
-    const [full, label, href] = m;
+  CHIP_RE.lastIndex = 0;
+  while ((m = CHIP_RE.exec(text)) !== null) {
+    const [full, label, href, scheme] = m;
     if (m.index > last) out.push(text.slice(last, m.index));
+    const isSkill = scheme === "skill";
     out.push(
-      <span key={`mn-${m.index}`} className="chat-mention-chip" data-href={href}>
+      <span
+        key={`chip-${m.index}`}
+        className={isSkill ? "chat-skill-chip" : "chat-mention-chip"}
+        data-href={href}
+      >
         {label}
       </span>,
     );
@@ -34,7 +40,7 @@ function renderUserContentWithMentions(text: string): React.ReactNode[] {
 }
 
 export default function UserBubble({ content }: { content: string }) {
-  const nodes = renderUserContentWithMentions(content);
+  const nodes = renderUserContentWithChips(content);
   return (
     <div className="chat-msg-user-row">
       <div className="chat-msg-user">
