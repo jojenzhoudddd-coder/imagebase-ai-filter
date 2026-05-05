@@ -88,10 +88,16 @@ export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject
         <ArtifactIcon />
         <span>Artifact</span>
       </button>
-      <button className="mc-add-block-item mc-add-block-item-disabled" disabled title="敬请期待">
+      <button
+        className="mc-add-block-item"
+        disabled={reachedMax}
+        onClick={() => {
+          addBlock("system", { activeTab: "nature" } as any);
+          setOpen(false);
+        }}
+      >
         <SystemIcon />
         <span>System</span>
-        <span className="mc-add-block-item-soon">soon</span>
       </button>
       {reachedMax && (
         <div className="mc-add-block-foot">已达上限 {MAX_BLOCKS} 个 block</div>

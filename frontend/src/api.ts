@@ -1711,6 +1711,163 @@ export async function setAgentModel(
   return res.json();
 }
 
+// ═══════════════ Agent Homepage data ═══════════════
+
+export interface AgentEpisodicMemory {
+  filename: string;
+  title: string;
+  timestamp: string | null;
+  tags: string[];
+  preview: string;
+  bytes?: number;
+}
+
+export interface AgentWorkingMemory {
+  timestamp: string;
+  conversationId: string;
+  userMessage: string;
+  assistantMessage: string;
+  toolCalls: string[];
+}
+
+export interface AgentMemoriesResponse {
+  episodic: AgentEpisodicMemory[];
+  working: AgentWorkingMemory[];
+}
+
+export async function listAgentMemories(
+  agentId: string,
+  opts?: { limit?: number; tag?: string },
+): Promise<AgentMemoriesResponse> {
+  const params = new URLSearchParams();
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  if (opts?.tag) params.set("tag", opts.tag);
+  const qs = params.toString();
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/memories${qs ? `?${qs}` : ""}`);
+  if (!res.ok) throw new Error("Failed to list memories");
+  return res.json();
+}
+
+export interface AgentActivity {
+  messageId: string;
+  conversationId: string;
+  conversationTitle: string;
+  userInput: string;
+  output: string;
+  timestamp: string;
+  durationMs: number | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+}
+
+export async function listAgentActivities(
+  agentId: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<{ activities: AgentActivity[]; total: number; hasMore: boolean }> {
+  const params = new URLSearchParams();
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  if (opts?.offset) params.set("offset", String(opts.offset));
+  const qs = params.toString();
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/activities${qs ? `?${qs}` : ""}`);
+  if (!res.ok) throw new Error("Failed to list activities");
+  return res.json();
+}
+
+export interface AgentSkillSummary {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  triggers: string[];
+  lastUsed: string | null;
+  type: "builtin" | "user";
+  enabled: boolean;
+}
+
+export async function listAgentSkills(
+  agentId: string,
+): Promise<{ skills: AgentSkillSummary[] }> {
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/skills`);
+  if (!res.ok) throw new Error("Failed to list skills");
+  return res.json();
+}
+
+export async function toggleAgentSkill(
+  agentId: string,
+  skillId: string,
+  enabled: boolean,
+): Promise<void> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(skillId)}/toggle`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+}
+
+// ═══════════════ Agent Habits (cron jobs) ═══════════════
+
+export interface HabitSummary {
+  id: string;
+  schedule: string;
+  prompt: string;
+  displayName?: string;
+  description?: string;
+  type?: "system" | "user";
+  enabled: boolean;
+  lastFiredAt?: string | null;
+  workspaceId?: string;
+  skills?: string[];
+}
+
+export async function listHabits(
+  agentId: string,
+): Promise<{ habits: HabitSummary[] }> {
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/cron`);
+  if (!res.ok) throw new Error("Failed to list habits");
+  const data = await res.json();
+  // Backend returns CronJob[] directly (array)
+  const arr = Array.isArray(data) ? data : (data.jobs ?? []);
+  const habits: HabitSummary[] = arr.map((j: any) => ({
+    id: j.id,
+    schedule: j.schedule,
+    prompt: j.prompt,
+    displayName: j.displayName ?? j.prompt,
+    description: j.description,
+    type: j.type ?? "user",
+    enabled: j.enabled !== false,
+    lastFiredAt: j.lastFiredAt,
+    workspaceId: j.workspaceId,
+    skills: j.skills,
+  }));
+  return { habits };
+}
+
+export async function toggleHabit(
+  agentId: string,
+  jobId: string,
+  enabled: boolean,
+): Promise<void> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/habits/${encodeURIComponent(jobId)}/toggle`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+}
+
 // ═══════════════ Ideas (Markdown 文档 artifact) ═══════════════
 
 export async function createIdea(

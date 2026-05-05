@@ -28,6 +28,8 @@ import {
 import AvatarCropDialog from "../../auth/AvatarCropDialog";
 import { useTranslation } from "../../i18n";
 import { useToast } from "../Toast/index";
+import { useCanvas } from "../../contexts/canvasContext";
+import type { SystemBlockState } from "../../canvas/types";
 
 interface Props {
   agentId: string;
@@ -52,6 +54,7 @@ function withCacheBust(url: string | null): string | null {
 export default function AgentAvatarMenu({ agentId, open, refreshToken }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
+  const { addBlock } = useCanvas();
   const [agent, setAgent] = useState<AgentMeta | null>(null);
   const [cropSource, setCropSource] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -76,6 +79,18 @@ export default function AgentAvatarMenu({ agentId, open, refreshToken }: Props) 
     void refresh();
   }, [open, refreshToken, refresh]);
 
+  // Listen for avatar changes from agent blocks
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.agentId === agentId && detail?.avatarUrl) {
+        setAgent((prev) => prev ? { ...prev, avatarUrl: detail.avatarUrl } : prev);
+      }
+    };
+    window.addEventListener("agent-avatar-changed", handler);
+    return () => window.removeEventListener("agent-avatar-changed", handler);
+  }, [agentId]);
+
   const onFilePicked = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // 同图重选时仍能触发 change
@@ -98,8 +113,10 @@ export default function AgentAvatarMenu({ agentId, open, refreshToken }: Props) 
     setUploading(true);
     try {
       const updated = await uploadAgentAvatar(agentId, croppedDataUrl);
-      setAgent({ ...updated, avatarUrl: withCacheBust(updated.avatarUrl) });
+      const newUrl = withCacheBust(updated.avatarUrl);
+      setAgent({ ...updated, avatarUrl: newUrl });
       toast.success(t("topbar.avatarSaved"));
+      window.dispatchEvent(new CustomEvent("agent-avatar-changed", { detail: { agentId, avatarUrl: newUrl } }));
     } catch (err: any) {
       toast.error(err?.message || "upload failed");
     } finally {

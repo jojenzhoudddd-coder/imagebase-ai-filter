@@ -30,10 +30,16 @@ export interface ArtifactBlockState {
 export interface ChatBlockState {
   /** 占位:未来支持多会话时存当前会话 id;V1 不用 */
   conversationId?: string;
+  /** 初始填入输入框的文本（不自动发送） */
+  prefillMessage?: string;
 }
+
+export type AgentTabKey = "nature" | "models" | "activities" | "skills" | "acknowledge" | "habits" | "integrations";
 
 export interface SystemBlockState {
   view?: string;
+  /** Agent block 当前选中的 tab；默认 "nature" */
+  activeTab?: AgentTabKey;
 }
 
 export type BlockState = ArtifactBlockState | ChatBlockState | SystemBlockState | undefined;

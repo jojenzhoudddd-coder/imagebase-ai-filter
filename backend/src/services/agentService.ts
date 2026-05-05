@@ -107,10 +107,57 @@ export async function ensureAgentFiles(agentId: string): Promise<void> {
   const cronPath = path.join(root, "state", "cron.json");
   const heartbeatPath = path.join(root, "state", "heartbeat.log");
   if (!(await fileExists(inboxPath))) await fs.writeFile(inboxPath, "", "utf8");
-  if (!(await fileExists(cronPath)))
-    await fs.writeFile(cronPath, JSON.stringify({ jobs: [] }, null, 2), "utf8");
+  if (!(await fileExists(cronPath))) {
+    await fs.writeFile(cronPath, JSON.stringify({ jobs: SYSTEM_HABITS_SEED }, null, 2), "utf8");
+  } else {
+    // Ensure system habits exist (idempotent seed)
+    try {
+      const raw = await fs.readFile(cronPath, "utf8");
+      const cronFile = JSON.parse(raw) as { jobs: any[] };
+      let changed = false;
+      for (const seed of SYSTEM_HABITS_SEED) {
+        if (!cronFile.jobs.some((j: any) => j.id === seed.id)) {
+          cronFile.jobs.push(seed);
+          changed = true;
+        }
+      }
+      if (changed) {
+        await fs.writeFile(cronPath, JSON.stringify(cronFile, null, 2), "utf8");
+      }
+    } catch { /* ignore parse errors; file will be overwritten on next write */ }
+  }
   if (!(await fileExists(heartbeatPath))) await fs.writeFile(heartbeatPath, "", "utf8");
 }
+
+const SYSTEM_HABITS_SEED = [
+  {
+    id: "habit_system_evolve",
+    schedule: "0 2 * * *",
+    prompt: "回顾今天的全部对话，提炼关键信息，更新我的 soul.md（自我认知）和 profile.md（用户画像）。只更新有新发现的部分，不要重复已有内容。",
+    type: "system",
+    enabled: true,
+    displayName: "自我进化",
+    description: "每天回顾对话，提炼并更新 soul 和 user profile",
+  },
+  {
+    id: "habit_system_suggest",
+    schedule: "0 8 * * *",
+    prompt: "Review 当前 workspace 的所有数据表、文档、设计稿，从待办事项的视角生成 3-5 条推荐 prompt，帮助用户发现下一步可以做的事情。",
+    type: "system",
+    enabled: true,
+    displayName: "推荐待办",
+    description: "每天 Review workspace，生成推荐 prompt",
+  },
+  {
+    id: "habit_system_learn",
+    schedule: "0 3 * * *",
+    prompt: "根据当前 workspace 的特征和领域，去互联网搜索学习相关的新知识和最佳实践。",
+    type: "system",
+    enabled: false,
+    displayName: "知识学习",
+    description: "根据 workspace 领域去互联网学习新知识（预留）",
+  },
+];
 
 async function fileExists(p: string): Promise<boolean> {
   try {
@@ -1119,6 +1166,16 @@ export interface CronJob {
   lastFiredAt?: string | null;
   /** Freeform meta the scheduler can stash (next-fire cache, retry count, etc.). */
   meta?: Record<string, unknown>;
+  /** "system" = pre-seeded habit, "user" = user-created. Default "user". */
+  type?: "system" | "user";
+  /** Whether this job is active. Default true. */
+  enabled?: boolean;
+  /** Human-readable name for UI display. */
+  displayName?: string;
+  /** Brief description of what this habit does. */
+  description?: string;
+  /** Message ID of the last execution result in inbox. */
+  lastResult?: string;
 }
 
 export interface CronFile {

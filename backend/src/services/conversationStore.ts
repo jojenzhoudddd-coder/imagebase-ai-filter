@@ -387,3 +387,80 @@ export async function getMessages(
   }));
   return { messages: trimmed, hasMore };
 }
+
+// ─── Agent activities (turn-level view) ─────────────────────────────────
+
+export interface ActivityTurn {
+  messageId: string;
+  conversationId: string;
+  conversationTitle: string;
+  userInput: string;
+  output: string;
+  timestamp: string;
+  durationMs: number | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+}
+
+/**
+ * List agent "activities" — pairs of (user input, assistant output) with
+ * metadata, newest first. Used by the Agent Homepage activities tab.
+ */
+export async function listActivities(
+  agentId: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<{ activities: ActivityTurn[]; total: number; hasMore: boolean }> {
+  const limit = Math.max(1, Math.min(opts?.limit ?? 20, 100));
+  const offset = Math.max(0, opts?.offset ?? 0);
+
+  // Count total assistant messages with durationMs (= completed turns) for this agent.
+  const total = await prisma.message.count({
+    where: {
+      conversation: { agentId },
+      role: "assistant",
+      durationMs: { not: null },
+    },
+  });
+
+  // Fetch the page of assistant messages, ordered newest first.
+  const assistantRows = await prisma.message.findMany({
+    where: {
+      conversation: { agentId },
+      role: "assistant",
+      durationMs: { not: null },
+    },
+    orderBy: { timestamp: "desc" },
+    skip: offset,
+    take: limit,
+    include: { conversation: { select: { title: true } } },
+  });
+
+  // For each assistant message, find the preceding user message in the same
+  // conversation (by seq or timestamp).
+  const activities: ActivityTurn[] = [];
+  for (const row of assistantRows) {
+    const userRow = await prisma.message.findFirst({
+      where: {
+        conversationId: row.conversationId,
+        role: "user",
+        timestamp: { lte: row.timestamp },
+      },
+      orderBy: { timestamp: "desc" },
+      select: { content: true },
+    });
+
+    activities.push({
+      messageId: row.id,
+      conversationId: row.conversationId,
+      conversationTitle: (row as any).conversation?.title ?? "对话",
+      userInput: userRow?.content ?? "",
+      output: row.content.slice(0, 200),
+      timestamp: row.timestamp.toISOString(),
+      durationMs: row.durationMs ?? null,
+      promptTokens: row.promptTokens ?? null,
+      completionTokens: row.completionTokens ?? null,
+    });
+  }
+
+  return { activities, total, hasMore: offset + limit < total };
+}

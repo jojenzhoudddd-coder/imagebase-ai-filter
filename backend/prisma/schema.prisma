@@ -30,11 +30,38 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orgs       OrgMember[]
-  workspaces Workspace[]
-  agents     Agent[]
+  orgs         OrgMember[]
+  workspaces   Workspace[]
+  agents       Agent[]
+  customModels CustomModel[]
 
   @@map("users")
+}
+
+// ─── CustomModel（用户自定义模型，per-user，跨 agent 共享） ───
+
+model CustomModel {
+  id              String   @id @default(cuid())
+  userId          String
+  modelId         String   // 用户定义的 model ID（如 "my-gpt4"）
+  displayName     String
+  provider        String   // "openai-compatible" | "anthropic" | "custom"
+  baseUrl         String   // API base URL
+  apiKey          String   // 加密存储的 API key
+  providerModelId String   // 实际发给 provider 的 model name
+  capabilities    Json     @default("{}")  // { thinking, toolUse, contextWindow }
+  group           String   @default("custom")
+  specialty       String?
+  visible         Boolean  @default(true)
+  available       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, modelId])
+  @@index([userId])
+  @@map("custom_models")
 }
 
 // ─── Agent（属于用户，跨 Workspace 的长期 Agent 身份） ───

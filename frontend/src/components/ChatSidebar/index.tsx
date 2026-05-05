@@ -38,6 +38,8 @@ import {
   HabitsIcon,
   IntegrationsIcon,
 } from "./icons";
+import { useCanvas } from "../../contexts/canvasContext";
+import type { SystemBlockState } from "../../canvas/types";
 import DropdownMenu from "../DropdownMenu";
 import ConfirmDialog from "../ConfirmDialog";
 import { useTranslation } from "../../i18n";
@@ -254,6 +256,9 @@ interface Props {
    */
   conversationId?: string | null;
   onConversationChange?: (convId: string | null) => void;
+  /** Pre-fill the input box with this text (not auto-sent). Consumed once on mount. */
+  prefillMessage?: string;
+  onPrefillConsumed?: () => void;
 }
 
 /**
@@ -315,8 +320,11 @@ export default function ChatSidebar({
   onDemoCreated,
   conversationId: propConversationId,
   onConversationChange,
+  prefillMessage,
+  onPrefillConsumed,
 }: Props) {
   const { t } = useTranslation();
+  const { addBlock } = useCanvas();
   // Hydrate from localStorage synchronously so a refresh shows cached
   // messages immediately — no welcome-page flash while /conversations loads.
   const initialCache = useRef<CachedState | null>(readCache(workspaceId)).current;
@@ -351,6 +359,14 @@ export default function ChatSidebar({
   }, [activeConv?.id]);
   const [messages, setMessages] = useState<UiMessage[]>(initialCache?.messages ?? []);
   const [inputValue, setInputValue] = useState("");
+  // Prefill input from parent (e.g. "Add model" flow)
+  useEffect(() => {
+    if (prefillMessage && !inputValue) {
+      setInputValue(prefillMessage);
+      onPrefillConsumed?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillMessage]);
   const [streaming, setStreaming] = useState(false);
   // Live ref to `streaming` so effects that run on prop-id changes (the
   // [open, workspaceId] revalidation) can check the CURRENT value without
@@ -1704,16 +1720,15 @@ export default function ChatSidebar({
           items={[
             { key: "nature", label: t("chat.agent.menu.nature"), icon: <NatureIcon size={16} /> },
             { key: "models", label: t("chat.agent.menu.models"), icon: <ModelsIcon size={16} /> },
-            { key: "activities", label: t("chat.agent.menu.activities"), icon: <ActivitiesIcon size={16} /> },
+            { key: "habits", label: t("chat.agent.menu.habits"), icon: <HabitsIcon size={16} /> },
             { key: "skills", label: t("chat.agent.menu.skills"), icon: <SkillsIcon size={16} /> },
             { key: "acknowledge", label: t("chat.agent.menu.acknowledge"), icon: <AcknowledgeIcon size={16} /> },
-            { key: "habits", label: t("chat.agent.menu.habits"), icon: <HabitsIcon size={16} /> },
             { key: "integrations", label: t("chat.agent.menu.integrations"), icon: <IntegrationsIcon size={16} /> },
+            { key: "activities", label: t("chat.agent.menu.activities"), icon: <ActivitiesIcon size={16} /> },
           ]}
           onSelect={(key) => {
             setAgentMetaMenuOpen(false);
-            // eslint-disable-next-line no-console
-            console.info(`[agent-menu] ${key} (not wired yet)`);
+            addBlock("system", { activeTab: key } as SystemBlockState);
           }}
           onClose={() => setAgentMetaMenuOpen(false)}
           width={200}

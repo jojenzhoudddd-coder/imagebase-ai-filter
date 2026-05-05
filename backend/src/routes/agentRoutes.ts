@@ -66,6 +66,10 @@ import {
   removeCronJob,
   listCronJobs,
 } from "../services/cronScheduler.js";
+import { listActivities } from "../services/conversationStore.js";
+import { listEpisodicMemories, readWorkingMemory } from "../services/agentService.js";
+import { allSkills } from "../../mcp-server/src/skills/index.js";
+import { listUserSkills, updateUserSkill } from "../services/userSkill/userSkillStore.js";
 import {
   listVisibleModels,
   getModel,
@@ -110,30 +114,56 @@ router.post("/", async (req: Request, res: Response) => {
 // Registered BEFORE the `/:agentId` routes so Express doesn't match
 // "models" as an agentId.
 
-router.get("/models", async (_req: Request, res: Response) => {
+router.get("/models", async (req: Request, res: Response) => {
   try {
-    const models = listVisibleModels().map((m) => ({
+    const builtinModels = listVisibleModels().map((m) => ({
       id: m.id,
       displayName: m.displayName,
       provider: m.provider,
       group: m.group,
-      // Before the first probe completes, `available` is undefined — coerce
-      // to false so the UI can unambiguously render a disabled state.
       available: m.available === true,
       capabilities: m.capabilities,
-      // PR2: model routing table fields. The UI uses these to render
-      //   - `@ model` mention picker grouped/labeled by specialty
-      //   - hover tooltip with strengths
-      //   - workflow-skill routing suggestions on the FE side (defensive
-      //     copy of what the backend will use authoritatively).
       specialty: m.specialty,
       strengths: m.strengths,
       modality: m.modality,
       costHint: m.costHint,
       parallelLimit: m.parallelLimit ?? null,
+      type: "builtin" as const,
     }));
+
+    // Merge user's custom models if authenticated
+    let customModels: Array<Record<string, unknown>> = [];
+    const user = (req as any).user;
+    if (user) {
+      try {
+        const pg2 = await import("pg");
+        const { PrismaPg: PA } = await import("@prisma/adapter-pg");
+        const { PrismaClient: PC } = await import("../generated/prisma/client.js");
+        const p = new pg2.default.Pool({ connectionString: process.env.DATABASE_URL });
+        const prisma = new PC({ adapter: new PA(p) });
+        const rows = await prisma.customModel.findMany({
+          where: { userId: user.id, visible: true },
+        });
+        customModels = rows.map((r: any) => ({
+          id: r.modelId,
+          displayName: r.displayName,
+          provider: r.provider,
+          group: r.group,
+          available: r.available,
+          capabilities: r.capabilities ?? {},
+          specialty: r.specialty,
+          strengths: [],
+          modality: ["text"],
+          costHint: null,
+          parallelLimit: null,
+          type: "custom" as const,
+        }));
+        await p.end();
+      } catch { /* non-fatal: just return builtins */ }
+    }
+
     res.json({
-      models,
+      models: [...builtinModels, ...customModels],
       defaultModelId: DEFAULT_MODEL_ID,
     });
   } catch (err: any) {
@@ -558,6 +588,132 @@ router.get("/:agentId/heartbeat", async (req: Request, res: Response) => {
     res.json(entries);
   } catch (err: any) {
     console.error("[agents] heartbeat read error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+// ─── Agent Homepage data endpoints ───
+
+/** GET /api/agents/:agentId/memories — all memories (episodic + working) */
+router.get("/:agentId/memories", async (req: Request, res: Response) => {
+  try {
+    const { agentId } = req.params;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const tag = (req.query.tag as string) || undefined;
+
+    // Episodic (compressed long-term)
+    const episodic = await listEpisodicMemories(agentId, { limit, tag });
+
+    // Working (recent turns not yet compressed)
+    const working = await readWorkingMemory(agentId);
+
+    res.json({ episodic, working });
+  } catch (err: any) {
+    console.error("[agents] memories error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+/** GET /api/agents/:agentId/activities — conversation turns with metadata */
+router.get("/:agentId/activities", async (req: Request, res: Response) => {
+  try {
+    const { agentId } = req.params;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const result = await listActivities(agentId, { limit, offset });
+    res.json(result);
+  } catch (err: any) {
+    console.error("[agents] activities error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+/** GET /api/agents/:agentId/skills — merged builtin + user skills */
+router.get("/:agentId/skills", async (req: Request, res: Response) => {
+  try {
+    const { agentId } = req.params;
+
+    // Builtin skills
+    const builtinSkills = allSkills.map((s) => ({
+      id: s.name,
+      name: s.name,
+      displayName: s.displayName,
+      description: s.description,
+      triggers: s.triggers
+        .map((t) => (typeof t === "string" ? t : t.source))
+        .slice(0, 10),
+      lastUsed: null,
+      type: "builtin" as const,
+      enabled: true,
+    }));
+
+    // User skills
+    let userSkills: Array<{
+      id: string; name: string; displayName: string; description: string;
+      triggers: string[]; lastUsed: string | null; type: "builtin" | "user"; enabled: boolean;
+    }> = [];
+    try {
+      const rows = await listUserSkills({ ownerType: "agent", ownerId: agentId });
+      userSkills = rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        displayName: r.name,
+        description: r.description,
+        triggers: r.triggers.slice(0, 10),
+        lastUsed: r.lastInvokedAt?.toISOString() ?? null,
+        type: "user" as const,
+        enabled: r.enabled,
+      }));
+    } catch {
+      // If user skill loading fails, still return builtins
+    }
+
+    res.json({ skills: [...builtinSkills, ...userSkills] });
+  } catch (err: any) {
+    console.error("[agents] skills error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+/** PUT /api/agents/:agentId/skills/:skillId/toggle — toggle user skill enabled */
+router.put("/:agentId/skills/:skillId/toggle", async (req: Request, res: Response) => {
+  try {
+    const { agentId, skillId } = req.params;
+    const { enabled } = req.body ?? {};
+    if (typeof enabled !== "boolean") {
+      res.status(400).json({ error: "enabled must be boolean" });
+      return;
+    }
+    await updateUserSkill(skillId, { enabled }, { requireOwnerId: agentId });
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error("[agents] skill toggle error:", err);
+    res.status(err.statusCode ?? 500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+/** PUT /api/agents/:agentId/habits/:jobId/toggle — toggle habit enabled */
+router.put("/:agentId/habits/:jobId/toggle", async (req: Request, res: Response) => {
+  try {
+    const { agentId, jobId } = req.params;
+    const { enabled } = req.body ?? {};
+    if (typeof enabled !== "boolean") {
+      res.status(400).json({ error: "enabled must be boolean" });
+      return;
+    }
+    // Read cron.json, find job, toggle enabled, write back
+    const { readCron, writeCron } = await import("../services/agentService.js");
+    const cronFile = await readCron(agentId);
+    const job = cronFile.jobs.find((j: any) => j.id === jobId);
+    if (!job) {
+      res.status(404).json({ error: "job not found" });
+      return;
+    }
+    job.enabled = enabled;
+    await writeCron(agentId, cronFile);
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error("[agents] habit toggle error:", err);
     res.status(500).json({ error: err.message ?? "internal error" });
   }
 });
