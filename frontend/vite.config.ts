@@ -7,8 +7,6 @@ export default defineConfig({
   server: {
     port: 5176,
     watch: {
-      // Git worktrees share .git dir — exclude it so operations in other
-      // worktrees don't trigger HMR restarts and crash this dev server.
       ignored: ["**/.git/**"],
     },
     proxy: {
@@ -36,16 +34,9 @@ export default defineConfig({
           // vendor chunk(在 react chunk 之前求值)→ "Cannot read properties
           // of undefined (reading 'useLayoutEffect')" → 整个 app 白屏。
           // (PR7 引入这条依赖时,2026-04-29 prod 白屏 hotfix)
-          if (id.match(/node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|@tanstack[\\/]react-virtual|@tanstack[\\/]virtual-core)[\\/]/)) {
-            return "vendor-react";
-          }
-          // Markdown 渲染栈 —— IdeaEditor + ChatSidebar 都用到,但只有这俩用
+          // Markdown 渲染栈 —— IdeaEditor + ChatSidebar 都用到
           if (id.match(/node_modules[\\/](react-markdown|remark-.*|rehype-.*|micromark.*|mdast-.*|hast-.*|unist-.*|unified|vfile.*|character-entities.*|decode-named-character-reference|trim-lines|space-separated-tokens|comma-separated-tokens|property-information|html-url-attributes|zwitch|longest-streak|markdown-table|ccount|escape-string-regexp)[\\/]/)) {
             return "vendor-markdown";
-          }
-          // CodeMirror —— IdeaEditor source 模式才用,可以独立缓存
-          if (id.match(/node_modules[\\/](@codemirror|@lezer|codemirror|@uiw[\\/]react-codemirror)[\\/]/)) {
-            return "vendor-codemirror";
           }
           // Vega 系列 —— 在 ChatChartBlock 里 dynamic import,绝对不能合到主
           // vendor。返回 undefined 让 vite 按 import 关系自然分块（保留它独立

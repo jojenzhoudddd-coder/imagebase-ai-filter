@@ -6,15 +6,10 @@ import SidebarExpandButton from "../SidebarExpandButton";
 import BlockCloseButton from "../BlockCloseButton";
 import { fetchIdea, saveIdeaContent, uploadIdeaAttachment } from "../../api";
 import { useIdeaSync } from "../../hooks/useIdeaSync";
-import MentionPicker from "../Mention/MentionPicker";
-import MarkdownPreview from "./MarkdownPreview";
-import type { MarkdownPreviewHandle, MentionQueryState } from "./MarkdownPreview";
-import BlockList from "./BlockList";
-import BlockOverlays from "./BlockList/BlockOverlays";
-import { useIdeaBlocks } from "../../hooks/useIdeaBlocks";
-import { buildMentionLink } from "../Mention/mentionSyntax";
-import type { ParsedMention } from "../Mention/mentionSyntax";
-import type { MentionHit } from "../../types";
+import TiptapPreview from "./TiptapPreview";
+import type { TiptapPreviewHandle } from "./TiptapPreview";
+import CodeMirrorSource from "./CodeMirrorSource";
+import type { CodeMirrorSourceHandle } from "./CodeMirrorSource";
 import "./IdeaEditor.css";
 
 interface Props {
@@ -27,605 +22,141 @@ interface Props {
     | { type: "table"; id: string }
     | { type: "design"; id: string }
     | { type: "taste"; designId: string; tasteId: string }
-    | { type: "idea";  id: string }
+    | { type: "idea"; id: string }
     | { type: "idea-section"; ideaId: string; headingSlug: string }
   ) => void;
 }
 
-// ─── Icons ───
 const SOURCE_ICON = (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
     <path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
-
 const PREVIEW_ICON = (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
     <path d="M1.5 8s2.5-5 6.5-5 6.5 5 6.5 5-2.5 5-6.5 5-6.5-5-6.5-5z" stroke="currentColor" strokeWidth="1.3" fill="none"/>
     <circle cx="8" cy="8" r="2" fill="currentColor"/>
   </svg>
 );
+const UPLOAD_ICON = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+    <path d="M12 4v12m0-12 4 4m-4-4-4 4M4 18v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
 
 const AUTOSAVE_DEBOUNCE_MS = 600;
-
 type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "offline";
 
-/** Module-level cache keyed by ideaId. Persists across IdeaEditor remounts
- * within a session so that switching sidebar artifacts and coming back feels
- * instant and drops the user at the exact scroll / caret position they left.
- *
- * Not a replacement for server persistence — the server remains the source
- * of truth (Prisma-backed Idea rows with version-based optimistic concurrency).
- * On cache hit we still fire a background fetch to reconcile with any SSE
- * updates we may have missed while unmounted.
- *
- * The `mode` + `scrollTop` (+ `caretPos` when source) portions also shadow
- * into localStorage via a secondary key. That half of the cache survives a
- * page reload; `content` / `version` don't (stale content across reloads
- * would be worse than a 200 ms re-fetch), so the in-memory map stays the
- * authoritative source within a single tab session and the localStorage
- * store only seeds `mode` + `scrollTop` + `caretPos` on cold start. */
-interface IdeaCacheEntry {
-  content: string;
-  version: number;
-  mode: "source" | "preview";
-  scrollTop: number;
-  /** Caret offset in source mode. Preview-mode caret restoration is
-   * intentionally deferred — Range serialization across re-renders is brittle
-   * and MarkdownPreview already places a caret at end on mount. */
-  caretPos?: number;
-}
-const ideaCache = new Map<string, IdeaCacheEntry>();
-
-/** Minimal serialisable view of an idea's view state that survives reloads. */
-interface IdeaViewState {
-  mode: "source" | "preview";
-  scrollTop: number;
-  caretPos?: number;
+/** Normalize markdown for comparison: collapse blank lines, trim.
+ *  Used to detect whether Tiptap's output differs from the original
+ *  in a MEANINGFUL way (content change) vs just whitespace normalization. */
+function normalizeMd(md: string): string {
+  return md.replace(/\n{2,}/g, "\n\n").trim();
 }
 
-/* localStorage shape: `{ [ideaId]: IdeaViewState }`.
- * A single key keeps the API surface small and makes pruning easy. Kept
- * small enough to never approach localStorage's ~5 MB budget even for
- * thousands of ideas. */
-const IDEA_VIEW_STATE_KEY = "idea_view_state_v1";
-
-function readViewState(ideaId: string): IdeaViewState | null {
-  try {
-    const raw = localStorage.getItem(IDEA_VIEW_STATE_KEY);
-    if (!raw) return null;
-    const map = JSON.parse(raw) as Record<string, IdeaViewState>;
-    const entry = map[ideaId];
-    if (!entry) return null;
-    // Defensive — ignore corrupted shapes rather than crashing.
-    if (entry.mode !== "source" && entry.mode !== "preview") return null;
-    if (typeof entry.scrollTop !== "number") return null;
-    return entry;
-  } catch {
-    return null;
-  }
-}
-
-/** Return the viewport-pixel rect of the character at `index` inside the
- * textarea. Uses the "mirror div" trick: clone the textarea's box-model and
- * text content into a hidden div, wrap the single character in a `<span>`,
- * then map the span's rect back into the textarea's coord space, accounting
- * for scroll.
- *
- * Used by the @-mention picker to anchor itself tight to the rendered `@`
- * glyph regardless of caret column / line-wrap / scroll. Called at most
- * once per keystroke in an @-active state, so the cost of one layout read
- * on a detached mirror is acceptable. */
-function measureTextareaCharRect(
-  ta: HTMLTextAreaElement,
-  index: number,
-): { left: number; right: number; top: number; bottom: number } | null {
-  if (index < 0 || index >= ta.value.length) return null;
-  const style = window.getComputedStyle(ta);
-  const mirror = document.createElement("div");
-  // Copy every property that affects line-breaking + glyph metrics. Missing
-  // any of these yields drift of 1–several px per line.
-  const props: Array<keyof CSSStyleDeclaration> = [
-    "boxSizing", "width", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
-    "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
-    "borderTopStyle", "borderRightStyle", "borderBottomStyle", "borderLeftStyle",
-    "fontStyle", "fontVariant", "fontWeight", "fontStretch", "fontSize",
-    "fontSizeAdjust", "lineHeight", "fontFamily",
-    "textAlign", "textTransform", "textIndent", "textDecoration",
-    "letterSpacing", "wordSpacing", "tabSize",
-  ];
-  for (const p of props) {
-    (mirror.style as unknown as Record<string, string>)[p as string] =
-      (style as unknown as Record<string, string>)[p as string];
-  }
-  mirror.style.position = "absolute";
-  mirror.style.visibility = "hidden";
-  mirror.style.top = "0";
-  mirror.style.left = "-9999px";
-  mirror.style.whiteSpace = "pre-wrap";
-  mirror.style.wordWrap = "break-word";
-  mirror.style.overflow = "hidden";
-
-  // Text up to (but not including) the character of interest, then a span
-  // wrapping just that one character. Using Text nodes avoids any
-  // HTML-parsing interpretation of the content.
-  const pre = document.createTextNode(ta.value.substring(0, index));
-  const span = document.createElement("span");
-  span.textContent = ta.value[index] || "@";
-  const post = document.createTextNode(ta.value.substring(index + 1));
-  mirror.appendChild(pre);
-  mirror.appendChild(span);
-  mirror.appendChild(post);
-
-  document.body.appendChild(mirror);
-  try {
-    const taRect = ta.getBoundingClientRect();
-    const mirrorRect = mirror.getBoundingClientRect();
-    const spanRect = span.getBoundingClientRect();
-    // span position relative to mirror's top-left, minus textarea scroll.
-    const relLeft = spanRect.left - mirrorRect.left - ta.scrollLeft;
-    const relTop = spanRect.top - mirrorRect.top - ta.scrollTop;
-    const left = taRect.left + relLeft;
-    const top = taRect.top + relTop;
-    return {
-      left,
-      right: left + spanRect.width,
-      top,
-      bottom: top + spanRect.height,
-    };
-  } finally {
-    mirror.remove();
-  }
-}
-
-/** Return the viewport-pixel rect of the caret itself inside the textarea at
- * the given source offset. Unlike `measureTextareaCharRect`, this works when
- * the caret sits at end-of-text (offset === length) because we insert a
- * zero-width marker rather than wrapping an existing character.
- *
- * Used by the caret-follow autoscroll: when the textarea auto-grows, the
- * outer `.idea-editor-body` is the scroll container, so the browser's native
- * "keep caret in view" behavior doesn't kick in on its own — we need to
- * nudge the body's scrollTop ourselves. */
-function measureTextareaCaretRect(
-  ta: HTMLTextAreaElement,
-  caret: number,
-): { left: number; top: number; bottom: number; height: number } | null {
-  const style = window.getComputedStyle(ta);
-  const mirror = document.createElement("div");
-  const props: Array<keyof CSSStyleDeclaration> = [
-    "boxSizing", "width", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
-    "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
-    "borderTopStyle", "borderRightStyle", "borderBottomStyle", "borderLeftStyle",
-    "fontStyle", "fontVariant", "fontWeight", "fontStretch", "fontSize",
-    "fontSizeAdjust", "lineHeight", "fontFamily",
-    "textAlign", "textTransform", "textIndent", "textDecoration",
-    "letterSpacing", "wordSpacing", "tabSize",
-  ];
-  for (const p of props) {
-    (mirror.style as unknown as Record<string, string>)[p as string] =
-      (style as unknown as Record<string, string>)[p as string];
-  }
-  mirror.style.position = "absolute";
-  mirror.style.visibility = "hidden";
-  mirror.style.top = "0";
-  mirror.style.left = "-9999px";
-  mirror.style.whiteSpace = "pre-wrap";
-  mirror.style.wordWrap = "break-word";
-  mirror.style.overflow = "hidden";
-
-  const safeCaret = Math.max(0, Math.min(caret, ta.value.length));
-  const pre = document.createTextNode(ta.value.substring(0, safeCaret));
-  const marker = document.createElement("span");
-  // ZWSP gives the span a rect with the current line's height without
-  // affecting visible text shaping.
-  marker.textContent = "\u200b";
-  const post = document.createTextNode(ta.value.substring(safeCaret));
-  mirror.appendChild(pre);
-  mirror.appendChild(marker);
-  mirror.appendChild(post);
-
-  document.body.appendChild(mirror);
-  try {
-    const taRect = ta.getBoundingClientRect();
-    const mirrorRect = mirror.getBoundingClientRect();
-    const markerRect = marker.getBoundingClientRect();
-    const relLeft = markerRect.left - mirrorRect.left - ta.scrollLeft;
-    const relTop = markerRect.top - mirrorRect.top - ta.scrollTop;
-    const top = taRect.top + relTop;
-    // Fall back to computed line-height if the ZWSP's own height collapses
-    // on some browsers.
-    const height = markerRect.height || parseFloat(style.lineHeight) || 20;
-    return {
-      left: taRect.left + relLeft,
-      top,
-      bottom: top + height,
-      height,
-    };
-  } finally {
-    mirror.remove();
-  }
-}
-
-function writeViewState(ideaId: string, v: IdeaViewState): void {
-  try {
-    const raw = localStorage.getItem(IDEA_VIEW_STATE_KEY);
-    const map = raw ? (JSON.parse(raw) as Record<string, IdeaViewState>) : {};
-    map[ideaId] = v;
-    localStorage.setItem(IDEA_VIEW_STATE_KEY, JSON.stringify(map));
-  } catch {
-    // Quota / private mode — best-effort, ignore.
-  }
-}
-
-export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, onRename, onNavigate }: Props) {
+export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, onRename }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
 
-  // Seed initial state from the in-session cache when available so switching
-  // back to an idea we've seen is instant (no loading flash, no scroll reset).
-  // When the in-session cache is cold (fresh tab, first time viewing this
-  // idea this session), fall back to the localStorage-persisted view state
-  // so the user's last-seen mode + scroll survives reloads.
-  const initialCache = ideaCache.get(ideaId);
-  const initialView = initialCache ?? readViewState(ideaId);
-  const [mode, setMode] = useState<"source" | "preview">(initialView?.mode ?? "source");
-  const [content, setContentRaw] = useState<string>(initialCache?.content ?? "");
-  // V2.9 #6: undo stack。每次 setContent 触发的"用户编辑"会 push 上一版本到
-  // 栈,Cmd+Z / topbar undo 按钮 pop 出来 setContent 回去。
-  // 几个特例:streaming 写入(ideaStream pushDelta)/ SSE 远端内容更新 / hydrate
-  // 不应进栈 —— 通过 setContentSilent 走旁路。
-  const undoStackRef = useRef<string[]>([]);
-  const REDO_PUSH_LIMIT = 100;
-  const [canUndo, setCanUndo] = useState(false);
-  const setContent = useCallback((next: string | ((prev: string) => string)) => {
-    setContentRaw((prev) => {
-      const computed = typeof next === "function" ? (next as (p: string) => string)(prev) : next;
-      if (computed === prev) return prev;
-      // push prev to undo stack (cap at REDO_PUSH_LIMIT)
-      const stk = undoStackRef.current;
-      stk.push(prev);
-      if (stk.length > REDO_PUSH_LIMIT) stk.shift();
-      setCanUndo(true);
-      return computed;
-    });
-  }, []);
-  // 旁路 setContent — 不入 undo 栈(用于 hydrate / SSE / stream)。
-  const setContentSilent = useCallback((next: string) => {
-    setContentRaw(next);
-  }, []);
-  // 真正执行 undo
-  const performUndo = useCallback(() => {
-    const stk = undoStackRef.current;
-    if (stk.length === 0) return;
-    const prev = stk.pop()!;
-    setContentRaw(prev);
-    setCanUndo(stk.length > 0);
-    // 把恢复后的内容也排进保存(让远端跟本地一致)
-    scheduleSaveRef.current?.(prev);
-  }, []);
-  // forward ref so scheduleSave can be referenced before its declaration
-  const scheduleSaveRef = useRef<((text: string) => void) | null>(null);
-  const [loaded, setLoaded] = useState<boolean>(!!initialCache);
+  const [content, setContent] = useState("");
+  const [loaded, setLoaded] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>(initialCache ? "saved" : "idle");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [streaming, setStreaming] = useState(false);
+  const [mode, setMode] = useState<"source" | "preview">("preview");
 
-  // Refs for scroll / caret capture on unmount → cache write.
-  const bodyRef = useRef<HTMLDivElement>(null);
+  const cmRef = useRef<CodeMirrorSourceHandle>(null);
+  const previewRef = useRef<TiptapPreviewHandle>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef(content);
-  const modeRef = useRef(mode);
   useEffect(() => { contentRef.current = content; }, [content]);
+
+  const versionRef = useRef(0);
+  const dirtyRef = useRef(false);
+  const saveTimerRef = useRef<number | null>(null);
+  const modeRef = useRef(mode);
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
-  // Server-confirmed version. Every PUT sends the last-known version and the
-  // server bumps it atomically. Updated either by our save ACK or by an
-  // incoming SSE content-change from another client.
-  const versionRef = useRef<number>(0);
-  const saveTimerRef = useRef<number | null>(null);
-
-  // ── V2 streaming write state ────────────────────────────────────────────
-  // When the Agent opens a stream-write session against this idea, we enter
-  // soft-lock mode: autosave is suspended (the server rejects concurrent user
-  // saves with 423 anyway, but we suppress them locally to avoid spurious
-  // save-status flicker), the editor renders read-only, and every delta is
-  // spliced into `content` so the user sees the write unfold live. On
-  // finalize we swap to the authoritative server content.
-  //
-  // We keep three refs instead of state because splicing happens faster than
-  // React's commit cycle — accumulating through a ref + a single `setContent`
-  // per delta avoids batched-render stalls on fast chunk streams.
-  const [streaming, setStreaming] = useState<boolean>(false);
-  const streamBaseRef = useRef<string>("");           // snapshot of content at begin
-  const streamStartOffsetRef = useRef<number>(0);     // where in streamBase to splice
-  const streamBufferRef = useRef<string>("");         // accumulated deltas so far
   const streamSessionIdRef = useRef<string | null>(null);
-  // Stream-follow state: when true, every delta nudges bodyRef.scrollTop so the
-  // tail of the written text stays in view. Reset to true on each new session
-  // (stream-begin); flipped to false when the user manually scrolls anywhere
-  // other than the exact bottom. Flipped back to true when they scroll all the
-  // way to the bottom (≤ 4 px epsilon for sub-pixel tolerance).
-  const streamFollowRef = useRef<boolean>(true);
-  // Tracks the scrollTop value we last set programmatically (post-clamp). The
-  // detach-detection scroll handler compares body.scrollTop against this to
-  // decide whether a fired scroll event was our own programmatic scroll or a
-  // real user gesture. Robust to event coalescing — if the user scrolls in
-  // the same frame as our auto-scroll, scrollTop !== lastAutoScrollTop and we
-  // correctly classify as user intent. A time-based flag (as in the previous
-  // version) would drop the user's scroll entirely in that same-frame case.
-  const lastAutoScrollTopRef = useRef<number | null>(null);
+  const streamBaseRef = useRef("");
+  const streamStartOffsetRef = useRef(0);
+  const streamBufferRef = useRef("");
 
-  // Textarea ref + caret state for @mention anchor computation. The state
-  // shape is shared between source-mode (textarea-driven) and preview-mode
-  // (MarkdownPreview-driven via onMentionQuery) — the picker doesn't care
-  // which surface triggered it.
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const previewRef = useRef<MarkdownPreviewHandle>(null);
-
-  // PR7: block list driving preview-mode rendering. We pass `localContent`
-  // (the live `content` state) so preview follows source-mode keystrokes
-  // without waiting for autosave + SSE round trip. After autosave fires
-  // the SSE refetch replaces the local-parsed blocks with the canonical
-  // server view — this delta is invisible to users since the parser is
-  // byte-stable.
-  const { blocks: ideaBlocks, refetch: refetchIdeaBlocks } = useIdeaBlocks(ideaId, {
-    localContent: content,
-    // 2026-04-29 fix: backend SSE rejects connections without ?clientId=…,
-    // which silently broke every block-list refresh after autosave / drag /
-    // delete / transform. Pipe the IdeaEditor's clientId so the SSE actually
-    // connects and refetch fires on idea:content-change.
-    clientId,
-  });
-  const [mentionState, setMentionState] = useState<
-    | null
-    | {
-        /** Source of the trigger — determines which surface gets the
-         * inserted link on pick. */
-        origin: "source" | "preview";
-        /** Position in `content` where the `@` character lives, so we can
-         * replace `@query` on selection. */
-        atIndex: number;
-        query: string;
-        /** Pixel rect of the `@` glyph. Picker anchors to bottom-right by
-         * default, bottom-left when the default would overflow the viewport. */
-        atRect: { left: number; right: number; top: number; bottom: number };
+  /** Read the "best" current content for saving.
+   *  In preview mode, if the user made real content changes (not just
+   *  whitespace normalization by Tiptap), use Tiptap's version.
+   *  Otherwise keep the original markdown (preserves blank lines). */
+  const getCurrentContent = useCallback(() => {
+    if (modeRef.current === "preview" && previewRef.current?.isDirty()) {
+      const tiptapMd = previewRef.current.getMarkdown();
+      // Compare normalized: if the only difference is blank lines / whitespace,
+      // the user didn't make a real edit → keep original.
+      if (normalizeMd(tiptapMd) === normalizeMd(contentRef.current)) {
+        return contentRef.current; // preserve blank lines
       }
-  >(null);
-
-  // ── Load on mount / when ideaId changes ──
-  // Cache-first: if the idea is in the in-session cache, we already seeded
-  // state above; just reconcile with the server in the background so any
-  // changes made while we were unmounted surface. Otherwise do a normal
-  // fetch and show the loading state.
-  useEffect(() => {
-    const cached = ideaCache.get(ideaId);
-    setMentionState(null);
-
-    // View state (mode + scroll + caret) lives in two tiers: the in-session
-    // Map (instant, full fidelity) and localStorage (survives reloads, view
-    // state only — no content). Prefer the in-session entry; fall back to
-    // the persisted one so a fresh tab still opens the idea in whatever
-    // mode + scroll the user left it in.
-    const persistedView = cached ? null : readViewState(ideaId);
-
-    if (cached) {
-      // Seed already applied via useState initializers. Version lives on a
-      // ref — seed it here.
-      versionRef.current = cached.version;
-      // Restore scroll + caret after the first paint.
-      requestAnimationFrame(() => {
-        if (bodyRef.current) bodyRef.current.scrollTop = cached.scrollTop;
-        if (cached.mode === "source" && typeof cached.caretPos === "number") {
-          const ta = textareaRef.current;
-          if (ta) {
-            ta.focus();
-            ta.setSelectionRange(cached.caretPos, cached.caretPos);
-          }
-        }
-      });
-    } else {
-      setLoaded(false);
-      setContentSilent("");
-      undoStackRef.current = [];
-      setCanUndo(false);
-      // Cold mount: the useState initializer already read `persistedView.mode`
-      // if present. Reset to "source" only when there's nothing to restore.
-      if (!persistedView) setMode("source");
-      setSaveStatus("idle");
-      versionRef.current = 0;
-
-      // Scroll needs to wait until after the server content paints — a cold
-      // mount renders with content="", then re-renders when fetchIdea resolves.
-      // We restore scroll after the next fetch-driven paint via an additional
-      // rAF inside the fetch `.then` below.
+      return tiptapMd; // real content change
     }
+    return contentRef.current;
+  }, []);
 
+  // ── Load idea ──
+  useEffect(() => {
     let alive = true;
+    setLoaded(false);
+    setContent("");
+    setSaveStatus("idle");
+    versionRef.current = 0;
     fetchIdea(ideaId)
-      .then(idea => {
+      .then((idea) => {
         if (!alive) return;
-        const serverVersion = idea.version ?? 0;
-        // Only overwrite the editor if the server is ahead of what we have
-        // cached / last saved — avoids clobbering in-flight local edits.
-        if (serverVersion >= versionRef.current) {
-          setContentSilent(idea.content || "");
-          undoStackRef.current = [];
-          setCanUndo(false);
-          versionRef.current = serverVersion;
-        }
+        setContent(idea.content || "");
+        versionRef.current = idea.version ?? 0;
         setLoaded(true);
-        // Cold-mount scroll restore: now that content paints, nudge scroll
-        // back to where the user left it last session.
-        if (persistedView) {
-          requestAnimationFrame(() => {
-            if (bodyRef.current) bodyRef.current.scrollTop = persistedView.scrollTop;
-            if (persistedView.mode === "source" && typeof persistedView.caretPos === "number") {
-              const ta = textareaRef.current;
-              if (ta) {
-                ta.focus();
-                ta.setSelectionRange(persistedView.caretPos, persistedView.caretPos);
-              }
-            }
-          });
-        }
       })
-      .catch(err => {
+      .catch((err) => {
         if (!alive) return;
-        console.warn("[IdeaEditor] failed to load:", err);
+        console.warn("[IdeaEditor] load failed:", err);
         setLoaded(true);
       });
-
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ideaId]);
 
-  // ── Snapshot state into the in-session cache on unmount / ideaId switch ──
-  // Placed after the loader so it runs on the ideaId-change cleanup pass and
-  // when the editor unmounts (user navigates away to a table / design).
-  // We also mirror the view-state slice (mode + scrollTop + caretPos) into
-  // localStorage so the user's last-selected mode and scroll position
-  // survive a page reload.
-  useEffect(() => {
-    return () => {
-      const scrollTop = bodyRef.current?.scrollTop ?? 0;
-      const caretPos = modeRef.current === "source"
-        ? textareaRef.current?.selectionStart ?? undefined
-        : undefined;
-      ideaCache.set(ideaId, {
-        content: contentRef.current,
-        version: versionRef.current,
-        mode: modeRef.current,
-        scrollTop,
-        caretPos,
-      });
-      writeViewState(ideaId, { mode: modeRef.current, scrollTop, caretPos });
-    };
-  }, [ideaId]);
-
-  // ── Debounced view-state write — keeps localStorage fresh without the
-  // unmount path being the only persistence point. That matters for the
-  // reload case: if the user changes mode and then hard-reloads without
-  // switching artifacts first, the unmount snapshot runs too late (the tab
-  // is already gone). Writing on mode change + scroll debounced gives us a
-  // durable snapshot even in that scenario. ──
-  useEffect(() => {
-    writeViewState(ideaId, {
-      mode,
-      scrollTop: bodyRef.current?.scrollTop ?? 0,
-      caretPos: mode === "source" ? textareaRef.current?.selectionStart ?? undefined : undefined,
-    });
-  }, [ideaId, mode]);
-
-  useEffect(() => {
-    const body = bodyRef.current;
-    if (!body) return;
-    let timer: number | null = null;
-    const onScroll = () => {
-      if (timer !== null) window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        writeViewState(ideaId, {
-          mode: modeRef.current,
-          scrollTop: body.scrollTop,
-          caretPos: modeRef.current === "source"
-            ? textareaRef.current?.selectionStart ?? undefined
-            : undefined,
-        });
-      }, 250);
-    };
-    body.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      body.removeEventListener("scroll", onScroll);
-      if (timer !== null) window.clearTimeout(timer);
-    };
-  }, [ideaId]);
-
-  // ── Autosave: debounce-per-keystroke, last-writer-wins ──
-  // `dirtyRef` tracks whether there are unsaved edits since the last ACKed
-  // save. Used by the unmount path to decide whether a flush is needed —
-  // without it we'd either skip legitimate flushes (if keying off saveStatus
-  // alone, which is stale across closure boundaries) or fire spurious
-  // empty-content saves (the bug that was wiping ideas on switch).
-  const dirtyRef = useRef(false);
-
-  const flushSave = useCallback(async (text: string) => {
+  // ── Autosave ──
+  const flushSave = useCallback(async () => {
+    const text = getCurrentContent();
     setSaveStatus("saving");
     try {
       const res = await saveIdeaContent(ideaId, text, versionRef.current);
       if ("conflict" in res && res.conflict) {
-        // Another client saved while we were typing. Accept server state;
-        // toast the user so they notice the switcheroo. Follow-up save will
-        // carry the new version.
         versionRef.current = res.latest.version;
-        setContentSilent(res.latest.content);
-        // Server state is now in hand — no local dirt remaining.
+        setContent(res.latest.content);
         dirtyRef.current = false;
         setSaveStatus("saved");
         toast.info(t("toast.ideaConflict"));
       } else if ("ok" in res) {
         versionRef.current = res.version;
-        // Only clear the dirty flag if no keystroke snuck in between when
-        // we started this save and now — otherwise the next save cycle must
-        // still fire. We detect that by comparing against contentRef.
-        if (contentRef.current === text) dirtyRef.current = false;
+        dirtyRef.current = false;
+        previewRef.current?.clearDirty();
         setSaveStatus("saved");
+        // Do NOT setContent here — getCurrentContent already picked the
+        // best version. Setting content would overwrite blank lines.
       }
-    } catch (err) {
-      console.warn("[IdeaEditor] save failed:", err);
+    } catch {
       setSaveStatus("offline");
     }
-  }, [ideaId, toast, t]);
+  }, [ideaId, toast, t, getCurrentContent]);
 
-  const scheduleSave = useCallback((text: string) => {
-    // Suspend autosave while the Agent is mid-stream. The deltas are written
-    // server-side atomically on finalize, and PUT /:id/content would 423 anyway
-    // while locked; suppressing the attempt locally keeps the status bar clean.
+  const scheduleSave = useCallback(() => {
     if (streamSessionIdRef.current) return;
     dirtyRef.current = true;
     setSaveStatus("dirty");
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
-      // Clear the timer handle the moment we fire — so the unmount cleanup
-      // below keys off the actual pending-timer state, not a stale handle
-      // left over from an already-completed debounce.
       saveTimerRef.current = null;
-      void flushSave(text);
+      void flushSave();
     }, AUTOSAVE_DEBOUNCE_MS);
   }, [flushSave]);
 
-  // V2.9 #6: undo handler 通过 ref 绑到 scheduleSave (declaration order)
-  useEffect(() => { scheduleSaveRef.current = scheduleSave; }, [scheduleSave]);
-
-  // Cmd/Ctrl+Z 快捷键 — 全局监听,但只在 idea editor 拥有焦点时才生效。
-  // textarea 自带 native undo,所以只在 contentEditable 模式 / 按下 Cmd+Shift+Z
-  // (redo 暂未实现) / textarea 已被 setContent 覆盖的场景下才走自定义栈。
-  // 简化:只要 cmd/ctrl+z 命中且本组件容器内有焦点,就 prefer 自定义栈。
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const isUndo = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !e.shiftKey;
-      if (!isUndo) return;
-      const root = bodyRef.current;
-      if (!root) return;
-      if (!root.contains(document.activeElement) && !document.activeElement?.classList.contains("idea-editor-topbar-btn")) return;
-      if (undoStackRef.current.length === 0) return;
-      e.preventDefault();
-      performUndo();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [performUndo]);
-
-  // Flush any pending edits on unmount / idea switch. With `key={ideaId}` in
-  // the parent, this effect runs exactly once per mount and its cleanup
-  // captures a *closure over the initial render* — meaning the old
-  // `saveIdeaContent(ideaId, content, …)` wrote the INITIAL content (empty
-  // for fresh mounts) to the server on every switch, wiping user edits. Fix
-  // is twofold:
-  //   1) Read the live content from `contentRef.current` (updated on every
-  //      content change) instead of the stale closure value.
-  //   2) Guard on `dirtyRef.current` so we only flush when there are actual
-  //      unsaved edits — a dangling `saveTimerRef` isn't reliable because
-  //      the debounced timeout could have already fired and completed the
-  //      save, yet an un-nulled handle would still trick the cleanup into
-  //      re-saving.
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) {
@@ -633,39 +164,24 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         saveTimerRef.current = null;
       }
       if (dirtyRef.current) {
-        // Fire-and-forget; no state updates possible after unmount.
-        void saveIdeaContent(ideaId, contentRef.current, versionRef.current).catch(() => {});
+        const text = modeRef.current === "preview" && previewRef.current?.isDirty()
+          ? previewRef.current.getMarkdown()
+          : contentRef.current;
+        void saveIdeaContent(ideaId, text, versionRef.current).catch(() => {});
         dirtyRef.current = false;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ideaId]);
 
-  // ── SSE: apply remote content changes when we're not actively editing ──
+  // ── SSE sync ──
   useIdeaSync(ideaId, clientId, {
     onContentChange: useCallback((remoteContent: string, remoteVersion: number) => {
-      // If we have unsaved local edits, skip overwriting — the user is
-      // mid-stroke (or mid-save). Their next save will surface a conflict,
-      // handled via the 409 path in flushSave. Keying off `dirtyRef` (not
-      // `saveTimerRef`) is correct because the debounce handle is cleared
-      // when the timeout fires, but the in-flight save still counts as
-      // "typing" from the remote-sync perspective.
       if (dirtyRef.current) return;
-      // V2.9 #6: 远端 content 不进 undo 栈,避免 undo 跳到完全不相关的远端版本。
-      setContentSilent(remoteContent);
+      setContent(remoteContent);
       versionRef.current = remoteVersion;
     }, []),
-    onRename: useCallback((name: string) => {
-      // Parent handles the sidebar + header label via workspace SSE — this
-      // handler exists so we could show a "renamed by X" toast later if
-      // desired. For now, keep it a no-op.
-      void name;
-    }, []),
-
-    // ── V2 streaming write handlers ─────────────────────────────────────
+    onRename: useCallback(() => {}, []),
     onStreamBegin: useCallback((p: { sessionId: string; startOffset: number }) => {
-      // Cancel any pending autosave — we don't want a stale timer firing
-      // while the server is locked for the Agent's stream.
       if (saveTimerRef.current) {
         window.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
@@ -673,113 +189,143 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       dirtyRef.current = false;
       streamSessionIdRef.current = p.sessionId;
       streamBaseRef.current = contentRef.current;
-      // Clamp offset defensively — a stale offset could over-run the buffer
-      // after a local edit that the server hasn't yet acknowledged.
       streamStartOffsetRef.current = Math.min(p.startOffset, contentRef.current.length);
       streamBufferRef.current = "";
-      // Fresh session → re-arm auto-follow regardless of how the previous
-      // session ended. If the user scrolled up last time, this new session
-      // deserves a clean slate.
-      streamFollowRef.current = true;
-      lastAutoScrollTopRef.current = null;
       setStreaming(true);
-      setSaveStatus("saved"); // hide "dirty" indicator during stream
+      setSaveStatus("saved");
     }, []),
-
     onStreamDelta: useCallback((p: { sessionId: string; delta: string }) => {
-      // Defensive: ignore deltas that don't match the currently-tracked
-      // session. Can happen if a stale in-flight SSE message arrives after
-      // a new session was opened + closed.
       if (streamSessionIdRef.current !== p.sessionId) return;
       streamBufferRef.current += p.delta;
       const base = streamBaseRef.current;
       const off = streamStartOffsetRef.current;
-      const next = base.slice(0, off) + streamBufferRef.current + base.slice(off);
-      // V2.9 #6: stream delta 不进 undo 栈
-      setContentSilent(next);
+      setContent(base.slice(0, off) + streamBufferRef.current + base.slice(off));
     }, []),
-
-    onStreamFinalize: useCallback(
-      (p: { sessionId: string; discarded: boolean; finalContent: string; newVersion: number }) => {
-        if (streamSessionIdRef.current !== p.sessionId) return;
-        // On commit we take the authoritative server content (which may have
-        // surrounding newlines added by applyIdeaWrite that the naive splice
-        // didn't); on discard we roll back to the pre-stream snapshot.
-        // V2.9 #6: stream finalize 不进 undo 栈
-        setContentSilent(p.finalContent);
-        versionRef.current = p.newVersion;
-        streamSessionIdRef.current = null;
-        streamBaseRef.current = "";
-        streamBufferRef.current = "";
-        streamStartOffsetRef.current = 0;
-        setStreaming(false);
-        // Force the saved badge — the content is in sync with the server.
-        dirtyRef.current = false;
-        setSaveStatus("saved");
-      },
-      []
-    ),
+    onStreamFinalize: useCallback((p: { sessionId: string; discarded: boolean; finalContent: string; newVersion: number }) => {
+      if (streamSessionIdRef.current !== p.sessionId) return;
+      setContent(p.finalContent);
+      versionRef.current = p.newVersion;
+      streamSessionIdRef.current = null;
+      streamBaseRef.current = "";
+      streamBufferRef.current = "";
+      streamStartOffsetRef.current = 0;
+      setStreaming(false);
+      dirtyRef.current = false;
+      setSaveStatus("saved");
+    }, []),
   });
 
-  // ── Mode toggle with caret + scroll preservation ──
-  // When the user flips between Source (textarea) and Preview
-  // (contentEditable), we carry the caret over to roughly the same byte in
-  // the markdown source so they land where they left off. The two surfaces
-  // use different caret models:
-  //   • Source: textarea.selectionStart — already a source-buffer offset.
-  //   • Preview: MarkdownPreview.getCaretSourceOffset() walks the DOM to
-  //     recover the offset from the rendered tree.
-  //
-  // Scroll preservation is just as important. The body is a single scroll
-  // container shared by both modes, but its content HEIGHT changes on
-  // toggle: preview mode renders rich markdown (can be tall), source mode
-  // starts at the textarea's min-height=200px and only reaches full height
-  // AFTER the auto-grow useEffect fires. Between React's mode commit and
-  // the auto-grow, the scrollable area temporarily shrinks and the browser
-  // clamps scrollTop toward 0. We snapshot bodyRef.scrollTop pre-toggle and
-  // restore it after the double-rAF (which lets React commit + the
-  // auto-grow effect run), so the user stays anchored.
-  //
-  // `preventScroll: true` on focus is belt-and-suspenders: without it
-  // focusing a just-mounted textarea (or a now-taller contentEditable)
-  // would scroll the textarea into view, undoing the scrollTop restore.
-  const toggleMode = useCallback(() => {
-    const fromMode = modeRef.current;
-    let capturedOffset: number | null = null;
-    if (fromMode === "source") {
-      capturedOffset = textareaRef.current?.selectionStart ?? null;
-    } else {
-      capturedOffset = previewRef.current?.getCaretSourceOffset() ?? null;
-    }
-    const savedScrollTop = bodyRef.current?.scrollTop ?? 0;
-    const nextMode = fromMode === "source" ? "preview" : "source";
-    setMode(nextMode);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        // Restore scroll first — if content height shrunk it may have
-        // clamped, so setting again after layout has settled pins it.
-        if (bodyRef.current) bodyRef.current.scrollTop = savedScrollTop;
-        if (capturedOffset === null) return;
-        if (nextMode === "source") {
-          const ta = textareaRef.current;
-          if (!ta) return;
-          const pos = Math.max(0, Math.min(capturedOffset, ta.value.length));
-          try {
-            ta.focus({ preventScroll: true });
-            ta.setSelectionRange(pos, pos);
-          } catch { /* ignore */ }
-          // Re-pin scroll — setSelectionRange on some browsers nudges the
-          // textarea into view. A second assignment after is cheap insurance.
-          if (bodyRef.current) bodyRef.current.scrollTop = savedScrollTop;
+  // ── Source mode change ──
+  const handleSourceChange = useCallback((text: string, _caret: number) => {
+    if (text === contentRef.current) return;
+    setContent(text);
+    scheduleSave();
+  }, [scheduleSave]);
+
+  // ── Preview mode dirty signal ──
+  const handlePreviewDirty = useCallback(() => {
+    scheduleSave();
+  }, [scheduleSave]);
+
+  // ── File upload ──
+  const uploadAndInsert = useCallback(async (files: File[]) => {
+    for (const file of files) {
+      try {
+        const att = await uploadIdeaAttachment(ideaId, file);
+        const alt = (att.originalName || "image").replace(/[\[\]]/g, "");
+        const isImage = att.mime.startsWith("image/");
+        const md = isImage ? `![${alt}](${att.url})` : `[${alt}](${att.url})`;
+        if (modeRef.current === "source" && cmRef.current) {
+          cmRef.current.insertAtCaret(md + "\n");
+          const view = cmRef.current.getView();
+          if (view) {
+            const next = view.state.doc.toString();
+            setContent(next);
+            scheduleSave();
+          }
         } else {
-          previewRef.current?.setCaretFromSourceOffset(capturedOffset);
-          if (bodyRef.current) bodyRef.current.scrollTop = savedScrollTop;
+          const cur = contentRef.current;
+          const next = cur + (cur.endsWith("\n") ? "" : "\n") + md + "\n";
+          setContent(next);
+          scheduleSave();
         }
-      });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(t("idea.uploadFailed") + `: ${msg}`);
+      }
+    }
+  }, [ideaId, scheduleSave, toast, t]);
+
+  const handleSourcePasteFiles = useCallback((files: File[]) => {
+    if (streamSessionIdRef.current) return;
+    void uploadAndInsert(files);
+  }, [uploadAndInsert]);
+
+  const handleSourceDropFiles = useCallback((files: File[]) => {
+    if (streamSessionIdRef.current) return;
+    void uploadAndInsert(files);
+  }, [uploadAndInsert]);
+
+  const handleUploadClick = useCallback(() => { fileInputRef.current?.click(); }, []);
+  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    void uploadAndInsert(files);
+    e.target.value = "";
+  }, [uploadAndInsert]);
+
+  const handleImageUpload = useCallback(async (file: File) => {
+    const att = await uploadIdeaAttachment(ideaId, file);
+    return { url: att.url, mime: att.mime, originalName: att.originalName };
+  }, [ideaId]);
+
+  // ── Status label ──
+  const statusLabel = (() => {
+    if (!loaded) return t("idea.loading");
+    if (streaming) return t("idea.streaming");
+    if (saveStatus === "saving") return t("idea.saving");
+    if (saveStatus === "saved") return t("idea.saved");
+    if (saveStatus === "dirty") return t("idea.unsaved");
+    if (saveStatus === "offline") return t("idea.offline");
+    return "";
+  })();
+
+  // ── Mode toggle with cursor preservation ──
+  const caretOffsetRef = useRef(0);
+  const toggleMode = useCallback(() => {
+    setMode((m) => {
+      if (m === "source") {
+        caretOffsetRef.current = cmRef.current?.getCaret() ?? 0;
+      } else {
+        // preview → source
+        caretOffsetRef.current = previewRef.current?.getCaretSourceOffset() ?? 0;
+        if (previewRef.current?.isDirty()) {
+          const tiptapMd = previewRef.current.getMarkdown();
+          // Only overwrite content if the user made a REAL content change
+          // (not just whitespace normalization from Tiptap's round-trip).
+          if (normalizeMd(tiptapMd) !== normalizeMd(contentRef.current)) {
+            setContent(tiptapMd);
+          }
+          previewRef.current.clearDirty();
+        }
+        // If not dirty, or only whitespace changed → content stays as-is
+        // (blank lines preserved)
+      }
+      return m === "source" ? "preview" : "source";
     });
   }, []);
 
-  // ── Keyboard: Cmd/Ctrl+/ toggles mode ──
+  useEffect(() => {
+    const offset = caretOffsetRef.current;
+    requestAnimationFrame(() => {
+      if (mode === "preview") {
+        previewRef.current?.setCaretFromSourceOffset(offset);
+      } else {
+        cmRef.current?.setCaret(offset, true);
+      }
+    });
+  }, [mode]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "/") {
@@ -791,503 +337,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     return () => document.removeEventListener("keydown", handler);
   }, [toggleMode]);
 
-  // ── @mention detection ──
-  // On every change, if the caret sits right after an `@<query>` with no
-  // whitespace between, we open the picker. The picker lives in document
-  // coords positioned at the `@` glyph's pixel rect.
-  //
-  // Boundary rule: `@` ALWAYS triggers (no email guard). The old guard
-  // (`[A-Za-z0-9_]@` = email pattern, suppress) wrongly blocked the common
-  // case of typing `Heading@` — the user wants to mention directly after
-  // existing text without a leading space. Notion / Slack / Linear all do
-  // the same: any `@` opens the picker, and a genuine email keystroke like
-  // `a@b.com` just surfaces a no-hit picker that Esc / click-away closes.
-  //
-  // The walk-back stops at the FIRST `@` it sees, valid or not. Previously
-  // it would fall through past an invalid `@` and hunt for an earlier one,
-  // which occasionally surfaced stale matches and made triggering feel
-  // unreliable.
-  const detectMention = useCallback((text: string, caret: number) => {
-    let i = caret - 1;
-    while (i >= 0) {
-      const ch = text[i];
-      if (ch === "@") {
-        const query = text.slice(i + 1, caret);
-        if (/[\n\r]/.test(query)) {
-          setMentionState(null);
-          return;
-        }
-        const ta = textareaRef.current;
-        if (!ta) return;
-        const atRect = measureTextareaCharRect(ta, i);
-        if (!atRect) return;
-        setMentionState({
-          origin: "source",
-          atIndex: i,
-          query,
-          atRect,
-        });
-        return;
-      }
-      // Whitespace / newline closes the @-context.
-      if (/\s/.test(ch)) break;
-      i--;
-    }
-    setMentionState(null);
-  }, []);
-
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const text = e.target.value;
-    const caret = e.target.selectionStart ?? text.length;
-    setContent(text);
-    detectMention(text, caret);
-    scheduleSave(text);
-  }, [detectMention, scheduleSave]);
-
-  // ── PR5: paste / drop / picker → upload + splice Markdown reference ──
-  //
-  // Inserts the Markdown reference at the current caret position. For images
-  // and SVG we use `![alt](url)`; for video/PDF we use a plain `[name](url)`
-  // link (rehype-raw + rehype-sanitize won't render <video> safely without
-  // schema additions, and <a> is universally safe). The Agent's
-  // `upload_to_idea` tool follows the same convention server-side.
-  const insertAttachmentMarkdown = useCallback(
-    (att: { url: string; mime: string; originalName?: string | null }) => {
-      const ta = textareaRef.current;
-      const start = ta?.selectionStart ?? content.length;
-      const end = ta?.selectionEnd ?? start;
-      const alt = (att.originalName || "attachment").replace(/[\[\]]/g, "");
-      const isImage = att.mime.startsWith("image/");
-      const md = isImage ? `![${alt}](${att.url})` : `[${alt}](${att.url})`;
-      const next = content.slice(0, start) + md + content.slice(end);
-      setContent(next);
-      scheduleSave(next);
-      // Restore caret right after the inserted markdown.
-      requestAnimationFrame(() => {
-        if (textareaRef.current) {
-          const pos = start + md.length;
-          textareaRef.current.focus();
-          textareaRef.current.setSelectionRange(pos, pos);
-        }
-      });
-    },
-    [content, scheduleSave, setContent],
-  );
-
-  /** Drop / paste / file-picker entry point. Handles a list of File objects
-   *  one at a time; aggregates errors but never aborts the whole batch on
-   *  a single failure. */
-  const uploadFiles = useCallback(
-    async (files: File[]) => {
-      if (files.length === 0) return;
-      for (const f of files) {
-        try {
-          const att = await uploadIdeaAttachment(ideaId, f);
-          insertAttachmentMarkdown(att);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          toast.error(t("idea.uploadFailed") + `: ${msg}`);
-        }
-      }
-    },
-    [ideaId, insertAttachmentMarkdown, toast, t],
-  );
-
-  /** Capture-phase paste: if any clipboardData.items are files, intercept
-   *  and upload. Plain text paste falls through to the textarea native
-   *  handler. */
-  const handlePaste = useCallback(
-    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-      if (streaming) return;
-      const items = Array.from(e.clipboardData?.items ?? []);
-      const files = items
-        .filter((it) => it.kind === "file")
-        .map((it) => it.getAsFile())
-        .filter((f): f is File => !!f);
-      if (files.length === 0) return; // text paste — leave it
-      e.preventDefault();
-      void uploadFiles(files);
-    },
-    [streaming, uploadFiles],
-  );
-
-  /** Drop handler — same flow as paste. We listen on the textarea + the
-   *  preview wrapper so users can drag-drop into either mode. */
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLElement>) => {
-      if (streaming) return;
-      const files = Array.from(e.dataTransfer?.files ?? []);
-      if (files.length === 0) return;
-      e.preventDefault();
-      void uploadFiles(files);
-    },
-    [streaming, uploadFiles],
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLElement>) => {
-    if (e.dataTransfer?.types?.includes("Files")) {
-      e.preventDefault(); // allow drop
-    }
-  }, []);
-
-  /** Hidden file input — clicking the toolbar upload button triggers it. */
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const handleUploadButtonClick = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
-  const handleFileInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files ?? []);
-      if (files.length === 0) return;
-      void uploadFiles(files);
-      // Reset so the same file can be picked twice in a row.
-      e.target.value = "";
-    },
-    [uploadFiles],
-  );
-
-  /** Preview-mode mention trigger. MarkdownPreview fires this whenever the
-   * caret sits after an `@<query>` sequence (or null when that's no longer
-   * true). Coords arrive in viewport pixels. */
-  const handlePreviewMentionQuery = useCallback((state: MentionQueryState | null) => {
-    if (!state) {
-      setMentionState(cur => (cur?.origin === "preview" ? null : cur));
-      return;
-    }
-    setMentionState({
-      origin: "preview",
-      atIndex: state.atIndex,
-      query: state.query,
-      atRect: state.atRect,
-    });
-  }, []);
-
-  // Preview mode (contentEditable) edits — innerText round-trips into the
-  // source buffer. Rich markdown structure (headings, lists, etc.) degrades
-  // to plain text on edit; users who need precise edits switch to Source.
-  // Mention chips survive because they're `contentEditable={false}`.
-  const handlePreviewInput = useCallback((text: string) => {
-    setContent(text);
-    scheduleSave(text);
-  }, [scheduleSave]);
-
-  // ── Caret-follow autoscroll ──
-  // The textarea auto-grows to fit its content, so it has no internal scroll
-  // — the outer `.idea-editor-body` is what scrolls. That means the browser's
-  // native "keep the caret in view while typing" behavior doesn't fire: the
-  // caret is always inside the textarea's own box, there's nothing to scroll
-  // from the browser's POV. As a result, typing past the bottom of the
-  // viewport visually left the caret behind (it kept moving down the ever-
-  // taller textarea while the page stayed pinned at the top).
-  //
-  // Fix: after every content change + after arrow-key / click navigation,
-  // measure the caret's viewport rect (via the mirror-div trick in
-  // `measureTextareaCaretRect`) and nudge `bodyRef.scrollTop` just enough to
-  // keep the caret inside a comfortable band — away from the very top/bottom
-  // of the scroll container.
-  //
-  // Only runs when the textarea is actually focused, so SSE-driven remote
-  // content updates (which call `setContent` without user focus) don't yank
-  // the reader's scroll position.
-  const ensureCaretVisible = useCallback(() => {
-    const body = bodyRef.current;
-    const ta = textareaRef.current;
-    if (!body || !ta) return;
-    if (document.activeElement !== ta) return;
-    const caret = ta.selectionStart ?? ta.value.length;
-    const rect = measureTextareaCaretRect(ta, caret);
-    if (!rect) return;
-    const bodyRect = body.getBoundingClientRect();
-    // Leave ~1 line of breathing room above and below so the caret never
-    // hugs the edge. 48px is roughly two line-heights at our 14px body font.
-    const MARGIN = 48;
-    if (rect.bottom > bodyRect.bottom - MARGIN) {
-      body.scrollTop += rect.bottom - (bodyRect.bottom - MARGIN);
-    } else if (rect.top < bodyRect.top + MARGIN) {
-      body.scrollTop -= (bodyRect.top + MARGIN) - rect.top;
-    }
-  }, []);
-
-  // Auto-grow textarea so the outer body scrolls instead of an inner
-  // scrollbar — matches the user's request "高度应该是全局滚动".
-  // The caret-follow has to run *after* the height assignment so the
-  // mirror-div measurement sees the final textarea width (unchanged here,
-  // but we also want layout to have settled before reading getBoundingClientRect).
-  useEffect(() => {
-    if (mode !== "source") return;
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = `${ta.scrollHeight}px`;
-    // rAF so the assignment above is reflected in layout before we measure.
-    requestAnimationFrame(() => ensureCaretVisible());
-  }, [content, mode, loaded, ensureCaretVisible]);
-
-  // ── Stream-follow autoscroll ──
-  // While the Agent is writing into this idea, the textarea is readOnly (so
-  // `ensureCaretVisible` no-ops because it requires focus) and the body is
-  // the scroll container. Without an explicit follow, new deltas just push
-  // the tail off the bottom of the viewport and the user can't see what's
-  // being written. After every `content` change during a stream we locate
-  // the tail of the written region (`startOffset + buffer.length`), measure
-  // its pixel rect, and nudge `bodyRef.scrollTop` down if the tail has
-  // slipped past the bottom margin. Works in both modes:
-  //   • Source: mirror-div-based caret rect via `measureTextareaCaretRect`.
-  //   • Preview: walk `[data-md-start]` blocks to find the one containing
-  //     the tail, then use its DOM rect.
-  //
-  // We only ever scroll DOWN — auto-scrolling UP during a stream would feel
-  // like we're yanking the user away from earlier content they want to
-  // read. If the user manually scrolls up enough to leave the "near-tail"
-  // band, we set `streamFollowRef = false` and stop nudging until they
-  // scroll back near the tail.
-  useEffect(() => {
-    if (!streaming) return;
-    if (!streamFollowRef.current) return;
-    const body = bodyRef.current;
-    if (!body) return;
-    const tail = streamStartOffsetRef.current + streamBufferRef.current.length;
-    const MARGIN = 80;
-
-    // Double rAF so we measure AFTER the auto-grow effect above has written
-    // the new height (source mode) or after MarkdownPreview has re-rendered
-    // (preview mode).
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        // RE-CHECK follow INSIDE the double-rAF. The user may have scrolled
-        // during the wait between the effect firing and this callback — the
-        // sync check at the top of the effect is stale by the time we reach
-        // here. Without this, a user scroll-up mid-stream would be fought
-        // back down by our own auto-scroll on the same frame.
-        if (!streamFollowRef.current) return;
-        const bodyRect = body.getBoundingClientRect();
-        let tailBottom: number | null = null;
-
-        if (mode === "source") {
-          const ta = textareaRef.current;
-          if (!ta) return;
-          const rect = measureTextareaCaretRect(ta, tail);
-          if (!rect) return;
-          tailBottom = rect.bottom;
-        } else {
-          // Find the block that contains the tail offset; fall back to the
-          // last block before the tail if none contains it exactly.
-          const blocks = body.querySelectorAll<HTMLElement>("[data-md-start]");
-          let target: HTMLElement | null = null;
-          for (let i = 0; i < blocks.length; i++) {
-            const b = blocks[i];
-            const s = Number(b.getAttribute("data-md-start"));
-            const e = Number(b.getAttribute("data-md-end"));
-            if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
-            if (tail >= s && tail <= e) { target = b; break; }
-            if (tail >= s) target = b;
-          }
-          if (!target && blocks.length > 0) target = blocks[blocks.length - 1];
-          if (!target) return;
-          tailBottom = target.getBoundingClientRect().bottom;
-        }
-
-        if (tailBottom == null) return;
-        const delta = tailBottom - (bodyRect.bottom - MARGIN);
-        if (delta <= 0) return; // tail already in view — no nudge needed
-        // Final re-check just before the mutation — paranoia-cheap, closes
-        // the narrow window where a user scroll event could have fired
-        // between our measurement and the scrollTop assignment.
-        if (!streamFollowRef.current) return;
-        body.scrollTop += delta;
-        // Record the actual post-clamp scrollTop so the detach handler can
-        // tell "this scroll event was me" from "this was the user".
-        lastAutoScrollTopRef.current = body.scrollTop;
-      });
-    });
-  }, [content, streaming, mode]);
-
-  // Detach detection — user-scroll priority. Rules:
-  //   1. User's manual scroll always wins. Any manual scroll that doesn't
-  //      land at the very bottom detaches follow immediately, regardless of
-  //      direction (up or down-but-not-to-bottom both count).
-  //   2. If the user hasn't scrolled at all this session, follow remains on
-  //      (default from onStreamBegin).
-  //   3. If the user scrolls all the way to the bottom, follow re-engages —
-  //      reaching the bottom is the explicit "I want to keep up" gesture.
-  //
-  // To separate our own scrolls from user scrolls we compare body.scrollTop
-  // against the value we last programmatically assigned. This is robust to
-  // browser scroll-event coalescing — if the user wheels in the same frame
-  // as our auto-scroll, the single coalesced event arrives with a scrollTop
-  // that doesn't match our recorded target, so we correctly classify it as
-  // user intent. The previous time-gated flag approach would have dropped
-  // the user's scroll in that case.
-  useEffect(() => {
-    if (!streaming) return;
-    const body = bodyRef.current;
-    if (!body) return;
-    const onScroll = () => {
-      // "Ours" when the current scrollTop matches what we set (within 1 px to
-      // tolerate sub-pixel rendering). Consume the marker so the NEXT scroll
-      // event — necessarily user-driven — is classified correctly.
-      if (
-        lastAutoScrollTopRef.current !== null &&
-        Math.abs(body.scrollTop - lastAutoScrollTopRef.current) < 1
-      ) {
-        lastAutoScrollTopRef.current = null;
-        return;
-      }
-      // User-driven scroll (or a coalesced event where the user also acted).
-      // Invalidate the programmatic-scroll marker so a later coincidence
-      // can't silently treat a user scroll as ours.
-      lastAutoScrollTopRef.current = null;
-      // A small epsilon handles sub-pixel fractional scrollHeight on Retina /
-      // zoomed viewports; 4 px is below a line-height so it can't be
-      // mistaken for a deliberate mid-scroll pause.
-      const distFromBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
-      streamFollowRef.current = distFromBottom <= 4;
-    };
-    body.addEventListener("scroll", onScroll, { passive: true });
-    return () => body.removeEventListener("scroll", onScroll);
-  }, [streaming]);
-
-  const handleMentionSelect = useCallback((hit: MentionHit) => {
-    if (!mentionState) return;
-    const link = buildMentionLink(hit);
-
-    if (mentionState.origin === "preview") {
-      // Preview mode — MarkdownPreview splices the link into the source at
-      // the reported offset; the resulting re-render turns it into a chip.
-      previewRef.current?.insertMention(link, mentionState.atIndex, mentionState.query.length);
-      setMentionState(null);
-      return;
-    }
-
-    // Source mode — plain-text textarea edit.
-    if (!textareaRef.current) return;
-    const ta = textareaRef.current;
-    const before = content.slice(0, mentionState.atIndex);
-    const after = content.slice(mentionState.atIndex + 1 + mentionState.query.length);
-    const next = `${before}${link} ${after}`;
-    const caret = before.length + link.length + 1; // +1 for the trailing space
-    // Snapshot body scrollTop — inserting the mention link grows the content
-    // by dozens of chars (e.g. `[@Foo](mention://view/abc?table=xyz)`), the
-    // auto-grow effect re-computes textarea.scrollHeight on the next paint,
-    // and `ta.focus()` without preventScroll would then scroll the textarea
-    // into view — typically snapping the body near the bottom because the
-    // newly-grown textarea becomes the tallest thing in the scroll container.
-    // Capturing + restoring pins the user at the visual position they picked
-    // the mention from.
-    const savedScrollTop = bodyRef.current?.scrollTop ?? 0;
-    setContent(next);
-    setMentionState(null);
-    scheduleSave(next);
-    requestAnimationFrame(() => {
-      try {
-        ta.focus({ preventScroll: true });
-        ta.setSelectionRange(caret, caret);
-      } catch { /* ignore */ }
-      if (bodyRef.current) bodyRef.current.scrollTop = savedScrollTop;
-    });
-  }, [content, mentionState, scheduleSave]);
-
-  const handleMentionChipClick = useCallback((m: ParsedMention) => {
-    if (m.type === "table") {
-      onNavigate({ type: "table", id: m.id });
-    } else if (m.type === "design") {
-      onNavigate({ type: "design", id: m.id });
-    } else if (m.type === "taste" && m.designId) {
-      onNavigate({ type: "taste", designId: m.designId, tasteId: m.id });
-    } else if (m.type === "idea") {
-      onNavigate({ type: "idea", id: m.id });
-    } else if (m.type === "idea-section" && m.ideaId) {
-      // id of an idea-section chip is the heading slug.
-      onNavigate({ type: "idea-section", ideaId: m.ideaId, headingSlug: m.id });
-    } else if (m.type === "idea-block" && m.ideaId) {
-      // PR8.5: navigate to the idea, then BlockList's hashchange listener
-      // scrolls + flashes the target block. We append `#block-<id>` to the URL
-      // hash; if we're navigating cross-idea, App.tsx routes will swap the
-      // active artifact and the new IdeaEditor's BlockList will pick up the
-      // hash on mount.
-      onNavigate({ type: "idea", id: m.ideaId });
-      // Set hash AFTER nav so the new IdeaEditor sees it. Use a microtask
-      // to let any same-tick state updates apply first.
-      Promise.resolve().then(() => {
-        window.location.hash = `block-${m.id}`;
-      });
-    }
-    // model 类型在 idea 内不导航 (V1 chat 才有意义)
-  }, [onNavigate]);
-
-  // ── Scroll to heading when navigated via an idea-section mention ──
-  // Handles two cases:
-  //   (a) the same IdeaEditor is already mounted for the target idea — we
-  //       get a `idea-anchor` window event and scroll immediately;
-  //   (b) the IdeaEditor is mounting fresh for the idea — we read the
-  //       `__pendingIdeaAnchor` sentinel (set just before the activeTableId
-  //       state change) once content has loaded.
-  const scrollToHeading = useCallback((slug: string) => {
-    // Preview mode is required to find the heading by id. If we're in source
-    // mode, auto-switch so the anchor can resolve. This matches user intent:
-    // clicking a section chip implies "show me that section".
-    setMode("preview");
-    // Allow one render + double-rAF so MarkdownPreview has painted.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const root = bodyRef.current;
-        if (!root) return;
-        const el = root.querySelector<HTMLElement>(`#${CSS.escape(slug)}`);
-        if (!el) return;
-        // Offset scroll so the heading sits ~60px from the top — matches the
-        // body's natural top padding so the heading lines up with "normal"
-        // reading position after a jump.
-        const bodyRect = root.getBoundingClientRect();
-        const elRect = el.getBoundingClientRect();
-        root.scrollTop += (elRect.top - bodyRect.top) - 60;
-        // Subtle highlight via a CSS flash class (defined in IdeaEditor.css).
-        el.classList.remove("idea-heading-flash");
-        // Force reflow so the re-added class re-triggers the animation.
-        void el.offsetWidth;
-        el.classList.add("idea-heading-flash");
-      });
-    });
-  }, []);
-
-  useEffect(() => {
-    // Case (a): live event for the currently-mounted editor.
-    const onAnchor = (e: Event) => {
-      const detail = (e as CustomEvent<{ ideaId: string; slug: string }>).detail;
-      if (!detail || detail.ideaId !== ideaId) return;
-      scrollToHeading(detail.slug);
-    };
-    window.addEventListener("idea-anchor", onAnchor);
-    return () => window.removeEventListener("idea-anchor", onAnchor);
-  }, [ideaId, scrollToHeading]);
-
-  useEffect(() => {
-    // Case (b): cold-mount pickup — once content is loaded, check the
-    // window-scoped sentinel. Consume it (delete) so we don't re-scroll on
-    // subsequent re-renders.
-    if (!loaded) return;
-    const w = window as unknown as { __pendingIdeaAnchor?: { ideaId: string; slug: string } };
-    const pending = w.__pendingIdeaAnchor;
-    if (!pending || pending.ideaId !== ideaId) return;
-    delete w.__pendingIdeaAnchor;
-    scrollToHeading(pending.slug);
-  }, [loaded, ideaId, scrollToHeading]);
-
-  // ── Status label ──
-  const statusLabel = (() => {
-    if (!loaded) return t("idea.loading");
-    // Streaming label takes precedence — the save-status is stable ("saved")
-    // but the live presentation should tell the user AI is writing.
-    if (streaming) return t("idea.streaming");
-    if (saveStatus === "saving") return t("idea.saving");
-    if (saveStatus === "saved") return t("idea.saved");
-    if (saveStatus === "dirty") return t("idea.unsaved");
-    if (saveStatus === "offline") return t("idea.offline");
-    return "";
-  })();
-
   return (
     <div className="idea-editor-panel">
-      {/* ─── Top Bar (mirrors SvgCanvas: name left, actions right) ─── */}
       <div className="idea-editor-topbar">
         <SidebarExpandButton />
         <span className="idea-editor-topbar-name">
@@ -1295,324 +346,49 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             value={ideaName}
             isEditing={isEditingName}
             onStartEdit={() => setIsEditingName(true)}
-            onSave={(name) => {
-              setIsEditingName(false);
-              onRename(name);
-            }}
+            onSave={(name) => { setIsEditingName(false); onRename(name); }}
             onCancelEdit={() => setIsEditingName(false)}
           />
         </span>
         <div className="idea-editor-topbar-actions">
           {statusLabel && <span className="idea-editor-status">{statusLabel}</span>}
-          {/* V2.9.3: save status 和 Switch 之间加竖线 */}
           {statusLabel && <span className="idea-editor-topbar-sep" aria-hidden="true" />}
-          {/* PR5: 上传附件按钮 (图 / SVG / PDF / 视频),也支持 paste / drop.
-           * 2026-04-29: Upload 放在 Switch 之前 —— Upload 是高频操作,Switch 是
-           * 模式切换更靠后习惯 (跟 word / 飞书文档左右顺序对齐). */}
           <button
             className={`idea-editor-topbar-btn${streaming ? " disabled" : ""}`}
-            onClick={handleUploadButtonClick}
-            disabled={streaming}
+            onClick={handleUploadClick} disabled={streaming}
             title={t("idea.uploadAttachment")}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 4v12m0-12 4 4m-4-4-4 4M4 18v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            {t("idea.uploadAttachment")}
+            {UPLOAD_ICON}{t("idea.uploadAttachment")}
           </button>
-          {/* Single view-bar toggle — shows only the destination mode.
-           * In Source view, the button reads "Preview"; click to switch. */}
-          <button
-            className="idea-editor-topbar-btn"
-            onClick={toggleMode}
-            title={t("idea.toggleHint")}
-          >
+          <input ref={fileInputRef} type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/svg+xml,application/pdf,video/mp4,video/webm"
+            multiple style={{ display: "none" }} onChange={handleFileInputChange}
+          />
+          <button className="idea-editor-topbar-btn" onClick={toggleMode} title={t("idea.toggleHint")}>
             {mode === "source" ? PREVIEW_ICON : SOURCE_ICON}
             {mode === "source" ? t("idea.preview") : t("idea.source")}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/svg+xml,application/pdf,video/mp4,video/webm"
-            multiple
-            style={{ display: "none" }}
-            onChange={handleFileInputChange}
-          />
-          {/* V2.9 #6: Undo 按钮 — 与 Table topbar 一致(icon + 文字 + disabled 透明) */}
-          <button
-            className={`idea-editor-topbar-btn${canUndo ? "" : " disabled"}`}
-            onClick={() => canUndo && performUndo()}
-            disabled={!canUndo}
-            title={t("toolbar.undo")}
-          >
-            <svg width="14" height="14" viewBox="0 0 26 26" fill="none">
-              <path d="M10.8047 6.52876C11.065 6.78911 11.065 7.21122 10.8047 7.47157L8.60939 9.66683H14.6666C17.428 9.66683 19.6666 11.9054 19.6666 14.6668C19.6666 17.4283 17.428 19.6668 14.6666 19.6668H12.3333C11.9651 19.6668 11.6666 19.3684 11.6666 19.0002C11.6666 18.632 11.9651 18.3335 12.3333 18.3335H14.6666C16.6916 18.3335 18.3333 16.6919 18.3333 14.6668C18.3333 12.6418 16.6916 11.0002 14.6666 11.0002H8.60939L10.8047 13.1954C11.065 13.4558 11.065 13.8779 10.8047 14.1382C10.5443 14.3986 10.1222 14.3986 9.86185 14.1382L6.52851 10.8049C6.26816 10.5446 6.26816 10.1224 6.52851 9.86209L9.86185 6.52876C10.1222 6.26841 10.5443 6.26841 10.8047 6.52876Z" fill="currentColor"/>
-            </svg>
-            {t("toolbar.undo")}
           </button>
           <BlockCloseButton />
         </div>
       </div>
 
-      {/* ─── Body — single scroll container for both modes ─── */}
-      <div className="idea-editor-body" ref={bodyRef}>
+      <div className="idea-editor-body">
         {!loaded ? (
           <div className="idea-editor-loading">{t("idea.loading")}</div>
         ) : mode === "source" ? (
-          <div className="idea-editor-source">
-            <textarea
-              ref={textareaRef}
-              className={`idea-editor-textarea${streaming ? " idea-editor-textarea-streaming" : ""}`}
-              value={content}
-              readOnly={streaming}
-              onChange={handleChange}
-              onPaste={handlePaste}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onKeyDown={(e) => {
-                // Tab / Shift+Tab → indent / outdent. Uses 2-space units, matches
-                // Prettier defaults and renders consistently in markdown list
-                // contexts where tabs vs spaces change how list nesting parses.
-                //
-                //   Tab (no selection)        → insert "  " at caret
-                //   Tab (selection)           → prepend "  " to each line in selection
-                //   Shift+Tab (no selection)  → remove up to 2 leading spaces on current line
-                //   Shift+Tab (selection)     → remove up to 2 leading spaces from each line
-                //
-                // IME composition gate: Tab on a preedit popup (e.g. pinyin
-                // candidate selection) should stay native so the user can
-                // accept a candidate without us stealing the key.
-                if (e.key !== "Tab") return;
-                if (e.nativeEvent.isComposing) return;
-                if (streaming) return;
-                e.preventDefault();
-
-                const ta = e.currentTarget;
-                const value = ta.value;
-                const selStart = ta.selectionStart ?? 0;
-                const selEnd = ta.selectionEnd ?? 0;
-                const INDENT = "  "; // 2 spaces per level
-                const INDENT_LEN = INDENT.length;
-
-                // Expand the selection to whole-line boundaries so we can
-                // prefix/strip each line uniformly regardless of where the
-                // caret actually sits inside the first/last lines.
-                const lineStart = value.lastIndexOf("\n", selStart - 1) + 1;
-                const nextNewline = value.indexOf("\n", selEnd);
-                const lineEnd = nextNewline === -1 ? value.length : nextNewline;
-                const selectedBlock = value.slice(lineStart, lineEnd);
-                const hasMultiLineSelection =
-                  selStart !== selEnd && selectedBlock.includes("\n");
-
-                if (e.shiftKey) {
-                  // ── Outdent ──
-                  const lines = selectedBlock.split("\n");
-                  let firstLineRemoved = 0;
-                  let totalRemoved = 0;
-                  const newLines = lines.map((line, i) => {
-                    const leading = /^ {1,2}/.exec(line)?.[0] ?? "";
-                    const removeLen = leading.length;
-                    if (i === 0) firstLineRemoved = removeLen;
-                    totalRemoved += removeLen;
-                    return line.slice(removeLen);
-                  });
-                  if (totalRemoved === 0) return;
-                  const newBlock = newLines.join("\n");
-                  const newValue =
-                    value.slice(0, lineStart) + newBlock + value.slice(lineEnd);
-                  const newSelStart = Math.max(lineStart, selStart - firstLineRemoved);
-                  const newSelEnd = Math.max(newSelStart, selEnd - totalRemoved);
-                  setContent(newValue);
-                  scheduleSave(newValue);
-                  // Restore selection after React commits the new value.
-                  requestAnimationFrame(() => {
-                    const cur = textareaRef.current;
-                    if (!cur) return;
-                    cur.setSelectionRange(newSelStart, newSelEnd);
-                  });
-                  return;
-                }
-
-                // ── Indent ──
-                if (hasMultiLineSelection) {
-                  // Multi-line selection: prepend INDENT to each line.
-                  const lines = selectedBlock.split("\n");
-                  const newBlock = lines.map(line => INDENT + line).join("\n");
-                  const added = INDENT_LEN * lines.length;
-                  const newValue =
-                    value.slice(0, lineStart) + newBlock + value.slice(lineEnd);
-                  setContent(newValue);
-                  scheduleSave(newValue);
-                  const newSelStart = selStart + INDENT_LEN;
-                  const newSelEnd = selEnd + added;
-                  requestAnimationFrame(() => {
-                    const cur = textareaRef.current;
-                    if (!cur) return;
-                    cur.setSelectionRange(newSelStart, newSelEnd);
-                  });
-                } else {
-                  // No selection (or single-line selection): insert INDENT
-                  // at caret, replacing any selected range.
-                  const newValue =
-                    value.slice(0, selStart) + INDENT + value.slice(selEnd);
-                  setContent(newValue);
-                  scheduleSave(newValue);
-                  const newCaret = selStart + INDENT_LEN;
-                  requestAnimationFrame(() => {
-                    const cur = textareaRef.current;
-                    if (!cur) return;
-                    cur.setSelectionRange(newCaret, newCaret);
-                  });
-                }
-              }}
-              onKeyUp={(e) => {
-                // Arrow keys / clicks move the caret without firing change —
-                // recompute mention detection so the picker closes when the
-                // caret leaves an `@…` span, AND re-run caret-follow so
-                // arrow-down past the viewport edge scrolls the body.
-                const caret = (e.target as HTMLTextAreaElement).selectionStart ?? 0;
-                detectMention(content, caret);
-                ensureCaretVisible();
-              }}
-              onMouseUp={(e) => {
-                const caret = (e.target as HTMLTextAreaElement).selectionStart ?? 0;
-                detectMention(content, caret);
-                ensureCaretVisible();
-              }}
-              onCopy={() => {
-                // Defensive: after a native Cmd/Ctrl+C, ensure the textarea
-                // keeps focus + selection so the caret stays visible for
-                // continued copying or typing. A concurrent `setSaveStatus`
-                // re-render (from an in-flight autosave debounce) can race
-                // the copy on some browsers and drop focus; restoring in
-                // rAF covers that.
-                const ta = textareaRef.current;
-                if (!ta) return;
-                const start = ta.selectionStart;
-                const end = ta.selectionEnd;
-                requestAnimationFrame(() => {
-                  if (!textareaRef.current) return;
-                  if (document.activeElement !== textareaRef.current) {
-                    textareaRef.current.focus({ preventScroll: true });
-                  }
-                  // Restoring selection range is idempotent when already set.
-                  if (
-                    textareaRef.current.selectionStart !== start ||
-                    textareaRef.current.selectionEnd !== end
-                  ) {
-                    textareaRef.current.setSelectionRange(start, end);
-                  }
-                });
-              }}
-              placeholder={t("idea.empty")}
-              spellCheck={false}
-            />
-          </div>
+          <CodeMirrorSource
+            ref={cmRef} value={content} readOnly={streaming} streaming={streaming}
+            placeholder={t("idea.empty")} onChange={handleSourceChange}
+            onPasteFiles={handleSourcePasteFiles} onDropFiles={handleSourceDropFiles}
+          />
         ) : (
-          /* 2026-04-29 rewrite: revert to whole-doc MarkdownPreview as the
-           * editable surface (native Enter / arrow nav / image rendering /
-           * Backspace-merge / IME — all the things a per-block contentEditable
-           * was fighting). Block-level widgets that the user explicitly asked
-           * to keep (drag handle + ⋮ menu) are now overlaid by `BlockOverlays`,
-           * which absolute-positions them by walking the preview's top-level
-           * DOM children and pairing them with `ideaBlocks[i]` in order.
-           *
-           * Why one preview, two render concerns:
-           *   • The preview owns DOM + caret. It must stay a single
-           *     contentEditable so the browser can do its thing.
-           *   • The overlay owns block IDs + structural mutations (move/
-           *     delete/transform). It calls the same /api/ideas/:id/blocks
-           *     endpoints the old BlockList did, then triggers
-           *     `refetchIdeaBlocks` so structural changes show up before the
-           *     SSE round-trip (which the FE filters out as its own echo).
-           *
-           * BlockList is still used for the streaming-readonly fallback —
-           * Agent writes that lock the doc shouldn't surface an editable
-           * surface, so we keep the lighter virtualized renderer there. */
-          <div className="idea-preview-stack">
-            <MarkdownPreview
-              ref={previewRef}
-              source={content}
-              onMentionClick={handleMentionChipClick}
-              placeholder={t("idea.empty")}
-              editable={!streaming}
-              onEditableInput={handlePreviewInput}
-              onMentionQuery={(state) => {
-                if (!state) {
-                  setMentionState(null);
-                  return;
-                }
-                setMentionState({
-                  origin: "preview",
-                  atIndex: state.atIndex,
-                  query: state.query,
-                  atRect: state.atRect,
-                });
-              }}
-            />
-            {ideaBlocks && !streaming && (
-              <BlockOverlays
-                ideaId={ideaId}
-                blocks={ideaBlocks}
-                getPreviewRoot={() => previewRef.current?.getRoot() ?? null}
-                onAfterMutate={(resp) => {
-                  // Server returns the post-mutation full content +
-                  // version. Push both into local state so:
-                  //   1. MarkdownPreview's `source` reflects the new
-                  //      ordering immediately (don't wait for SSE — it's
-                  //      filtered out by useIdeaSync as a self-echo).
-                  //   2. versionRef advances so the next autosave doesn't
-                  //      collide on baseVersion.
-                  //   3. useIdeaBlocks's refetch still fires for the
-                  //      server-canonical block list (handle preservation).
-                  //   4. `forceRemount()` — the InnerMarkdown memo
-                  //      deliberately bails on every edit-time render to
-                  //      preserve browser-driven DOM mutations, so the
-                  //      new `source` prop won't reach the DOM unless
-                  //      we explicitly trigger a remount. Safe here
-                  //      because mutations are user-initiated drags /
-                  //      menu clicks — the user is NOT mid-typing.
-                  setContentSilent(resp.content);
-                  versionRef.current = resp.version;
-                  refetchIdeaBlocks();
-                  previewRef.current?.forceRemount();
-                }}
-              />
-            )}
-            {streaming && ideaBlocks && (
-              /* While the Agent is streaming a write, surface the read-only
-               * BlockList. The whole-doc preview above is still rendering
-               * (driven by `content`) so the user sees text flow in, but
-               * structural widgets are gone — Agent owns the doc until end-
-               * of-stream. */
-              <div className="idea-preview-streaming-overlay" aria-hidden />
-            )}
-          </div>
+          <TiptapPreview
+            ref={previewRef} source={content} editable={!streaming}
+            onDirty={handlePreviewDirty} placeholder={t("idea.empty")}
+            onUploadFile={handleImageUpload} onMentionClick={() => {}}
+          />
         )}
       </div>
-
-      {/* ─── Mention picker — works for both source and preview modes.
-       * The picker itself is origin-agnostic; `handleMentionSelect` routes
-       * the completion to the right surface based on `mentionState.origin`. */}
-      {mentionState && (
-        <MentionPicker
-          workspaceId={workspaceId}
-          query={mentionState.query}
-          atRect={mentionState.atRect}
-          /* V2.9.5: 显式传 types 把 demo 加进 idea editor 的 @ list (默认
-             types 只到 idea-section,没有 demo)。Idea 不需要 model。
-             PR8.5: 加 idea-block 让用户能 @ 同一篇 / 别篇 idea 的具体段落。 */
-          types={["table", "taste", "idea", "idea-section", "idea-block", "demo"]}
-          onSelect={handleMentionSelect}
-          onClose={() => setMentionState(null)}
-        />
-      )}
     </div>
   );
 }

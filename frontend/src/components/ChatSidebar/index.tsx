@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import "./ChatSidebar.css";
 import ChatInput from "./ChatInput";
 import UserBubble from "./ChatMessage/UserBubble";
@@ -23,7 +24,23 @@ import ChatModelPicker from "./ChatModelPicker";
 import BlockCloseButton from "../BlockCloseButton";
 import AgentNamePill from "./AgentNamePill";
 import AgentAvatarMenu from "./AgentAvatarMenu";
-import { MoreIcon, RefreshIcon, PlusIcon, HistoryIcon, TrashIcon } from "./icons";
+import {
+  MoreIcon,
+  RefreshIcon,
+  PlusIcon,
+  HistoryIcon,
+  TrashIcon,
+  MemberIcon,
+  NatureIcon,
+  ModelsIcon,
+  ActivitiesIcon,
+  SkillsIcon,
+  AcknowledgeIcon,
+  HabitsIcon,
+  IntegrationsIcon,
+} from "./icons";
+import { useCanvas } from "../../contexts/canvasContext";
+import type { SystemBlockState } from "../../canvas/types";
 import DropdownMenu from "../DropdownMenu";
 import ConfirmDialog from "../ConfirmDialog";
 import { useTranslation } from "../../i18n";
@@ -240,6 +257,9 @@ interface Props {
    */
   conversationId?: string | null;
   onConversationChange?: (convId: string | null) => void;
+  /** Pre-fill the input box with this text (not auto-sent). Consumed once on mount. */
+  prefillMessage?: string;
+  onPrefillConsumed?: () => void;
 }
 
 /**
@@ -301,8 +321,11 @@ export default function ChatSidebar({
   onDemoCreated,
   conversationId: propConversationId,
   onConversationChange,
+  prefillMessage,
+  onPrefillConsumed,
 }: Props) {
   const { t } = useTranslation();
+  const { addBlock } = useCanvas();
   // Hydrate from localStorage synchronously so a refresh shows cached
   // messages immediately — no welcome-page flash while /conversations loads.
   const initialCache = useRef<CachedState | null>(readCache(workspaceId)).current;
@@ -337,6 +360,32 @@ export default function ChatSidebar({
   }, [activeConv?.id]);
   const [messages, setMessages] = useState<UiMessage[]>(initialCache?.messages ?? []);
   const [inputValue, setInputValue] = useState("");
+  // Attachments for current message
+  const [attachments, setAttachments] = useState<Array<{ id: string; url: string; mime: string; size: number; originalName: string }>>([]);
+  // Prefill input from parent (e.g. "Add model" flow)
+  useEffect(() => {
+    if (prefillMessage && !inputValue) {
+      setInputValue(prefillMessage);
+      onPrefillConsumed?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillMessage]);
+
+  // Handle file drop/paste → upload → add to attachments
+  const handleFileDrop = useCallback(async (files: File[]) => {
+    for (const file of files) {
+      try {
+        const { uploadChatAttachment } = await import("../../api");
+        const att = await uploadChatAttachment(file);
+        setAttachments((prev) => [...prev, att]);
+      } catch (err) {
+        console.warn("[chat] file upload failed:", err);
+      }
+    }
+  }, []);
+
+  const sidebarRef = useRef<HTMLElement>(null);
+  const [sidebarDragging, setSidebarDragging] = useState(false);
   const [streaming, setStreaming] = useState(false);
   // Live ref to `streaming` so effects that run on prop-id changes (the
   // [open, workspaceId] revalidation) can check the CURRENT value without
@@ -364,6 +413,12 @@ export default function ChatSidebar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Agent meta dropdown (member icon button, left of conv-list / history)
+  // —— 7 placeholder items: nature / models / activities / skills /
+  // acknowledge / habits / integrations. Behaviour TBD; for now noop.
+  const [agentMetaMenuOpen, setAgentMetaMenuOpen] = useState(false);
+  const agentMetaBtnRef = useRef<HTMLButtonElement>(null);
 
   // V3.0 PR1 多对话 UI 状态
   const [convListOpen, setConvListOpen] = useState(false);
@@ -661,9 +716,17 @@ export default function ChatSidebar({
     // 组件读这个对象渲染 "Generating · 0s · 0 tokens" placeholder,turn_usage
     // 事件会更新 totalTokens,done 事件会切到 phase="generated"。
     const turnStartedAt = Date.now();
+    // Build user message content: attachments as image/file markdown above text
+    const attachmentLines = attachments.map((a) =>
+      a.mime.startsWith("image/")
+        ? `![${a.originalName}](${a.url})`
+        : `[${a.originalName}](${a.url})`
+    );
+    const fullContent = [...attachmentLines, text].join("\n");
+
     setMessages((prev) => [
       ...prev,
-      { id: userMsgId, role: "user", content: text, toolCalls: [] },
+      { id: userMsgId, role: "user", content: fullContent, toolCalls: [] },
       {
         id: assistantMsgId,
         role: "assistant",
@@ -678,6 +741,7 @@ export default function ChatSidebar({
       },
     ]);
     setInputValue("");
+    setAttachments([]);
     setStreaming(true);
     setError(null);
 
@@ -703,7 +767,7 @@ export default function ChatSidebar({
 
     cancelRef.current = streamChatMessage({
       conversationId: activeConv.id,
-      message: text,
+      message: fullContent,
       mentions,
       onStart: (serverId) => {
         // V3.0 (queue model): a `start` event can mean two things:
@@ -1613,7 +1677,19 @@ export default function ChatSidebar({
   // to silence TS until we decide whether to add a close affordance back.
   void onClose;
   return (
-    <aside className={`chat-sidebar${open ? " open" : ""}`} aria-hidden={!open}>
+    <aside
+      ref={sidebarRef}
+      className={`chat-sidebar${open ? " open" : ""}`}
+      aria-hidden={!open}
+      onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setSidebarDragging(true); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSidebarDragging(false); }}
+      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setSidebarDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) void handleFileDrop(files); }}
+    >
+      {/* Drag overlay portaled to .chat-part parent so it covers the full block including bottom padding */}
+      {sidebarDragging && sidebarRef.current?.parentElement && createPortal(
+        <div className="chat-sidebar-drag-overlay">Drop files here</div>,
+        sidebarRef.current.parentElement,
+      )}
       <header className="chat-header">
         {/* Left cluster: Agent name pill (double-click to rename, also kept in
             sync with chat-initiated renames via `update_agent_name` tool) then
@@ -1634,6 +1710,20 @@ export default function ChatSidebar({
           <ChatModelPicker agentId={agentId} open={open} disabled={streaming} />
         </div>
         <div className="chat-header-actions">
+          {/* Agent meta dropdown trigger —— 在 history icon 左侧,8px gap
+              由 .chat-header-actions 的 gap:8px 提供。 */}
+          <button
+            ref={agentMetaBtnRef}
+            type="button"
+            className="chat-header-btn"
+            title={t("chat.agent.menu.title")}
+            aria-label={t("chat.agent.menu.title")}
+            aria-haspopup="menu"
+            aria-expanded={agentMetaMenuOpen}
+            onClick={() => setAgentMetaMenuOpen((v) => !v)}
+          >
+            <MemberIcon size={16} />
+          </button>
           {/* V3.0.3: 移除 + 按钮(挪进 ≡ list popover 第一项),topbar 只剩
               ≡ 全部对话 / ⋯ 更多 / × 关闭 block。 */}
           <button
@@ -1663,6 +1753,27 @@ export default function ChatSidebar({
           <BlockCloseButton />
         </div>
       </header>
+      {/* Agent meta menu —— 7 个占位项,功能待接;onSelect 仅 console.info */}
+      {agentMetaMenuOpen && agentMetaBtnRef.current && (
+        <DropdownMenu
+          anchorEl={agentMetaBtnRef.current}
+          items={[
+            { key: "nature", label: t("chat.agent.menu.nature"), icon: <NatureIcon size={16} /> },
+            { key: "models", label: t("chat.agent.menu.models"), icon: <ModelsIcon size={16} /> },
+            { key: "habits", label: t("chat.agent.menu.habits"), icon: <HabitsIcon size={16} /> },
+            { key: "skills", label: t("chat.agent.menu.skills"), icon: <SkillsIcon size={16} /> },
+            { key: "acknowledge", label: t("chat.agent.menu.acknowledge"), icon: <AcknowledgeIcon size={16} /> },
+            { key: "integrations", label: t("chat.agent.menu.integrations"), icon: <IntegrationsIcon size={16} /> },
+            { key: "activities", label: t("chat.agent.menu.activities"), icon: <ActivitiesIcon size={16} /> },
+          ]}
+          onSelect={(key) => {
+            setAgentMetaMenuOpen(false);
+            addBlock("system", { activeTab: key } as SystemBlockState);
+          }}
+          onClose={() => setAgentMetaMenuOpen(false)}
+          width={200}
+        />
+      )}
       {/* ⋯ More menu — V3.0.3:含"清空当前对话" + "删除当前对话" */}
       {menuOpen && moreBtnRef.current && (
         <DropdownMenu
@@ -1785,6 +1896,11 @@ export default function ChatSidebar({
                   streaming={streaming}
                   disabled={!activeConv}
                   workspaceId={workspaceId}
+                  agentId={agentId}
+                  attachments={attachments}
+                  onAttachmentsChange={setAttachments}
+                  onFileDrop={handleFileDrop}
+                  externalDragging={sidebarDragging}
                 />
               </div>
             </div>
@@ -1829,6 +1945,11 @@ export default function ChatSidebar({
             streaming={streaming}
             disabled={!activeConv}
             workspaceId={workspaceId}
+            agentId={agentId}
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
+            onFileDrop={handleFileDrop}
+            externalDragging={sidebarDragging}
           />
         </>
       )}

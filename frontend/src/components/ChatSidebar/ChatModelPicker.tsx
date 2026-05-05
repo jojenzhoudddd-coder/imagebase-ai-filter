@@ -73,6 +73,18 @@ export default function ChatModelPicker({ agentId, open, disabled, onChange }: P
     return () => clearInterval(t);
   }, [open, refresh]);
 
+  // Listen for model changes from other blocks
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.agentId === agentId && detail?.selection) {
+        setSelection(detail.selection);
+      }
+    };
+    window.addEventListener("agent-model-changed", handler);
+    return () => window.removeEventListener("agent-model-changed", handler);
+  }, [agentId]);
+
   const handleSelect = useCallback(
     async (modelId: string) => {
       if (!selection || modelId === selection.selected) {
@@ -85,6 +97,7 @@ export default function ChatModelPicker({ agentId, open, disabled, onChange }: P
         const next = await setAgentModel(agentId, modelId);
         setSelection(next);
         onChange?.(next);
+        window.dispatchEvent(new CustomEvent("agent-model-changed", { detail: { agentId, selection: next } }));
       } catch (err) {
         console.warn("[model-picker] set failed", err);
       } finally {

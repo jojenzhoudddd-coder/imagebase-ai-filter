@@ -12,14 +12,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* 左/右 8px ——
-     · 左侧:sidebar-expand icon 28×28 直接贴 padding 边缘 → hover 热区距 block 左缘 8px;
-     · 右侧:close-X / 末尾按钮 hover 热区距 block 右缘 8px(详见 BlockShell). */
-  padding: 0 8px;
+  /* 默认 left 12 / right 8 —— sidebar 展开时(无 SidebarExpandButton)artifact
+     name 距 block 左缘 12px;sidebar 收起时下方 :has() 规则把 left 拉到 8px,
+     让 sidebar icon hover 热区距 block 左缘 8px,与 name gap 8px 保持. */
+  padding: 0 8px 0 12px;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
   gap: 8px;
+}
+.table-topbar:has(.artifact-sidebar-expand-btn) {
+  padding-left: 8px;
 }
 
 .table-topbar-left {

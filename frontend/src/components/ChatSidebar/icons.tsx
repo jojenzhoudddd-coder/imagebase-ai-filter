@@ -184,6 +184,137 @@ export function MicIcon({ size = 14, className }: IconProps) {
   );
 }
 
+// ── Agent meta dropdown icons (16×16, 1.4 stroke, currentColor) ─────────
+// 占位图标,后续接各自页面时可换成 Figma 标准图标库版本.
+
+/** Nature 性格 — heart outline */
+export function NatureIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <path
+        d="M8 13.5C8 13.5 2 10.5 2 6.3C2 4.5 3.4 3 5.2 3C6.5 3 7.5 3.7 8 4.7C8.5 3.7 9.5 3 10.8 3C12.6 3 14 4.5 14 6.3C14 10.5 8 13.5 8 13.5Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Models 模型 — 3D cube outline */
+export function ModelsIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <path
+        d="M8 2L13.5 4.7V11.3L8 14L2.5 11.3V4.7L8 2Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 8V14M8 8L13.5 4.7M8 8L2.5 4.7"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Activities 活动 — lightning bolt */
+export function ActivitiesIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <path
+        d="M9 2L3.2 9H7.5L7 14L12.8 7H8.5L9 2Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Skills 技能 — star outline */
+export function SkillsIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <path
+        d="M8 2L9.85 5.7L14 6.3L11 9.2L11.7 13.3L8 11.4L4.3 13.3L5 9.2L2 6.3L6.15 5.7L8 2Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Acknowledge 了解我 — info circle */
+export function AcknowledgeIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M8 7.2V11.2"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <circle cx="8" cy="5" r="0.8" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** Habits 习惯 — circular repeat arrow */
+export function HabitsIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <path
+        d="M13 7C12.7 4.7 10.6 3 8.2 3C5.4 3 3 5.3 3 8.2C3 9.6 3.6 10.9 4.5 11.8"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3 9C3.3 11.3 5.4 13 7.8 13C10.6 13 13 10.7 13 7.8C13 6.4 12.4 5.1 11.5 4.2"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M11 4.5L11.7 3L13.2 3.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 11.5L4.3 13L2.8 12.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Integrations 集成 — 2×2 grid (apps / modules) */
+export function IntegrationsIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <rect x="2.2" y="2.2" width="4.6" height="4.6" rx="0.8" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="9.2" y="2.2" width="4.6" height="4.6" rx="0.8" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="2.2" y="9.2" width="4.6" height="4.6" rx="0.8" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="9.2" y="9.2" width="4.6" height="4.6" rx="0.8" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+/** Member outlined — head + shoulders silhouette (Figma icon_member_outlined,
+ * 24×24 viewBox). Used in the chat header to open the agent meta dropdown
+ * (nature / models / activities / skills / acknowledge / habits / integrations). */
+export function MemberIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M15 6.5C15 4.84315 13.6569 3.5 12 3.5C10.3431 3.5 9 4.84315 9 6.5C9 8.15685 10.3431 9.5 12 9.5C13.6569 9.5 15 8.15685 15 6.5ZM17 6.5C17 9.26142 14.7614 11.5 12 11.5C9.23858 11.5 7 9.26142 7 6.5C7 3.73858 9.23858 1.5 12 1.5C14.7614 1.5 17 3.73858 17 6.5ZM4 19V21H20V19C20 16.7909 18.2091 15 16 15H8C5.79086 15 4 16.7909 4 19ZM2 19C2 15.6863 4.68629 13 8 13H16C19.3137 13 22 15.6863 22 19V21C22 22.1046 21.1046 23 20 23H4C2.89543 23 2 22.1046 2 21V19Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 /** Identity / persona glyph — circular head + shoulder silhouette.
  * Used in the chat header to open the Agent identity modal. */
 export function IdentityIcon({ size = 16, className }: IconProps) {

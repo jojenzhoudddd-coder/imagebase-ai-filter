@@ -65,20 +65,30 @@ export default function AgentNamePill({ agentId, open, refreshToken, disabled }:
       const trimmed = next.trim().slice(0, MAX_NAME_LEN);
       setEditing(false);
       if (!trimmed || trimmed === name) return;
-      // Optimistic — mirror IdeaEditor's pattern of committing locally first
-      // so the title doesn't flicker while the PUT round-trips.
       setName(trimmed);
       try {
         const updated = await renameAgent(agentId, trimmed);
         setName(updated.name);
+        window.dispatchEvent(new CustomEvent("agent-name-changed", { detail: { agentId, name: updated.name } }));
       } catch (err) {
         console.warn("[agent-name] rename failed", err);
-        // Revert to server state.
         void loadName();
       }
     },
     [agentId, loadName, name],
   );
+
+  // Listen for name changes from agent blocks
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.agentId === agentId && detail?.name) {
+        setName(detail.name);
+      }
+    };
+    window.addEventListener("agent-name-changed", handler);
+    return () => window.removeEventListener("agent-name-changed", handler);
+  }, [agentId]);
 
   return (
     <span className="chat-agent-name">

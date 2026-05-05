@@ -30,11 +30,38 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orgs       OrgMember[]
-  workspaces Workspace[]
-  agents     Agent[]
+  orgs         OrgMember[]
+  workspaces   Workspace[]
+  agents       Agent[]
+  customModels CustomModel[]
 
   @@map("users")
+}
+
+// ─── CustomModel（用户自定义模型，per-user，跨 agent 共享） ───
+
+model CustomModel {
+  id              String   @id @default(cuid())
+  userId          String
+  modelId         String   // 用户定义的 model ID（如 "my-gpt4"）
+  displayName     String
+  provider        String   // "openai-compatible" | "anthropic" | "custom"
+  baseUrl         String   // API base URL
+  apiKey          String   // 加密存储的 API key
+  providerModelId String   // 实际发给 provider 的 model name
+  capabilities    Json     @default("{}")  // { thinking, toolUse, contextWindow }
+  group           String   @default("custom")
+  specialty       String?
+  visible         Boolean  @default(true)
+  available       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, modelId])
+  @@index([userId])
+  @@map("custom_models")
 }
 
 // ─── Agent（属于用户，跨 Workspace 的长期 Agent 身份） ───
@@ -265,6 +292,12 @@ model Message {
   durationMs       Int?
   promptTokens     Int?
   completionTokens Int?
+  /// Model ID used for this turn (e.g. "claude-opus-4.7", "doubao-2.0").
+  /// Only set on assistant messages at turn completion.
+  modelId          String?
+  /// Source context: active skill names or habit ID for this turn.
+  /// Format: "skill:table-skill,analyst-skill" or "habit:habit_system_evolve" or null.
+  source           String?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -637,90 +670,89 @@ model Demo {
   @@map("demos")
 }
 
+// ─── KnowledgeEntry（Agent 知识库 — RAG 存储） ───
+// embedding 开发期用 Json 数组存储，生产切 pgvector 时改为 vector(1536)
+
+model KnowledgeEntry {
+  id         String   @id @default(cuid())
+  agentId    String
+  title      String
+  content    String   // Markdown 正文（已分块）
+  sourceUrl  String?  // 来源 URL
+  sourceType String   @default("web") // "web" | "chat" | "manual"
+  tags       String[] @default([])
+  embedding  Json?    // number[] — 开发期 JSON 存储，生产切 pgvector
+  chunkIndex Int      @default(0)
+  parentId   String?  // 同源分块共享 parentId
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([agentId, createdAt])
+  @@map("knowledge_entries")
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // High Agency Mode
 // ─────────────────────────────────────────────────────────────────────────────
 
-// 顶层 Agency 会话：用户给出 Goal + Todos，双 Agent 自动驾驶完成
 model AgencySession {
   id                    String    @id @default(cuid())
   userId                String
-  agentId               String    // 执行任务的 Chat Agent
+  agentId               String
   workspaceId           String
-
   goal                  String    @db.Text
-  todos                 Json      @default("[]")  // string[] 有序途径点
-  fromScope             Json      @default("{}")  // { exclude?: string[] }
-
+  todos                 Json      @default("[]")
+  fromScope             Json      @default("{}")
   chaosMonkeyModel      String    @default("gpt-5.5")
-
-  // 状态机: planning | executing | validating | replanning | completed | cancelled
   status                String    @default("planning")
-
-  roadmap               Json?     // AgencyRoadmap JSON
+  roadmap               Json?
   currentSegmentIndex   Int       @default(0)
   currentMilestoneIndex Int       @default(0)
-
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   completedAt           DateTime?
-
   milestones            AgencyMilestone[]
   checkpoints           AgencyCheckpoint[]
-
   @@index([userId, status])
   @@index([workspaceId])
   @@map("agency_sessions")
 }
 
-// 里程碑执行记录
 model AgencyMilestone {
   id                 String    @id @default(cuid())
   sessionId          String
   segmentIndex       Int
   milestoneIndex     Int
-
   title              String
   description        String    @db.Text
-  acceptanceCriteria Json      // string[] — Chaos Monkey 的验收清单
-
-  // 状态: pending | executing | validating | passed | failed | retrying
+  acceptanceCriteria Json
   status             String    @default("pending")
-
-  conversationId     String?   // Chat Agent 执行时的对话 ID
+  conversationId     String?
   retryCount         Int       @default(0)
-  failureHistory     Json      @default("[]") // {reason, suggestions, timestamp}[]
-  validationResult   Json?     // {passed, reason, suggestions?}
-
+  failureHistory     Json      @default("[]")
+  validationResult   Json?
   durationMs         Int?
   promptTokens       Int?
   completionTokens   Int?
-
   startedAt          DateTime?
   completedAt        DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
-
   session            AgencySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
   @@index([sessionId, segmentIndex, milestoneIndex])
   @@map("agency_milestones")
 }
 
-// 产物收集：整个 Agency 运行过程中产生的 artifacts，供用户最终验收
 model AgencyCheckpoint {
   id           String   @id @default(cuid())
   sessionId    String
   milestoneId  String?
-
-  artifactType String   // table | idea | design | demo | skill
+  artifactType String
   artifactId   String
   label        String
-
   createdAt    DateTime @default(now())
-
   session      AgencySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
   @@index([sessionId])
   @@map("agency_checkpoints")
 }

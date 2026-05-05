@@ -11,6 +11,7 @@ import BlockShell from "./BlockShell";
 import ArtifactBlock from "./ArtifactBlock";
 import AgencyBlock from "../AgencyBlock";
 import ChatBlock from "./ChatBlock";
+import AgentBlock from "../AgentBlock";
 import DropIndicator from "./DropIndicator";
 import "./MagicCanvas.css";
 
@@ -81,9 +82,7 @@ export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: 
             onPickGlobalTable={onPickGlobalTable}
           />
         )}
-        {block.type === "system" && (
-          <div className="mc-system-placeholder">System block(敬请期待)</div>
-        )}
+        {block.type === "system" && <AgentBlock blockId={blockId} />}
         {block.type === "agency" && <AgencyBlock blockId={blockId} />}
       </BlockShell>
     );

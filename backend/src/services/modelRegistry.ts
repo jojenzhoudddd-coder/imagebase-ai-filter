@@ -30,7 +30,7 @@
 import type { ProviderAdapter } from "./providers/types.js";
 
 export type ModelGroup = "volcano" | "anthropic" | "openai";
-export type ModelProvider = "ark" | "oneapi";
+export type ModelProvider = "ark" | "oneapi" | "ark-image" | "ark-video";
 
 export interface ModelCapabilities {
   /** Model supports extended thinking / reasoning (Claude thinking, o-series reasoning). */
@@ -78,7 +78,13 @@ export type ModelStrength =
   | "data-analysis"
   | "ui-design"
   | "code-review"
-  | "low-latency";
+  | "low-latency"
+  | "video-generation"
+  | "image-generation"
+  | "multimodal"
+  | "creative"
+  | "2K-output"
+  | "art-style";
 
 export type ModelModality = "text" | "image" | "video" | "audio";
 export type ModelCostHint = "cheap" | "mid" | "premium";
@@ -268,6 +274,38 @@ export const MODELS: ModelEntry[] = [
     costHint: "cheap",
     parallelLimit: 8,
   },
+
+  // ── Volcano ARK — Content Generation (独立 provider，非 chat API) ────
+  {
+    id: "seedance-2.0",
+    displayName: "Seedance 2.0",
+    provider: "ark-video",
+    providerModelId: process.env.ARK_SEEDANCE_MODEL || "ep-20260505181511-8lsxw",
+    capabilities: { thinking: false, toolUse: false, contextWindow: 0 },
+    defaults: { temperature: 0, maxOutputTokens: 0 },
+    group: "volcano",
+    visible: true,
+    specialty: "image-gen",
+    strengths: ["video-generation", "multimodal", "creative"],
+    modality: ["text", "image", "video", "audio"],
+    costHint: "premium",
+    parallelLimit: 2,
+  },
+  {
+    id: "seedream-5.0-lite",
+    displayName: "Seedream 5.0 Lite",
+    provider: "ark-image",
+    providerModelId: process.env.ARK_SEEDREAM_MODEL || "ep-20260505181559-s5r44",
+    capabilities: { thinking: false, toolUse: false, contextWindow: 0 },
+    defaults: { temperature: 0, maxOutputTokens: 0 },
+    group: "volcano",
+    visible: true,
+    specialty: "image-gen",
+    strengths: ["image-generation", "2K-output", "art-style"],
+    modality: ["text", "image"],
+    costHint: "mid",
+    parallelLimit: 5,
+  },
 ];
 
 // User-preferred default (Opus 4.7). Resolved to FALLBACK_MODEL_ID when
@@ -443,6 +481,10 @@ export async function probeModels(): Promise<ProbeResult> {
       next = Boolean(process.env.ARK_API_KEY && m.providerModelId);
     } else if (m.provider === "oneapi") {
       next = oneapiAvailableIds.has(m.providerModelId);
+    } else if (m.provider === "ark-image") {
+      next = Boolean((process.env.ARK_SEEDREAM_API_KEY || process.env.ARK_API_KEY) && m.providerModelId);
+    } else if (m.provider === "ark-video") {
+      next = Boolean((process.env.ARK_SEEDANCE_API_KEY || process.env.ARK_API_KEY) && m.providerModelId);
     } else {
       next = false;
     }

@@ -241,6 +241,8 @@ export async function appendMessage(
     durationMs?: number | null;
     promptTokens?: number | null;
     completionTokens?: number | null;
+    modelId?: string | null;
+    source?: string | null;
   }
 ): Promise<Message | undefined> {
   // Ensure the conversation exists — keeps the old Map-era null-return behavior.
@@ -276,6 +278,8 @@ export async function appendMessage(
         durationMs: msg.durationMs ?? null,
         promptTokens: msg.promptTokens ?? null,
         completionTokens: msg.completionTokens ?? null,
+        modelId: (msg as any).modelId ?? null,
+        source: (msg as any).source ?? null,
       },
     });
     const count = await tx.message.count({ where: { conversationId } });
@@ -386,4 +390,109 @@ export async function getMessages(
     toolResult: trimToolPayload(m.toolResult),
   }));
   return { messages: trimmed, hasMore };
+}
+
+// ─── Agent activities (turn-level view) ─────────────────────────────────
+
+export interface ActivityTurn {
+  messageId: string;
+  conversationId: string;
+  conversationTitle: string;
+  userInput: string;
+  output: string;
+  timestamp: string;
+  durationMs: number | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  source: string; // skill id / habit id / "-"
+  modelId: string | null;
+}
+
+/**
+ * List agent "activities" — pairs of (user input, assistant output) with
+ * metadata, newest first. Supports search and date filtering.
+ */
+export async function listActivities(
+  agentId: string,
+  opts?: { limit?: number; offset?: number; search?: string; dateFrom?: string; dateTo?: string },
+): Promise<{ activities: ActivityTurn[]; total: number; hasMore: boolean }> {
+  const limit = Math.max(1, Math.min(opts?.limit ?? 20, 100));
+  const offset = Math.max(0, opts?.offset ?? 0);
+
+  const where: any = {
+    conversation: { agentId },
+    role: "assistant",
+    durationMs: { not: null },
+  };
+
+  // Date range filter
+  if (opts?.dateFrom || opts?.dateTo) {
+    where.timestamp = {};
+    if (opts.dateFrom) where.timestamp.gte = new Date(opts.dateFrom);
+    if (opts.dateTo) where.timestamp.lte = new Date(opts.dateTo + "T23:59:59.999Z");
+  }
+
+  // Search: don't filter at DB level — we do app-layer full-text across
+  // userInput + output + source + modelId (cross-row search can't be done in one query).
+
+  // When searching, we need app-layer filter across userInput + output + source + modelId.
+  // Over-fetch to compensate for app-layer filtering, then paginate in memory.
+  const searchLower = opts?.search?.toLowerCase() ?? "";
+  const fetchLimit = searchLower ? 200 : limit; // over-fetch when searching
+  const fetchOffset = searchLower ? 0 : offset;
+
+  const assistantRows = await prisma.message.findMany({
+    where,
+    orderBy: { timestamp: "desc" },
+    skip: fetchOffset,
+    take: fetchLimit,
+    include: { conversation: { select: { title: true, attachedToType: true, attachedToId: true } } },
+  });
+
+  const allActivities: ActivityTurn[] = [];
+  for (const row of assistantRows) {
+    const userRow = await prisma.message.findFirst({
+      where: {
+        conversationId: row.conversationId,
+        role: "user",
+        timestamp: { lte: row.timestamp },
+      },
+      orderBy: { timestamp: "desc" },
+      select: { content: true },
+    });
+
+    const userInput = userRow?.content ?? "";
+    const conv = (row as any).conversation;
+    const modelId = (row as any).modelId ?? null;
+    // Source priority: message.source (per-turn) > conversation.attachedTo (habit)
+    let source = (row as any).source ?? null;
+    if (!source && conv?.attachedToType === "habit") source = `habit:${conv.attachedToId}`;
+    if (!source) source = "-";
+
+    // App-layer full-text search: match across all fields
+    if (searchLower) {
+      const haystack = `${userInput} ${row.content} ${source} ${modelId ?? ""}`.toLowerCase();
+      if (!haystack.includes(searchLower)) continue;
+    }
+
+    allActivities.push({
+      messageId: row.id,
+      conversationId: row.conversationId,
+      conversationTitle: conv?.title ?? "对话",
+      userInput,
+      output: row.content.slice(0, 300),
+      timestamp: row.timestamp.toISOString(),
+      durationMs: row.durationMs ?? null,
+      promptTokens: row.promptTokens ?? null,
+      completionTokens: row.completionTokens ?? null,
+      source,
+      modelId,
+    });
+  }
+
+  // Paginate filtered results
+  const total = searchLower ? allActivities.length : await prisma.message.count({ where });
+  const activities = searchLower ? allActivities.slice(offset, offset + limit) : allActivities;
+
+  return { activities, total, hasMore: offset + limit < total };
 }

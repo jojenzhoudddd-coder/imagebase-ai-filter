@@ -38,6 +38,8 @@ import { demoNavTools } from "./demoTools.js";
 import { subagentTools } from "./subagentTools.js";
 import { workflowTools } from "./workflowTools.js";
 import { webTools } from "./webTools.js";
+import { modelTools } from "./modelTools.js";
+import { knowledgeTools } from "./knowledgeTools.js";
 import { allSkills, skillsByName } from "../skills/index.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
@@ -109,7 +111,8 @@ export const tier0Tools: ToolDefinition[] = [
   ...memoryTools,
   ...skillRouterTools,
   ...cronTools,
-  ...userSkillTools,
+  ...modelTools,
+  ...knowledgeTools,
 ];
 
 /** Tier 1 — core workspace navigation. Always loaded. */

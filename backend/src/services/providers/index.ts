@@ -10,8 +10,12 @@
 import { registerProviderAdapter } from "../modelRegistry.js";
 import { arkAdapter } from "./arkAdapter.js";
 import { oneapiAdapter } from "./oneapiAdapter.js";
+import { arkImageAdapter } from "./arkImageAdapter.js";
+import { arkVideoAdapter } from "./arkVideoAdapter.js";
 
 registerProviderAdapter(arkAdapter);
 registerProviderAdapter(oneapiAdapter);
+registerProviderAdapter(arkImageAdapter);
+registerProviderAdapter(arkVideoAdapter);
 
-export { arkAdapter, oneapiAdapter };
+export { arkAdapter, oneapiAdapter, arkImageAdapter, arkVideoAdapter };
