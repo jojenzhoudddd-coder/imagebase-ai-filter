@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import ChatTableBlock from "./ChatTableBlock";
+import ChatMediaPreview, { isMediaUrl } from "./ChatMediaPreview";
 
 // Vega ships ~800KB — lazy-load so messages without charts don't pay the cost.
 const ChatChartBlock = lazy(() => import("./ChatChartBlock"));
@@ -148,6 +149,11 @@ const chatMarkdownComponents = {
     return <code className={className}>{props.children}</code>;
   },
   // Inline code and block code get light styling via CSS — plain passthrough.
+  // Images: auto-detect and render media preview
+  img({ src, alt }: any) {
+    if (src) return <ChatMediaPreview src={src} alt={alt} />;
+    return <img src={src} alt={alt} />;
+  },
   a({ href, children }: any) {
     const isMention = typeof href === "string" && href.startsWith("mention://");
     if (isMention) {
@@ -156,6 +162,10 @@ const chatMarkdownComponents = {
           {children}
         </span>
       );
+    }
+    // Auto-detect media URLs in links
+    if (typeof href === "string" && isMediaUrl(href)) {
+      return <ChatMediaPreview src={href} alt={typeof children === "string" ? children : undefined} />;
     }
     return (
       <a href={href} target="_blank" rel="noreferrer noopener">
