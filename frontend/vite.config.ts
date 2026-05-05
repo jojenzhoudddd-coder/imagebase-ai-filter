@@ -32,13 +32,6 @@ export default defineConfig({
           // vendor chunk(在 react chunk 之前求值)→ "Cannot read properties
           // of undefined (reading 'useLayoutEffect')" → 整个 app 白屏。
           // (PR7 引入这条依赖时,2026-04-29 prod 白屏 hotfix)
-          // React 全家桶 + 依赖 React 的编辑器绑定层。
-          // @uiw/react-codemirror 和 @tiptap/react 在模块顶层调用
-          // React.useState 等 hooks，必须和 react 在同一个 chunk 里，
-          // 否则 Rollup 的加载顺序可能让它们在 React 初始化前求值。
-          if (id.match(/node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|@tanstack[\\/]react-virtual|@tanstack[\\/]virtual-core|@uiw[\\/]react-codemirror|@tiptap[\\/]react)[\\/]/)) {
-            return "vendor-react";
-          }
           // Markdown 渲染栈 —— IdeaEditor + ChatSidebar 都用到
           if (id.match(/node_modules[\\/](react-markdown|remark-.*|rehype-.*|micromark.*|mdast-.*|hast-.*|unist-.*|unified|vfile.*|character-entities.*|decode-named-character-reference|trim-lines|space-separated-tokens|comma-separated-tokens|property-information|html-url-attributes|zwitch|longest-streak|markdown-table|ccount|escape-string-regexp)[\\/]/)) {
             return "vendor-markdown";
