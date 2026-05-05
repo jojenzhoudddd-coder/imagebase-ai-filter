@@ -23,7 +23,21 @@ import ChatModelPicker from "./ChatModelPicker";
 import BlockCloseButton from "../BlockCloseButton";
 import AgentNamePill from "./AgentNamePill";
 import AgentAvatarMenu from "./AgentAvatarMenu";
-import { MoreIcon, RefreshIcon, PlusIcon, HistoryIcon, TrashIcon, MemberIcon } from "./icons";
+import {
+  MoreIcon,
+  RefreshIcon,
+  PlusIcon,
+  HistoryIcon,
+  TrashIcon,
+  MemberIcon,
+  NatureIcon,
+  ModelsIcon,
+  ActivitiesIcon,
+  SkillsIcon,
+  AcknowledgeIcon,
+  HabitsIcon,
+  IntegrationsIcon,
+} from "./icons";
 import DropdownMenu from "../DropdownMenu";
 import ConfirmDialog from "../ConfirmDialog";
 import { useTranslation } from "../../i18n";
@@ -1688,13 +1702,13 @@ export default function ChatSidebar({
         <DropdownMenu
           anchorEl={agentMetaBtnRef.current}
           items={[
-            { key: "nature", label: t("chat.agent.menu.nature") },
-            { key: "models", label: t("chat.agent.menu.models") },
-            { key: "activities", label: t("chat.agent.menu.activities") },
-            { key: "skills", label: t("chat.agent.menu.skills") },
-            { key: "acknowledge", label: t("chat.agent.menu.acknowledge") },
-            { key: "habits", label: t("chat.agent.menu.habits") },
-            { key: "integrations", label: t("chat.agent.menu.integrations") },
+            { key: "nature", label: t("chat.agent.menu.nature"), icon: <NatureIcon size={16} /> },
+            { key: "models", label: t("chat.agent.menu.models"), icon: <ModelsIcon size={16} /> },
+            { key: "activities", label: t("chat.agent.menu.activities"), icon: <ActivitiesIcon size={16} /> },
+            { key: "skills", label: t("chat.agent.menu.skills"), icon: <SkillsIcon size={16} /> },
+            { key: "acknowledge", label: t("chat.agent.menu.acknowledge"), icon: <AcknowledgeIcon size={16} /> },
+            { key: "habits", label: t("chat.agent.menu.habits"), icon: <HabitsIcon size={16} /> },
+            { key: "integrations", label: t("chat.agent.menu.integrations"), icon: <IntegrationsIcon size={16} /> },
           ]}
           onSelect={(key) => {
             setAgentMetaMenuOpen(false);
