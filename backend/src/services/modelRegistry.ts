@@ -78,7 +78,13 @@ export type ModelStrength =
   | "data-analysis"
   | "ui-design"
   | "code-review"
-  | "low-latency";
+  | "low-latency"
+  | "video-generation"
+  | "image-generation"
+  | "multimodal"
+  | "creative"
+  | "2K-output"
+  | "art-style";
 
 export type ModelModality = "text" | "image" | "video" | "audio";
 export type ModelCostHint = "cheap" | "mid" | "premium";
@@ -267,6 +273,38 @@ export const MODELS: ModelEntry[] = [
     modality: ["text", "image"],
     costHint: "cheap",
     parallelLimit: 8,
+  },
+
+  // ── Volcano ARK — Content Generation (非对话模型) ─────────────────────
+  {
+    id: "seedance-2.0",
+    displayName: "Seedance 2.0",
+    provider: "ark",
+    providerModelId: "ep-20260505181511-8lsxw",
+    capabilities: { thinking: false, toolUse: false, contextWindow: 0 },
+    defaults: { temperature: 0, maxOutputTokens: 0 },
+    group: "volcano",
+    visible: true,
+    specialty: "image-gen",
+    strengths: ["video-generation", "multimodal", "creative"],
+    modality: ["text", "image", "video", "audio"],
+    costHint: "premium",
+    parallelLimit: 2,
+  },
+  {
+    id: "seedream-5.0-lite",
+    displayName: "Seedream 5.0 Lite",
+    provider: "ark",
+    providerModelId: "ep-20260505181559-s5r44",
+    capabilities: { thinking: false, toolUse: false, contextWindow: 0 },
+    defaults: { temperature: 0, maxOutputTokens: 0 },
+    group: "volcano",
+    visible: true,
+    specialty: "image-gen",
+    strengths: ["image-generation", "2K-output", "art-style"],
+    modality: ["text", "image"],
+    costHint: "mid",
+    parallelLimit: 5,
   },
 ];
 

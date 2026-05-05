@@ -25,6 +25,7 @@ import ModelsTab from "./ModelsTab";
 import ActivitiesTab from "./ActivitiesTab";
 import SkillsTab from "./SkillsTab";
 import HabitsTab from "./HabitsTab";
+import AcknowledgeTab from "./AcknowledgeTab";
 import PlaceholderTab from "./PlaceholderTab";
 import "./AgentBlock.css";
 
@@ -91,7 +92,7 @@ export default function AgentBlock({ blockId }: Props) {
   }, [agentId]);
 
   const handleTabChange = (tab: AgentTabKey) => {
-    patchBlockState(blockId, { activeTab: tab } as SystemBlockState);
+    patchBlockState(blockId, { activeTab: tab, activitiesSearch: undefined } as SystemBlockState);
   };
 
   const handleNameSave = useCallback(async (next: string) => {
@@ -116,13 +117,15 @@ export default function AgentBlock({ blockId }: Props) {
       case "nature":
         return <NatureTab agentId={resolvedAgentId} />;
       case "models":
-        return <ModelsTab />;
+        return <ModelsTab blockId={blockId} />;
       case "activities":
-        return <ActivitiesTab agentId={resolvedAgentId} />;
+        return <ActivitiesTab agentId={resolvedAgentId} initialSearch={blockState.activitiesSearch} />;
       case "skills":
-        return <SkillsTab agentId={resolvedAgentId} />;
+        return <SkillsTab agentId={resolvedAgentId} blockId={blockId} />;
       case "habits":
-        return <HabitsTab agentId={resolvedAgentId} />;
+        return <HabitsTab agentId={resolvedAgentId} blockId={blockId} />;
+      case "acknowledge":
+        return <AcknowledgeTab agentId={resolvedAgentId} />;
       default:
         return <PlaceholderTab />;
     }

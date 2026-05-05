@@ -1758,15 +1758,20 @@ export interface AgentActivity {
   durationMs: number | null;
   promptTokens: number | null;
   completionTokens: number | null;
+  source: string; // skill id / habit id / "-"
+  modelId: string | null;
 }
 
 export async function listAgentActivities(
   agentId: string,
-  opts?: { limit?: number; offset?: number },
+  opts?: { limit?: number; offset?: number; search?: string; dateFrom?: string; dateTo?: string },
 ): Promise<{ activities: AgentActivity[]; total: number; hasMore: boolean }> {
   const params = new URLSearchParams();
   if (opts?.limit) params.set("limit", String(opts.limit));
   if (opts?.offset) params.set("offset", String(opts.offset));
+  if (opts?.search) params.set("search", opts.search);
+  if (opts?.dateFrom) params.set("dateFrom", opts.dateFrom);
+  if (opts?.dateTo) params.set("dateTo", opts.dateTo);
   const qs = params.toString();
   const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/activities${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("Failed to list activities");
@@ -1866,6 +1871,31 @@ export async function toggleHabit(
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || `HTTP ${res.status}`);
   }
+}
+
+// ═══════════════ Agent Knowledge (Acknowledge) ═══════════════
+
+export interface KnowledgeEntrySummary {
+  id: string;
+  title: string;
+  content: string; // truncated preview
+  sourceUrl: string | null;
+  sourceType: string;
+  tags: string[];
+  createdAt: string;
+}
+
+export async function listKnowledgeEntries(
+  agentId: string,
+  opts?: { limit?: number; offset?: number; tag?: string },
+): Promise<{ entries: KnowledgeEntrySummary[]; total: number; hasMore: boolean }> {
+  const params = new URLSearchParams({ agentId });
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  if (opts?.offset) params.set("offset", String(opts.offset));
+  if (opts?.tag) params.set("tag", opts.tag);
+  const res = await fetch(`${BASE}/knowledge?${params}`);
+  if (!res.ok) throw new Error("Failed to list knowledge");
+  return res.json();
 }
 
 // ═══════════════ Ideas (Markdown 文档 artifact) ═══════════════

@@ -292,6 +292,9 @@ model Message {
   durationMs       Int?
   promptTokens     Int?
   completionTokens Int?
+  /// Model ID used for this turn (e.g. "claude-opus-4.7", "doubao-2.0").
+  /// Only set on assistant messages at turn completion.
+  modelId          String?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -662,4 +665,26 @@ model Demo {
   @@index([workspaceId])
   @@index([publishSlug])
   @@map("demos")
+}
+
+// ─── KnowledgeEntry（Agent 知识库 — RAG 存储） ───
+// embedding 开发期用 Json 数组存储，生产切 pgvector 时改为 vector(1536)
+
+model KnowledgeEntry {
+  id         String   @id @default(cuid())
+  agentId    String
+  title      String
+  content    String   // Markdown 正文（已分块）
+  sourceUrl  String?  // 来源 URL
+  sourceType String   @default("web") // "web" | "chat" | "manual"
+  tags       String[] @default([])
+  embedding  Json?    // number[] — 开发期 JSON 存储，生产切 pgvector
+  chunkIndex Int      @default(0)
+  parentId   String?  // 同源分块共享 parentId
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([agentId, createdAt])
+  @@map("knowledge_entries")
 }

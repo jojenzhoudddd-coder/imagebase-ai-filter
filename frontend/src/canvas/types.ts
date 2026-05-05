@@ -40,6 +40,8 @@ export interface SystemBlockState {
   view?: string;
   /** Agent block 当前选中的 tab；默认 "nature" */
   activeTab?: AgentTabKey;
+  /** Pre-fill search in activities tab (e.g. from skill/habit "View activities") */
+  activitiesSearch?: string;
 }
 
 export type BlockState = ArtifactBlockState | ChatBlockState | SystemBlockState | undefined;

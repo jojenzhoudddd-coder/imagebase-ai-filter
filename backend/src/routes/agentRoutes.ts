@@ -620,7 +620,10 @@ router.get("/:agentId/activities", async (req: Request, res: Response) => {
     const { agentId } = req.params;
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = parseInt(req.query.offset as string) || 0;
-    const result = await listActivities(agentId, { limit, offset });
+    const search = (req.query.search as string) || undefined;
+    const dateFrom = (req.query.dateFrom as string) || undefined;
+    const dateTo = (req.query.dateTo as string) || undefined;
+    const result = await listActivities(agentId, { limit, offset, search, dateFrom, dateTo });
     res.json(result);
   } catch (err: any) {
     console.error("[agents] activities error:", err);

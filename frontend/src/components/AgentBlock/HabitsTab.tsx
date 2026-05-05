@@ -7,13 +7,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
+import type { SystemBlockState } from "../../canvas/types";
 import { createConversation, listHabits, toggleHabit, type HabitSummary } from "../../api";
 import { useTranslation } from "../../i18n";
 import Tooltip from "../Tooltip";
 import CardGrid from "./CardGrid";
+import CardMoreMenu from "./CardMoreMenu";
 
 interface Props {
   agentId: string;
+  blockId: string;
 }
 
 const ADD_HABIT_PROMPT = `我想添加一个新的定时习惯（Habit）。请引导我完成配置：
@@ -46,10 +49,10 @@ function timeAgo(ts: string | null | undefined): string {
   return `${days}d ago`;
 }
 
-export default function HabitsTab({ agentId }: Props) {
+export default function HabitsTab({ agentId, blockId }: Props) {
   const { t } = useTranslation();
   const { workspaceId } = useAuth();
-  const { addBlock } = useCanvas();
+  const { addBlock, patchBlockState } = useCanvas();
   const [habits, setHabits] = useState<HabitSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -72,6 +75,11 @@ export default function HabitsTab({ agentId }: Props) {
       );
     }
   }, [agentId]);
+
+  const handleDeleteHabit = useCallback(async (jobId: string) => {
+    setHabits((prev) => prev.filter((h) => h.id !== jobId));
+    // TODO: call backend delete API (removeCronJob)
+  }, []);
 
   const handleAddHabit = async () => {
     if (!workspaceId) return;
@@ -126,13 +134,11 @@ export default function HabitsTab({ agentId }: Props) {
                   >
                     <span className="ab-switch-knob" />
                   </button>
-                  <button className="ab-card-more" title="More">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <circle cx="3.5" cy="8" r="1.2" fill="currentColor" />
-                      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-                      <circle cx="12.5" cy="8" r="1.2" fill="currentColor" />
-                    </svg>
-                  </button>
+                  <CardMoreMenu
+                    onViewActivities={() => patchBlockState(blockId, { activeTab: "activities", activitiesSearch: h.id } as SystemBlockState)}
+                    label={t("agent.activities.viewActivities")}
+                    onDelete={h.type !== "system" ? () => handleDeleteHabit(h.id) : undefined}
+                  />
                 </div>
               </div>
               <dl className="ab-card-kv">

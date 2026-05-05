@@ -241,7 +241,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .ab-toolbar-btn {
@@ -267,6 +267,14 @@
 .ab-toolbar-btn-active {
   background: var(--primary-bg);
   color: var(--primary);
+}
+
+.ab-toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-light);
+  margin: 0 8px;
+  flex-shrink: 0;
 }
 
 /* ══════ EntityCard grid ═════════════════════════════════════════════ */
@@ -383,6 +391,7 @@
   background: var(--surface-3);
   color: var(--text-primary);
 }
+
 
 /* KV grid */
 .ab-card-kv {
@@ -593,6 +602,257 @@
   color: var(--primary);
   font-size: 10px;
   font-weight: 500;
+}
+
+/* ══════ Acknowledge tab (mini file system) ══════════════════════════ */
+.ab-acknowledge {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.ab-acknowledge-layout {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.ab-acknowledge-list {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border-light);
+  padding-right: 12px;
+}
+
+.ab-acknowledge-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.12s, color 0.12s;
+}
+.ab-acknowledge-item:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.ab-acknowledge-item.active {
+  background: var(--primary-bg);
+  color: var(--primary);
+}
+
+.ab-acknowledge-item-icon {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.ab-acknowledge-item.active .ab-acknowledge-item-icon { opacity: 1; }
+
+.ab-acknowledge-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ab-acknowledge-item-badge {
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--surface-1);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.ab-acknowledge-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.ab-acknowledge-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ab-acknowledge-meta-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ab-acknowledge-meta-url {
+  font-size: 12px;
+  color: var(--primary);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ab-acknowledge-meta-url:hover { text-decoration: underline; }
+
+.ab-acknowledge-meta-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* ══════ Activities tab ═══════════════════════════════════════════════ */
+.ab-activities-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.ab-activities-presets {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ab-activities-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  flex: 1;
+  min-width: 160px;
+  max-width: 280px;
+  color: var(--text-muted);
+}
+.ab-activities-search:focus-within {
+  border-color: var(--primary);
+  background: var(--surface-base);
+}
+.ab-activities-search input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-primary);
+  height: 100%;
+}
+.ab-activities-search input::placeholder { color: var(--text-placeholder); }
+
+/* Date range picker — Figma UD-03 node 42587-67938, adapted to 28px */
+.ab-activities-date-range {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--surface-base);
+  overflow: hidden;
+  transition: border-color 0.12s;
+}
+.ab-activities-date-range:focus-within {
+  border-color: var(--primary);
+}
+
+.ab-activities-date {
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  width: 120px;
+  font-family: var(--font-family);
+}
+.ab-activities-date::placeholder { color: var(--text-placeholder); }
+.ab-activities-date::-webkit-calendar-picker-indicator {
+  opacity: 0.4;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+.ab-activities-date-sep {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+/* Dark mode */
+[data-theme="dark"] .ab-activities-date-range,
+.dark .ab-activities-date-range {
+  background: var(--surface-2);
+  border-color: var(--border-default);
+}
+[data-theme="dark"] .ab-activities-date,
+.dark .ab-activities-date {
+  color: var(--text-primary);
+}
+[data-theme="dark"] .ab-activities-date::-webkit-calendar-picker-indicator,
+.dark .ab-activities-date::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+
+.ab-activity-output {
+  font-size: 12.5px;
+  line-height: 18px;
+  height: 54px; /* exactly 3 lines: 18px * 3 */
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+/* ══════ Pagination (inline, right-aligned in filter bar) ════════════ */
+.ab-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.ab-pagination-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--surface-base);
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+}
+.ab-pagination-btn:hover { background: var(--surface-1); }
+.ab-pagination-btn:disabled { color: var(--text-muted); cursor: not-allowed; opacity: 0.5; }
+
+.ab-pagination-info {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 /* ══════ Placeholder tab ═════════════════════════════════════════════ */

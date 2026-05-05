@@ -7,7 +7,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
+import type { SystemBlockState } from "../../canvas/types";
 import Tooltip from "../Tooltip";
+import CardMoreMenu from "./CardMoreMenu";
 import {
   listModels,
   getAgentModel,
@@ -27,6 +29,7 @@ interface ModelSummary {
   specialty?: string;
   strengths?: string[];
   costHint?: string;
+  type?: "builtin" | "custom";
 }
 
 function maskKey(provider: string): string {
@@ -49,10 +52,10 @@ const ADD_MODEL_PROMPT = `我想添加一个新的 AI 模型到我的模型列�
 
 请一步步引导我。`;
 
-export default function ModelsTab() {
+export default function ModelsTab({ blockId }: { blockId?: string }) {
   const { t } = useTranslation();
   const { workspaceId, agentId } = useAuth();
-  const { addBlock } = useCanvas();
+  const { addBlock, patchBlockState } = useCanvas();
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [selection, setSelection] = useState<AgentModelSelection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,6 +84,11 @@ export default function ModelsTab() {
     window.addEventListener("agent-model-changed", handler);
     return () => window.removeEventListener("agent-model-changed", handler);
   }, [agentId]);
+
+  const handleDeleteModel = useCallback(async (modelId: string) => {
+    setModels((prev) => prev.filter((m) => m.id !== modelId));
+    // TODO: call DELETE /api/models/custom/:id
+  }, []);
 
   const handleAddModel = async () => {
     if (!workspaceId) return;
@@ -131,13 +139,13 @@ export default function ModelsTab() {
                 <Tooltip title={m.id}><p className="ab-card-desc">{m.id}</p></Tooltip>
               </div>
               <div className="ab-card-controls">
-                <button className="ab-card-more" title="More">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <circle cx="3.5" cy="8" r="1.2" fill="currentColor" />
-                    <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-                    <circle cx="12.5" cy="8" r="1.2" fill="currentColor" />
-                  </svg>
-                </button>
+                {blockId && (
+                  <CardMoreMenu
+                    onViewActivities={() => patchBlockState(blockId, { activeTab: "activities", activitiesSearch: m.id } as SystemBlockState)}
+                    label={t("agent.activities.viewActivities")}
+                    onDelete={m.type === "custom" ? () => handleDeleteModel(m.id) : undefined}
+                  />
+                )}
               </div>
             </div>
             <dl className="ab-card-kv ab-card-kv-2col">

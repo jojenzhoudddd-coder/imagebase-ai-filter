@@ -87,6 +87,7 @@ export default function NatureTab({ agentId }: Props) {
             {tab.label}
           </button>
         ))}
+        <div className="ab-toolbar-divider" />
         <button className="ab-toolbar-btn" onClick={handleEditByChat}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M10 2l2 2-7 7H3v-2l7-7z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />

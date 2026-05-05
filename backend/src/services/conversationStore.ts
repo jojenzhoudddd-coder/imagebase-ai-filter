@@ -400,44 +400,52 @@ export interface ActivityTurn {
   durationMs: number | null;
   promptTokens: number | null;
   completionTokens: number | null;
+  source: string; // skill id / habit id / "-"
+  modelId: string | null;
 }
 
 /**
  * List agent "activities" — pairs of (user input, assistant output) with
- * metadata, newest first. Used by the Agent Homepage activities tab.
+ * metadata, newest first. Supports search and date filtering.
  */
 export async function listActivities(
   agentId: string,
-  opts?: { limit?: number; offset?: number },
+  opts?: { limit?: number; offset?: number; search?: string; dateFrom?: string; dateTo?: string },
 ): Promise<{ activities: ActivityTurn[]; total: number; hasMore: boolean }> {
   const limit = Math.max(1, Math.min(opts?.limit ?? 20, 100));
   const offset = Math.max(0, opts?.offset ?? 0);
 
-  // Count total assistant messages with durationMs (= completed turns) for this agent.
-  const total = await prisma.message.count({
-    where: {
-      conversation: { agentId },
-      role: "assistant",
-      durationMs: { not: null },
-    },
-  });
+  const where: any = {
+    conversation: { agentId },
+    role: "assistant",
+    durationMs: { not: null },
+  };
 
-  // Fetch the page of assistant messages, ordered newest first.
+  // Date range filter
+  if (opts?.dateFrom || opts?.dateTo) {
+    where.timestamp = {};
+    if (opts.dateFrom) where.timestamp.gte = new Date(opts.dateFrom);
+    if (opts.dateTo) where.timestamp.lte = new Date(opts.dateTo + "T23:59:59.999Z");
+  }
+
+  // Search: don't filter at DB level — we do app-layer full-text across
+  // userInput + output + source + modelId (cross-row search can't be done in one query).
+
+  // When searching, we need app-layer filter across userInput + output + source + modelId.
+  // Over-fetch to compensate for app-layer filtering, then paginate in memory.
+  const searchLower = opts?.search?.toLowerCase() ?? "";
+  const fetchLimit = searchLower ? 200 : limit; // over-fetch when searching
+  const fetchOffset = searchLower ? 0 : offset;
+
   const assistantRows = await prisma.message.findMany({
-    where: {
-      conversation: { agentId },
-      role: "assistant",
-      durationMs: { not: null },
-    },
+    where,
     orderBy: { timestamp: "desc" },
-    skip: offset,
-    take: limit,
-    include: { conversation: { select: { title: true } } },
+    skip: fetchOffset,
+    take: fetchLimit,
+    include: { conversation: { select: { title: true, attachedToType: true, attachedToId: true } } },
   });
 
-  // For each assistant message, find the preceding user message in the same
-  // conversation (by seq or timestamp).
-  const activities: ActivityTurn[] = [];
+  const allActivities: ActivityTurn[] = [];
   for (const row of assistantRows) {
     const userRow = await prisma.message.findFirst({
       where: {
@@ -449,18 +457,37 @@ export async function listActivities(
       select: { content: true },
     });
 
-    activities.push({
+    const userInput = userRow?.content ?? "";
+    const conv = (row as any).conversation;
+    let source = "-";
+    if (conv?.attachedToType === "habit") source = conv.attachedToId ?? "-";
+    else if (conv?.attachedToType === "skill") source = conv.attachedToId ?? "-";
+    const modelId = (row as any).modelId ?? null;
+
+    // App-layer full-text search: match across all fields
+    if (searchLower) {
+      const haystack = `${userInput} ${row.content} ${source} ${modelId ?? ""}`.toLowerCase();
+      if (!haystack.includes(searchLower)) continue;
+    }
+
+    allActivities.push({
       messageId: row.id,
       conversationId: row.conversationId,
-      conversationTitle: (row as any).conversation?.title ?? "对话",
-      userInput: userRow?.content ?? "",
-      output: row.content.slice(0, 200),
+      conversationTitle: conv?.title ?? "对话",
+      userInput,
+      output: row.content.slice(0, 300),
       timestamp: row.timestamp.toISOString(),
       durationMs: row.durationMs ?? null,
       promptTokens: row.promptTokens ?? null,
       completionTokens: row.completionTokens ?? null,
+      source,
+      modelId,
     });
   }
+
+  // Paginate filtered results
+  const total = searchLower ? allActivities.length : await prisma.message.count({ where });
+  const activities = searchLower ? allActivities.slice(offset, offset + limit) : allActivities;
 
   return { activities, total, hasMore: offset + limit < total };
 }

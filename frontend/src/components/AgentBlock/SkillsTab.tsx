@@ -8,12 +8,15 @@ import { useCallback, useEffect, useState } from "react";
 import { type AgentSkillSummary, listAgentSkills, toggleAgentSkill, createConversation } from "../../api";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
+import type { SystemBlockState } from "../../canvas/types";
 import { useTranslation } from "../../i18n";
 import Tooltip from "../Tooltip";
 import CardGrid from "./CardGrid";
+import CardMoreMenu from "./CardMoreMenu";
 
 interface Props {
   agentId: string;
+  blockId: string;
 }
 
 const ADD_SKILL_PROMPT = `我想创建一个新的自定义技能（Skill）。请引导我完成配置：
@@ -36,10 +39,10 @@ function timeAgo(ts: string | null): string {
   return `${days}d ago`;
 }
 
-export default function SkillsTab({ agentId }: Props) {
+export default function SkillsTab({ agentId, blockId }: Props) {
   const { t } = useTranslation();
   const { workspaceId } = useAuth();
-  const { addBlock } = useCanvas();
+  const { addBlock, patchBlockState } = useCanvas();
   const [skills, setSkills] = useState<AgentSkillSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -62,6 +65,11 @@ export default function SkillsTab({ agentId }: Props) {
       );
     }
   }, [agentId]);
+
+  const handleDeleteSkill = useCallback(async (skillId: string) => {
+    setSkills((prev) => prev.filter((s) => s.id !== skillId));
+    // TODO: call backend delete API
+  }, []);
 
   const handleAddSkill = async () => {
     if (!workspaceId) return;
@@ -109,13 +117,11 @@ export default function SkillsTab({ agentId }: Props) {
               >
                 <span className="ab-switch-knob" />
               </button>
-              <button className="ab-card-more" title="More">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <circle cx="3.5" cy="8" r="1.2" fill="currentColor" />
-                  <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-                  <circle cx="12.5" cy="8" r="1.2" fill="currentColor" />
-                </svg>
-              </button>
+              <CardMoreMenu
+                onViewActivities={() => patchBlockState(blockId, { activeTab: "activities", activitiesSearch: s.id } as SystemBlockState)}
+                label={t("agent.activities.viewActivities")}
+                onDelete={s.type === "user" ? () => handleDeleteSkill(s.id) : undefined}
+              />
             </div>
           </div>
           <dl className="ab-card-kv">
