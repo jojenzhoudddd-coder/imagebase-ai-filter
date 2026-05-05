@@ -2719,9 +2719,9 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  /* 8px from box edges: box has 12px padding-top + content has 14px padding-left.
-     Negative margins cancel parent padding, then add 8px back. */
-  margin: -4px -6px 8px -6px;
+  /* 12px from box left/top edges. Box has 12px padding-top + content has 14px padding-left.
+     Negative margins cancel parent padding, then add 12px back. */
+  margin: 0 -2px 8px -2px;
 }
 .chat-attachment-thumb-wrap {
   position: relative;
@@ -2831,13 +2831,10 @@
 /* Drag overlay — full sidebar overlay (excluding topbar) */
 .chat-sidebar-drag-overlay {
   position: absolute;
-  top: 44px; /* skip topbar height */
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background: rgba(20, 86, 240, 0.06);
   border: 2px dashed var(--primary);
-  border-radius: 0 0 8px 8px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;

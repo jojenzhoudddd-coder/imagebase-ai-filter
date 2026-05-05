@@ -1683,9 +1683,6 @@ export default function ChatSidebar({
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSidebarDragging(false); }}
       onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setSidebarDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) void handleFileDrop(files); }}
     >
-      {sidebarDragging && (
-        <div className="chat-sidebar-drag-overlay">Drop files here</div>
-      )}
       <header className="chat-header">
         {/* Left cluster: Agent name pill (double-click to rename, also kept in
             sync with chat-initiated renames via `update_agent_name` tool) then
@@ -1749,6 +1746,9 @@ export default function ChatSidebar({
           <BlockCloseButton />
         </div>
       </header>
+      {sidebarDragging && (
+        <div className="chat-sidebar-drag-overlay">Drop files here</div>
+      )}
       {/* Agent meta menu —— 7 个占位项,功能待接;onSelect 仅 console.info */}
       {agentMetaMenuOpen && agentMetaBtnRef.current && (
         <DropdownMenu
