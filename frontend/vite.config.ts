@@ -32,17 +32,17 @@ export default defineConfig({
           // vendor chunk(在 react chunk 之前求值)→ "Cannot read properties
           // of undefined (reading 'useLayoutEffect')" → 整个 app 白屏。
           // (PR7 引入这条依赖时,2026-04-29 prod 白屏 hotfix)
-          if (id.match(/node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|@tanstack[\\/]react-virtual|@tanstack[\\/]virtual-core)[\\/]/)) {
+          // React 全家桶 + 依赖 React 的编辑器绑定层。
+          // @uiw/react-codemirror 和 @tiptap/react 在模块顶层调用
+          // React.useState 等 hooks，必须和 react 在同一个 chunk 里，
+          // 否则 Rollup 的加载顺序可能让它们在 React 初始化前求值。
+          if (id.match(/node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|@tanstack[\\/]react-virtual|@tanstack[\\/]virtual-core|@uiw[\\/]react-codemirror|@tiptap[\\/]react)[\\/]/)) {
             return "vendor-react";
           }
-          // Markdown 渲染栈 —— IdeaEditor + ChatSidebar 都用到,但只有这俩用
+          // Markdown 渲染栈 —— IdeaEditor + ChatSidebar 都用到
           if (id.match(/node_modules[\\/](react-markdown|remark-.*|rehype-.*|micromark.*|mdast-.*|hast-.*|unist-.*|unified|vfile.*|character-entities.*|decode-named-character-reference|trim-lines|space-separated-tokens|comma-separated-tokens|property-information|html-url-attributes|zwitch|longest-streak|markdown-table|ccount|escape-string-regexp)[\\/]/)) {
             return "vendor-markdown";
           }
-          // CodeMirror + Tiptap/ProseMirror — IdeaEditor 编辑器依赖。
-          // 合入通用 vendor 避免循环 chunk 问题（CM 和 vendor 之间有共享依赖）。
-          // 不再单独拆 chunk — 构建时 "Circular chunk" 警告导致运行时
-          // "Cannot access 'Xt' before initialization" 崩溃。
           // Vega 系列 —— 在 ChatChartBlock 里 dynamic import,绝对不能合到主
           // vendor。返回 undefined 让 vite 按 import 关系自然分块（保留它独立
           // 的 chunk,在显示图表时才拉）。所有 vega-* / d3-* / topojson-* / fast-deep-equal
