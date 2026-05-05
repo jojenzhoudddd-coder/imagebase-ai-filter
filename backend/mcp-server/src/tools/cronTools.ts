@@ -22,7 +22,7 @@ import {
   parseCron,
   nextFireAfter,
 } from "../../../src/services/cronScheduler.js";
-import { ensureAgentFiles } from "../../../src/services/agentService.js";
+import { ensureAgentFiles, readCron, writeCron } from "../../../src/services/agentService.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
 const DEFAULT_AGENT_ID = "agent_default";
@@ -155,6 +155,64 @@ export const cronTools: ToolDefinition[] = [
         ok: removed,
         jobId,
         error: removed ? null : "找不到这个 jobId",
+      });
+    },
+  },
+
+  {
+    name: "update_scheduled_task",
+    description:
+      "修改一条已有的定时任务。可以改执行时间（schedule）、任务描述（prompt）、开关（enabled）。调用时机：用户说'把 XX 改成每天 9 点' 或 '暂停 XX 习惯' 或 '帮我改一下 XX 的描述'。调用前建议先 list_scheduled_tasks 确认 jobId。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        jobId: { type: "string", description: "要修改的 cron 任务 id。" },
+        schedule: { type: "string", description: "新的 cron 表达式（可选）。5 字段或 @daily/@weekly 别名。" },
+        prompt: { type: "string", description: "新的任务描述（可选）。" },
+        enabled: { type: "boolean", description: "开关（可选）。true=启用, false=暂停。" },
+        agentId: { type: "string", description: "可选；默认当前 Agent。" },
+      },
+      required: ["jobId"],
+    },
+    handler: async (args, ctx) => {
+      const agentId = resolveAgentId(args, ctx);
+      const jobId = typeof args.jobId === "string" ? args.jobId.trim() : "";
+      if (!jobId) return JSON.stringify({ ok: false, error: "jobId 不能为空" });
+
+      await ensureAgentFiles(agentId);
+      const cronFile = await readCron(agentId);
+      const job = cronFile.jobs.find((j: any) => j.id === jobId);
+      if (!job) return JSON.stringify({ ok: false, error: "找不到这个 jobId" });
+
+      const updates: string[] = [];
+
+      if (typeof args.schedule === "string" && args.schedule.trim()) {
+        const parsed = parseCron(args.schedule.trim());
+        if (!parsed) return JSON.stringify({ ok: false, error: `无效的 cron 表达式: ${args.schedule}` });
+        job.schedule = args.schedule.trim();
+        updates.push(`schedule → ${job.schedule}`);
+      }
+      if (typeof args.prompt === "string" && args.prompt.trim()) {
+        job.prompt = args.prompt.trim();
+        updates.push("prompt updated");
+      }
+      if (typeof args.enabled === "boolean") {
+        job.enabled = args.enabled;
+        updates.push(`enabled → ${args.enabled}`);
+      }
+
+      if (updates.length === 0) return JSON.stringify({ ok: false, error: "没有传入任何要修改的字段" });
+
+      await writeCron(agentId, cronFile);
+      const p = parseCron(job.schedule);
+      const nextFire = p ? nextFireAfter(p, new Date()) : null;
+      return JSON.stringify({
+        ok: true,
+        jobId,
+        updates,
+        schedule: job.schedule,
+        enabled: job.enabled ?? true,
+        nextFireAt: nextFire?.toISOString() ?? null,
       });
     },
   },
