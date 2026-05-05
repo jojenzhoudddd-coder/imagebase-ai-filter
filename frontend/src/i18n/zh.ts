@@ -537,7 +537,9 @@ export const zh: TranslationKeys = {
   "chat.list.untitled": "未命名对话",
   "chat.list.newChat": "新建对话",
   "chat.menu.clearCurrent": "清空当前对话",
-  // Chat agent avatar popover —— 7 个占位菜单项,功能待接(visual style 对齐
+  // Chat agent meta button (chat header 左数第 3 个图标) tooltip
+  "chat.agent.menu.title": "Agent 设置",
+  // Chat agent meta dropdown —— 7 个占位菜单项,功能待接(visual style 对齐
   // artifact sidebar 右键菜单)
   "chat.agent.menu.nature": "性格",
   "chat.agent.menu.models": "模型",

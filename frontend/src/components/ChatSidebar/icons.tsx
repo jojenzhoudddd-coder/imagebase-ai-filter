@@ -184,6 +184,20 @@ export function MicIcon({ size = 14, className }: IconProps) {
   );
 }
 
+/** Member outlined — head + shoulders silhouette (Figma icon_member_outlined,
+ * 24×24 viewBox). Used in the chat header to open the agent meta dropdown
+ * (nature / models / activities / skills / acknowledge / habits / integrations). */
+export function MemberIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M15 6.5C15 4.84315 13.6569 3.5 12 3.5C10.3431 3.5 9 4.84315 9 6.5C9 8.15685 10.3431 9.5 12 9.5C13.6569 9.5 15 8.15685 15 6.5ZM17 6.5C17 9.26142 14.7614 11.5 12 11.5C9.23858 11.5 7 9.26142 7 6.5C7 3.73858 9.23858 1.5 12 1.5C14.7614 1.5 17 3.73858 17 6.5ZM4 19V21H20V19C20 16.7909 18.2091 15 16 15H8C5.79086 15 4 16.7909 4 19ZM2 19C2 15.6863 4.68629 13 8 13H16C19.3137 13 22 15.6863 22 19V21C22 22.1046 21.1046 23 20 23H4C2.89543 23 2 22.1046 2 21V19Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 /** Identity / persona glyph — circular head + shoulder silhouette.
  * Used in the chat header to open the Agent identity modal. */
 export function IdentityIcon({ size = 16, className }: IconProps) {

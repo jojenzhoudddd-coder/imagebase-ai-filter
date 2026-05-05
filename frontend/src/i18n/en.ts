@@ -535,7 +535,9 @@ export const en = {
   "chat.list.untitled": "Untitled chat",
   "chat.list.newChat": "New chat",
   "chat.menu.clearCurrent": "Clear current chat",
-  // Chat agent avatar popover — 7 placeholder menu items (visual style aligns
+  // Chat agent meta button tooltip
+  "chat.agent.menu.title": "Agent settings",
+  // Chat agent meta dropdown — 7 placeholder menu items (visual style aligns
   // with the artifact sidebar right-click menu)
   "chat.agent.menu.nature": "Nature",
   "chat.agent.menu.models": "Models",

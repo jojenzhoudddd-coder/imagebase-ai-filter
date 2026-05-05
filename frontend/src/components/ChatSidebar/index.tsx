@@ -23,7 +23,7 @@ import ChatModelPicker from "./ChatModelPicker";
 import BlockCloseButton from "../BlockCloseButton";
 import AgentNamePill from "./AgentNamePill";
 import AgentAvatarMenu from "./AgentAvatarMenu";
-import { MoreIcon, RefreshIcon, PlusIcon, HistoryIcon, TrashIcon } from "./icons";
+import { MoreIcon, RefreshIcon, PlusIcon, HistoryIcon, TrashIcon, MemberIcon } from "./icons";
 import DropdownMenu from "../DropdownMenu";
 import ConfirmDialog from "../ConfirmDialog";
 import { useTranslation } from "../../i18n";
@@ -364,6 +364,12 @@ export default function ChatSidebar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Agent meta dropdown (member icon button, left of conv-list / history)
+  // —— 7 placeholder items: nature / models / activities / skills /
+  // acknowledge / habits / integrations. Behaviour TBD; for now noop.
+  const [agentMetaMenuOpen, setAgentMetaMenuOpen] = useState(false);
+  const agentMetaBtnRef = useRef<HTMLButtonElement>(null);
 
   // V3.0 PR1 多对话 UI 状态
   const [convListOpen, setConvListOpen] = useState(false);
@@ -1634,6 +1640,20 @@ export default function ChatSidebar({
           <ChatModelPicker agentId={agentId} open={open} disabled={streaming} />
         </div>
         <div className="chat-header-actions">
+          {/* Agent meta dropdown trigger —— 在 history icon 左侧,8px gap
+              由 .chat-header-actions 的 gap:8px 提供。 */}
+          <button
+            ref={agentMetaBtnRef}
+            type="button"
+            className="chat-header-btn"
+            title={t("chat.agent.menu.title")}
+            aria-label={t("chat.agent.menu.title")}
+            aria-haspopup="menu"
+            aria-expanded={agentMetaMenuOpen}
+            onClick={() => setAgentMetaMenuOpen((v) => !v)}
+          >
+            <MemberIcon size={16} />
+          </button>
           {/* V3.0.3: 移除 + 按钮(挪进 ≡ list popover 第一项),topbar 只剩
               ≡ 全部对话 / ⋯ 更多 / × 关闭 block。 */}
           <button
@@ -1663,6 +1683,28 @@ export default function ChatSidebar({
           <BlockCloseButton />
         </div>
       </header>
+      {/* Agent meta menu —— 7 个占位项,功能待接;onSelect 仅 console.info */}
+      {agentMetaMenuOpen && agentMetaBtnRef.current && (
+        <DropdownMenu
+          anchorEl={agentMetaBtnRef.current}
+          items={[
+            { key: "nature", label: t("chat.agent.menu.nature") },
+            { key: "models", label: t("chat.agent.menu.models") },
+            { key: "activities", label: t("chat.agent.menu.activities") },
+            { key: "skills", label: t("chat.agent.menu.skills") },
+            { key: "acknowledge", label: t("chat.agent.menu.acknowledge") },
+            { key: "habits", label: t("chat.agent.menu.habits") },
+            { key: "integrations", label: t("chat.agent.menu.integrations") },
+          ]}
+          onSelect={(key) => {
+            setAgentMetaMenuOpen(false);
+            // eslint-disable-next-line no-console
+            console.info(`[agent-menu] ${key} (not wired yet)`);
+          }}
+          onClose={() => setAgentMetaMenuOpen(false)}
+          width={200}
+        />
+      )}
       {/* ⋯ More menu — V3.0.3:含"清空当前对话" + "删除当前对话" */}
       {menuOpen && moreBtnRef.current && (
         <DropdownMenu
