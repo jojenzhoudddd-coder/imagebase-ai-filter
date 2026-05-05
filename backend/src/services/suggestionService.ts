@@ -277,6 +277,7 @@ export function startSuggestionScheduler(seedWorkspaceIds: string[] = ["doc_defa
     for (const wsId of seedWorkspaceIds) {
       try {
         await refreshSuggestions(wsId);
+        await refreshGoalSuggestions(wsId);
       } catch {
         // refreshSuggestions already logs; swallow so setInterval stays alive
       }
@@ -290,4 +291,174 @@ export function startSuggestionScheduler(seedWorkspaceIds: string[] = ["doc_defa
   return setInterval(() => {
     void tick();
   }, REFRESH_INTERVAL_MS);
+}
+
+// ─── Goal Suggestions (High Agency Mode) ─────────────────────────────────
+// Generates ambitious, frontier-grade goal recommendations for the Agency Block.
+
+export interface GoalSuggestion {
+  goal: string;
+  todos?: string[];
+}
+
+interface GoalCacheEntry {
+  goals: GoalSuggestion[];
+  updatedAt: number;
+  signature: string;
+}
+
+const goalCache = new Map<string, GoalCacheEntry>();
+const goalInflight = new Map<string, Promise<GoalSuggestion[]>>();
+
+export const DEFAULT_GOAL_SUGGESTIONS: GoalSuggestion[] = [
+  { goal: "构建一个 AI-native 的行业知识图谱，让团队用自然语言查询任意实体关系", todos: ["定义知识本体结构", "设计实体和关系表", "导入种子数据", "编写查询指南文档"] },
+  { goal: "Design a self-evolving product metrics system that auto-discovers leading indicators", todos: ["Map the metric dependency graph", "Build data pipeline tables", "Write the anomaly detection logic doc"] },
+  { goal: "研究并构建一套 Agent-to-Agent 协作协议，让多个 AI Agent 能自主分工完成复杂项目", todos: ["调研现有多智能体框架", "设计协作通信协议", "实现原型验证", "撰写技术白皮书"] },
+];
+
+const GOAL_SYSTEM_PROMPT = `你是一个前沿战略规划 AI。你的任务是根据用户当前 workspace 的数据资产，生成 3 个远大的、前沿级别的目标建议，供用户在 High Agency 模式下使用。
+
+这些目标应该是：
+- 面向行业前沿的探索和认知，不是日常琐事
+- 有足够的深度和广度，需要多步骤协作才能完成
+- 结合 workspace 已有资产的特点，但志向远高于当前现状
+- 启发用户思考"下一代"可能性：新范式、新方法论、新架构
+
+输出要求：
+- 必须输出一个 JSON 数组，格式：[{"goal":"...", "todos":["步骤1","步骤2",...]}, ...]
+- goal：一句话描述远大目标（20-60字），具体但有野心
+- todos：3-5 个里程碑步骤（可选，如果目标足够清晰可以不带）
+- 严禁包裹在 Markdown 代码块里，严禁输出任何其他文字
+- 混合中英文（匹配用户 workspace 的语言风格）`;
+
+async function callArkForGoals(
+  outline: string,
+  recordContext?: { userId: string | null; workspaceId?: string | null },
+): Promise<GoalSuggestion[]> {
+  const apiKey = process.env.ARK_API_KEY;
+  if (!apiKey) throw new Error("ARK_API_KEY not configured");
+
+  const userText = `# 当前 Workspace 资产\n${outline}\n\n请基于以上资产生成 3 个前沿级别的目标建议。`;
+
+  const body: Record<string, unknown> = {
+    model: SEED_MODEL,
+    input: [
+      { role: "system", content: [{ type: "input_text", text: GOAL_SYSTEM_PROMPT }] },
+      { role: "user", content: [{ type: "input_text", text: userText }] },
+    ],
+    max_output_tokens: 1024,
+    temperature: 0.7,
+    stream: false,
+    thinking: { type: "disabled" },
+  };
+
+  const startedAt = Date.now();
+  const res = await fetch(`${ARK_BASE_URL}/responses`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`ARK ${res.status}: ${txt.slice(0, 300)}`);
+  }
+  const json = (await res.json()) as {
+    output?: Array<{ type: string; text?: string; content?: Array<{ type: string; text?: string }> }>;
+    choices?: Array<{ message?: { content?: string } }>;
+    usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+  };
+
+  if (recordContext && json.usage) {
+    const promptTokens = Number(json.usage.input_tokens ?? 0);
+    const completionTokens = Number(json.usage.output_tokens ?? 0);
+    const totalTokens = Number(json.usage.total_tokens ?? promptTokens + completionTokens);
+    if (totalTokens > 0) {
+      void recordTokenUsage(
+        { ...recordContext, model: SEED_MODEL, provider: "ark", feature: "goal-suggestion" },
+        { promptTokens, completionTokens, totalTokens, durationMs: Date.now() - startedAt },
+      );
+    }
+  }
+
+  let text = "";
+  if (json.output) {
+    for (const it of json.output) {
+      if (it.type === "message" && it.content) {
+        for (const c of it.content) {
+          if (c.type === "output_text" && c.text) text += c.text;
+        }
+      } else if (it.type === "output_text" && it.text) {
+        text += it.text;
+      }
+    }
+  }
+  if (!text && json.choices?.[0]?.message?.content) {
+    text = json.choices[0].message.content;
+  }
+  if (!text) throw new Error("ARK returned no text content");
+
+  return parseGoalSuggestions(text);
+}
+
+function parseGoalSuggestions(raw: string): GoalSuggestion[] {
+  let s = raw.trim();
+  s = s.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+  const start = s.indexOf("[");
+  const end = s.lastIndexOf("]");
+  if (start >= 0 && end > start) s = s.slice(start, end + 1);
+
+  const parsed = JSON.parse(s) as unknown;
+  if (!Array.isArray(parsed)) throw new Error("Not a JSON array");
+  const out: GoalSuggestion[] = [];
+  for (const item of parsed) {
+    if (typeof item !== "object" || item === null) continue;
+    const rec = item as Record<string, unknown>;
+    const goal = typeof rec.goal === "string" ? rec.goal.trim() : "";
+    if (!goal) continue;
+    const todos = Array.isArray(rec.todos) ? (rec.todos as unknown[]).map(String).filter(Boolean) : undefined;
+    out.push({ goal, todos: todos && todos.length > 0 ? todos : undefined });
+    if (out.length >= 3) break;
+  }
+  if (out.length === 0) throw new Error("Parsed 0 goal suggestions");
+  return out;
+}
+
+export function getGoalSuggestions(workspaceId: string): GoalCacheEntry | null {
+  return goalCache.get(workspaceId) ?? null;
+}
+
+export async function refreshGoalSuggestions(workspaceId: string): Promise<GoalSuggestion[]> {
+  const existing = goalInflight.get(workspaceId);
+  if (existing) return existing;
+
+  const p = (async () => {
+    const { outline, signature } = await buildWorkspaceOutline(workspaceId);
+    const cached = goalCache.get(workspaceId);
+    if (cached && cached.signature === signature) return cached.goals;
+
+    try {
+      let ownerUserId: string | null = null;
+      try {
+        const ws = await __prisma.workspace.findUnique({ where: { id: workspaceId }, select: { createdById: true } });
+        ownerUserId = ws?.createdById ?? null;
+      } catch { /* non-fatal */ }
+
+      const goals = await callArkForGoals(outline, { userId: ownerUserId, workspaceId });
+      goalCache.set(workspaceId, { goals, updatedAt: Date.now(), signature });
+      console.log(`[suggestionService] refreshed goals for ${workspaceId}: ${goals.length} items`);
+      return goals;
+    } catch (err) {
+      console.warn(`[suggestionService] goal refresh failed for ${workspaceId}:`, err instanceof Error ? err.message : err);
+      if (!cached) {
+        goalCache.set(workspaceId, { goals: DEFAULT_GOAL_SUGGESTIONS, updatedAt: Date.now(), signature: `default:${signature}` });
+      }
+      return goalCache.get(workspaceId)!.goals;
+    }
+  })();
+
+  goalInflight.set(workspaceId, p);
+  try { return await p; } finally { goalInflight.delete(workspaceId); }
 }

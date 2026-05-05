@@ -142,12 +142,12 @@ const SYSTEM_HABITS_SEED = [
   },
   {
     id: "habit_system_suggest",
-    schedule: "0 8 * * *",
-    prompt: "Review 当前 workspace 的所有数据表、文档、设计稿，从待办事项的视角生成 3-5 条推荐 prompt，帮助用户发现下一步可以做的事情。",
+    schedule: "0 1 * * *",
+    prompt: "刷新 workspace 的 Todo Suggestions：1) 为 Chat 欢迎页生成 3-5 条推荐 prompt；2) 为 High Agency 模式生成 3 个前沿级别的目标建议。",
     type: "system",
     enabled: true,
-    displayName: "推荐待办",
-    description: "每天 Review workspace，生成推荐 prompt",
+    displayName: "Todo Suggestions",
+    description: "每天 1:00 更新 Chat 推荐 prompt + Agency 目标建议",
   },
   {
     id: "habit_system_learn",

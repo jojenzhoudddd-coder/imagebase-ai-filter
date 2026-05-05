@@ -9,7 +9,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, Fragment, type Chang
 import { useCanvas } from "../../contexts/canvasContext";
 import { useBlockShell } from "../../contexts/blockShellContext";
 import { useAuth } from "../../auth/AuthContext";
-import { type AgentMeta, getAgent, renameAgent, uploadAgentAvatar } from "../../api";
+import { type AgentMeta, getAgent, renameAgent, uploadAgentAvatar, fetchGoalSuggestions, type GoalSuggestion } from "../../api";
 import { useTranslation } from "../../i18n";
 import InlineEdit from "../InlineEdit";
 import AvatarCropDialog from "../../auth/AvatarCropDialog";
@@ -661,51 +661,13 @@ export default function AgencyBlock({ blockId }: Props) {
   const agentName = agent?.name || "Agent";
   const workspace = useWorkspace();
 
-  // Build ambitious recommendations — frontier-grade goals based on workspace state
-  const recommendations = useMemo(() => {
-    const recs: { goal: string; todos?: string[] }[] = [];
-    const { tableCount, ideas, designs, demos } = workspace;
-
-    // Visionary goals seeded by workspace context
-    if (tableCount === 0 && ideas.length === 0) {
-      recs.push(
-        { goal: "构建一个 AI-native 的行业知识图谱，让团队用自然语言查询任意实体关系", todos: ["定义知识本体结构", "设计实体和关系表", "导入种子数据", "编写查询指南文档"] },
-        { goal: "Design a self-evolving product metrics system that auto-discovers leading indicators", todos: ["Map the metric dependency graph", "Build data pipeline tables", "Write the anomaly detection logic doc"] },
-      );
-    }
-    if (tableCount > 0 && ideas.length === 0) {
-      recs.push(
-        { goal: "从现有数据中发现被忽视的增长杠杆，输出一份可执行的战略洞察报告", todos: ["全量数据探索与异常检测", "交叉分析发现隐藏相关性", "生成战略建议文档"] },
-        { goal: "Build a predictive model from existing data to forecast next quarter's key outcomes" },
-      );
-    }
-    if (tableCount > 0 && ideas.length > 0) {
-      recs.push(
-        { goal: "将分散的数据和文档整合为一套可自动更新的决策仪表盘 + 实时简报系统", todos: ["梳理数据源依赖关系", "构建聚合分析层", "生成自动化简报文档模板"] },
-        { goal: "Synthesize all existing knowledge into a living strategy document that evolves with new data" },
-      );
-    }
-    if (demos.length > 0) {
-      recs.push({ goal: "将现有 Demo 进化为一个完整的产品原型，具备用户反馈闭环和 A/B 实验能力", todos: ["审计所有 Demo 的功能覆盖度", "设计反馈收集机制", "输出产品演进路线图"] });
-    }
-    if (designs.length > 0) {
-      recs.push({ goal: "Transform design assets into a generative design system that adapts to user behavior patterns", todos: ["Audit design components", "Build adaptive layout rules", "Create a living style guide"] });
-    }
-
-    // Frontier-grade fallbacks
-    const frontierGoals: { goal: string; todos?: string[] }[] = [
-      { goal: "研究并构建一套 Agent-to-Agent 协作协议，让多个 AI Agent 能自主分工完成复杂项目", todos: ["调研现有多智能体框架", "设计协作通信协议", "实现原型验证", "撰写技术白皮书"] },
-      { goal: "设计下一代人机协作范式：人类只需定义价值函数，AI 自主探索最优路径并持续进化", todos: ["定义价值对齐框架", "构建反馈回路机制", "编写范式设计文档"] },
-      { goal: "Build an autonomous research pipeline that continuously discovers, validates, and synthesizes frontier knowledge in your domain" },
-    ];
-    while (recs.length < 3) {
-      const next = frontierGoals.shift();
-      if (!next) break;
-      if (!recs.some((r) => r.goal === next.goal)) recs.push(next);
-    }
-
-    return recs.slice(0, 3);
-  }, [workspace]);
+  // Fetch goal suggestions from backend (Todo Suggestions habit)
+  const [recommendations, setRecommendations] = useState<GoalSuggestion[]>([]);
+  useEffect(() => {
+    fetchGoalSuggestions(workspace.workspaceId)
+      .then((r) => setRecommendations(r.goals))
+      .catch(() => {});
+  }, [workspace.workspaceId]);
 
   // Local state
   const [status, setStatus] = useState<SessionStatus>("idle");

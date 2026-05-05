@@ -25,6 +25,9 @@ import {
   getSuggestions,
   refreshSuggestions,
   DEFAULT_SUGGESTIONS,
+  getGoalSuggestions,
+  refreshGoalSuggestions,
+  DEFAULT_GOAL_SUGGESTIONS,
 } from "../services/suggestionService.js";
 
 const router = express.Router();
@@ -174,6 +177,20 @@ router.post("/suggestions/refresh", async (req: Request, res: Response) => {
       error: "Failed to refresh suggestions",
       detail: err instanceof Error ? err.message : String(err),
     });
+  }
+});
+
+// GET /api/chat/goal-suggestions?workspaceId=xxx
+// Returns AI-generated goal recommendations for the High Agency Block.
+router.get("/goal-suggestions", async (req: Request, res: Response) => {
+  const workspaceId = (req.query.workspaceId as string) || "doc_default";
+  const entry = getGoalSuggestions(workspaceId);
+  if (entry) {
+    res.json({ workspaceId, goals: entry.goals, updatedAt: entry.updatedAt, stale: false });
+  } else {
+    // Cache miss — return defaults and kick off background refresh
+    void refreshGoalSuggestions(workspaceId);
+    res.json({ workspaceId, goals: DEFAULT_GOAL_SUGGESTIONS, updatedAt: Date.now(), stale: true });
   }
 });
 
