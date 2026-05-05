@@ -636,3 +636,91 @@ model Demo {
   @@index([publishSlug])
   @@map("demos")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// High Agency Mode
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 顶层 Agency 会话：用户给出 Goal + Todos，双 Agent 自动驾驶完成
+model AgencySession {
+  id                    String    @id @default(cuid())
+  userId                String
+  agentId               String    // 执行任务的 Chat Agent
+  workspaceId           String
+
+  goal                  String    @db.Text
+  todos                 Json      @default("[]")  // string[] 有序途径点
+  fromScope             Json      @default("{}")  // { exclude?: string[] }
+
+  chaosMonkeyModel      String    @default("gpt-5.5")
+
+  // 状态机: planning | executing | validating | replanning | completed | cancelled
+  status                String    @default("planning")
+
+  roadmap               Json?     // AgencyRoadmap JSON
+  currentSegmentIndex   Int       @default(0)
+  currentMilestoneIndex Int       @default(0)
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  completedAt           DateTime?
+
+  milestones            AgencyMilestone[]
+  checkpoints           AgencyCheckpoint[]
+
+  @@index([userId, status])
+  @@index([workspaceId])
+  @@map("agency_sessions")
+}
+
+// 里程碑执行记录
+model AgencyMilestone {
+  id                 String    @id @default(cuid())
+  sessionId          String
+  segmentIndex       Int
+  milestoneIndex     Int
+
+  title              String
+  description        String    @db.Text
+  acceptanceCriteria Json      // string[] — Chaos Monkey 的验收清单
+
+  // 状态: pending | executing | validating | passed | failed | retrying
+  status             String    @default("pending")
+
+  conversationId     String?   // Chat Agent 执行时的对话 ID
+  retryCount         Int       @default(0)
+  failureHistory     Json      @default("[]") // {reason, suggestions, timestamp}[]
+  validationResult   Json?     // {passed, reason, suggestions?}
+
+  durationMs         Int?
+  promptTokens       Int?
+  completionTokens   Int?
+
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  session            AgencySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, segmentIndex, milestoneIndex])
+  @@map("agency_milestones")
+}
+
+// 产物收集：整个 Agency 运行过程中产生的 artifacts，供用户最终验收
+model AgencyCheckpoint {
+  id           String   @id @default(cuid())
+  sessionId    String
+  milestoneId  String?
+
+  artifactType String   // table | idea | design | demo | skill
+  artifactId   String
+  label        String
+
+  createdAt    DateTime @default(now())
+
+  session      AgencySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("agency_checkpoints")
+}

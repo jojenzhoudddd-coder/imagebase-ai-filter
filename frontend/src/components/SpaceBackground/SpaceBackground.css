@@ -1,0 +1,111 @@
+/* ── Space Background tokens (LM + DM) ───────────────────────────────── */
+:root {
+  --space-bg: var(--surface-base, #ffffff);
+  --space-star-color: var(--primary, #1456F0);
+  --space-glow-color: var(--primary, #1456F0);
+  --space-canvas-opacity: 0.92;
+  --space-star-opacity: 0.66;
+  --space-glow-strong: 16%;
+  --space-glow-medium: 10%;
+  --space-glow-soft: 7%;
+  --space-glow-blur: 12px;
+  --space-vignette-strength: 3%;
+  --space-noise-strength: 3.5%;
+  --space-breathe-duration: 9s;
+}
+
+[data-theme="dark"] {
+  --space-bg: var(--surface-base, #1C1C1E);
+  --space-star-color: var(--text-on-primary, #FFFFFF);
+  --space-glow-color: var(--primary, #4A82FF);
+  --space-canvas-opacity: 0.98;
+  --space-star-opacity: 0.88;
+  --space-glow-strong: 24%;
+  --space-glow-medium: 15%;
+  --space-glow-soft: 10%;
+  --space-glow-blur: 16px;
+  --space-vignette-strength: 18%;
+  --space-noise-strength: 5%;
+  --space-breathe-duration: 10s;
+}
+
+/* ── Container (scoped to parent, not fixed fullscreen) ──────────────── */
+.ai-space-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--space-bg);
+  border-radius: inherit;
+}
+
+.ai-space-background::before,
+.ai-space-background::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Glow nebula layer */
+.ai-space-background::before {
+  inset: -8%;
+  z-index: 0;
+  background:
+    radial-gradient(
+      circle at 18% 18%,
+      color-mix(in srgb, var(--space-glow-color) var(--space-glow-strong), transparent) 0%,
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 78% 14%,
+      color-mix(in srgb, var(--space-glow-color) var(--space-glow-medium), transparent) 0%,
+      transparent 31%
+    ),
+    radial-gradient(
+      circle at 52% 86%,
+      color-mix(in srgb, var(--space-glow-color) var(--space-glow-soft), transparent) 0%,
+      transparent 38%
+    );
+  filter: blur(var(--space-glow-blur));
+  animation: ai-space-breathe var(--space-breathe-duration) ease-in-out infinite alternate;
+}
+
+/* Vignette + noise overlay */
+.ai-space-background::after {
+  z-index: 2;
+  background:
+    radial-gradient(
+      circle at center,
+      transparent 0%,
+      color-mix(in srgb, var(--surface-inset, #f5f6f7) var(--space-vignette-strength), transparent) 100%
+    ),
+    repeating-radial-gradient(
+      circle at 22% 18%,
+      color-mix(in srgb, var(--text-primary, #1f2329) var(--space-noise-strength), transparent) 0 1px,
+      transparent 1px 4px
+    );
+  opacity: 0.55;
+  mix-blend-mode: normal;
+}
+
+.ai-space-background__canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: var(--space-canvas-opacity);
+}
+
+@keyframes ai-space-breathe {
+  from { opacity: 0.78; transform: scale(1); }
+  to   { opacity: 1; transform: scale(1.025); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-space-background::before { animation: none; }
+}

@@ -5,14 +5,19 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5173,
+    port: 5176,
+    watch: {
+      // Git worktrees share .git dir — exclude it so operations in other
+      // worktrees don't trigger HMR restarts and crash this dev server.
+      ignored: ["**/.git/**"],
+    },
     proxy: {
       "/api": {
-        target: "http://localhost:3001",
+        target: "http://localhost:3004",
         changeOrigin: true,
       },
       "/uploads": {
-        target: "http://localhost:3001",
+        target: "http://localhost:3004",
         changeOrigin: true,
       },
     },

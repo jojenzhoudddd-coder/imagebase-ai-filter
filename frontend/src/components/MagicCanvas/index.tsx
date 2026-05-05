@@ -9,6 +9,7 @@ import { computeAdjacency, computeRects } from "../../canvas/layoutAlgorithms";
 import LayoutRenderer from "./LayoutRenderer";
 import BlockShell from "./BlockShell";
 import ArtifactBlock from "./ArtifactBlock";
+import AgencyBlock from "../AgencyBlock";
 import ChatBlock from "./ChatBlock";
 import DropIndicator from "./DropIndicator";
 import "./MagicCanvas.css";
@@ -83,6 +84,7 @@ export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: 
         {block.type === "system" && (
           <div className="mc-system-placeholder">System block(敬请期待)</div>
         )}
+        {block.type === "agency" && <AgencyBlock blockId={blockId} />}
       </BlockShell>
     );
   };

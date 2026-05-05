@@ -9,6 +9,7 @@ import AvatarCropDialog from "../auth/AvatarCropDialog";
 import { useTheme, type ThemePreference } from "../theme";
 import { isValidUsername } from "../auth/usernameValidator";
 import AddBlockMenu from "./MagicCanvas/AddBlockMenu";
+import { useCanvas } from "../contexts/canvasContext";
 import "./TopBar.css";
 
 interface Props {
@@ -58,6 +59,22 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
   const toast = useToast();
   const navigate = useNavigate();
   const { preference: themePreference, setTheme } = useTheme();
+  const canvas = useCanvas();
+
+  // ── High Agency toggle ──
+  const agencyBlock = Object.values(canvas.state.blocks).find((b) => b.type === "agency");
+  const agencyActive = !!agencyBlock;
+  const handleToggleAgency = () => {
+    if (agencyBlock) {
+      // Remove agency block (collapse to background)
+      canvas.removeBlock(agencyBlock.id);
+      canvas.scheduleSave();
+    } else {
+      // Create agency block (singleton enforced in addBlock)
+      canvas.addBlock("agency");
+      canvas.scheduleSave();
+    }
+  };
 
   // ── Workspace stats ──
   // 触发刷新的方式（绝对不在这里再开 EventSource —— HTTP/1.1 每域名 ~6 个长
@@ -406,9 +423,9 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
           </button>
           <AddBlockMenu anchorRef={addBtnRef} />
           <button
-            className={`topbar-icon-btn topbar-agent-btn${chatAgentOpen ? " topbar-icon-btn-active" : ""}`}
-            title={agentUnreadCount && agentUnreadCount > 0 ? `${t("topbar.ai")} · ${agentUnreadCount}` : t("topbar.ai")}
-            onClick={() => onOpenChatAgent?.()}
+            className={`topbar-icon-btn topbar-agent-btn${agencyActive ? " topbar-icon-btn-active" : ""}`}
+            title="High Agency"
+            onClick={handleToggleAgency}
           >
             {/* Figma sparkle outline — same path for both states. The active
              * state simply flips the fill to primary blue via CSS `color`

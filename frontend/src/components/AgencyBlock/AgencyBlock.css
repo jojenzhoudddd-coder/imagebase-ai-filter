@@ -1,0 +1,1660 @@
+/* ──────────────────────────────────────────────────────────────────
+ * High Agency Block — styles
+ * 严格遵循项目 token：所有色用 var(--xxx)，10px radius，1px border，
+ * 与 BlockShell / chat-header / artifact topbar 视觉一致。
+ * ─────────────────────────────────────────────────────────────────── */
+
+:root {
+  --ha-accent: var(--primary);    /* 项目主色 蓝 #1456F0 */
+  --ha-accent-bg: color-mix(in oklab, var(--ha-accent) 14%, transparent);
+  --ha-accent-soft: color-mix(in oklab, var(--ha-accent) 22%, transparent);
+}
+[data-theme="dark"] {
+  --ha-accent-bg: color-mix(in oklab, var(--ha-accent) 22%, transparent);
+  --ha-accent-soft: color-mix(in oklab, var(--ha-accent) 32%, transparent);
+}
+
+/* Global resets scoped via .ha-block — do not leak to other blocks */
+
+/* ── Block shell ──────────────────────────────────────────────── */
+/* The shell is the project's normal card surface (LM = white, DM = #2C2C2E),
+ * but with a thin scatter of 4-point sparkle stars echoing the agent's
+ * star4 logo. LM stars are the agent's accent blue; DM stars are white.
+ * Stars are pure CSS — an SVG data-URL background, twinkled with a
+ * staggered keyframe pair so they don't all blink in sync. */
+
+/* The 4-point star SVG, color injected via currentColor → encoded as a CSS
+ * variable so we can swap fill per-theme. */
+.ha-block {
+  --ha-star-color: #1456F0;            /* LM: project accent blue */
+  --ha-star-color-dim: #1456F0;
+  --ha-star-glow: rgba(20, 86, 240, 0.18);
+}
+[data-theme="dark"] .ha-block {
+  --ha-star-color: #FFFFFF;            /* DM: white */
+  --ha-star-color-dim: #DDE4FF;
+  --ha-star-glow: rgba(255, 255, 255, 0.20);
+}
+
+/* border / border-radius / box-shadow handled by BlockShell — don't duplicate */
+.ha-block {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  overflow: hidden;
+  position: relative;
+  isolation: isolate;
+}
+
+/* Star layer 1 — bigger, brighter sparkles (~14 stars, layer A twinkle) */
+.ha-block::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  /* 14 four-point stars at varied positions and sizes (10–18px).
+   * SVG path matches ICONS.star4 — long axes + short crossbars. */
+  background-image:
+    /* large hero stars */
+    var(--ha-star-svg-lg),
+    var(--ha-star-svg-lg),
+    var(--ha-star-svg-md),
+    var(--ha-star-svg-md),
+    var(--ha-star-svg-md),
+    var(--ha-star-svg-sm),
+    var(--ha-star-svg-sm),
+    var(--ha-star-svg-sm),
+    var(--ha-star-svg-sm),
+    var(--ha-star-svg-sm),
+    var(--ha-star-svg-sm),
+    var(--ha-star-svg-sm),
+    var(--ha-star-svg-sm),
+    var(--ha-star-svg-sm);
+  background-position:
+    14% 22%,   /* lg */
+    78% 68%,   /* lg */
+    33% 78%,   /* md */
+    62% 28%,   /* md */
+    88% 18%,   /* md */
+    8%  56%,   /* sm */
+    24% 38%,   /* sm */
+    46% 14%,   /* sm */
+    52% 62%,   /* sm */
+    71% 47%,   /* sm */
+    82% 38%,   /* sm */
+    19% 84%,   /* sm */
+    44% 86%,   /* sm */
+    93% 78%;   /* sm */
+  animation: ha-twinkle-a 4.2s ease-in-out infinite;
+}
+
+/* Star layer 2 — second set, twinkles out of phase + slight tint */
+.ha-block::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-image:
+    var(--ha-star-svg-md-dim),
+    var(--ha-star-svg-md-dim),
+    var(--ha-star-svg-sm-dim),
+    var(--ha-star-svg-sm-dim),
+    var(--ha-star-svg-sm-dim),
+    var(--ha-star-svg-sm-dim),
+    var(--ha-star-svg-sm-dim),
+    var(--ha-star-svg-sm-dim),
+    var(--ha-star-svg-sm-dim);
+  background-position:
+    27% 52%,
+    66% 84%,
+    11% 32%,
+    38% 44%,
+    57% 76%,
+    74% 18%,
+    85% 58%,
+    4%  74%,
+    96% 32%;
+  animation: ha-twinkle-b 3.1s ease-in-out infinite;
+}
+
+/* SVG star data URLs.
+ * Path = ICONS.star4 scaled to 32×32 viewBox; fill via currentColor proxy.
+ * We bake the color into the SVG (not currentColor — bg-images don't inherit
+ * color), so we generate per-theme via CSS vars below. */
+.ha-block {
+  /* LM: blue */
+  --ha-star-svg-lg:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 16 16'><path d='M8 1.5 L9.4 6.6 L14.5 8 L9.4 9.4 L8 14.5 L6.6 9.4 L1.5 8 L6.6 6.6 Z' fill='%231456F0'/></svg>");
+  --ha-star-svg-md:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16'><path d='M8 1.5 L9.4 6.6 L14.5 8 L9.4 9.4 L8 14.5 L6.6 9.4 L1.5 8 L6.6 6.6 Z' fill='%231456F0'/></svg>");
+  --ha-star-svg-sm:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 16 16'><path d='M8 1.5 L9.4 6.6 L14.5 8 L9.4 9.4 L8 14.5 L6.6 9.4 L1.5 8 L6.6 6.6 Z' fill='%231456F0' fill-opacity='0.7'/></svg>");
+  --ha-star-svg-md-dim:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'><path d='M8 1.5 L9.4 6.6 L14.5 8 L9.4 9.4 L8 14.5 L6.6 9.4 L1.5 8 L6.6 6.6 Z' fill='%231456F0' fill-opacity='0.55'/></svg>");
+  --ha-star-svg-sm-dim:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='9' viewBox='0 0 16 16'><path d='M8 1.5 L9.4 6.6 L14.5 8 L9.4 9.4 L8 14.5 L6.6 9.4 L1.5 8 L6.6 6.6 Z' fill='%231456F0' fill-opacity='0.45'/></svg>");
+}
+[data-theme="dark"] .ha-block {
+  /* DM: white */
+  --ha-star-svg-lg:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 16 16'><path d='M8 1.5 L9.4 6.6 L14.5 8 L9.4 9.4 L8 14.5 L6.6 9.4 L1.5 8 L6.6 6.6 Z' fill='white'/></svg>");
+  --ha-star-svg-md:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16'><path d='M8 1.5 L9.4 6.6 L14.5 8 L9.4 9.4 L8 14.5 L6.6 9.4 L1.5 8 L6.6 6.6 Z' fill='white'/></svg>");
+  --ha-star-svg-sm:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 16 16'><path d='M8 1.5 L9.4 6.6 L14.5 8 L9.4 9.4 L8 14.5 L6.6 9.4 L1.5 8 L6.6 6.6 Z' fill='white' fill-opacity='0.75'/></svg>");
+  --ha-star-svg-md-dim:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'><path d='M8 1.5 L9.4 6.6 L14.5 8 L9.4 9.4 L8 14.5 L6.6 9.4 L1.5 8 L6.6 6.6 Z' fill='white' fill-opacity='0.6'/></svg>");
+  --ha-star-svg-sm-dim:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='9' viewBox='0 0 16 16'><path d='M8 1.5 L9.4 6.6 L14.5 8 L9.4 9.4 L8 14.5 L6.6 9.4 L1.5 8 L6.6 6.6 Z' fill='white' fill-opacity='0.5'/></svg>");
+}
+
+@keyframes ha-twinkle-a {
+  0%, 100% { opacity: 0.65; }
+  50%      { opacity: 1; }
+}
+@keyframes ha-twinkle-b {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+/* All direct children of the block stack above the star layers. */
+.ha-block > * { position: relative; z-index: 1; }
+
+/* ── TopBar (44px, mirrors .chat-header) ──────────────────────── */
+.ha-topbar {
+  flex: 0 0 auto;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 8px;
+  gap: 16px;
+  border-bottom: 1px solid var(--border-light);
+  background: transparent;
+  position: relative;
+  z-index: 1;
+}
+.ha-topbar-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.ha-topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.ha-topbar-goal {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ha-topbar-goal-placeholder {
+  color: var(--text-placeholder);
+  font-weight: 400;
+  font-style: italic;
+}
+
+/* The 4-pointed star — agency indicator. Pulses when running. */
+.ha-star {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; padding: 0; background: transparent;
+  border-radius: 6px;
+  color: var(--ha-accent);
+  cursor: pointer;
+  transition: background 100ms, color 100ms, transform 240ms;
+  position: relative;
+}
+.ha-star:hover { background: var(--surface-3); }
+.ha-star.is-running {
+  animation: ha-star-spin 2.4s linear infinite;
+  color: var(--ha-accent);
+  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--ha-accent) 50%, transparent));
+}
+@keyframes ha-star-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Generic icon button — mirrors .chat-header-btn */
+.ha-icon-btn {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--icon-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 100ms, color 100ms;
+  flex-shrink: 0;
+  position: relative;
+}
+.ha-icon-btn:hover { background: var(--surface-3); color: var(--text-primary); }
+
+.ha-monkey-avatar {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+.ha-checkpoint-btn { padding-right: 4px; }
+.ha-checkpoint-count {
+  position: absolute;
+  top: 2px; right: 2px;
+  min-width: 14px; height: 14px;
+  padding: 0 3px;
+  background: var(--ha-accent);
+  color: var(--text-on-primary);
+  border-radius: 7px;
+  font-size: 9px;
+  font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1;
+}
+
+/* ── Body — two-zone layout ───────────────────────────────────── */
+.ha-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: 20px;
+}
+
+/* Centered inner container */
+.ha-body-center {
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  gap: 20px;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── Left: Route line (vertical From → To) ──────────────────────── */
+.ha-route-line {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 40px;
+}
+
+.ha-route-line-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.ha-route-line-marker {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1.5px solid var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.ha-route-line-marker-to {
+  background: var(--ha-accent, var(--primary));
+  border-color: var(--ha-accent, var(--primary));
+  color: var(--text-on-primary);
+}
+
+.ha-route-line-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  max-width: 50px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ha-route-line-goal {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Vertical track between From and To */
+.ha-route-line-track {
+  flex: 1;
+  width: 4px;
+  position: relative;
+  margin: 6px 0;
+  min-height: 40px;
+}
+
+.ha-route-line-track-bg {
+  position: absolute;
+  inset: 0;
+  border-left: 2px dashed var(--border-strong);
+  margin-left: 1px;
+}
+
+.ha-route-line-dot {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border-strong);
+  z-index: 1;
+}
+.ha-route-line-dot.is-passed {
+  background: var(--ha-accent, var(--primary));
+  border-color: var(--ha-accent, var(--primary));
+}
+.ha-route-line-dot.is-active {
+  border-color: var(--ha-accent, var(--primary));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ha-accent, var(--primary)) 14%, transparent);
+}
+
+/* ── Right: Work area ────────────────────────────────────────────── */
+.ha-work-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ha-work-welcome {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.ha-work-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 16px;
+  background: var(--primary);
+  border-radius: 1px;
+  animation: ha-cursor-blink 1s steps(2) infinite;
+}
+
+@keyframes ha-cursor-blink {
+  to { opacity: 0; }
+}
+
+.ha-work-area .ha-feed {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: transparent;
+}
+
+/* ── Route Planner (Full) ─────────────────────────────────────── */
+.ha-rp {
+  flex: 0 0 240px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-right: 1px solid var(--border-light);
+  background:
+    linear-gradient(180deg, transparent 0, var(--surface-1) 80%);
+}
+.ha-rp-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.ha-rp-head-prog-num {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.ha-rp-head-done {
+  color: var(--success);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 600;
+}
+.ha-rp-head-idle {
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+}
+.ha-rp-track {
+  flex: 1;
+  padding: 8px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+}
+
+/* Node — circular marker + label/value pair */
+.ha-rp-node {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  position: relative;
+  transition: background 120ms;
+  border-radius: 6px;
+}
+.ha-rp-node:hover .ha-rp-node-del { opacity: 1; }
+
+.ha-rp-node-marker {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border-strong);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  z-index: 1;
+  transition: border-color 120ms, background 120ms, color 120ms;
+}
+
+.ha-rp-node-from .ha-rp-node-marker {
+  background: var(--surface-2);
+  border-color: var(--text-secondary);
+  color: var(--text-secondary);
+}
+.ha-rp-node-to .ha-rp-node-marker {
+  background: var(--ha-accent);
+  border-color: var(--ha-accent);
+  color: var(--text-on-primary);
+}
+.ha-rp-node-todo .ha-rp-node-marker {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text-muted);
+}
+
+/* States */
+.ha-rp-node-passed .ha-rp-node-marker {
+  background: var(--ha-accent);
+  border-color: var(--ha-accent);
+  color: var(--text-on-primary);
+}
+.ha-rp-node-active .ha-rp-node-marker {
+  background: var(--surface-2);
+  border-color: var(--ha-accent);
+  color: var(--ha-accent);
+  box-shadow: 0 0 0 4px var(--ha-accent-bg);
+}
+.ha-rp-node-validating .ha-rp-node-marker {
+  background: var(--warning-bg);
+  border-color: var(--warning);
+  color: var(--warning);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--warning) 18%, transparent);
+}
+
+.ha-rp-pulse-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--ha-accent);
+  position: relative;
+  animation: ha-pulse 1.4s ease-in-out infinite;
+}
+.ha-rp-pulse-dot::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: var(--ha-accent);
+  opacity: 0.4;
+  animation: ha-pulse-ring 1.4s ease-out infinite;
+}
+@keyframes ha-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+@keyframes ha-pulse-ring {
+  0% { transform: scale(0.6); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.ha-rp-node-body { min-width: 0; }
+.ha-rp-node-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  line-height: 1.2;
+  margin-bottom: 1px;
+}
+.ha-rp-node-value {
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.ha-rp-node-passed .ha-rp-node-value {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+}
+.ha-rp-node-goal {
+  font-weight: 600;
+  -webkit-line-clamp: 3;
+}
+.ha-rp-node-active .ha-rp-node-value { font-weight: 600; }
+
+.ha-rp-node-del {
+  width: 18px; height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--icon-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms, background 120ms;
+}
+.ha-rp-node-del:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+/* Connector — dotted vertical line between nodes */
+.ha-rp-conn {
+  display: flex;
+  justify-content: center;
+  position: relative;
+  padding-left: 11px;  /* center on 22px marker */
+  height: 18px;
+  margin: -2px 0;
+}
+.ha-rp-conn-line {
+  width: 0;
+  height: 100%;
+  border-left: 2px dashed var(--border-strong);
+  margin-left: -1px;
+}
+.ha-rp-conn-passed .ha-rp-conn-line {
+  border-left-style: solid;
+  border-left-color: var(--ha-accent);
+}
+.ha-rp-conn-add {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 120ms, border-color 120ms, color 120ms, background 120ms;
+}
+.ha-rp:hover .ha-rp-conn-add { opacity: 1; }
+.ha-rp-conn-add:hover {
+  border-color: var(--ha-accent);
+  color: var(--ha-accent);
+  background: var(--ha-accent-bg);
+}
+
+/* ── Route Planner (Mini) ─────────────────────────────────────── */
+.ha-rp-mini {
+  flex: 0 0 36px;
+  align-items: center;
+  padding: 14px 0;
+  background: var(--surface-1);
+  border-right: 1px solid var(--border-light);
+}
+.ha-rp-mini-head, .ha-rp-mini-foot {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.ha-rp-mini-head {
+  background: var(--surface-2);
+  border: 1.5px solid var(--text-secondary);
+  color: var(--text-secondary);
+}
+.ha-rp-mini-foot {
+  background: var(--ha-accent);
+  border: 1.5px solid var(--ha-accent);
+  color: var(--text-on-primary);
+}
+.ha-rp-mini-bar {
+  flex: 1;
+  width: 4px;
+  position: relative;
+  margin: 8px 0;
+  min-height: 100px;
+  align-self: center;
+}
+.ha-rp-mini-bar-bg {
+  position: absolute; inset: 0;
+  background: var(--border-light);
+  border-radius: 2px;
+}
+.ha-rp-mini-bar-fill {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  background: var(--ha-accent);
+  border-radius: 2px;
+  transition: height 600ms cubic-bezier(.4, 0, .2, 1);
+}
+.ha-rp-mini-node {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border-strong);
+  z-index: 1;
+}
+.ha-rp-mini-node.is-passed {
+  background: var(--ha-accent);
+  border-color: var(--ha-accent);
+}
+.ha-rp-mini-node.is-active {
+  background: var(--surface-2);
+  border-color: var(--ha-accent);
+  box-shadow: 0 0 0 3px var(--ha-accent-bg);
+}
+.ha-rp-mini-agent {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1.5px solid var(--ha-accent);
+  color: var(--ha-accent);
+  display: inline-flex; align-items: center; justify-content: center;
+  z-index: 2;
+  animation: ha-mini-spin 2.4s linear infinite;
+  box-shadow: 0 0 0 3px var(--ha-accent-bg);
+}
+@keyframes ha-mini-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+/* ── Execution feed (CLI-style) ──────────────────────────────────
+ * Right zone — a monospaced log feed. Every "card" from the old
+ * design is now a single CliBlock: one row with a sigil + label +
+ * optional meta, expandable inline using a chevron. Children render
+ * as an indented tree using ├ / └ branches.
+ *
+ * Hierarchy is purely typographic — no card chrome, no backgrounds,
+ * no borders. Just text, sigils, and tree characters.
+ * ──────────────────────────────────────────────────────────────── */
+
+.ha-feed {
+  flex: 1;
+  overflow: auto;
+  min-width: 0;
+  min-height: 0;
+  scrollbar-width: thin;
+  background: var(--surface-1);
+}
+.ha-feed-inner {
+  padding: 14px 16px 18px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── Block — a collapsible feed entry ─────────────────────────── */
+.ha-cli-block {
+  display: flex;
+  flex-direction: column;
+}
+.ha-cli-block + .ha-cli-block {
+  margin-top: 6px;
+}
+
+/* ── Row (head or tree line) ─────────────────────────────────── */
+.ha-cli-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ha-cli-row-head {
+  cursor: default;
+  user-select: none;
+  padding: 1px 0;
+  border-radius: 3px;
+}
+.ha-cli-block.is-expandable > .ha-cli-row-head {
+  cursor: pointer;
+}
+.ha-cli-block.is-expandable > .ha-cli-row-head:hover {
+  background: var(--surface-2);
+}
+
+/* Chevron — invisible placeholder if no body, ▸/▾ if expandable */
+.ha-cli-chev {
+  display: inline-block;
+  width: 10px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-align: center;
+  transform: translateY(-1px);
+}
+
+/* Sigil — leading status character */
+.ha-cli-sigil {
+  display: inline-block;
+  width: 12px;
+  flex-shrink: 0;
+  text-align: center;
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1;
+}
+.ha-sigil-muted   { color: var(--text-muted); }
+.ha-sigil-accent  { color: var(--ha-accent); }
+.ha-sigil-danger  { color: var(--danger); }
+.ha-sigil-warning { color: var(--warning); }
+.ha-sigil-pulse {
+  animation: ha-cli-pulse 1.4s ease-in-out infinite;
+}
+@keyframes ha-cli-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+/* Timestamp — dim, fixed-width */
+.ha-cli-time {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  font-size: 11.5px;
+}
+
+/* Label — main text. Truncates if too long. */
+.ha-cli-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Meta — right-aligned dim text (counts, durations) */
+.ha-cli-meta {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Numeric prefix inside label, e.g. "[02]" */
+.ha-cli-num {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* ── Body — expanded children ─────────────────────────────────── */
+.ha-cli-body {
+  display: flex;
+  flex-direction: column;
+  padding-left: 16px;  /* indent under chevron */
+  margin-top: 1px;
+}
+
+/* Tree branch character */
+.ha-cli-branch {
+  display: inline-block;
+  width: 16px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  letter-spacing: -0.5px;
+}
+
+/* Indented tree line */
+.ha-cli-line {
+  padding: 0;
+  white-space: normal;
+}
+.ha-cli-line-text {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* Step (planning) sub-line */
+.ha-cli-step-num {
+  color: var(--text-muted);
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.ha-cli-step-text { color: var(--text-primary); }
+
+/* Log lines — inherit kind from line.kind: action / tool / ok / info */
+.ha-cli-log-time {
+  color: var(--text-muted);
+  margin-right: 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.ha-cli-log-text {
+  flex: 1;
+  min-width: 0;
+}
+.ha-cli-line-log-tool .ha-cli-log-text { color: var(--ha-accent); }
+.ha-cli-line-log-ok   .ha-cli-log-text { color: var(--success); }
+.ha-cli-line-log-action .ha-cli-log-text { color: var(--text-primary); }
+.ha-cli-line-log-info .ha-cli-log-text { color: var(--text-secondary); }
+
+/* Validation criteria marks */
+.ha-cli-mark {
+  display: inline-block;
+  width: 12px;
+  margin-right: 6px;
+  text-align: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.ha-cli-mark.is-ok   { color: var(--success); }
+.ha-cli-mark.is-fail { color: var(--danger); }
+
+/* Validation reason */
+.ha-cli-line-reason .ha-cli-line-text {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Artifact name */
+.ha-cli-art-name {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--border-default);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.ha-cli-art-name:hover {
+  text-decoration-color: var(--ha-accent);
+  color: var(--ha-accent);
+}
+
+/* ── Empty state — quiet CLI banner ──────────────────────────── */
+.ha-cli-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 28px 16px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--text-muted);
+}
+.ha-cli-empty-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.ha-cli-prompt {
+  color: var(--ha-accent);
+  font-weight: 700;
+}
+.ha-cli-empty-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: var(--ha-accent);
+  animation: ha-cli-blink 1s steps(2) infinite;
+}
+@keyframes ha-cli-blink {
+  to { opacity: 0; }
+}
+.ha-cli-empty-hint {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  font-family: var(--font-sans, system-ui);
+  max-width: 36em;
+}
+.ha-cli-empty-hint b { color: var(--text-primary); font-weight: 600; }
+.ha-cli-empty-stages {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.ha-cli-empty-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ha-cli-empty-stage-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.ha-cli-empty-stage-arrow {
+  color: var(--border-strong);
+}
+
+/* ── Variant tweaks ───────────────────────────────────────────── */
+/* Variant 2 — chat-flow: a touch tighter, no separator gap */
+.ha-variant-2 .ha-cli-block + .ha-cli-block { margin-top: 2px; }
+
+/* Variant 3 — full-on console: dark inset background */
+.ha-variant-3 .ha-feed {
+  background: var(--surface-inset, #0e1320);
+}
+[data-theme="light"] .ha-variant-3 .ha-feed {
+  background: #f6f8fb;
+}
+
+/* Collapsed history — used in completed state to roll up earlier blocks */
+.ha-collapsed-trail {
+  margin-top: 6px;
+}
+.ha-collapsed-trail summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  padding: 1px 0;
+  user-select: none;
+}
+.ha-collapsed-trail summary::-webkit-details-marker { display: none; }
+.ha-collapsed-trail summary::before {
+  content: "▸";
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.ha-collapsed-trail[open] summary::before { content: "▾"; }
+.ha-collapsed-trail summary:hover { color: var(--text-primary); }
+.ha-collapsed-trail .ha-cli-block { margin-top: 2px; }
+
+/* .theme-toggle removed — not needed in production app */
+
+
+/* ── Route Planner · Popover (minimal setup form) ─────────────── */
+.ha-rp-popover {
+  position: relative;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
+  background:
+    radial-gradient(circle at 1px 1px, var(--border-light) 1px, transparent 1px) 0 0 / 12px 12px,
+    var(--surface-1);
+}
+
+.ha-rp-cta {
+  margin: 14px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1.5px dashed var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ha-rp-cta:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-bg);
+}
+
+/* The floating popover card — minimal, vertical timeline of inputs.
+ * No header chrome, no footer chrome — just the route. */
+.ha-rp-pop {
+  position: absolute;
+  left: 14px;
+  width: 320px;
+  bottom: 56px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 12px 32px rgba(20, 30, 50, 0.14);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100% - 70px);
+  overflow: hidden;
+  z-index: 5;
+}
+[data-theme="dark"] .ha-rp-pop {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.ha-rp-pop-tail {
+  position: absolute;
+  left: 24px;
+  bottom: -7px;
+  width: 12px;
+  height: 12px;
+  background: var(--surface-2);
+  border-right: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+  transform: rotate(45deg);
+}
+
+/* Shared marker dots — small circle on the left of each row. The
+ * `.ha-rp-pop-steps` block draws a vertical guide line behind them. */
+.ha-rp-pop-marker {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+.ha-rp-pop-marker-from {
+  background: var(--ha-accent);
+  box-shadow: 0 0 0 3px var(--ha-accent-bg);
+}
+.ha-rp-pop-marker-to {
+  background: var(--ha-accent);
+  box-shadow: 0 0 0 3px var(--ha-accent-bg);
+}
+.ha-rp-pop-marker-step {
+  background: var(--surface-2);
+  border: 1.5px dashed var(--border-strong);
+}
+
+/* From row — read-only pill */
+.ha-rp-pop-from-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+.ha-rp-pop-from-txt {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Steps list — guide line connects markers vertically */
+.ha-rp-pop-steps {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0;
+}
+.ha-rp-pop-steps::before {
+  content: "";
+  position: absolute;
+  left: 4.25px;   /* center of the 10px marker (10/2 - 0.75) */
+  top: -8px;
+  bottom: -8px;
+  width: 1.5px;
+  border-left: 1.5px dashed var(--border-strong);
+  z-index: 0;
+}
+
+.ha-rp-pop-step {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.ha-rp-pop-step .ha-rp-pop-marker { margin-right: 12px; }
+.ha-rp-pop-step .ha-compound-input { margin-right: 8px; }
+
+.ha-rp-pop-step-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 28px 0 10px;
+  background: var(--surface-1);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-primary);
+  outline: none;
+  transition: background 120ms, border-color 120ms;
+}
+.ha-rp-pop-step:hover .ha-rp-pop-step-input { background: var(--surface-3); }
+.ha-rp-pop-step-input:focus {
+  background: var(--surface-2);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-bg);
+}
+.ha-rp-pop-del {
+  position: absolute;
+  right: 6px;
+  width: 20px; height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 120ms, background 120ms, color 120ms;
+}
+.ha-rp-pop-step { position: relative; }
+.ha-rp-pop-step:hover .ha-rp-pop-del { opacity: 1; }
+.ha-rp-pop-del:hover { background: var(--danger-bg); color: var(--danger); }
+
+/* Add Todo — matches .add-record-btn from TableView */
+.ha-rp-pop-add {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 22px; /* aligns with step inputs (past the marker) */
+  height: 28px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-s, 6px);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+  align-self: flex-start;
+}
+.ha-rp-pop-add:hover { color: var(--ha-accent); background: var(--ha-accent-bg); }
+
+/* Goal row */
+.ha-rp-pop-goal-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+.ha-rp-pop-goal {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  background: var(--surface-1);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+  transition: background 120ms, border-color 120ms;
+}
+.ha-rp-pop-goal:hover { background: var(--surface-3); }
+.ha-rp-pop-goal:focus {
+  background: var(--surface-2);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-bg);
+}
+
+/* Single primary action — Start run, full-width */
+.ha-rp-pop-start {
+  height: 32px;
+  margin-top: 4px;
+  padding: 0 14px;
+  border-radius: 6px;
+  background: var(--ha-accent);
+  border: 1px solid var(--ha-accent);
+  color: var(--text-on-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 120ms;
+}
+.ha-rp-pop-start:hover { filter: brightness(0.95); }
+
+
+/* ─────────────────────────────────────────────────────────────────
+   Chaos Monkey — topbar avatar + popover + signature lines in feed
+   ───────────────────────────────────────────────────────────────── */
+
+/* Topbar avatar — pulse dot when validating */
+.ha-chaos-wrap { position: relative; }
+.ha-monkey-avatar { position: relative; }
+.ha-chaos-btn.is-active .ha-monkey-avatar {
+  background: var(--success-bg, color-mix(in oklab, var(--success) 16%, transparent));
+  color: var(--success);
+}
+.ha-chaos-btn.is-open {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.ha-monkey-pulse {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  border: 1.5px solid var(--surface-1);
+  animation: ha-monkey-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ha-monkey-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.2); opacity: 0.7; }
+}
+
+/* Popover — anchored under the topbar avatar button */
+.ha-chaos-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 280px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
+  padding: 12px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+/* Identity row — avatar + name + status */
+.ha-chaos-id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--border);
+}
+.ha-chaos-avatar-lg {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+.ha-chaos-id-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ha-chaos-name {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ha-chaos-status {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.ha-chaos-status.is-on   { color: var(--success); }
+.ha-chaos-status.is-idle { color: var(--text-muted); }
+.ha-chaos-role {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* CLI-style key=value config rows in popover */
+.ha-chaos-config {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.ha-chaos-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ha-chaos-foot {
+  font-size: 11px;
+  color: var(--text-muted);
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+  line-height: 1.45;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   CLI mono helpers — used in validation card body + chaos popover
+   ───────────────────────────────────────────────────────────────── */
+.ha-cli-mono-key {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.ha-cli-mono-eq {
+  color: var(--text-disabled, var(--text-muted));
+  opacity: 0.6;
+}
+.ha-cli-mono-val {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.ha-cli-mono-val.is-good { color: var(--success); }
+.ha-cli-mono-val.is-warn { color: var(--warning, #c47e1c); }
+.ha-cli-mono-val.is-bad  { color: var(--danger); }
+.ha-cli-mono-sep {
+  color: var(--text-disabled, var(--text-muted));
+  opacity: 0.5;
+  margin: 0 2px;
+}
+.ha-cli-mono-arrow {
+  color: var(--ha-accent);
+  font-weight: 600;
+  margin: 0 2px;
+}
+.ha-cli-mono-hint {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-style: italic;
+}
+
+/* Validation signature line — chaos_monkey identity inside the card */
+.ha-cli-line-signature .ha-cli-line-text,
+.ha-cli-line-signature {
+  color: var(--text-secondary);
+}
+.ha-cli-line-signature {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Validation tail — next-action / proceed lines */
+.ha-cli-line-next-retry,
+.ha-cli-line-next-ok {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ha-cli-line-next-retry .ha-cli-line-text { color: var(--warning, #c47e1c); }
+.ha-cli-line-next-ok .ha-cli-line-text { color: var(--success); }
+
+/* Validation reason — flex layout for the "why ›" prefix */
+.ha-cli-line-reason {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ha-cli-line-reason .ha-cli-line-text {
+  font-style: italic;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+/* ── Integration overrides (block fills its shell container) ───────── */
+.ha-block { height: 100%; }
+
+/* ── Goal button in topbar ──────────────────────────────────────────�� */
+.ha-topbar-goal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-s, 6px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ha-topbar-goal-btn:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.ha-topbar-goal-btn.is-active {
+  background: var(--primary-bg);
+  color: var(--primary);
+}
+.ha-topbar-goal-btn .ha-topbar-goal-placeholder {
+  color: var(--text-secondary);
+  font-style: normal;
+}
+.ha-topbar-goal-btn .ha-topbar-goal-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: inherit;
+}
+
+/* ── Route popover anchored to topbar (not left panel) ────────────── */
+/* Route popover as overlay inside .ha-body */
+.ha-rp-pop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+.ha-rp-pop-overlay > * { pointer-events: auto; }
+.ha-rp-pop-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+}
+/* 44px topbar + 8px (center of 28px btn = 8+14=22, btn bottom=8+28=36) → 36+4=40 */
+.ha-rp-pop-inline {
+  position: absolute;
+  top: 40px;
+  left: 8px;
+  bottom: auto;
+  z-index: 1;
+  max-height: calc(100% - 52px);
+  overflow-y: auto;
+}
+.ha-rp-pop-inline .ha-rp-pop-tail { display: none; }
+
+/* ── Compound Input (Lark UD-03 style: prefix | field) ──────────── */
+.ha-compound-input {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--surface-2);
+  overflow: hidden;
+  transition: border-color 120ms;
+}
+.ha-compound-input-sm {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+}
+.ha-compound-input:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-bg);
+}
+.ha-compound-prefix {
+  flex-shrink: 0;
+  width: 60px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  user-select: none;
+  text-align: left;
+  box-sizing: border-box;
+}
+.ha-compound-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-default);
+  flex-shrink: 0;
+}
+.ha-compound-field {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 10px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.ha-compound-field::placeholder {
+  color: var(--text-placeholder);
+}
+.ha-compound-field[readonly] {
+  color: var(--text-secondary);
+  cursor: default;
+}
+.ha-compound-del {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  margin-right: 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 120ms, background 120ms, color 120ms;
+}
+.ha-compound-input:hover .ha-compound-del { opacity: 1; }
+.ha-compound-del:hover { background: var(--danger-bg); color: var(--danger); }
+
+/* Delete button — matches .fr-delete (AI filter, 24x24) */
+.ha-rp-pop-step-del {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-s, 6px);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 120ms, background 0.15s, color 0.15s;
+}
+.ha-rp-pop-step:hover .ha-rp-pop-step-del { opacity: 1; }
+.ha-rp-pop-step-del:hover { background: var(--surface-3); color: var(--text-primary); }
+
+/* From/To row — marker + input, full width (no delete button) */
+.ha-rp-pop-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── Submit button — matches .create-table-popover-btn.primary ─────── */
+.ha-rp-pop-submit {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 6px;
+  border: none;
+  background: var(--primary);
+  color: var(--text-on-primary);
+  font-family: var(--font-family, inherit);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  cursor: pointer;
+  align-self: flex-end;
+  margin-top: 8px;
+}
+.ha-rp-pop-submit:hover { background: var(--primary); }
+.ha-rp-pop-submit:disabled {
+  background: var(--primary-light);
+  cursor: not-allowed;
+}
+
+/* Remove body/button global resets that leak to other blocks */
+.ha-block * { box-sizing: border-box; }

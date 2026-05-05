@@ -9,7 +9,7 @@
  *    叶子是 block。任何 block 必占满矩形,永不留白永不重叠。
  */
 
-export type BlockType = "chat" | "artifact" | "system";
+export type BlockType = "chat" | "artifact" | "system" | "agency";
 
 export type ArtifactKind = "table" | "idea" | "design" | "demo";
 
@@ -36,7 +36,14 @@ export interface SystemBlockState {
   view?: string;
 }
 
-export type BlockState = ArtifactBlockState | ChatBlockState | SystemBlockState | undefined;
+export interface AgencyBlockState {
+  /** 当前关联的 agency session ID */
+  sessionId?: string;
+  /** 左侧任务面板模式 */
+  popoverMode?: "full" | "mini";
+}
+
+export type BlockState = ArtifactBlockState | ChatBlockState | SystemBlockState | AgencyBlockState | undefined;
 
 export type LayoutNode =
   | { kind: "leaf"; blockId: string }

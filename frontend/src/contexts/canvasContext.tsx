@@ -19,7 +19,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Block, BlockState, CanvasState, LayoutNode, BlockType, ArtifactBlockState, ChatBlockState, SystemBlockState } from "../canvas/types";
+import type { Block, BlockState, CanvasState, LayoutNode, BlockType, ArtifactBlockState, ChatBlockState, SystemBlockState, AgencyBlockState } from "../canvas/types";
 import {
   collectLeaves,
   countLeaves,
@@ -145,7 +145,7 @@ export interface CanvasContextValue {
   /** 更新某个 block 的 internal state(例:artifact 的 active / sidebar 折叠 / chat conversationId) */
   patchBlockState: (
     blockId: string,
-    patch: Partial<ArtifactBlockState> | Partial<ChatBlockState> | Partial<SystemBlockState>,
+    patch: Partial<ArtifactBlockState> | Partial<ChatBlockState> | Partial<SystemBlockState> | Partial<AgencyBlockState>,
   ) => void;
   /** 触发后端持久化(防抖) */
   scheduleSave: () => void;
@@ -254,6 +254,11 @@ export function CanvasProvider({
     // ChatSidebar 已经按 fallback 跑去挑别的 conv)。
     (type: BlockType, initialState?: BlockState): string | null => {
       if (countLeaves(state.layout) >= MAX_BLOCKS) return null;
+      // Agency block singleton constraint — only one allowed
+      if (type === "agency") {
+        const existing = Object.values(state.blocks).find((b) => b.type === "agency");
+        if (existing) return existing.id; // Return existing instead of creating new
+      }
       const id = `blk_${cryptoId()}`;
       const block: Block = { id, type };
       const defaultState: BlockState = type === "artifact" ? defaultArtifactState() : {};
@@ -309,7 +314,7 @@ export function CanvasProvider({
 
   const patchBlockState = useCallback(
     // V3.0 PR1: 泛型 patch — 支持 Artifact / Chat / System 任意 block 类型
-    (blockId: string, patch: Partial<ArtifactBlockState> | Partial<ChatBlockState> | Partial<SystemBlockState>) => {
+    (blockId: string, patch: Partial<ArtifactBlockState> | Partial<ChatBlockState> | Partial<SystemBlockState> | Partial<AgencyBlockState>) => {
       setState((prev) => {
         const oldS = (prev.blockStates[blockId] ?? {}) as Record<string, unknown>;
         const newS = { ...oldS, ...(patch as Record<string, unknown>) };
