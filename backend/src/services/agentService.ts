@@ -111,17 +111,36 @@ export async function ensureAgentFiles(agentId: string): Promise<void> {
   if (!(await fileExists(cronPath))) {
     await fs.writeFile(cronPath, JSON.stringify({ jobs: SYSTEM_HABITS_SEED }, null, 2), "utf8");
   } else {
-    // Ensure system habits exist (idempotent seed)
+    // Sync system habits: add missing ones + update existing system habits
+    // with latest seed values (schedule, prompt, displayName, description).
+    // Preserves user-controlled fields: `enabled` and `lastFiredAt`.
     try {
       const raw = await fs.readFile(cronPath, "utf8");
       const cronFile = JSON.parse(raw) as { jobs: any[] };
       let changed = false;
       for (const seed of SYSTEM_HABITS_SEED) {
-        if (!cronFile.jobs.some((j: any) => j.id === seed.id)) {
+        const existing = cronFile.jobs.find((j: any) => j.id === seed.id);
+        if (!existing) {
+          // New system habit — add it
           cronFile.jobs.push(seed);
           changed = true;
+        } else if (existing.type === "system") {
+          // Existing system habit — update code-owned fields, keep user fields
+          const fieldsToSync: (keyof typeof seed)[] = ["schedule", "prompt", "displayName", "description"];
+          for (const key of fieldsToSync) {
+            if (existing[key] !== seed[key]) {
+              existing[key] = seed[key];
+              changed = true;
+            }
+          }
         }
       }
+      // Remove system habits that are no longer in the seed
+      const seedIds = new Set(SYSTEM_HABITS_SEED.map((s) => s.id));
+      const before = cronFile.jobs.length;
+      cronFile.jobs = cronFile.jobs.filter((j: any) => j.type !== "system" || seedIds.has(j.id));
+      if (cronFile.jobs.length !== before) changed = true;
+
       if (changed) {
         await fs.writeFile(cronPath, JSON.stringify(cronFile, null, 2), "utf8");
       }
