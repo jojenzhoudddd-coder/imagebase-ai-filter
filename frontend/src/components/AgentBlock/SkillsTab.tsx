@@ -119,7 +119,7 @@ export default function SkillsTab({ agentId, blockId }: Props) {
       ) : (
       <CardGrid>
       {skills.map((s) => (
-        <div key={s.id} className={`ab-card${!s.enabled ? " ab-card-disabled" : ""}`}>
+        <div key={s.id} className="ab-card">
           <div className="ab-card-head">
             <div className="ab-card-title-block">
               <div className="ab-card-title-row">

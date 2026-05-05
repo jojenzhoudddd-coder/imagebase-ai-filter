@@ -25,7 +25,20 @@ export const arkVideoAdapter: ProviderAdapter = {
     }
 
     try {
-      yield { kind: "text_delta", text: "Creating video generation task...\n" };
+      // Parse ratio from prompt: "9:16" / "1:1" / "16:9" (default)
+      let ratio = "16:9";
+      if (/\b9\s*:\s*16\b/.test(prompt)) ratio = "9:16";
+      else if (/\b1\s*:\s*1\b/.test(prompt)) ratio = "1:1";
+
+      // Parse duration from prompt: number between 5-11
+      let duration = 8;
+      const durMatch = prompt.match(/(\d+)\s*[秒s]/);
+      if (durMatch) {
+        const d = parseInt(durMatch[1]);
+        if (d >= 5 && d <= 11) duration = d;
+      }
+
+      yield { kind: "text_delta", text: `🎬 Generating video (${ratio}, ${duration}s)...\n\n` };
 
       const createRes = await fetch(`${ARK_BASE_URL}/contents/generations/tasks`, {
         method: "POST",
@@ -36,8 +49,8 @@ export const arkVideoAdapter: ProviderAdapter = {
         body: JSON.stringify({
           model: params.model.providerModelId,
           content: [{ type: "text", text: prompt }],
-          ratio: "16:9",
-          duration: 8,
+          ratio,
+          duration,
           watermark: false,
         }),
         signal: params.signal,
@@ -96,7 +109,8 @@ export const arkVideoAdapter: ProviderAdapter = {
           return;
         }
 
-        yield { kind: "text_delta", text: "." };
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        yield { kind: "text_delta", text: `⏳ ${elapsed}s...\n` };
       }
 
       yield { kind: "error", message: "Video generation timed out (5min)" };

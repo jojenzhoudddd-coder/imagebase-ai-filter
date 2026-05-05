@@ -23,17 +23,21 @@ export const arkImageAdapter: ProviderAdapter = {
     }
 
     try {
+      yield { kind: "text_delta", text: "🎨 Generating image...\n\n" };
+
       const res = await fetch(`${ARK_BASE_URL}/images/generations`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
         },
+        // Parse size hint from prompt: "2K" / "1K" / "512x512" etc.
+        // Default to 1K for reasonable file size.
         body: JSON.stringify({
           model: params.model.providerModelId,
           prompt,
           response_format: "url",
-          size: "2K",
+          size: /\b2[Kk]\b/.test(prompt) ? "2K" : "1K",
           stream: false,
           watermark: false,
         }),

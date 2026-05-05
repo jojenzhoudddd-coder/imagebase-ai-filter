@@ -481,6 +481,10 @@ export async function probeModels(): Promise<ProbeResult> {
       next = Boolean(process.env.ARK_API_KEY && m.providerModelId);
     } else if (m.provider === "oneapi") {
       next = oneapiAvailableIds.has(m.providerModelId);
+    } else if (m.provider === "ark-image") {
+      next = Boolean((process.env.ARK_SEEDREAM_API_KEY || process.env.ARK_API_KEY) && m.providerModelId);
+    } else if (m.provider === "ark-video") {
+      next = Boolean((process.env.ARK_SEEDANCE_API_KEY || process.env.ARK_API_KEY) && m.providerModelId);
     } else {
       next = false;
     }

@@ -531,12 +531,7 @@ export default function ChatInput({
   }, [onFileDrop]);
 
   return (
-    <div
-      className="chat-input-wrap"
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
+    <div className="chat-input-wrap">
       {/* Attachment preview bar */}
       {attachments && attachments.length > 0 && (
         <div className="chat-attachments-bar">
@@ -558,7 +553,12 @@ export default function ChatInput({
           ))}
         </div>
       )}
-      <div className="chat-input-box">
+      <div
+        className="chat-input-box"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <div className="chat-input-content">
           <div
             ref={editorRef}
@@ -598,11 +598,6 @@ export default function ChatInput({
               onSelect={handleSkillSelect}
               onClose={handleSkillClose}
             />
-          )}
-          {dragging && (
-            <div className="chat-input-drag-overlay">
-              {t("chat.input.dropFiles")}
-            </div>
           )}
         </div>
         <div className="chat-input-toolbar">
@@ -652,6 +647,11 @@ export default function ChatInput({
             </button>
           </div>
         </div>
+        {dragging && (
+          <div className="chat-input-drag-overlay">
+            {t("chat.input.dropFiles")}
+          </div>
+        )}
       </div>
     </div>
   );

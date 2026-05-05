@@ -1722,6 +1722,7 @@
  *   (matches the spec).
  */
 .chat-input-box {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -2473,6 +2474,46 @@
 /* ═══════════════════════════════════════════════════════════════════
    ChatMediaPreview — inline media rendering in assistant messages
    ═══════════════════════════════════════════════════════════════════ */
+/* Media generation loading placeholder */
+.chat-media-generating {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+  height: 180px;
+  border-radius: 8px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-light);
+  margin: 4px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  position: relative;
+  overflow: hidden;
+}
+.chat-media-generating::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, var(--surface-3) 50%, transparent 100%);
+  animation: media-shimmer 1.5s infinite;
+}
+@keyframes media-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.chat-media-generating-text {
+  position: relative;
+  z-index: 1;
+}
+
+.chat-msg-assistant-progress {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 .chat-media-img {
   max-width: 100%;
   max-height: 300px;
@@ -2709,13 +2750,13 @@
   flex-shrink: 0;
 }
 
-/* Drag overlay */
+/* Drag overlay — covers the entire chat-input-box (16px radius) */
 .chat-input-drag-overlay {
   position: absolute;
   inset: 0;
   background: var(--primary-bg);
   border: 2px dashed var(--primary);
-  border-radius: 8px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;

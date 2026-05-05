@@ -95,19 +95,34 @@ export default function AssistantText({
     [markdown, content],
   );
 
-  if (!markdown) {
+  // Detect media generation in progress (no final URL yet)
+  const isGenerating = /^[🎨🎬]\s*(Generating|Creating)/.test(content) && !/!\[.*\]\(http/.test(content) && !/^https?:\/\//.test(content.split("\n").pop() || "");
+
+  if (!markdown && !isGenerating) {
     return <div className="chat-msg-assistant">{content}</div>;
   }
 
   return (
     <div className="chat-msg-assistant chat-msg-assistant-md">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeSanitize, chatSanitizeSchema]]}
-        components={chatMarkdownComponents}
-      >
-        {normalized}
-      </ReactMarkdown>
+      {isGenerating && (
+        <div className="chat-media-generating">
+          <span className="chat-media-generating-text">{content.split("\n")[0]}</span>
+        </div>
+      )}
+      {!isGenerating && (
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[[rehypeSanitize, chatSanitizeSchema]]}
+          components={chatMarkdownComponents}
+        >
+          {normalized}
+        </ReactMarkdown>
+      )}
+      {isGenerating && content.includes("\n") && (
+        <div className="chat-msg-assistant-progress">
+          {content.split("\n").slice(1).filter(Boolean).join(" ")}
+        </div>
+      )}
     </div>
   );
 }
