@@ -721,4 +721,35 @@ router.put("/:agentId/habits/:jobId/toggle", async (req: Request, res: Response)
   }
 });
 
+/** PUT /api/agents/:agentId/habits/:jobId/schedule — update habit schedule */
+router.put("/:agentId/habits/:jobId/schedule", async (req: Request, res: Response) => {
+  try {
+    const { agentId, jobId } = req.params;
+    const { schedule } = req.body ?? {};
+    if (typeof schedule !== "string" || !schedule.trim()) {
+      res.status(400).json({ error: "schedule must be a non-empty string" });
+      return;
+    }
+    // Validate cron expression
+    const { parseCron } = await import("../services/cronScheduler.js");
+    if (!parseCron(schedule.trim())) {
+      res.status(400).json({ error: "Invalid cron expression" });
+      return;
+    }
+    const { readCron, writeCron } = await import("../services/agentService.js");
+    const cronFile = await readCron(agentId);
+    const job = cronFile.jobs.find((j: any) => j.id === jobId);
+    if (!job) {
+      res.status(404).json({ error: "job not found" });
+      return;
+    }
+    job.schedule = schedule.trim();
+    await writeCron(agentId, cronFile);
+    res.json({ ok: true, schedule: job.schedule });
+  } catch (err: any) {
+    console.error("[agents] habit schedule update error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
 export default router;

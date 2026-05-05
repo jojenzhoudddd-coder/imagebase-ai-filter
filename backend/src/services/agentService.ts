@@ -111,9 +111,9 @@ export async function ensureAgentFiles(agentId: string): Promise<void> {
   if (!(await fileExists(cronPath))) {
     await fs.writeFile(cronPath, JSON.stringify({ jobs: SYSTEM_HABITS_SEED }, null, 2), "utf8");
   } else {
-    // Sync system habits: add missing ones + update existing system habits
-    // with latest seed values (schedule, prompt, displayName, description).
-    // Preserves user-controlled fields: `enabled` and `lastFiredAt`.
+    // Sync system habits: add missing + update existing.
+    // User-controlled fields preserved: `enabled`, `lastFiredAt`, `schedule`
+    // (schedule only preserved if user manually changed it from the seed value).
     try {
       const raw = await fs.readFile(cronPath, "utf8");
       const cronFile = JSON.parse(raw) as { jobs: any[] };
@@ -121,17 +121,31 @@ export async function ensureAgentFiles(agentId: string): Promise<void> {
       for (const seed of SYSTEM_HABITS_SEED) {
         const existing = cronFile.jobs.find((j: any) => j.id === seed.id);
         if (!existing) {
-          // New system habit — add it
-          cronFile.jobs.push(seed);
+          // New system habit — add with seedSchedule marker
+          cronFile.jobs.push({ ...seed, seedSchedule: seed.schedule });
           changed = true;
         } else if (existing.type === "system") {
-          // Existing system habit — update code-owned fields, keep user fields
-          const fieldsToSync: (keyof typeof seed)[] = ["schedule", "prompt", "displayName", "description"];
-          for (const key of fieldsToSync) {
+          // Update code-owned fields (prompt, displayName, description)
+          const textFields: (keyof typeof seed)[] = ["prompt", "displayName", "description"];
+          for (const key of textFields) {
             if (existing[key] !== seed[key]) {
               existing[key] = seed[key];
               changed = true;
             }
+          }
+          // Schedule: only update if user hasn't manually changed it.
+          // We track the last seed value in `seedSchedule`. If the user's
+          // current schedule still matches the old seed, it's safe to update.
+          const userModifiedSchedule = existing.seedSchedule != null
+            && existing.schedule !== existing.seedSchedule;
+          if (!userModifiedSchedule && existing.schedule !== seed.schedule) {
+            existing.schedule = seed.schedule;
+            changed = true;
+          }
+          // Always record latest seed schedule for future comparisons
+          if (existing.seedSchedule !== seed.schedule) {
+            existing.seedSchedule = seed.schedule;
+            changed = true;
           }
         }
       }
