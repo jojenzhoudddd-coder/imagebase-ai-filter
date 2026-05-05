@@ -431,6 +431,7 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
         </div>
         <span className="topbar-divider" />
         <img
+          key={userAvatar}
           className="topbar-avatar"
           src={userAvatar}
           alt={user?.name || "avatar"}
@@ -451,6 +452,7 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
             <div className="topbar-profile-header">
               <div className="topbar-profile-avatar-wrap" title={t("topbar.changeAvatar")}>
                 <img
+                  key={userAvatar}
                   className="topbar-profile-avatar"
                   src={userAvatar}
                   alt=""

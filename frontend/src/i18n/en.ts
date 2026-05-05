@@ -535,8 +535,15 @@ export const en = {
   "chat.list.untitled": "Untitled chat",
   "chat.list.newChat": "New chat",
   "chat.menu.clearCurrent": "Clear current chat",
-  // Chat agent avatar popover
-  "chat.agent.deleteUnsupported": "The default agent can't be deleted",
+  // Chat agent avatar popover — 7 placeholder menu items (visual style aligns
+  // with the artifact sidebar right-click menu)
+  "chat.agent.menu.nature": "Nature",
+  "chat.agent.menu.models": "Models",
+  "chat.agent.menu.activities": "Activities",
+  "chat.agent.menu.skills": "Skills",
+  "chat.agent.menu.acknowledge": "About me",
+  "chat.agent.menu.habits": "Habits",
+  "chat.agent.menu.integrations": "Integrations",
   "chat.clear.confirm.title": "Clear current chat?",
   "chat.clear.confirm.message": "All messages in this chat will be permanently deleted, but the chat itself stays. This action cannot be undone.",
   "chat.clear.confirm.ok": "Clear",

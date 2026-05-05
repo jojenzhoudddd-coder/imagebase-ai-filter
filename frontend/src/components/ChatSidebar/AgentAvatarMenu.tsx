@@ -1,23 +1,24 @@
 /**
  * AgentAvatarMenu — circular avatar at the left of the chat sidebar header.
  *
- *   · Click → popover anchored below the avatar (mirrors TopBar's user menu).
- *     Popover header: avatar (48px) + agent name + current model;
- *     Popover body: "Rename" + "Delete" — same items as the artifact sidebar
- *     right-click menu (`contextMenu.rename` / `contextMenu.delete`), so the
- *     interaction surface stays consistent across the app.
- *   · Hovering the avatar shows the camera-overlay; click → file picker via
- *     the transparent `<input type="file">` on top of the popover avatar.
- *     Picking a file → `AvatarCropDialog` → POST cropped data URL to
- *     `/api/agents/:id/avatar` → updates local `agent` state with a
- *     cache-bust query string so the topbar avatar img re-fetches even when
- *     the URL path is identical to a previously cached one.
- *   · "Rename" → calls `onRenameRequest()` so the parent (ChatSidebar) can
- *     trigger AgentNamePill's edit mode. (We don't touch AgentNamePill state
- *     directly; lifting state through the parent keeps the components decoupled.)
- *   · "Delete" — placeholder; deleting the default agent is unsafe, so this
- *     just toasts a hint. Wired through here so the menu structure matches
- *     TreeView's right-click semantically.
+ *   · Click → popover anchored below the avatar (mirrors TopBar's user menu
+ *     for header / avatar shape, but the menu item rows below use the
+ *     `.dropdown-menu-item` visuals so they match the artifact sidebar
+ *     right-click menu — same 32px row, same 14px font, same gap).
+ *   · Header: 48px avatar + agent name + current model name.
+ *   · Items (7 placeholder buttons): nature / models / activities / skills /
+ *     acknowledge / habits / integrations. Wired to no-op for now; each
+ *     gets its own real screen later.
+ *   · Hovering the avatar shows the camera-overlay; clicking → file picker
+ *     via the transparent `<input type="file">` on top of the popover
+ *     avatar. Picking a file → `AvatarCropDialog` → POST cropped data URL
+ *     to `/api/agents/:id/avatar` → updates local `agent` state.
+ *   · `key={avatarUrl}` on the <img> elements forces React to unmount and
+ *     remount the DOM node when the URL changes, guaranteeing the browser
+ *     re-fetches even if React's diff would otherwise skip the src update
+ *     (defence in depth — the cache-busted URL plus key together ensure
+ *     "upload success → toast → instant visual update" works regardless of
+ *     reconciliation quirks).
  *
  * Reuses the `topbar-profile-popover` / `topbar-profile-header` /
  * `topbar-profile-avatar-wrap` CSS classes from `TopBar.css` so the visual
@@ -44,38 +45,30 @@ interface Props {
   /** Bumped after each turn ends so we re-fetch the agent in case
    *  `update_agent_name` was invoked mid-turn. */
   refreshToken?: number;
-  /** Parent-supplied callback to enter rename mode on AgentNamePill. */
-  onRenameRequest?: () => void;
 }
 
 const FALLBACK_AVATAR = "/avatars/avatar_1.png";
 
-/** Append a `?v=<ts>` query string so React's diff sees a different src
- *  after upload, guaranteeing the <img> re-fetches even when the served
- *  path is the same (different file content normally produces a new
- *  hash-based filename, but defence in depth doesn't hurt). */
+const MENU_ITEMS: ReadonlyArray<{ key: string; i18nKey: string }> = [
+  { key: "nature", i18nKey: "chat.agent.menu.nature" },
+  { key: "models", i18nKey: "chat.agent.menu.models" },
+  { key: "activities", i18nKey: "chat.agent.menu.activities" },
+  { key: "skills", i18nKey: "chat.agent.menu.skills" },
+  { key: "acknowledge", i18nKey: "chat.agent.menu.acknowledge" },
+  { key: "habits", i18nKey: "chat.agent.menu.habits" },
+  { key: "integrations", i18nKey: "chat.agent.menu.integrations" },
+];
+
+/** Append `?v=<ts>` so React sees a different src after upload, forcing
+ *  the <img> to refetch even when the served path is identical. Used
+ *  together with `key={avatarUrl}` for belt-and-braces. */
 function withCacheBust(url: string | null): string | null {
   if (!url) return url;
   const sep = url.includes("?") ? "&" : "?";
   return `${url}${sep}v=${Date.now()}`;
 }
 
-function RenameIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-function DeleteIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <path d="M6 2a1 1 0 00-1 1h6a1 1 0 00-1-1H6zM4 4h8v9a1 1 0 01-1 1H5a1 1 0 01-1-1V4zM3 4h10V3H3v1zM6.5 6v5M9.5 6v5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-export default function AgentAvatarMenu({ agentId, open, refreshToken, onRenameRequest }: Props) {
+export default function AgentAvatarMenu({ agentId, open, refreshToken }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
   const [agent, setAgent] = useState<AgentMeta | null>(null);
@@ -164,9 +157,9 @@ export default function AgentAvatarMenu({ agentId, open, refreshToken, onRenameR
     setUploading(true);
     try {
       const updated = await uploadAgentAvatar(agentId, croppedDataUrl);
-      // Cache-bust the avatarUrl —— even if the path is identical (same
-      // hash for repeated upload of same image), the v=<ts> suffix forces
-      // React to render a new src so the <img> re-fetches.
+      // Cache-bust + setAgent —— React will see a new avatarUrl string
+      // (different ?v=<ts>) and (with key={avatarUrl} on the imgs) the DOM
+      // <img> elements get fully remounted, forcing a fresh fetch.
       setAgent({ ...updated, avatarUrl: withCacheBust(updated.avatarUrl) });
       toast.success(t("topbar.avatarSaved"));
     } catch (err: any) {
@@ -175,17 +168,6 @@ export default function AgentAvatarMenu({ agentId, open, refreshToken, onRenameR
       setUploading(false);
     }
   }, [agentId, t, toast]);
-
-  const handleRename = useCallback(() => {
-    setPopoverOpen(false);
-    onRenameRequest?.();
-  }, [onRenameRequest]);
-
-  const handleDelete = useCallback(() => {
-    setPopoverOpen(false);
-    // 默认 agent 不可删除 —— 先 toast 提示,后续支持多 agent 时再接 DELETE
-    toast.info(t("chat.agent.deleteUnsupported"));
-  }, [toast, t]);
 
   const avatarUrl = agent?.avatarUrl || FALLBACK_AVATAR;
   const modelLabel = modelSel?.resolved.displayName ?? "";
@@ -202,6 +184,7 @@ export default function AgentAvatarMenu({ agentId, open, refreshToken, onRenameR
         title={agent?.name || ""}
       >
         <img
+          key={avatarUrl}
           className="chat-agent-avatar-img"
           src={avatarUrl}
           alt={agent?.name || "agent"}
@@ -218,6 +201,7 @@ export default function AgentAvatarMenu({ agentId, open, refreshToken, onRenameR
           <div className="topbar-profile-header">
             <div className="topbar-profile-avatar-wrap" title={t("topbar.changeAvatar")}>
               <img
+                key={avatarUrl}
                 className="topbar-profile-avatar"
                 src={avatarUrl}
                 alt=""
@@ -256,23 +240,24 @@ export default function AgentAvatarMenu({ agentId, open, refreshToken, onRenameR
 
           <div className="topbar-menu-divider topbar-profile-divider-top" />
 
-          <div className="topbar-profile-section">
-            <div
-              className="topbar-menu-item"
-              onClick={handleRename}
-              role="menuitem"
-            >
-              <span className="topbar-menu-icon" aria-hidden="true"><RenameIcon /></span>
-              <span className="topbar-menu-label">{t("contextMenu.rename")}</span>
-            </div>
-            <div
-              className="topbar-menu-item"
-              onClick={handleDelete}
-              role="menuitem"
-            >
-              <span className="topbar-menu-icon" aria-hidden="true"><DeleteIcon /></span>
-              <span className="topbar-menu-label">{t("contextMenu.delete")}</span>
-            </div>
+          {/* Menu items —— 视觉对齐 artifact sidebar 右键菜单(`.dropdown-menu-item`):
+              32px 行高、14px 字号、8px gap、12px L/R padding。topbar-profile-section
+              的 4px wrapper padding 提供分组留白. */}
+          <div className="topbar-profile-section chat-agent-menu-section">
+            {MENU_ITEMS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className="dropdown-menu-item"
+                onClick={() => {
+                  setPopoverOpen(false);
+                  // eslint-disable-next-line no-console
+                  console.info(`[agent-menu] ${item.key} (not wired yet)`);
+                }}
+              >
+                <span className="dropdown-menu-item-label">{t(item.i18nKey)}</span>
+              </button>
+            ))}
           </div>
         </div>,
         document.body,
