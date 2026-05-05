@@ -1739,8 +1739,8 @@
 
 .chat-input-content {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  align-items: stretch;
   padding: 0 14px;
   width: 100%;
 }
@@ -2719,8 +2719,9 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  padding: 8px 8px 0 8px;
-  margin: -12px -14px 8px -14px; /* cancel parent padding so 8px aligns to box edge */
+  /* 8px from box edges: box has 12px padding-top + content has 14px padding-left.
+     Negative margins cancel parent padding, then add 8px back. */
+  margin: -4px -6px 8px -6px;
 }
 .chat-attachment-thumb-wrap {
   position: relative;
@@ -2784,6 +2785,8 @@
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 8px;
+  align-self: flex-start;
+  width: 100%;
 }
 .chat-msg-user-att-thumb {
   width: 40px;
