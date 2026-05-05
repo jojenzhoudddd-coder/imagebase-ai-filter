@@ -5,11 +5,18 @@
  * 包含: TopBar(goal名/chaos monkey/checkpoints) + 左侧路线面板 + 右侧执行时间线
  */
 
-import { useState, useEffect, useRef, useCallback, Fragment } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment, type ChangeEvent } from "react";
 import { useCanvas } from "../../contexts/canvasContext";
 import { useBlockShell } from "../../contexts/blockShellContext";
-// SpaceBackground removed — using CSS ::before/::after sparkle layers from ha-block.css instead
+import { useAuth } from "../../auth/AuthContext";
+import { type AgentMeta, getAgent, renameAgent, uploadAgentAvatar } from "../../api";
+import { useTranslation } from "../../i18n";
+import InlineEdit from "../InlineEdit";
+import AvatarCropDialog from "../../auth/AvatarCropDialog";
+import ChatModelPicker from "../ChatSidebar/ChatModelPicker";
 import type { AgencyBlockState } from "../../canvas/types";
+import { useWorkspace } from "../../contexts/workspaceContext";
+import aiIconColorful from "../../assets/icon_ai-common_colorful.svg?url";
 import "./AgencyBlock.css";
 
 // ─── Icon component + ICONS ─────────────────────────────────────────────────
@@ -582,10 +589,123 @@ function RoutePlannerMini({
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
+const FALLBACK_AVATAR = "/avatars/avatar_1.png";
+
 export default function AgencyBlock({ blockId }: Props) {
   const { state, patchBlockState, scheduleSave } = useCanvas();
   const shellCtx = useBlockShell();
+  const { agentId } = useAuth();
+  const { t } = useTranslation();
   const blockState = (state.blockStates[blockId] ?? {}) as AgencyBlockState;
+
+  // Agent hero state
+  const [agent, setAgent] = useState<AgentMeta | null>(null);
+  const [nameEditing, setNameEditing] = useState(false);
+  const [cropSource, setCropSource] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarFileRef = useRef<HTMLInputElement>(null);
+  const resolvedAgentId = agentId || "agent_default";
+
+  useEffect(() => {
+    if (!resolvedAgentId) return;
+    getAgent(resolvedAgentId).then(setAgent).catch(() => {});
+  }, [resolvedAgentId]);
+
+  // Sync avatar/name from other blocks
+  useEffect(() => {
+    const onAvatar = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d?.agentId === resolvedAgentId && d?.avatarUrl) setAgent((p) => p ? { ...p, avatarUrl: d.avatarUrl } : p);
+    };
+    const onName = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d?.agentId === resolvedAgentId && d?.name) setAgent((p) => p ? { ...p, name: d.name } : p);
+    };
+    window.addEventListener("agent-avatar-changed", onAvatar);
+    window.addEventListener("agent-name-changed", onName);
+    return () => { window.removeEventListener("agent-avatar-changed", onAvatar); window.removeEventListener("agent-name-changed", onName); };
+  }, [resolvedAgentId]);
+
+  const onAvatarFilePicked = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !/^image\/(png|jpe?g|gif|webp)$/.test(file.type)) return;
+    const reader = new FileReader();
+    reader.onload = () => setCropSource(reader.result as string);
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleAvatarCropped = useCallback(async (dataUrl: string) => {
+    setCropSource(null);
+    if (!resolvedAgentId) return;
+    setAvatarUploading(true);
+    try {
+      const res = await uploadAgentAvatar(resolvedAgentId, dataUrl);
+      const busted = res.avatarUrl ? `${res.avatarUrl}?v=${Date.now()}` : res.avatarUrl;
+      setAgent((p) => p ? { ...p, avatarUrl: busted } : p);
+      window.dispatchEvent(new CustomEvent("agent-avatar-changed", { detail: { agentId: resolvedAgentId, avatarUrl: busted } }));
+    } catch { /* ignore */ }
+    setAvatarUploading(false);
+  }, [resolvedAgentId]);
+
+  const handleNameSave = useCallback(async (name: string) => {
+    setNameEditing(false);
+    if (!resolvedAgentId || !name.trim()) return;
+    try {
+      await renameAgent(resolvedAgentId, name.trim());
+      setAgent((p) => p ? { ...p, name: name.trim() } : p);
+      window.dispatchEvent(new CustomEvent("agent-name-changed", { detail: { agentId: resolvedAgentId, name: name.trim() } }));
+    } catch { /* ignore */ }
+  }, [resolvedAgentId]);
+
+  const agentName = agent?.name || "Agent";
+  const workspace = useWorkspace();
+
+  // Build ambitious recommendations — frontier-grade goals based on workspace state
+  const recommendations = useMemo(() => {
+    const recs: { goal: string; todos?: string[] }[] = [];
+    const { tableCount, ideas, designs, demos } = workspace;
+
+    // Visionary goals seeded by workspace context
+    if (tableCount === 0 && ideas.length === 0) {
+      recs.push(
+        { goal: "构建一个 AI-native 的行业知识图谱，让团队用自然语言查询任意实体关系", todos: ["定义知识本体结构", "设计实体和关系表", "导入种子数据", "编写查询指南文档"] },
+        { goal: "Design a self-evolving product metrics system that auto-discovers leading indicators", todos: ["Map the metric dependency graph", "Build data pipeline tables", "Write the anomaly detection logic doc"] },
+      );
+    }
+    if (tableCount > 0 && ideas.length === 0) {
+      recs.push(
+        { goal: "从现有数据中发现被忽视的增长杠杆，输出一份可执行的战略洞察报告", todos: ["全量数据探索与异常检测", "交叉分析发现隐藏相关性", "生成战略建议文档"] },
+        { goal: "Build a predictive model from existing data to forecast next quarter's key outcomes" },
+      );
+    }
+    if (tableCount > 0 && ideas.length > 0) {
+      recs.push(
+        { goal: "将分散的数据和文档整合为一套可自动更新的决策仪表盘 + 实时简报系统", todos: ["梳理数据源依赖关系", "构建聚合分析层", "生成自动化简报文档模板"] },
+        { goal: "Synthesize all existing knowledge into a living strategy document that evolves with new data" },
+      );
+    }
+    if (demos.length > 0) {
+      recs.push({ goal: "将现有 Demo 进化为一个完整的产品原型，具备用户反馈闭环和 A/B 实验能力", todos: ["审计所有 Demo 的功能覆盖度", "设计反馈收集机制", "输出产品演进路线图"] });
+    }
+    if (designs.length > 0) {
+      recs.push({ goal: "Transform design assets into a generative design system that adapts to user behavior patterns", todos: ["Audit design components", "Build adaptive layout rules", "Create a living style guide"] });
+    }
+
+    // Frontier-grade fallbacks
+    const frontierGoals: { goal: string; todos?: string[] }[] = [
+      { goal: "研究并构建一套 Agent-to-Agent 协作协议，让多个 AI Agent 能自主分工完成复杂项目", todos: ["调研现有多智能体框架", "设计协作通信协议", "实现原型验证", "撰写技术白皮书"] },
+      { goal: "设计下一代人机协作范式：人类只需定义价值函数，AI 自主探索最优路径并持续进化", todos: ["定义价值对齐框架", "构建反馈回路机制", "编写范式设计文档"] },
+      { goal: "Build an autonomous research pipeline that continuously discovers, validates, and synthesizes frontier knowledge in your domain" },
+    ];
+    while (recs.length < 3) {
+      const next = frontierGoals.shift();
+      if (!next) break;
+      if (!recs.some((r) => r.goal === next.goal)) recs.push(next);
+    }
+
+    return recs.slice(0, 3);
+  }, [workspace]);
 
   // Local state
   const [status, setStatus] = useState<SessionStatus>("idle");
@@ -597,6 +717,7 @@ export default function AgencyBlock({ blockId }: Props) {
   const [currentMilestoneId, setCurrentMilestoneId] = useState<string | null>(null);
   const [popoverMode, setPopoverMode] = useState<"full" | "mini">(blockState.popoverMode ?? "full");
   const [chaosOpen, setChaosOpen] = useState(false);
+  const [showCheckpoints, setShowCheckpoints] = useState(false);
   const [showRoutePopover, setShowRoutePopover] = useState(false);
 
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -954,26 +1075,37 @@ export default function AgencyBlock({ blockId }: Props) {
           </button>
         </div>
         <div className="ha-topbar-actions">
-          {/* Chaos Monkey button */}
+          {/* 1) Chaos Monkey — icon + text */}
           <div className="ha-chaos-wrap">
             <button
-              className={`ha-icon-btn ha-chaos-btn ${chaosOpen ? "is-open" : ""} ${isValidating ? "is-active" : ""}`}
-              title="Chaos Monkey &middot; validator agent"
+              className={`ha-topbar-text-btn ${chaosOpen ? "is-active" : ""}`}
               onClick={() => setChaosOpen(!chaosOpen)}
             >
-              <span className="ha-monkey-avatar">
-                <Icon d={ICONS.monkey} size={14} />
-                {isValidating && <span className="ha-monkey-pulse" />}
-              </span>
+              <Icon d={ICONS.monkey} size={14} />
+              <span>Chaos Monkey</span>
             </button>
             {chaosOpen && (
               <ChaosPopover isValidating={isValidating} onClose={() => setChaosOpen(false)} />
             )}
           </div>
-          {/* Checkpoint badge */}
-          <button className="ha-icon-btn ha-checkpoint-btn" title="Checkpoints">
+
+          {/* 2) Checkpoints — icon + text */}
+          <button
+            className={`ha-topbar-text-btn ${showCheckpoints ? "is-active" : ""}`}
+            onClick={() => setShowCheckpoints((v) => !v)}
+          >
             <Icon d={ICONS.checkpoint} size={14} />
+            <span>Checkpoints</span>
             {checkpoints.length > 0 && <span className="ha-checkpoint-count">{checkpoints.length}</span>}
+          </button>
+
+          {/* 3) AI icon — collapse block to infra topbar */}
+          <button
+            className="ha-topbar-ai-btn"
+            title="Collapse to topbar"
+            onClick={() => shellCtx?.onClose?.()}
+          >
+            <img src={aiIconColorful} alt="" width="18" height="18" />
           </button>
         </div>
 
@@ -1070,53 +1202,89 @@ export default function AgencyBlock({ blockId }: Props) {
       {/* Body — centered container, max 800px */}
       <div className="ha-body">
         <div className="ha-body-center">
-          {/* Left: Route line (From → Todos → Goal) */}
-          <div className="ha-route-line">
-            {/* From marker */}
-            <div className="ha-route-line-node ha-route-line-from">
-              <div className="ha-route-line-marker">
-                <Icon d={ICONS.pin} size={11} />
-              </div>
-              <div className="ha-route-line-label">Now</div>
-            </div>
 
-            {/* Vertical connector — stretches between From and To */}
-            <div className="ha-route-line-track">
-              <div className="ha-route-line-track-bg" />
-              {/* Milestone dots */}
-              {milestones.map((m, i) => {
-                const total = milestones.length + 1;
-                const pct = ((i + 1) / total) * 100;
+          {/* Agent hero header (avatar + name + model) */}
+          <div className="ab-hero ha-hero">
+            <div className="ab-hero-avatar-wrap" title={t("topbar.changeAvatar") as string}>
+              <img
+                key={agent?.avatarUrl}
+                className="ab-hero-avatar"
+                src={agent?.avatarUrl || FALLBACK_AVATAR}
+                alt=""
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = FALLBACK_AVATAR; }}
+              />
+              <div className="ab-hero-avatar-overlay">
+                {avatarUploading ? <span>…</span> : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V8a1 1 0 011-1z" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx="12" cy="13" r="3.5" stroke="#fff" strokeWidth="1.6" />
+                  </svg>
+                )}
+              </div>
+              <input ref={avatarFileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="ab-hero-avatar-input" onChange={onAvatarFilePicked} />
+            </div>
+            <div className="ab-hero-meta">
+              <div className="ab-hero-line">
+                <span className="ab-hero-name">
+                  <InlineEdit value={agentName} isEditing={nameEditing} onStartEdit={() => setNameEditing(true)} onSave={handleNameSave} onCancelEdit={() => setNameEditing(false)} maxLength={40} />
+                </span>
+              </div>
+              <div className="ab-hero-chips">
+                <ChatModelPicker agentId={resolvedAgentId} open={true} />
+              </div>
+            </div>
+          </div>
+
+          {/* Main content: route line + work area */}
+          <div className="ha-main-row">
+          {/* Left: Route line (From dot → dashed line → To dot) */}
+          <div className="ha-route-side">
+            <span className="ha-rp-pop-marker ha-rp-pop-marker-from" />
+            <div className="ha-route-side-track">
+              {milestones.map((m) => {
                 const passed = m.status === "passed";
                 const active = m.id === currentMilestoneId;
                 return (
-                  <div
+                  <span
                     key={m.id}
-                    className={`ha-route-line-dot ${passed ? "is-passed" : ""} ${active ? "is-active" : ""}`}
-                    style={{ top: `${pct}%` }}
+                    className={`ha-rp-pop-marker ha-rp-pop-marker-step ${passed ? "is-passed" : ""} ${active ? "is-active" : ""}`}
                     title={m.title}
                   />
                 );
               })}
             </div>
-
-            {/* To marker */}
-            <div className="ha-route-line-node ha-route-line-to">
-              <div className="ha-route-line-marker ha-route-line-marker-to">
-                <Icon d={ICONS.targetCircle} size={11} />
-              </div>
-              <div className="ha-route-line-label ha-route-line-goal">
-                {goal || "Goal"}
-              </div>
-            </div>
+            <span className="ha-rp-pop-marker ha-rp-pop-marker-to" />
           </div>
 
           {/* Right: Agent work area */}
           <div className="ha-work-area">
             {status === "idle" && events.length === 0 && (
               <div className="ha-work-welcome">
-                <span>Set a goal and let the agent drive</span>
-                <span className="ha-work-cursor" />
+                <div className="ha-work-welcome-header">
+                  <span>What would you like to achieve?</span>
+                  <span className="ha-work-cursor" />
+                </div>
+                <p className="ha-work-welcome-sub">Set a goal and the agent will drive autonomously. Here are some ideas based on your workspace:</p>
+                <div className="ha-work-suggestions">
+                  {recommendations.map((rec, i) => (
+                    <button
+                      key={i}
+                      className="ha-work-suggestion"
+                      onClick={() => {
+                        setGoal(rec.goal);
+                        if (rec.todos) setTodos(rec.todos);
+                        setShowRoutePopover(true);
+                      }}
+                    >
+                      <span className="ha-work-suggestion-goal">{rec.goal}</span>
+                      {rec.todos && (
+                        <span className="ha-work-suggestion-todos">
+                          {rec.todos.length} steps: {rec.todos.join(" → ")}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {(status !== "idle" || events.length > 0) && (
@@ -1128,8 +1296,18 @@ export default function AgencyBlock({ blockId }: Props) {
               </div>
             )}
           </div>
+          </div>
         </div>
       </div>
+
+      {/* Avatar crop dialog */}
+      {cropSource && (
+        <AvatarCropDialog
+          sourceDataUrl={cropSource}
+          onConfirm={handleAvatarCropped}
+          onCancel={() => setCropSource(null)}
+        />
+      )}
     </div>
   );
 }

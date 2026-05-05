@@ -176,7 +176,7 @@
   border-bottom: 1px solid var(--border-light);
   background: transparent;
   position: relative;
-  z-index: 1;
+  z-index: 10;
 }
 .ha-topbar-left {
   display: inline-flex;
@@ -188,7 +188,7 @@
 .ha-topbar-actions {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   flex-shrink: 0;
 }
 .ha-topbar-goal {
@@ -274,20 +274,132 @@
   min-height: 0;
   min-width: 0;
   overflow: auto;
-  padding: 20px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-/* Centered inner container */
-.ha-body-center {
-  max-width: 800px;
-  margin: 0 auto;
+/* Hero row — left agent + right chaos monkey */
+.ha-hero-row {
   display: flex;
-  gap: 20px;
-  height: 100%;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+/* Hero — no extra padding, inherits from .ha-body */
+.ha-hero.ab-hero {
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* Mirrored hero (chaos monkey) — right-aligned text */
+.ha-hero-mirror {
+  flex-direction: row-reverse;
+}
+.ha-hero-mirror .ab-hero-meta {
+  text-align: right;
+}
+.ha-hero-mirror .ab-hero-line {
+  justify-content: flex-end;
+}
+.ha-hero-mirror .ab-hero-chips {
+  justify-content: flex-end;
+}
+
+/* Chaos monkey avatar placeholder */
+.ha-chaos-avatar-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+/* Chaos monkey model chip — matches ChatModelPicker button visual */
+.ha-chaos-model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius-s, 6px);
+  cursor: pointer;
+  transition: background 100ms;
+}
+.ha-chaos-model-chip:hover {
+  background: var(--surface-3);
+}
+
+/* Below hero: route line + work area side by side */
+.ha-body-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 
-/* ── Left: Route line (vertical From → To) ──────────────────────── */
+.ha-main-row {
+  flex: 1;
+  display: flex;
+  gap: 20px;
+  min-height: 0;
+  margin-top: 32px;
+}
+
+/* ── Left: Route side panel (same visual as popover) ─────────────── */
+.ha-route-side {
+  flex-shrink: 0;
+  width: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 8px 0;
+}
+.ha-route-side-track {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-evenly;
+  position: relative;
+  min-height: 40px;
+  padding: 6px 0;
+}
+/* Dashed line behind milestone dots */
+.ha-route-side-track::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  border-left: 2px dashed var(--border-strong, #d0d3d6);
+  transform: translateX(-50%);
+}
+/* Milestone marker states */
+.ha-rp-pop-marker-step.is-passed {
+  background: var(--ha-accent, var(--primary));
+  border-color: var(--ha-accent, var(--primary));
+  border-style: solid;
+}
+.ha-rp-pop-marker-step.is-active {
+  border-color: var(--ha-accent, var(--primary));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ha-accent, var(--primary)) 14%, transparent);
+}
+
+/* ── (legacy route-line styles, kept for reference) ──────────────── */
 .ha-route-line {
   flex-shrink: 0;
   display: flex;
@@ -384,10 +496,66 @@
 
 .ha-work-welcome {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ha-work-welcome-header {
+  display: flex;
   align-items: center;
   gap: 4px;
   font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.ha-work-welcome-sub {
+  margin: 0;
+  font-size: 13px;
   color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.ha-work-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Matches .chat-preset-chip from ChatSidebar */
+.ha-work-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--surface-1);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-primary);
+  overflow: hidden;
+  transition: background 0.12s;
+}
+.ha-work-suggestion:hover {
+  background: var(--border-light);
+}
+
+.ha-work-suggestion-goal {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.ha-work-suggestion-todos {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ha-work-cursor {
@@ -1503,6 +1671,52 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: inherit;
+}
+
+/* ── Topbar text buttons (icon + label) ──────────────────────────── */
+.ha-topbar-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-s, 6px);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  position: relative;
+}
+.ha-topbar-text-btn:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.ha-topbar-text-btn.is-active {
+  background: var(--primary-bg);
+  color: var(--primary);
+}
+
+/* AI collapse button */
+.ha-topbar-ai-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-s, 6px);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.ha-topbar-ai-btn:hover {
+  background: var(--surface-3);
 }
 
 /* ── Route popover anchored to topbar (not left panel) ────────────── */
