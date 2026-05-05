@@ -5,6 +5,7 @@
  */
 
 import type { ProviderAdapter, ProviderStreamEvent, ProviderStreamParams } from "./types.js";
+import { recordTokenUsage } from "../tokenUsageService.js";
 
 const ARK_BASE_URL = process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 
@@ -22,9 +23,8 @@ export const arkImageAdapter: ProviderAdapter = {
       }
     }
 
+    const startedAt = Date.now();
     try {
-      yield { kind: "text_delta", text: "🎨 Generating image...\n\n" };
-
       const res = await fetch(`${ARK_BASE_URL}/images/generations`, {
         method: "POST",
         headers: {
@@ -37,7 +37,7 @@ export const arkImageAdapter: ProviderAdapter = {
           model: params.model.providerModelId,
           prompt,
           response_format: "url",
-          size: /\b2[Kk]\b/.test(prompt) ? "2K" : "1K",
+          size: /\b[34][Kk]\b/.test(prompt) ? (/\b3[Kk]\b/.test(prompt) ? "3k" : "4k") : "2k",
           stream: false,
           watermark: false,
         }),
@@ -50,7 +50,7 @@ export const arkImageAdapter: ProviderAdapter = {
         return;
       }
 
-      const data = await res.json() as { data?: Array<{ url?: string }> };
+      const data = await res.json() as { data?: Array<{ url?: string }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
       const imageUrl = data.data?.[0]?.url;
 
       if (imageUrl) {
@@ -58,7 +58,15 @@ export const arkImageAdapter: ProviderAdapter = {
       } else {
         yield { kind: "text_delta", text: "Image generation completed but no URL returned." };
       }
-      yield { kind: "done" };
+      const u = data.usage;
+      const usage = u ? { promptTokens: u.prompt_tokens ?? 0, completionTokens: u.completion_tokens ?? 0, totalTokens: u.total_tokens ?? 0 } : undefined;
+      if (params.recordContext && usage) {
+        void recordTokenUsage(
+          { ...params.recordContext, model: params.model.providerModelId, provider: "ark-image" },
+          { ...usage, durationMs: Date.now() - startedAt },
+        );
+      }
+      yield { kind: "done", usage };
     } catch (err: any) {
       yield { kind: "error", message: err.message ?? "ark-image request failed" };
     }

@@ -51,6 +51,12 @@ function looksLikeMarkdown(s: string): boolean {
  */
 function normalizeChatMarkdown(input: string): string {
   if (!input) return input;
+  // Convert bare media URLs to markdown links so react-markdown's `a` handler can detect them.
+  // Matches URLs on their own line or surrounded by whitespace that end with media extensions.
+  input = input.replace(
+    /(?<![(\[])(https?:\/\/\S+?\.(?:mp4|webm|mov|png|jpe?g|gif|webp|mp3|wav|pdf)(?:\?[^\s)]*)?)/gi,
+    (url) => `[${url.includes("video") || /\.mp4|\.webm|\.mov/i.test(url) ? "Video" : /\.mp3|\.wav/i.test(url) ? "Audio" : /\.pdf/i.test(url) ? "PDF" : "Image"}](${url})`,
+  );
   // Split on fenced code blocks; odd indices are code content, preserve them.
   const parts = input.split(/(```[\s\S]*?```)/g);
   for (let i = 0; i < parts.length; i++) {
@@ -95,34 +101,19 @@ export default function AssistantText({
     [markdown, content],
   );
 
-  // Detect media generation in progress (no final URL yet)
-  const isGenerating = /^[🎨🎬]\s*(Generating|Creating)/.test(content) && !/!\[.*\]\(http/.test(content) && !/^https?:\/\//.test(content.split("\n").pop() || "");
-
-  if (!markdown && !isGenerating) {
+  if (!markdown) {
     return <div className="chat-msg-assistant">{content}</div>;
   }
 
   return (
     <div className="chat-msg-assistant chat-msg-assistant-md">
-      {isGenerating && (
-        <div className="chat-media-generating">
-          <span className="chat-media-generating-text">{content.split("\n")[0]}</span>
-        </div>
-      )}
-      {!isGenerating && (
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          rehypePlugins={[[rehypeSanitize, chatSanitizeSchema]]}
-          components={chatMarkdownComponents}
-        >
-          {normalized}
-        </ReactMarkdown>
-      )}
-      {isGenerating && content.includes("\n") && (
-        <div className="chat-msg-assistant-progress">
-          {content.split("\n").slice(1).filter(Boolean).join(" ")}
-        </div>
-      )}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[[rehypeSanitize, chatSanitizeSchema]]}
+        components={chatMarkdownComponents}
+      >
+        {normalized}
+      </ReactMarkdown>
     </div>
   );
 }

@@ -295,6 +295,9 @@ model Message {
   /// Model ID used for this turn (e.g. "claude-opus-4.7", "doubao-2.0").
   /// Only set on assistant messages at turn completion.
   modelId          String?
+  /// Source context: active skill names or habit ID for this turn.
+  /// Format: "skill:table-skill,analyst-skill" or "habit:habit_system_evolve" or null.
+  source           String?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 

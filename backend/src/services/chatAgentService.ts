@@ -2661,6 +2661,12 @@ async function* runAgentImpl(
   // 历史 assistant 气泡仍能渲染 "Generated · X 秒 · Y tokens"。
   // V3.0 multi-conv:打 branchTag="main",方便 FE 折叠规则识别"被 synth
   // 取代的主线流式气泡"(synth 出现后此条折叠成可展开按钮)。
+  // Build source: active skills for this turn
+  const activeSkillSet = getOrInitSkillState(conversationId).active;
+  const sourceStr = activeSkillSet.size > 0
+    ? `skill:${[...activeSkillSet].join(",")}`
+    : null;
+
   const persistedAssistantMsg = await convStore.appendMessage(conversationId, {
     role: "assistant",
     content: accumulatedText,
@@ -2670,6 +2676,8 @@ async function* runAgentImpl(
     durationMs: Date.now() - turnStartedAt,
     promptTokens: turnPromptTokens,
     completionTokens: turnCompletionTokens,
+    modelId: model.id,
+    source: sourceStr,
   });
 
   // V2.1: re-key any subagent_runs / workflow_runs that this turn created

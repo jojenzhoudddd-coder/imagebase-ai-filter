@@ -6,10 +6,11 @@
  */
 
 import type { ProviderAdapter, ProviderStreamEvent, ProviderStreamParams } from "./types.js";
+import { recordTokenUsage } from "../tokenUsageService.js";
 
 const ARK_BASE_URL = process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 const POLL_INTERVAL = 5000;
-const MAX_POLL_TIME = 300000;
+const MAX_POLL_TIME = 600000; // 10min — video generation can take a while
 
 export const arkVideoAdapter: ProviderAdapter = {
   name: "ark-video",
@@ -38,7 +39,6 @@ export const arkVideoAdapter: ProviderAdapter = {
         if (d >= 5 && d <= 11) duration = d;
       }
 
-      yield { kind: "text_delta", text: `🎬 Generating video (${ratio}, ${duration}s)...\n\n` };
 
       const createRes = await fetch(`${ARK_BASE_URL}/contents/generations/tasks`, {
         method: "POST",
@@ -69,7 +69,6 @@ export const arkVideoAdapter: ProviderAdapter = {
         return;
       }
 
-      yield { kind: "text_delta", text: `Task created: ${taskId}\n` };
 
       const startTime = Date.now();
       while (Date.now() - startTime < MAX_POLL_TIME) {
@@ -79,6 +78,10 @@ export const arkVideoAdapter: ProviderAdapter = {
         }
 
         await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+
+        // Yield a thinking delta to keep upstream timeouts (180s tool timeout,
+        // SSE heartbeat) alive during the long polling loop.
+        yield { kind: "thinking_delta", text: "" };
 
         const pollRes = await fetch(`${ARK_BASE_URL}/contents/generations/tasks/${taskId}`, {
           headers: { Authorization: `Bearer ${apiKey}` },
@@ -91,16 +94,25 @@ export const arkVideoAdapter: ProviderAdapter = {
           status?: string;
           content?: { video_url?: string };
           error?: { message?: string };
+          usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
         };
 
         if (pollData.status === "succeeded") {
           const videoUrl = pollData.content?.video_url;
           if (videoUrl) {
-            yield { kind: "text_delta", text: `\nVideo generated successfully!\n\n${videoUrl}` };
+            yield { kind: "text_delta", text: `[Generated Video](${videoUrl})` };
           } else {
-            yield { kind: "text_delta", text: "\nVideo generated but no URL returned." };
+            yield { kind: "text_delta", text: "Video generated but no URL returned." };
           }
-          yield { kind: "done" };
+          const u = pollData.usage;
+          const usage = u ? { promptTokens: u.prompt_tokens ?? 0, completionTokens: u.completion_tokens ?? 0, totalTokens: u.total_tokens ?? 0 } : undefined;
+          if (params.recordContext && usage) {
+            void recordTokenUsage(
+              { ...params.recordContext, model: params.model.providerModelId, provider: "ark-video" },
+              { ...usage, durationMs: Date.now() - startTime },
+            );
+          }
+          yield { kind: "done", usage };
           return;
         }
 
@@ -109,11 +121,9 @@ export const arkVideoAdapter: ProviderAdapter = {
           return;
         }
 
-        const elapsed = Math.round((Date.now() - startTime) / 1000);
-        yield { kind: "text_delta", text: `⏳ ${elapsed}s...\n` };
       }
 
-      yield { kind: "error", message: "Video generation timed out (5min)" };
+      yield { kind: "error", message: "Video generation timed out (10min)" };
     } catch (err: any) {
       yield { kind: "error", message: err.message ?? "ark-video request failed" };
     }

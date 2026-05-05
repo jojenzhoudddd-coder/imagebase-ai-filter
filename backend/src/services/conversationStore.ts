@@ -241,6 +241,8 @@ export async function appendMessage(
     durationMs?: number | null;
     promptTokens?: number | null;
     completionTokens?: number | null;
+    modelId?: string | null;
+    source?: string | null;
   }
 ): Promise<Message | undefined> {
   // Ensure the conversation exists — keeps the old Map-era null-return behavior.
@@ -276,6 +278,8 @@ export async function appendMessage(
         durationMs: msg.durationMs ?? null,
         promptTokens: msg.promptTokens ?? null,
         completionTokens: msg.completionTokens ?? null,
+        modelId: (msg as any).modelId ?? null,
+        source: (msg as any).source ?? null,
       },
     });
     const count = await tx.message.count({ where: { conversationId } });
@@ -459,10 +463,11 @@ export async function listActivities(
 
     const userInput = userRow?.content ?? "";
     const conv = (row as any).conversation;
-    let source = "-";
-    if (conv?.attachedToType === "habit") source = conv.attachedToId ?? "-";
-    else if (conv?.attachedToType === "skill") source = conv.attachedToId ?? "-";
     const modelId = (row as any).modelId ?? null;
+    // Source priority: message.source (per-turn) > conversation.attachedTo (habit)
+    let source = (row as any).source ?? null;
+    if (!source && conv?.attachedToType === "habit") source = `habit:${conv.attachedToId}`;
+    if (!source) source = "-";
 
     // App-layer full-text search: match across all fields
     if (searchLower) {
