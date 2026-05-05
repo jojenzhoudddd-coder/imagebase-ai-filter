@@ -67,6 +67,18 @@ export default function AgentBlock({ blockId }: Props) {
     return () => window.removeEventListener("agent-avatar-changed", handler);
   }, [agentId]);
 
+  // Listen for name changes from other blocks
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.agentId === agentId && detail?.name) {
+        setAgent((prev) => prev ? { ...prev, name: detail.name } : prev);
+      }
+    };
+    window.addEventListener("agent-name-changed", handler);
+    return () => window.removeEventListener("agent-name-changed", handler);
+  }, [agentId]);
+
   const onFilePicked = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -103,6 +115,8 @@ export default function AgentBlock({ blockId }: Props) {
     try {
       const updated = await renameAgent(agentId, trimmed);
       setAgent((prev) => prev ? { ...prev, name: updated.name } : prev);
+      // Broadcast name change to all blocks
+      window.dispatchEvent(new CustomEvent("agent-name-changed", { detail: { agentId, name: updated.name } }));
     } catch {
       if (agentId) getAgent(agentId).then(setAgent).catch(() => {});
     }

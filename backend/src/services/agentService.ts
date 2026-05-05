@@ -43,7 +43,8 @@ export function agentDir(agentId: string): string {
   return path.join(agentHomeRoot(), agentId);
 }
 
-const DEFAULT_SOUL = `# 我是谁
+const DEFAULT_SOUL = `<!-- name: Agent -->
+# 我是谁
 
 我是一位 OpenClaw-style 的长期 Agent。我属于用户本人，不绑定任何单个
 工作空间；我的记忆、偏好、风格会随着你和我的每一次协作持续演进。
@@ -921,7 +922,22 @@ export async function updateAgent(
   const data: Record<string, unknown> = {};
   if (patch.name !== undefined) data.name = patch.name.trim() || "Agent";
   if (patch.avatarUrl !== undefined) data.avatarUrl = patch.avatarUrl;
-  return prisma.agent.update({ where: { id: agentId }, data });
+  const updated = await prisma.agent.update({ where: { id: agentId }, data });
+
+  // Sync name into soul.md — keep a structured [Name] block at the top
+  if (patch.name !== undefined) {
+    try {
+      const soul = await readSoul(agentId);
+      const nameRegex = /^<!-- name: .* -->\n?/m;
+      const nameTag = `<!-- name: ${patch.name.trim()} -->\n`;
+      const newSoul = nameRegex.test(soul)
+        ? soul.replace(nameRegex, nameTag)
+        : nameTag + soul;
+      await writeSoul(agentId, newSoul);
+    } catch { /* non-fatal */ }
+  }
+
+  return updated;
 }
 
 /** Delete the DB row only. Filesystem is preserved as a safety measure

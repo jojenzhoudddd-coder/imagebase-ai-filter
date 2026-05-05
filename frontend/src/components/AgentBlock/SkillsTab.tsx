@@ -10,6 +10,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
 import type { SystemBlockState } from "../../canvas/types";
 import { useTranslation } from "../../i18n";
+import { useToast } from "../Toast/index";
 import Tooltip from "../Tooltip";
 import CardGrid from "./CardGrid";
 import CardMoreMenu from "./CardMoreMenu";
@@ -43,6 +44,7 @@ export default function SkillsTab({ agentId, blockId }: Props) {
   const { t } = useTranslation();
   const { workspaceId } = useAuth();
   const { addBlock, patchBlockState } = useCanvas();
+  const toast = useToast();
   const [skills, setSkills] = useState<AgentSkillSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -59,12 +61,14 @@ export default function SkillsTab({ agentId, blockId }: Props) {
     );
     try {
       await toggleAgentSkill(agentId, skillId, enabled);
+      toast.success(enabled ? t("agent.toast.skillEnabled") : t("agent.toast.skillDisabled"));
     } catch {
       setSkills((prev) =>
         prev.map((s) => (s.id === skillId ? { ...s, enabled: !enabled } : s)),
       );
+      toast.error(t("agent.toast.toggleFailed"));
     }
-  }, [agentId]);
+  }, [agentId, toast, t]);
 
   const handleDeleteSkill = useCallback(async (skillId: string) => {
     setSkills((prev) => prev.filter((s) => s.id !== skillId));

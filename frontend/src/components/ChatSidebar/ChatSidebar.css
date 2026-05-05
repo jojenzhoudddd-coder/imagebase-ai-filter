@@ -1779,13 +1779,24 @@
   color: var(--text-primary);
   background: transparent;
   min-height: 22px;
-  max-height: 140px;
+  max-height: 300px;
   overflow-y: auto;
+  overflow-x: hidden;
   /* contenteditable browsers default to white-space: normal which collapses
      consecutive spaces. Preserve user's spacing like a textarea. */
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: break-word;
   cursor: text;
+}
+/* Force plain text appearance — strip pasted color/bg from any child */
+.chat-input-editor * {
+  color: inherit !important;
+  background: transparent !important;
+  font-size: inherit !important;
+  font-family: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
 }
 /* Placeholder via ::before. data-placeholder attribute carries the localised
    string from React.

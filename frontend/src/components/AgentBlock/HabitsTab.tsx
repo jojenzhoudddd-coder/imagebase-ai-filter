@@ -10,6 +10,7 @@ import { useCanvas } from "../../contexts/canvasContext";
 import type { SystemBlockState } from "../../canvas/types";
 import { createConversation, listHabits, toggleHabit, type HabitSummary } from "../../api";
 import { useTranslation } from "../../i18n";
+import { useToast } from "../Toast/index";
 import Tooltip from "../Tooltip";
 import CardGrid from "./CardGrid";
 import CardMoreMenu from "./CardMoreMenu";
@@ -53,6 +54,7 @@ export default function HabitsTab({ agentId, blockId }: Props) {
   const { t } = useTranslation();
   const { workspaceId } = useAuth();
   const { addBlock, patchBlockState } = useCanvas();
+  const toast = useToast();
   const [habits, setHabits] = useState<HabitSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -69,12 +71,14 @@ export default function HabitsTab({ agentId, blockId }: Props) {
     );
     try {
       await toggleHabit(agentId, jobId, enabled);
+      toast.success(enabled ? t("agent.toast.habitEnabled") : t("agent.toast.habitDisabled"));
     } catch {
       setHabits((prev) =>
         prev.map((h) => (h.id === jobId ? { ...h, enabled: !enabled } : h)),
       );
+      toast.error(t("agent.toast.toggleFailed"));
     }
-  }, [agentId]);
+  }, [agentId, toast, t]);
 
   const handleDeleteHabit = useCallback(async (jobId: string) => {
     setHabits((prev) => prev.filter((h) => h.id !== jobId));
