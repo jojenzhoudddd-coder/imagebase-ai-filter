@@ -359,6 +359,8 @@ export default function ChatSidebar({
   }, [activeConv?.id]);
   const [messages, setMessages] = useState<UiMessage[]>(initialCache?.messages ?? []);
   const [inputValue, setInputValue] = useState("");
+  // Attachments for current message
+  const [attachments, setAttachments] = useState<Array<{ id: string; url: string; mime: string; size: number; originalName: string }>>([]);
   // Prefill input from parent (e.g. "Add model" flow)
   useEffect(() => {
     if (prefillMessage && !inputValue) {
@@ -367,6 +369,20 @@ export default function ChatSidebar({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillMessage]);
+
+  // Handle file drop/paste → upload → add to attachments
+  const handleFileDrop = useCallback(async (files: File[]) => {
+    for (const file of files) {
+      try {
+        const { uploadChatAttachment } = await import("../../api");
+        const att = await uploadChatAttachment(file);
+        setAttachments((prev) => [...prev, att]);
+      } catch (err) {
+        console.warn("[chat] file upload failed:", err);
+      }
+    }
+  }, []);
+
   const [streaming, setStreaming] = useState(false);
   // Live ref to `streaming` so effects that run on prop-id changes (the
   // [open, workspaceId] revalidation) can check the CURRENT value without
@@ -697,9 +713,17 @@ export default function ChatSidebar({
     // 组件读这个对象渲染 "Generating · 0s · 0 tokens" placeholder,turn_usage
     // 事件会更新 totalTokens,done 事件会切到 phase="generated"。
     const turnStartedAt = Date.now();
+    // Build user message content: attachments as image/file markdown above text
+    const attachmentLines = attachments.map((a) =>
+      a.mime.startsWith("image/")
+        ? `![${a.originalName}](${a.url})`
+        : `[${a.originalName}](${a.url})`
+    );
+    const fullContent = [...attachmentLines, text].join("\n");
+
     setMessages((prev) => [
       ...prev,
-      { id: userMsgId, role: "user", content: text, toolCalls: [] },
+      { id: userMsgId, role: "user", content: fullContent, toolCalls: [] },
       {
         id: assistantMsgId,
         role: "assistant",
@@ -714,6 +738,7 @@ export default function ChatSidebar({
       },
     ]);
     setInputValue("");
+    setAttachments([]);
     setStreaming(true);
     setError(null);
 
@@ -1857,6 +1882,9 @@ export default function ChatSidebar({
                   disabled={!activeConv}
                   workspaceId={workspaceId}
                   agentId={agentId}
+                  attachments={attachments}
+                  onAttachmentsChange={setAttachments}
+                  onFileDrop={handleFileDrop}
                 />
               </div>
             </div>
@@ -1902,6 +1930,9 @@ export default function ChatSidebar({
             disabled={!activeConv}
             workspaceId={workspaceId}
             agentId={agentId}
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
+            onFileDrop={handleFileDrop}
           />
         </>
       )}

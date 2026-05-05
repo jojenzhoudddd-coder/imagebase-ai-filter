@@ -532,27 +532,6 @@ export default function ChatInput({
 
   return (
     <div className="chat-input-wrap">
-      {/* Attachment preview bar */}
-      {attachments && attachments.length > 0 && (
-        <div className="chat-attachments-bar">
-          {attachments.map((att) => (
-            <div key={att.id} className="chat-attachment-item">
-              {att.mime.startsWith("image/") && (
-                <img className="chat-attachment-item-thumb" src={att.url} alt="" />
-              )}
-              <span className="chat-attachment-item-name">{att.originalName}</span>
-              <button
-                className="chat-attachment-item-remove"
-                onClick={() => onAttachmentsChange?.(attachments.filter((a) => a.id !== att.id))}
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
       <div
         className="chat-input-box"
         onDragOver={handleDragOver}
@@ -560,6 +539,30 @@ export default function ChatInput({
         onDrop={handleDrop}
       >
         <div className="chat-input-content">
+          {/* Attachment thumbnails inside editor area, above text */}
+          {attachments && attachments.length > 0 && (
+            <div className="chat-attachments-inline">
+              {attachments.map((att) => (
+                <div key={att.id} className="chat-attachment-thumb-wrap">
+                  {att.mime.startsWith("image/") ? (
+                    <img className="chat-attachment-thumb-img" src={att.url} alt={att.originalName} />
+                  ) : (
+                    <div className="chat-attachment-thumb-file">
+                      <span className="chat-attachment-thumb-ext">{att.originalName.split(".").pop()}</span>
+                    </div>
+                  )}
+                  <button
+                    className="chat-attachment-thumb-remove"
+                    onClick={() => onAttachmentsChange?.(attachments.filter((a) => a.id !== att.id))}
+                  >
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                      <path d="M1 1l6 6M7 1l-6 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div
             ref={editorRef}
             className={`chat-input-editor${value.length === 0 ? " is-empty" : ""}`}

@@ -1,21 +1,46 @@
 /**
  * UserBubble — right-aligned user message.
  *
- * Figma nodes 6:2986 "用户" (row) + 6:2987 "Desktop / Chat cell" (bubble).
- * The row gives the bubble a 40px left gutter + justify-end; the bubble is
- * flex-1 inside that row so long messages wrap within the available width
- * (see .chat-msg-user-row / .chat-msg-user in ChatSidebar.css).
- *
- * V2.9.1 #4: 把 [@label](mention://...) 解析成蓝字 chip,与 AssistantText
- * 一致(用户在 ChatInput 选 @ 时实际写入的就是这个 markdown link 语法)。
+ * Renders attachment thumbnails above text, both inside the bubble.
+ * Parses [@label](mention://...) and [/label](skill://...) as colored chips.
+ * Image attachments rendered as ![name](url) in content are shown as thumbnails.
  */
 
 import { Fragment } from "react";
 
-// Matches both [@label](mention://...) and [/label](skill://...)
+// Matches [@label](mention://...) and [/label](skill://...)
 const CHIP_RE = /\[([^\]]+)\]\(((mention|skill):\/\/[^)]+)\)/g;
+// Matches ![alt](url) image attachments
+const IMG_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
+// Matches [label](url) file attachments (non-mention, non-skill, non-image)
+const FILE_RE = /(?<!!)\[([^\]]+)\]\(((?!mention:|skill:)[^)]+)\)/g;
 
-function renderUserContentWithChips(text: string): React.ReactNode[] {
+interface ParsedContent {
+  images: Array<{ alt: string; url: string }>;
+  files: Array<{ name: string; url: string }>;
+  text: string;
+}
+
+function parseContent(raw: string): ParsedContent {
+  const images: ParsedContent["images"] = [];
+  const files: ParsedContent["files"] = [];
+
+  // Extract images
+  let text = raw.replace(IMG_RE, (_, alt, url) => {
+    images.push({ alt, url });
+    return "";
+  });
+
+  // Extract file links
+  text = text.replace(FILE_RE, (_, name, url) => {
+    files.push({ name, url });
+    return "";
+  });
+
+  return { images, files, text: text.trim() };
+}
+
+function renderTextWithChips(text: string): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
@@ -39,16 +64,37 @@ function renderUserContentWithChips(text: string): React.ReactNode[] {
   return out.length === 0 ? [text] : out;
 }
 
+function getExt(name: string): string {
+  return name.split(".").pop()?.toUpperCase() || "FILE";
+}
+
 export default function UserBubble({ content }: { content: string }) {
-  const nodes = renderUserContentWithChips(content);
+  const { images, files, text } = parseContent(content);
+  const hasAttachments = images.length > 0 || files.length > 0;
+  const textNodes = renderTextWithChips(text);
+
   return (
     <div className="chat-msg-user-row">
       <div className="chat-msg-user">
-        <span className="chat-msg-user-text">
-          {nodes.map((n, i) => (
-            <Fragment key={i}>{n}</Fragment>
-          ))}
-        </span>
+        {hasAttachments && (
+          <div className="chat-msg-user-attachments">
+            {images.map((img, i) => (
+              <img key={`img-${i}`} className="chat-msg-user-att-thumb" src={img.url} alt={img.alt} />
+            ))}
+            {files.map((f, i) => (
+              <a key={`file-${i}`} className="chat-msg-user-att-file" href={f.url} target="_blank" rel="noreferrer" title={f.name}>
+                {getExt(f.name)}
+              </a>
+            ))}
+          </div>
+        )}
+        {text && (
+          <span className="chat-msg-user-text">
+            {textNodes.map((n, i) => (
+              <Fragment key={i}>{n}</Fragment>
+            ))}
+          </span>
+        )}
       </div>
     </div>
   );
