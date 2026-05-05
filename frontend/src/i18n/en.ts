@@ -541,7 +541,7 @@ export const en = {
   "chat.agent.menu.models": "Models",
   "chat.agent.menu.activities": "Activities",
   "chat.agent.menu.skills": "Skills",
-  "chat.agent.menu.acknowledge": "About me",
+  "chat.agent.menu.acknowledge": "Acknowledge",
   "chat.agent.menu.habits": "Habits",
   "chat.agent.menu.integrations": "Integrations",
   "chat.clear.confirm.title": "Clear current chat?",

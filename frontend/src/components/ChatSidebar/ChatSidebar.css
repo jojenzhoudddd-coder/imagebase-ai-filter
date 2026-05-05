@@ -48,25 +48,18 @@
   flex: 1 1 auto;
 }
 
-/* Agent avatar button —— 28×28 圆形,默认无边框/无背景,hover 时一圈
- *  surface-3 表示可点。点击 → 弹 .chat-agent-popover. */
-.chat-agent-avatar-btn {
+/* Agent avatar wrap —— 28×28 圆形容器,内部叠 3 层:
+ *   1. <img> 头像
+ *   2. .chat-agent-avatar-overlay  hover 时显示的相机 overlay
+ *   3. <input type="file">  透明覆盖整个 wrap,点击 = file picker */
+.chat-agent-avatar-wrap {
+  position: relative;
   width: 28px;
   height: 28px;
   flex: 0 0 auto;
-  border: none;
-  background: transparent;
-  padding: 0;
   border-radius: 50%;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   overflow: hidden;
-  transition: background 100ms ease, box-shadow 100ms ease;
-}
-.chat-agent-avatar-btn:hover {
-  box-shadow: 0 0 0 2px var(--surface-3);
+  cursor: pointer;
 }
 .chat-agent-avatar-img {
   width: 100%;
@@ -75,11 +68,37 @@
   border-radius: 50%;
   display: block;
 }
-/* Popover —— 复用 .topbar-profile-popover 类的视觉 (TopBar.css 里),
- *  但比 user popover 略窄一点(没那么多分组)。 */
-.chat-agent-popover {
-  width: 240px;
-  z-index: 3000;
+.chat-agent-avatar-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none; /* 让点击穿透到下面的 input */
+  border-radius: 50%;
+}
+.chat-agent-avatar-wrap:hover .chat-agent-avatar-overlay {
+  opacity: 1;
+}
+.chat-agent-avatar-uploading {
+  color: var(--text-on-primary, #fff);
+  font-size: 14px;
+  line-height: 1;
+}
+/* 透明 file input 铺满 wrap,点头像即触发原生 file picker。
+ *  z-index 高于 overlay 让事件落在 input 上,而非 overlay。 */
+.chat-agent-avatar-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+  border-radius: 50%;
 }
 
 /* Agent name title — leftmost item in the header. Matches the
