@@ -1145,7 +1145,8 @@ export type ChatMentionPayload =
   | { type: "idea-section"; ideaId: string; section: string }
   | { type: "idea-block"; ideaId: string; blockId: string }
   | { type: "design"; designId: string }
-  | { type: "taste"; tasteId: string; designId: string };
+  | { type: "taste"; tasteId: string; designId: string }
+  | { type: "skill"; skillName: string };
 
 export interface StreamChatOptions {
   conversationId: string;
@@ -1871,6 +1872,27 @@ export async function toggleHabit(
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || `HTTP ${res.status}`);
   }
+}
+
+// ═══════════════ Chat Attachments ═══════════════
+
+export interface ChatAttachmentResponse {
+  id: string;
+  url: string;
+  mime: string;
+  size: number;
+  originalName: string;
+}
+
+export async function uploadChatAttachment(file: File): Promise<ChatAttachmentResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/chat/attachments`, { method: "POST", body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || `Upload failed: HTTP ${res.status}`);
+  }
+  return res.json();
 }
 
 // ═══════════════ Agent Knowledge (Acknowledge) ═══════════════

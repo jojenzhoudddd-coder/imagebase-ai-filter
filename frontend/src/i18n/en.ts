@@ -562,6 +562,7 @@ export const en = {
   "agent.activities.output": "Output",
   "agent.activities.model": "Model",
   "agent.activities.conversation": "Conversation",
+  "chat.input.dropFiles": "Drop files here",
   "agent.toast.skillEnabled": "Skill enabled",
   "agent.toast.skillDisabled": "Skill disabled",
   "agent.toast.habitEnabled": "Habit enabled",

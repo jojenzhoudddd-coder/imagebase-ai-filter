@@ -84,23 +84,26 @@ interface MentionQueryState {
 // 拼回 markdown 链接。
 
 const MENTION_LINK_RE = /\[(@[^\]]*)\]\((mention:\/\/[^)]+)\)/g;
+const SKILL_LINK_RE = /\[(\/[^\]]*)\]\((skill:\/\/[^)]+)\)/g;
 
 function markdownToHtml(markdown: string): string {
-  // 转义 HTML 特殊字符;mention 链接不参与转义因为我们要替换
-  // 1) 把 mention 链接抽成 token (避免 escape 时破坏)
   const tokens: Array<{ token: string; html: string }> = [];
   let counter = 0;
   const placeholder = (label: string, href: string) => {
     const tok = `MENTION_${counter++}`;
     const safeLabel = label.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const safeHref = href.replace(/"/g, "&quot;");
+    const isSkill = href.startsWith("skill://");
     tokens.push({
       token: tok,
-      html: `<span class="chat-mention-chip" data-href="${safeHref}" data-label="${safeLabel}" contenteditable="false">${safeLabel}</span>`,
+      html: isSkill
+        ? `<span class="chat-skill-chip" data-skill="${safeHref}" data-label="${safeLabel}" contenteditable="false">${safeLabel}</span>`
+        : `<span class="chat-mention-chip" data-href="${safeHref}" data-label="${safeLabel}" contenteditable="false">${safeLabel}</span>`,
     });
     return tok;
   };
   let withTokens = markdown.replace(MENTION_LINK_RE, (_, label, href) => placeholder(label, href));
+  withTokens = withTokens.replace(SKILL_LINK_RE, (_, label, href) => placeholder(label, href));
   // Escape HTML
   withTokens = withTokens
     .replace(/&/g, "&amp;")
@@ -126,6 +129,12 @@ function htmlToMarkdown(root: HTMLElement): string {
         const href = n.getAttribute("data-href") ?? "";
         const label = n.getAttribute("data-label") ?? n.textContent ?? "@";
         out += `[${label}](${href})`;
+        return;
+      }
+      if (n.classList.contains("chat-skill-chip")) {
+        const skill = n.getAttribute("data-skill") ?? "";
+        const label = n.getAttribute("data-label") ?? n.textContent ?? "/";
+        out += `[${label}](${skill})`;
         return;
       }
       if (n.tagName === "BR") {
@@ -280,40 +289,47 @@ export default function ChatInput({
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) {
       setMentionState(null);
+      setSkillState(null);
       return;
     }
     const range = sel.getRangeAt(0);
     if (!root.contains(range.startContainer)) {
       setMentionState(null);
+      setSkillState(null);
       return;
     }
-    // 取从 root 起点到 caret 的 plain text(walk 时 chip 算 1 个原子,跳过)
     const before = textBeforeCaret(root, range);
-    // 查找最近的 `@` —— 同 V1 的逻辑
     let i = before.length - 1;
     while (i >= 0) {
       const ch = before[i];
+      // @ mention trigger
       if (ch === "@") {
         const query = before.slice(i + 1);
-        if (/\s/.test(query)) {
-          setMentionState(null);
-          return;
-        }
+        if (/\s/.test(query)) break;
         const rect = measureCaretRect(root);
-        if (!rect) {
+        if (!rect) break;
+        setMentionState({ triggerAnchor: rect, query });
+        setSkillState(null);
+        return;
+      }
+      // / skill trigger — only at start of line or after whitespace
+      if (ch === "/") {
+        const charBefore = i > 0 ? before[i - 1] : "\n";
+        if (charBefore === "\n" || charBefore === " " || charBefore === "\t" || i === 0) {
+          const query = before.slice(i + 1);
+          if (/\s/.test(query)) break;
+          const rect = measureCaretRect(root);
+          if (!rect) break;
+          setSkillState({ query, rect });
           setMentionState(null);
           return;
         }
-        setMentionState({ triggerAnchor: rect, query });
-        return;
       }
-      if (ch === "\n" || ch === " " || ch === "\t" || ch === "]") {
-        setMentionState(null);
-        return;
-      }
+      if (ch === "\n" || ch === " " || ch === "\t" || ch === "]") break;
       i--;
     }
     setMentionState(null);
+    setSkillState(null);
   }, []);
 
   const handleSelect = useCallback(() => {
@@ -378,23 +394,67 @@ export default function ChatInput({
 
   const handleMentionClose = useCallback(() => setMentionState(null), []);
 
-  // Strip pasted content of all formatting — plain text only, no colors/bg
+  // Skill select: insert /SkillName chip
+  const handleSkillSelect = useCallback((skill: AgentSkillSummary) => {
+    const el = editorRef.current;
+    if (!el) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    const before = textBeforeCaret(el, range);
+    const slashIdx = before.lastIndexOf("/");
+    if (slashIdx < 0) return;
+    const queryLen = before.length - slashIdx;
+    deleteCharsBeforeCaret(el, queryLen);
+
+    const chip = document.createElement("span");
+    chip.className = "chat-skill-chip";
+    chip.contentEditable = "false";
+    chip.setAttribute("data-skill", `skill://${skill.name}`);
+    chip.setAttribute("data-label", `/${skill.displayName || skill.name}`);
+    chip.textContent = `/${skill.displayName || skill.name}`;
+
+    const sel2 = window.getSelection();
+    if (sel2 && sel2.rangeCount > 0) {
+      const r = sel2.getRangeAt(0);
+      r.insertNode(chip);
+      const space = document.createTextNode(" ");
+      chip.after(space);
+      r.setStart(space, space.textContent!.length);
+      r.setEnd(space, space.textContent!.length);
+      sel2.removeAllRanges();
+      sel2.addRange(r);
+    }
+    setSkillState(null);
+    el.focus({ preventScroll: true } as any);
+    const md = htmlToMarkdown(el);
+    onChange(md);
+  }, [onChange]);
+
+  const handleSkillClose = useCallback(() => setSkillState(null), []);
+
+  // Strip pasted content of all formatting — plain text only, no colors/bg.
+  // Also handle pasted images → forward to onFileDrop.
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    // Check for pasted files (images)
+    const files = Array.from(e.clipboardData.files);
+    if (files.length > 0 && onFileDrop) {
+      e.preventDefault();
+      onFileDrop(files);
+      return;
+    }
     e.preventDefault();
     const text = e.clipboardData.getData("text/plain");
     if (!text) return;
-    // Insert as plain text, then strip any residual inline styles from the editor
     document.execCommand("insertText", false, text);
-    // Defensive: remove all inline style attributes from child elements
     const el = editorRef.current;
     if (el) {
       for (const node of Array.from(el.querySelectorAll("[style]"))) {
-        if (!node.classList.contains("chat-mention-chip")) {
+        if (!node.classList.contains("chat-mention-chip") && !node.classList.contains("chat-skill-chip")) {
           node.removeAttribute("style");
         }
       }
-      // Unwrap styled spans that aren't mention chips
-      for (const span of Array.from(el.querySelectorAll("span:not(.chat-mention-chip)"))) {
+      for (const span of Array.from(el.querySelectorAll("span:not(.chat-mention-chip):not(.chat-skill-chip)"))) {
         const parent = span.parentNode;
         if (parent) {
           while (span.firstChild) parent.insertBefore(span.firstChild, span);
@@ -402,7 +462,7 @@ export default function ChatInput({
         }
       }
     }
-  }, []);
+  }, [onFileDrop]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     // Picker 打开时让 picker 自己处理 Up/Down/Enter/Tab/Esc(它在 capture
@@ -453,8 +513,51 @@ export default function ChatInput({
   : submitMode === "append" ? t("chat.input.append")
   :                           t("chat.input.send");
 
+  // Drag and drop files
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes("Files")) setDragging(true);
+  }, []);
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+  }, []);
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0 && onFileDrop) onFileDrop(files);
+  }, [onFileDrop]);
+
   return (
-    <div className="chat-input-wrap">
+    <div
+      className="chat-input-wrap"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Attachment preview bar */}
+      {attachments && attachments.length > 0 && (
+        <div className="chat-attachments-bar">
+          {attachments.map((att) => (
+            <div key={att.id} className="chat-attachment-item">
+              {att.mime.startsWith("image/") && (
+                <img className="chat-attachment-item-thumb" src={att.url} alt="" />
+              )}
+              <span className="chat-attachment-item-name">{att.originalName}</span>
+              <button
+                className="chat-attachment-item-remove"
+                onClick={() => onAttachmentsChange?.(attachments.filter((a) => a.id !== att.id))}
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="chat-input-box">
         <div className="chat-input-content">
           <div
@@ -487,24 +590,24 @@ export default function ChatInput({
               onClose={handleMentionClose}
             />
           )}
+          {skillState && agentId && (
+            <SkillPicker
+              agentId={agentId}
+              query={skillState.query}
+              atRect={skillState.rect}
+              onSelect={handleSkillSelect}
+              onClose={handleSkillClose}
+            />
+          )}
+          {dragging && (
+            <div className="chat-input-drag-overlay">
+              {t("chat.input.dropFiles")}
+            </div>
+          )}
         </div>
         <div className="chat-input-toolbar">
           <div className="chat-input-tools-left">
-            <button
-              type="button"
-              className="chat-input-mention-btn"
-              title={t("chat.input.mention")}
-              aria-label={t("chat.input.mention")}
-              onClick={() => {
-                // 点 @ 按钮 = 在 caret 插入 @ 并触发 picker
-                const el = editorRef.current;
-                if (!el) return;
-                el.focus();
-                document.execCommand("insertText", false, "@");
-              }}
-            >
-              <AtIcon size={14} />
-            </button>
+            {/* @ mention button removed — replaced by drag-to-upload */}
           </div>
           <div className="chat-input-tools-right">
             {/* V3.0 PR4: generating 提示移到对话流中,不再占输入框右侧空间 */}

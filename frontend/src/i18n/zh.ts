@@ -563,6 +563,7 @@ export const zh: TranslationKeys = {
   "agent.activities.output": "模型输出",
   "agent.activities.model": "模型",
   "agent.activities.conversation": "对话",
+  "chat.input.dropFiles": "拖拽文件到此处",
   "agent.toast.skillEnabled": "技能已启用",
   "agent.toast.skillDisabled": "技能已禁用",
   "agent.toast.habitEnabled": "习惯已启用",
