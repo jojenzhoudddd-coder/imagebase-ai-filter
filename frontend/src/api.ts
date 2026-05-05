@@ -1011,6 +1011,23 @@ export async function fetchChatSuggestions(workspaceId: string): Promise<ChatSug
   return res.json();
 }
 
+/** Goal suggestions for High Agency Block. */
+export interface GoalSuggestion {
+  goal: string;
+  todos?: string[];
+}
+export interface GoalSuggestionResponse {
+  workspaceId: string;
+  goals: GoalSuggestion[];
+  updatedAt: number;
+  stale: boolean;
+}
+export async function fetchGoalSuggestions(workspaceId: string): Promise<GoalSuggestionResponse> {
+  const res = await fetch(`${BASE}/chat/goal-suggestions?workspaceId=${encodeURIComponent(workspaceId)}`);
+  if (!res.ok) throw new Error("Failed to fetch goal suggestions");
+  return res.json();
+}
+
 export async function createConversation(
   workspaceId: string,
   agentIdOrOpts?:
