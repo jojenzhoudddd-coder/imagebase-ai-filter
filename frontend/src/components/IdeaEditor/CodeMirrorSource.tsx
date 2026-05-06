@@ -86,17 +86,20 @@ const ideaEditorTheme = EditorView.theme({
     color: "var(--text-placeholder)",
     fontFamily: "inherit",
   },
-  // 选中态对齐 preview / 其它 block。统一用 rgba 走 --selection-bg token
-  // (LM/DM 各自值在 tokens.css 里定义)—— `Highlight` 系统 keyword 在 DM 下
-  // Chrome/Safari 不会自动切 dark 变体,放弃,改成 token 显式控制。
-  // !important 必须有 —— CodeMirror vendor 自带高特异性选择器 `&light.cm-focused
-  // > .cm-scroller > .cm-selectionLayer .cm-selectionBackground { background:#d7d4f0 }`,
-  // 不加 !important 我们的简单选择器选不动。
+  // 选中态完全交给浏览器/操作系统 —— 用 CSS 系统颜色 keyword `Highlight`
+  // / `HighlightText`,跟 preview / chat / 其它 contenteditable 走同一套
+  // OS 选中色。!important 是因为 CodeMirror vendor 默认 `&light.cm-focused
+  // > .cm-scroller > .cm-selectionLayer .cm-selectionBackground { background:
+  // #d7d4f0 }` 特异性高,不强制覆盖会显示成紫粉色。
+  // 注意:Chrome / Safari 在 DM 下 `Highlight` 不会自动切到 dark 变体,
+  // DM 选中色可能跟 preview 略有差异 —— 用户接受这个"系统默认行为",
+  // 不再用 rgba token 拟合。
   ".cm-selectionBackground": {
-    background: "var(--selection-bg) !important",
+    background: "Highlight !important",
   },
   ".cm-content ::selection": {
-    background: "var(--selection-bg)",
+    background: "Highlight",
+    color: "HighlightText",
   },
   ".cm-activeLine": {
     backgroundColor: "transparent",
