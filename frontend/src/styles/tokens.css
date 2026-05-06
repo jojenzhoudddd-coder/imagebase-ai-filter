@@ -165,8 +165,10 @@
   --info:                #6B9AFF;
   --info-bg:             #1A2543;
 
-  /* ── Selection (DM)—对齐 VSCode DM / Chrome macOS DM ::selection 配色 ─── */
-  --selection-bg:        #264F78;
+  /* ── Selection (DM)—macOS Chrome 原生 ::selection 在 DM 下其实就是 LM
+   * 那个 #B4D5FE 浅蓝再以 40% alpha 透明度叠在 dark surface 上,反推像素后
+   * 得到这个值。文本能透出来,跟 preview 一致。opaque 值不行(会把白字盖住). ─── */
+  --selection-bg:        rgba(180, 213, 254, 0.4);
 
   /* ── Icon ─── */
   --icon-primary:        #E6E8EB;
