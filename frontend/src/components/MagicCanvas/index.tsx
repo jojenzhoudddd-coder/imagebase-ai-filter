@@ -1,33 +1,32 @@
 /**
  * MagicCanvas —— 多 block 的可拖拽画布主体。
- * 替换原 .workspace 里的"chat-part + artifact-part"两栏布局,改为 LayoutNode 树。
  *
- * State preservation across layout changes (Solution A · Portal-based rendering)
+ * State preservation across layout changes (Solution A · Stable-slot Portal)
  * ─────────────────────────────────────────────────────────────────────────────
- * 问题:LayoutNode 是二叉树,关闭/新增/移动 block 会让某个 block 在 React tree
- * 里的祖先链发生变化(SplitNode 节点出现 / 消失),即使 BlockShell 用 key={blockId},
- * React 跨 parent 不能保住组件身份,会 unmount + remount。后果:ChatSidebar 内
- * 的 streaming / messages / cancelRef 等 useState/useRef 全丢,正在 stream 的
- * turn 看起来"消失"。
+ * 问题:LayoutNode 是二叉树,关闭/新增/移动 block 让某 block 在 React tree 里
+ * 的祖先链变化(SplitNode 节点出现 / 消失),即使 BlockShell 用 key={blockId},
+ * React 跨 parent 不能保住组件身份 → unmount + remount → ChatSidebar 内
+ * streaming / messages / cancelRef 等 useState/useRef 全丢。
  *
- * 解法:把 BlockShell 全部塞进 MagicCanvas 顶层一个**扁平稳定数组** —— 它们
- * 永远是 MagicCanvas 这个组件的直接子节点,React tree 位置不动。LayoutRenderer
- * 只负责渲染**空 slot div**,BlockShell 通过 createPortal 投到对应 slot。
+ * 解法 (final · 稳定 slot DOM + portal):
+ *   1. 每个 blockId 有一个**永久稳定的 slot DOM 元素**,在 useRef Map 里 lazy
+ *      创建,这辈子不会被销毁。
+ *   2. LayoutRenderer 渲染**轻量 anchor div**(带 data-mc-anchor=blockId 标识),
+ *      在 layout tree 的对应位置上。
+ *   3. useLayoutEffect 用 appendChild 把稳定 slot DOM 移动到当前 anchor 下面。
+ *      因为 appendChild 是 DOM-level move(不重建),slot 内的所有 portal 子节点
+ *      跟着 slot 一起被 reparent,React 组件实例完全不感知 DOM 树位置变化。
+ *   4. BlockShell + 业务组件通过 createPortal 渲染进**稳定 slot**,portal target
+ *      永远是同一个 DOM 节点,根本没有 "container 切换" 这个动作 → 无任何 race。
  *
- * 关键时序:
- *   1. visibleBlockIds 或 layout 改变 → MagicCanvas 重渲
- *   2. LayoutRenderer 重建 slot div(旧 div 卸载,新 div 挂载) → ref 回调更新
- *   3. useLayoutEffect 在 commit 后、paint 前同步触发 bumpSlots
- *   4. 第二次 render → BlockShell 数组的 createPortal 用新 slot,React 把
- *      portal children 在 DOM 层"移动"到新容器(组件实例不变,state 保留)
- *
- * 第一帧 slot 还没 attach 时,PortalBlock 返回 null —— BlockShell 这时确实
- * 还没 mount。但这只发生在 MagicCanvas 自己第一次 mount,后续任何 layout 变化,
- * BlockShell 已经存在,只是被 portal 移到不同 DOM 节点,state 全保。
+ * 为什么这比之前的 "靠 useLayoutEffect 同步 slot ref" 强:之前 anchor 就是 slot,
+ * layout 重建时 anchor 整个被 React unmount + 新 anchor mount,中间 portal 内容
+ * 暂时挂在已被卸载的 detached DOM 上 → 视觉上闪。现在 anchor 只是"宿主标记位",
+ * 真实容器 slot DOM 永远稳定,只是被 reparent 到不同 anchor。
  */
 
 import { createPortal } from "react-dom";
-import { useLayoutEffect, useMemo, useReducer, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useCanvas } from "../../contexts/canvasContext";
 import { computeAdjacency, computeRects } from "../../canvas/layoutAlgorithms";
 import LayoutRenderer from "./LayoutRenderer";
@@ -51,29 +50,61 @@ export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: 
   const { state, visibleBlockIds, dragging, dropTarget } = useCanvas();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // ─── Portal slot tracking ────────────────────────────────────────────
-  // slotsRef 是 blockId → slot DOM 的 map,LayoutRenderer 每次 commit 后通过
-  // useLayoutEffect 用 querySelectorAll 一次性同步(不在 ref callback 里更新,
-  // 避免 ref callback 闭包 over blockId 引发的 spurious unmount-mount 抖动)。
-  const slotsRef = useRef<Record<string, HTMLDivElement | null>>({});
-  // bumpSlots 强制 MagicCanvas 第二次 render —— 让 PortalBlock 看到最新 slot
-  // 节点。在 useLayoutEffect 里调,paint 前同步完成,无可见闪烁。
-  const [, bumpSlots] = useReducer((x: number) => x + 1, 0);
+  // ─── Stable slot DOM per blockId ─────────────────────────────────────
+  // 每个 blockId 一个永久 slot div,first-time lazy 创建,blockId 仍存在的
+  // 期间永不销毁。Portal 把 BlockShell + 业务组件渲染进 slot,layout 变化
+  // 时 useLayoutEffect 用 appendChild 把 slot move 到新 anchor 下面。
+  // appendChild = DOM move(不是 remove + insert),slot 内的所有子节点
+  // (含 React portal 渲染出的 BlockShell DOM)跟着一起被 reparent,React
+  // 组件实例完全不动。
+  const slotsRef = useRef(new Map<string, HTMLDivElement>());
 
+  const getOrCreateSlot = (blockId: string): HTMLDivElement => {
+    let slot = slotsRef.current.get(blockId);
+    if (!slot) {
+      slot = document.createElement("div");
+      slot.dataset.mcSlot = blockId;
+      // 占满父级 anchor + 自己也是 flex column —— BlockShell 的 .mc-block-shell
+      // 用 flex:1 占空间,需要 slot / anchor 是 flex 容器才能让 flex:1 生效。
+      // 旧架构里 BlockShell 直接是 mc-pane 的子节点,被 `.mc-pane > *` 给上
+      // flex:1。现在中间多了 anchor + slot 两层,flex 链断了,BlockShell 收缩
+      // 成 auto 高度 → 边框被"吞"。这里显式让 slot/anchor 都是 flex column 把
+      // 链接回去。
+      slot.style.cssText =
+        "width:100%;height:100%;display:flex;flex-direction:column;min-width:0;min-height:0;";
+      slotsRef.current.set(blockId, slot);
+    }
+    return slot;
+  };
+
+  // 在 commit 后、paint 前同步把每个稳定 slot 移到对应 anchor 下面。
+  // useLayoutEffect 保证不在 paint 之间留下"anchor 空着 / slot 在旧位置"的
+  // 中间帧,视觉上完全无感。
   useLayoutEffect(() => {
-    // 在 layout 树或 block 列表变化后的 commit 阶段,同步抓取所有 slot DOM。
-    // 用 data-block-id selector 而不是 ref callback —— ref callback 每次 render
-    // 都换新函数,会引起卸载-重挂,失去稳定性。
     const root = containerRef.current;
     if (!root) return;
-    const next: Record<string, HTMLDivElement | null> = {};
-    root.querySelectorAll<HTMLDivElement>("[data-mc-slot]").forEach((el) => {
-      const id = el.getAttribute("data-mc-slot");
-      if (id) next[id] = el;
+    const anchors = root.querySelectorAll<HTMLDivElement>("[data-mc-anchor]");
+    anchors.forEach((anchor) => {
+      const blockId = anchor.getAttribute("data-mc-anchor");
+      if (!blockId) return;
+      const slot = getOrCreateSlot(blockId);
+      if (slot.parentElement !== anchor) {
+        anchor.appendChild(slot); // 移动 DOM(不重建),slot 内所有节点跟随
+      }
     });
-    slotsRef.current = next;
-    bumpSlots();
-  }, [state.layout, visibleBlockIds.length]);
+  });
+
+  // 删除已不存在的 block 的稳定 slot,避免内存累积。layout 改变(visibleBlockIds
+  // 变化)时 sweep 一次。这里走 useEffect(paint 后)不影响视觉。
+  useEffect(() => {
+    const visible = new Set(visibleBlockIds);
+    for (const [blockId, slot] of slotsRef.current.entries()) {
+      if (!visible.has(blockId)) {
+        slot.remove();
+        slotsRef.current.delete(blockId);
+      }
+    }
+  }, [visibleBlockIds]);
 
   const adjacency = useMemo(() => computeAdjacency(state.layout), [state.layout]);
 
@@ -82,7 +113,6 @@ export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: 
     if (!dropTarget || !state.layout || !containerRef.current) return null;
     const cr = containerRef.current.getBoundingClientRect();
     if (dropTarget.kind === "edge") {
-      // 整个 canvas 沿该边的一条 30% 厚带
       const EDGE_RATIO = 0.3;
       const w = cr.width;
       const h = cr.height;
@@ -111,14 +141,22 @@ export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: 
     );
   }
 
-  // Layout tree 只渲染空 slot div(不渲染 BlockShell)。slot 用 data 属性
-  // 标识 blockId,useLayoutEffect 通过 querySelector 收集到 slotsRef。
+  // Layout tree 只渲染轻量 anchor div(空标记位)。useLayoutEffect 会把对应
+  // blockId 的稳定 slot DOM appendChild 进来。
   const renderLeaf = (blockId: string) => (
     <div
       key={blockId}
-      data-mc-slot={blockId}
-      className="mc-portal-slot"
-      style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0 }}
+      data-mc-anchor={blockId}
+      className="mc-portal-anchor"
+      // display:flex 让里面 appendChild 进来的 slot 通过 flex 链填满高度。
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        minWidth: 0,
+        minHeight: 0,
+      }}
     />
   );
 
@@ -126,20 +164,19 @@ export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: 
     <div ref={containerRef} className={`mc-canvas${dragging ? " mc-canvas--dragging" : ""}`}>
       <LayoutRenderer node={state.layout} renderLeaf={renderLeaf} />
 
-      {/* 扁平稳定 BlockShell 数组 —— 不论 layout tree 怎么变,这些组件在
-          MagicCanvas 这个 React 组件下的位置永远不动,所以 useState / useRef
-          全保。只有它们 portal 的目标 DOM 节点会跟着 layout 走。 */}
+      {/* 扁平稳定 BlockShell 数组 —— 它们在 React tree 里位置永远不变,只是
+          portal target(稳定 slot DOM)随 layout 被 reparent 到不同 anchor。
+          BlockShell 这层组件实例 + state 永不重建。 */}
       {visibleBlockIds.map((blockId) => {
         const block = state.blocks[blockId];
         if (!block) return null;
-        const slot = slotsRef.current[blockId];
         const edges = adjacency[blockId] ?? {
           top: "page", right: "page", bottom: "page", left: "page",
         };
         return (
           <PortalBlock
             key={blockId}
-            slot={slot}
+            slot={getOrCreateSlot(blockId)}
             blockId={blockId}
             block={block}
             edges={edges}
@@ -162,12 +199,12 @@ export default function MagicCanvas({ globalActiveTableId, onPickGlobalTable }: 
 }
 
 /**
- * Portal-wrapped BlockShell. 在 MagicCanvas 里位置稳定,只是它的 portal
- * 目标随 layout 变化。注意 slot 可能 null(MagicCanvas 第一次 mount 时,
- * useLayoutEffect 还没来得及收集 slot DOM)—— 这时不渲染,等下一帧。
+ * Portal-wrapped BlockShell. Slot 永远是稳定 DOM 节点(从 getOrCreateSlot 同步
+ * 拿到),不会出现 null,无 first-render gap。layout 变化时 slot 被 reparent
+ * (DOM-level move)到新 anchor,React 这一层完全无感。
  */
 function PortalBlock(props: {
-  slot: HTMLDivElement | null;
+  slot: HTMLDivElement;
   blockId: string;
   block: Block;
   edges: AdjacencyEdges;
@@ -177,7 +214,6 @@ function PortalBlock(props: {
   onPickGlobalTable: (id: string) => void;
 }) {
   const { slot, blockId, block, edges, visibleCount, canvasContainerRef, globalActiveTableId, onPickGlobalTable } = props;
-  if (!slot) return null;
   return createPortal(
     <BlockShell
       blockId={blockId}
