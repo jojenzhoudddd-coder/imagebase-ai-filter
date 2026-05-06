@@ -18,6 +18,15 @@ import { useTranslation } from "../../i18n";
 
 type SubTab = "soul" | "profile" | "memory";
 
+/** "2026-05-06 21:22" 等宽日期格式,跟 Acknowledge 卡片 + chat turn meta 统一。 */
+function formatCardDate(iso: string | undefined | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 interface Props {
   agentId: string;
 }
@@ -120,7 +129,7 @@ export default function NatureTab({ agentId }: Props) {
                         {w.userMessage.length > 60 ? w.userMessage.slice(0, 60) + "…" : w.userMessage}
                       </div>
                       <div className="ab-memory-card-meta">
-                        <span>{new Date(w.timestamp).toLocaleString()}</span>
+                        <span>{formatCardDate(w.timestamp)}</span>
                         {w.toolCalls.length > 0 && (
                           <span className="ab-memory-tag">tools: {w.toolCalls.length}</span>
                         )}
@@ -138,7 +147,7 @@ export default function NatureTab({ agentId }: Props) {
                     <div key={m.filename} className="ab-memory-card">
                       <div className="ab-memory-card-title">{m.title}</div>
                       <div className="ab-memory-card-meta">
-                        <span>{m.timestamp ? new Date(m.timestamp).toLocaleString() : "—"}</span>
+                        <span>{formatCardDate(m.timestamp)}</span>
                         {m.tags.map((tag) => (
                           <span key={tag} className="ab-memory-tag">{tag}</span>
                         ))}
