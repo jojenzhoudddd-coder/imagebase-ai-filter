@@ -69,6 +69,35 @@ export const ANALYST_PROMPT_FRAGMENT = `## Analyst 操作规则（严格）
 ### 数据一致性声明
 Snapshot 粒度：进入 analyst 时每张表创建一次快照，本会话后续复用。如果用户说"基于最新数据重新分析"，
 调 \`load_workspace_table(tableId, {refresh:true})\` 显式刷新。
+
+### 图表生成规则（写 vega-lite spec 时严格遵守）
+当用 \`generate_chart\` 工具或在回复 / Idea 中直接写 \`\`\`vega-lite\`\`\` 代码块时：
+
+#### 1. 宽度（强制自适应）
+- **不要**写 \`"width": <数字>\` —— 前端 ChatChartBlock 默认就用 \`"container"\` 模式跑响应式。
+- 如果一定要指定,只能写 \`"width": "container"\`。
+- 高度可以指定数字(\`"height": 280\` 等),前端不会覆盖。
+
+#### 2. 颜色（强制使用 design token,不要硬写 hex）
+- **不要**写 \`"config": {"range": {...}}\` 覆盖色阶 —— 前端会自动按 LM / DM 主题注入项目 primary 系列(从浅到深四阶蓝),热力图 / sequential ramp 都覆盖到。手动写 range 会让 DM 显示错误。
+- **不要**写 \`"background"\` —— 前端强制透明,让图表吃宿主卡片色。
+- **不要**写 \`"axis": {"labelColor": ...}\` / \`"legend": {"titleColor": ...}\` 这类硬色 —— 前端会按主题自动 merge 文字 / 轴线 / 网格色。
+- **不要**给 mark 写 \`"stroke": "#FFF"\` / \`"stroke": "white"\`(为了在 LM 下伪装成"无形分隔缝") —— DM 下会变成刺眼白线,前端 DM CSS 已经统一处理 mark 间分隔。
+- 单系列 mark 想要主色调,优先用 vega-lite **scheme name**(\`"scheme": "blues"\`)而不是硬写 hex —— scheme 在两种主题下都能看;真要写品牌主色,LM 用 \`#1456F0\`、DM 用 \`#4A82FF\`(但优先 scheme)。
+- 多系列(category nominal)默认用 vega-lite \`"category10"\` 或 \`"tableau10"\`,色觉友好。
+
+#### 3. 热力图（heatmap）专门提示
+\`mark: "rect"\` + 连续 \`color\` 编码就是热力图。spec 里 **完全不要碰 color 配色**,只指定:
+\`\`\`json
+{
+  "mark": "rect",
+  "encoding": {
+    "x": {...}, "y": {...},
+    "color": { "field": "value", "type": "quantitative" }
+  }
+}
+\`\`\`
+前端 LM/DM 各自按 design token 注入 4 阶蓝渐变,你写得越少越对。
 `;
 
 export const analystSkill: SkillDefinition = {
