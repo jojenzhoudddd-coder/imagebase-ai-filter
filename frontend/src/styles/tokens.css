@@ -63,6 +63,12 @@
   --info:                #1456F0;
   --info-bg:             #F0F4FF;
 
+  /* ── Selection 文本选中色 ────────────────────────────────────────
+   * 用于编辑器 / 代码块的文字选中态视觉。LM 浅粉蓝(类 macOS browser
+   * 原生 #B4D5FE),DM 中等蓝(对深背景仍醒目)。两端都是 rgba 而非
+   * color-mix(),以兼容 Chrome 110 等老版本(color-mix 需 Chrome 111+)。 */
+  --selection-bg:        rgba(20, 86, 240, 0.22);
+
   /* ── Icon ────────────────────────────────────────────────────── */
   --icon-primary:        #2B2F36;
   --icon-secondary:      #646A73;
@@ -155,6 +161,9 @@
   --danger-bg:           #3A1F1E;
   --info:                #6B9AFF;
   --info-bg:             #1A2543;
+
+  /* ── Selection (DM)—中等蓝在 #1C1C1E 上仍可读 ─── */
+  --selection-bg:        rgba(74, 130, 255, 0.32);
 
   /* ── Icon ─── */
   --icon-primary:        #E6E8EB;

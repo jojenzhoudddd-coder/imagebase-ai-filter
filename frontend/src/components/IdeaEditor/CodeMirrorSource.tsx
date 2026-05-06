@@ -86,13 +86,12 @@ const ideaEditorTheme = EditorView.theme({
     color: "var(--text-placeholder)",
     fontFamily: "inherit",
   },
-  // 选中态:对齐 preview 模式(走浏览器 ::selection 默认 = 系统蓝高亮)。
-  // primary-bg 是几乎纯白色淡蓝(LM)/ 深蓝(DM),做 cell 背景或 chip 底色合适,
-  // 但当文本选中时透明度太低,看起来像没选中。换成 color-mix 把 primary 调到
-  // 25% 透明度(LM)/ 35%(DM),近似 macOS / Chrome 默认 selection 色感。
-  // color-mix 在 modern browsers 全支持(Chrome 111+ / Safari 16.2+)。
+  // 选中态对齐 preview 模式视觉(preview 走浏览器 ::selection 默认 = 系统蓝高亮)。
+  // 用 --selection-bg token(LM rgba(20,86,240,.22) / DM rgba(74,130,255,.32))
+  // 直接走 rgba(),兼容 Chrome 110- 等老版本。color-mix() 在 Chrome 111+ 才稳,
+  // 老版本会 fallback 到 transparent —— 看起来"选中没颜色",这是上一版的问题。
   ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-    backgroundColor: "color-mix(in srgb, var(--primary) 25%, transparent)",
+    backgroundColor: "var(--selection-bg)",
   },
   ".cm-activeLine": {
     backgroundColor: "transparent",
