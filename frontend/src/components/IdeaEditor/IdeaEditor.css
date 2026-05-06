@@ -235,6 +235,40 @@
   cursor: pointer;
 }
 
+/* ─── Tables (GFM markdown table + raw <table>) ────────────────────
+ * Tiptap 的 Table 节点渲染出来是嵌套 <table><tbody><tr>(<td>|<th>)
+ * 结构。这里用边框 + collapse 模拟 GitHub 风格,header 行带 surface-1
+ * 背景色加强区分。块级显示,水平溢出滚动避免长表格撑爆容器。 */
+.idea-preview-body table,
+.idea-preview-body .idea-preview-table {
+  border-collapse: collapse;
+  margin: 12px 0;
+  width: 100%;
+  table-layout: auto;
+  overflow-x: auto;
+  display: block;
+  /* 行内文字大小跟正文统一 */
+  font-size: var(--fs-base);
+}
+.idea-preview-body th,
+.idea-preview-body td {
+  border: 1px solid var(--border-default);
+  padding: 6px 12px;
+  text-align: left;
+  vertical-align: top;
+  min-width: 60px;
+}
+.idea-preview-body th {
+  background: var(--surface-1);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+/* 选中态(编辑表格时 ProseMirror 注入此 class) —— 浅色高亮单元格 */
+.idea-preview-body .selectedCell {
+  position: relative;
+  background: var(--primary-bg);
+}
+
 /* ─── Dark mode: Tiptap Preview ─── */
 [data-theme="dark"] .idea-preview-body {
   color: var(--text-primary);
@@ -252,6 +286,15 @@
 }
 [data-theme="dark"] .idea-preview-body a {
   color: var(--primary);
+}
+/* DM 表格 —— 用 border-default(已经是 DM token)即可,header 走 surface-2
+ * (比 base 高一档,跟 LM 的 surface-1 视觉对应). selectedCell 走 primary-bg. */
+[data-theme="dark"] .idea-preview-body th,
+[data-theme="dark"] .idea-preview-body td {
+  border-color: var(--border-default);
+}
+[data-theme="dark"] .idea-preview-body th {
+  background: var(--surface-2);
 }
 
 

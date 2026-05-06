@@ -13,6 +13,14 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import { Underline } from "@tiptap/extension-underline";
+// Tiptap 官方表格四件套 —— 共同构成 GFM 表格支持。tiptap-markdown 在
+// 解析 markdown 时遇到 `| col |` 语法 / 原生 <table> 都需要这些 Node 类型
+// 被注册才能正确渲染。tiptap v3 用 named export(没有 default)。
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableCell } from "@tiptap/extension-table-cell";
+import { TableHeader } from "@tiptap/extension-table-header";
 import { Markdown } from "tiptap-markdown";
 import { Extension } from "@tiptap/core";
 import { createImageExtension } from "./extensions/ImageExtension";
@@ -112,6 +120,19 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
           openOnClick: false,
           HTMLAttributes: { class: "" },
         }),
+        // 内联 HTML <u> —— Markdown 里写 `<u>x</u>` 时,有这个 extension 就
+        // 渲染成下划线;没有的话 tiptap-markdown 会丢标签留下纯文本。
+        Underline,
+        // 表格四件套 —— 注册顺序要 Table 在前(它声明 cell/row/header content schema)
+        Table.configure({
+          // resizable:false 避免 ProseMirror 注入 column-resize-handle DOM
+          // 干扰只读视图;若以后想支持手动调列宽再开。
+          resizable: false,
+          HTMLAttributes: { class: "idea-preview-table" },
+        }),
+        TableRow,
+        TableHeader,
+        TableCell,
         createImageExtension(onUploadFile),
         Placeholder.configure({
           placeholder: placeholder || "",
