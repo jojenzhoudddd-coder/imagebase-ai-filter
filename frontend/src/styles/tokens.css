@@ -165,10 +165,9 @@
   --info:                #6B9AFF;
   --info-bg:             #1A2543;
 
-  /* ── Selection (DM)—macOS Chrome 原生 ::selection 在 DM 下其实就是 LM
-   * 那个 #B4D5FE 浅蓝再以 40% alpha 透明度叠在 dark surface 上,反推像素后
-   * 得到这个值。文本能透出来,跟 preview 一致。opaque 值不行(会把白字盖住). ─── */
-  --selection-bg:        rgba(180, 213, 254, 0.4);
+  /* ── Selection (DM)—#264F78 是 VSCode DM 默认选中色,主观偏好它比浏览器
+   * 原生半透明 rgba(180,213,254,0.4) 更醒目对比,用户拍板用这个 ─── */
+  --selection-bg:        #264F78;
 
   /* ── Icon ─── */
   --icon-primary:        #E6E8EB;
