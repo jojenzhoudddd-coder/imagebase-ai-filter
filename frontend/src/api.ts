@@ -1937,15 +1937,6 @@ export async function listKnowledgeEntries(
   return res.json();
 }
 
-export async function getKnowledgeEntry(
-  agentId: string,
-  id: string,
-): Promise<KnowledgeEntrySummary> {
-  const res = await fetch(`${BASE}/knowledge/${id}?agentId=${encodeURIComponent(agentId)}`);
-  if (!res.ok) throw new Error("Failed to get knowledge entry");
-  return res.json();
-}
-
 // ═══════════════ Ideas (Markdown 文档 artifact) ═══════════════
 
 export async function createIdea(

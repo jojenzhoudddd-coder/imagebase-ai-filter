@@ -12,13 +12,13 @@ export const knowledgeTools: ToolDefinition[] = [
   {
     name: "learn_from_url",
     description:
-      "Store web page content as ONE complete document in the knowledge base. This is the ONLY correct tool for 'learning from URL' — never use create_memory. IMPORTANT: Save ALL extracted content in a SINGLE call. The content field has NO length limit — include the full page content, do NOT truncate.",
+      "Fetch a web page, extract its content, and store it in the agent's knowledge base for future retrieval. Use this after web_fetch to persist useful information you've found.",
     inputSchema: {
       type: "object",
       properties: {
         url: { type: "string", description: "The URL that was fetched" },
-        title: { type: "string", description: "A concise title for this knowledge document" },
-        content: { type: "string", description: "The COMPLETE, UNTRUNCATED content extracted from the page as a single Markdown document. No length limit — include everything." },
+        title: { type: "string", description: "A concise title for this knowledge entry" },
+        content: { type: "string", description: "The key knowledge extracted from the page (Markdown)" },
         tags: { type: "array", items: { type: "string" }, description: "Topic tags for categorization" },
       },
       required: ["url", "title", "content"],
@@ -47,37 +47,33 @@ export const knowledgeTools: ToolDefinition[] = [
   {
     name: "learn_from_text",
     description:
-      "Store knowledge as ONE complete document in the knowledge base. This is the ONLY correct tool for 'learning knowledge' — never use create_memory for this purpose. IMPORTANT: Save ALL content in a SINGLE call. The content field has NO length limit — write the full document, do NOT truncate or split.",
+      "Store a piece of knowledge directly into the agent's knowledge base. Use this to save insights, facts, or summaries that should be retrievable later.",
     inputSchema: {
       type: "object",
       properties: {
-        title: { type: "string", description: "A concise title for the document" },
-        content: { type: "string", description: "The COMPLETE, UNTRUNCATED knowledge content as a single Markdown document. No length limit. Include everything — do NOT cut short or split into multiple calls." },
+        title: { type: "string", description: "A concise title" },
+        content: { type: "string", description: "The knowledge content (Markdown)" },
         tags: { type: "array", items: { type: "string" }, description: "Topic tags" },
       },
       required: ["title", "content"],
     },
     handler: async (args: Record<string, unknown>, ctx?: any) => {
-      const contentStr = args.content as string;
-      console.log(`[learn_from_text] title="${args.title}" content_len=${contentStr?.length ?? 0} tags=${JSON.stringify(args.tags ?? [])}`);
       const res = await fetch(`${BASE_URL}/api/knowledge`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Cookie: `auth_token=${ctx?.authToken ?? ""}` },
         body: JSON.stringify({
           agentId: ctx?.agentId ?? "agent_default",
           title: args.title,
-          content: contentStr,
+          content: args.content,
           sourceType: "chat",
           tags: args.tags ?? [],
         }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        console.log(`[learn_from_text] FAILED: ${(err as any).error ?? res.status}`);
         return JSON.stringify({ ok: false, error: (err as any).error ?? `HTTP ${res.status}` });
       }
       const data = await res.json();
-      console.log(`[learn_from_text] SUCCESS: merged=${(data as any).merged ?? false} count=${(data as any).count}`);
       return JSON.stringify({ ok: true, ...data });
     },
   },
