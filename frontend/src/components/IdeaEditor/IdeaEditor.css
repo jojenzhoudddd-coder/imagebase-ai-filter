@@ -255,26 +255,37 @@
   font-size: 12px;
 }
 /* 单元格只保留底部 row-divider —— 不要 border 在 th/td 自身 (会在 th-tr-th
- * 之间出现重叠造成不齐),改用 border-bottom on td. th 不需要 border. */
+ * 之间出现重叠造成不齐),改用 border-bottom on td. th 不需要 border.
+ * 行高紧贴文字 line-height —— padding 上下各 2px,总行高 ≈ 22-24px,无多余空白. */
 .idea-preview-body th {
   background: var(--surface-1);
   color: var(--icon-primary);
   font-weight: 500;
   text-align: left;
-  vertical-align: top;
-  padding: 6px 10px;
+  vertical-align: middle;
+  padding: 2px 10px;
+  line-height: 18px;
   border-bottom: 1px solid var(--border-default);
   white-space: nowrap;
   font-size: 11px;
 }
 .idea-preview-body td {
-  padding: 6px 10px;
+  padding: 2px 10px;
+  line-height: 20px;
   border-bottom: 1px solid var(--surface-3);
-  vertical-align: top;
+  vertical-align: middle;
   color: var(--icon-primary);
   /* idea 是文档语境(chat 是数据气泡),允许换行让长文本可读;chat 的
    * white-space:nowrap 是为压缩气泡空间,这里不需要。 */
   word-break: break-word;
+}
+/* 单元格内的段落 / br —— Tiptap Table 节点把内容包成 <p>,默认 .idea-preview-body p
+ * 有 margin: 8px 0,落进 td 后就把行撑高。这里清零让 td 完全靠 padding+line-height
+ * 决定高度。 */
+.idea-preview-body th p,
+.idea-preview-body td p {
+  margin: 0;
+  line-height: inherit;
 }
 /* 最后一行去掉 row-divider 让外层圆角连续 */
 .idea-preview-body tr:last-child td { border-bottom: none; }
