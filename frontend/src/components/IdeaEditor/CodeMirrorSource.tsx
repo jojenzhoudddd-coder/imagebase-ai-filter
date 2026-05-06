@@ -86,14 +86,23 @@ const ideaEditorTheme = EditorView.theme({
     color: "var(--text-placeholder)",
     fontFamily: "inherit",
   },
-  // 选中态对齐 preview 模式视觉。CodeMirror 自带的 dark/light theme 用了高
-  // 特异性选择器 `&light.cm-focused > .cm-scroller > .cm-selectionLayer
-  // .cm-selectionBackground { background: #d7d4f0 }`(LM 紫粉色硬编码),
-  // 简单 `.cm-selectionBackground` 选不动它 —— 之前看到的"颜色不对"就是
-  // 这条 vendor default 在生效。用 !important 强制覆盖。
-  // --selection-bg token: LM rgba(20,86,240,.22) / DM rgba(74,130,255,.32)。
+  // 选中态对齐 preview / 其它 block(全部走浏览器原生 ::selection)。
+  // CodeMirror 自己画 div 而不用浏览器 ::selection,所以无法直接继承系统
+  // Highlight 色 —— 用 CSS 系统颜色 keyword `Highlight` / `SelectedItem`
+  // 让浏览器把当前 OS 的 selection 色塞回来。这样 chat 代码块 / preview /
+  // 其它 contenteditable 区都是同一个色,体感一致。
+  // 必须 !important —— vendor default `&light.cm-focused > .cm-scroller >
+  // .cm-selectionLayer .cm-selectionBackground { background:#d7d4f0 }` 特异性
+  // 高过我们,不加 !important 选不动。
   ".cm-selectionBackground": {
-    background: "var(--selection-bg) !important",
+    background: "Highlight !important",
+  },
+  // 给 ::selection 一个匹配的 fallback —— CodeMirror 内部的 contenteditable
+  // 文字本身也走浏览器 ::selection(在 cm-selectionBackground div 之上),
+  // 让文字色保持可读。
+  ".cm-content ::selection": {
+    background: "Highlight",
+    color: "HighlightText",
   },
   ".cm-activeLine": {
     backgroundColor: "transparent",
