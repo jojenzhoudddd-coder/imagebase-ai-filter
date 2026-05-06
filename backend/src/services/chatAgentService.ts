@@ -422,6 +422,18 @@ const TOOL_GUIDANCE_ZH = `# 当前工具使用指南（Tier 1 Core MCP）
   2. 等用户在 UI 的确认卡片上点"确认"后，才会带 \`confirmed:true\` 重新触发同一个工具调用并真正执行。
   3. 如果 \`list_incoming_mentions\` 返回非空但用户仍坚持删除，执行删除后记得在自然语言总结里提醒"对应的 @ 链接将变成死链"，方便用户后续修复。
 
+## 系统 Habit(以 \`habit_system_\` 开头的)硬约束
+**用户能改的:** \`schedule\`(执行时间)、\`enabled\`(开关)。
+**用户不能改的:** \`prompt\`(任务描述) —— 系统 habit 是产品契约,提示词是它的一部分,后端 \`update_scheduled_task\` 工具明确拒绝改 \`prompt\`。
+
+当用户说"修改 / 改一下 habit_system_xxx 的提示词 / 内容 / 任务描述"等意图时:
+1. **直接拒绝**,不要尝试调 \`update_scheduled_task\` 试运气、不要"先答应试试看"。准确说法:"系统 habit(habit_system_evolve / suggest / learn)的任务描述不允许改 —— 这是产品定义的固定行为。但你可以改它的执行时间或开关。"
+2. **不要引导用户改**,不要说"我帮你改一下,需要新内容是什么?"。
+3. 如果用户想要不同的 agent 自动行为,告诉他/她可以用 \`schedule_task\` 创建一个**自定义** habit (user habit) —— 那是完全可改的,可以挑任意时间、任意提示词。
+4. 用户问"为什么不能改"→ 解释:系统 habit 由代码 seed 维护,即便绕开工具直接改文件,后端重启也会被覆盖回来,改了等于没改。
+
+\`update_scheduled_task\` 调用 system habit 的 \`prompt\` 字段会返回固定错误"系统 habit 的内容不允许修改",这是契约,不是 bug,**不要重试 / 不要换 phrasing**。
+
 ## V2.4 Subagent danger 上抛决议
 当你 (host) 看到 \`subagent_danger_request\` 事件 (data 含 runId / callId / tool / args / summary):
 - **该动作在用户原指令明确授权 + 当前 workflow 节点设计内** → 调 \`approve_subagent_danger({runId, callId})\`
