@@ -46,6 +46,7 @@ import { UpstreamOverloadError } from "./providers/oneapiAdapter.js";
 import * as ideaStream from "./ideaStreamSessionService.js";
 import { LongTaskTracker } from "./longTaskService.js";
 import { listHandlesIfExists } from "./analyst/duckdbRuntime.js";
+import { searchKnowledge } from "./knowledgeService.js";
 // Importing providers/index.ts registers every adapter with modelRegistry.
 // Must happen before the first runAgent() call. Don't remove the import
 // even though `arkAdapter` is not referenced by name here.
@@ -377,6 +378,37 @@ const TOOL_GUIDANCE_ZH = `# 当前工具使用指南（Tier 1 Core MCP）
 - 每个主题最终只保存为**一条**完整文档——把所有调研结果合并到一次 \`learn_from_text\` / \`learn_from_url\` 调用的 content 字段里。content 字段无长度限制。后端会自动做分块和向量化。
 - 当用户说"学习""保存到知识库"时，先反问用户想学什么内容（URL 或主题），得到回答后再开始调研。
 
+## 知识库检索规则（Hybrid + Multi-hop RAG）
+**Layer 3 已经为你预拉了 top-2 知识条目预览**（见上方"自动召回的知识库条目"段落，仅当知识库非空且匹配到时出现）。流程：
+
+1. **判断是否需要检索**
+   - 用户问的是闲聊 / 工作流操作 / 当下数据 → 不需要查知识库，忽略 prefetch。
+   - 用户问的是事实 / 概念 / "你之前学过的 X" / 你不确定的领域知识 → 走下方多跳流程。
+
+2. **首跳 \`search_knowledge\`**（默认 limit=5）
+   - 用 user 原话里最有信息量的关键名词当 query（不要复制整句，太冗余降低召回）
+   - 看返回的 score + title + content 预览：
+     - score ≥ 0.7 且内容明显回答了问题 → 用这些 chunk 答，结束。
+     - 0.3-0.7 部分相关 → 进入 step 3 refine。
+     - < 0.3 全部 → step 4 拆解多角度查。
+
+3. **二跳 refine**（继续 \`search_knowledge\`）
+   - 从首跳的 chunk 内容里抽出更精确的术语 / 子概念，换 query 再查
+   - 例：首跳问"互联网产品方法论"→ 命中陈志武课堂笔记，里面提到"飞轮效应"→ 二跳 query 用"飞轮效应"
+
+4. **拆解多角度查**（首跳完全不命中时）
+   - 把 user 问题拆成 2-3 个子问题，分别用 \`search_knowledge\`
+   - 例："凯文老师的产品观"拆成 ["凯文 产品方法论", "凯文 评审标准", "凯文 案例"]
+
+5. **多跳上限**：同一 turn **最多 3 次** \`search_knowledge\`。3 次后仍无满意结果 → 在回答里明确说"知识库里相关内容不多，以下是基于通用知识的回答…"，避免给用户错误的"知识库已查"印象。
+
+6. **不要做的事**
+   - 别用整句话当 query（"我想知道凯文老师怎么看 AI 产品" → 改成 "凯文 AI 产品 观点"）
+   - 别每跳都重复同一个 query（看到结果不满意，必须换关键词）
+   - 别在不需要时强行走多跳（闲聊 / 操作类问题搜了纯属噪声）
+
+7. **覆盖 prefetch 的优先级**：prefetch 是供你**判断知识库有没有相关**的快速指示。如果 prefetch 命中且能直接回答，仍要先调一次 \`search_knowledge\` 拿完整内容（prefetch 只有前 120 字预览，不够引述）。
+
 ## 灵感文档（Ideas）写入与 @ 引用
 - 对灵感文档进行任何写入操作前，先调 \`list_ideas\` 看现状；需要在特定章节插入时，先调 \`get_idea\` 拿到 sections[]（每项含 slug），再用 \`insert_into_idea({ideaId, anchor:{section:"<slug>", mode:"append"|"after"|"replace"}, payload:"..."})\`。
 - 没有明确章节目标时用 \`append_to_idea\`（默认追加到文末）；整篇重写才用 \`replace_idea_content\`（危险操作，必须先征得同意）。
@@ -469,6 +501,57 @@ export async function buildRecalledMemoriesSection(
   } catch (err) {
     // Never let auto-recall kill a turn.
     return `# 自动召回的相关长期记忆\n(召回失败: ${err instanceof Error ? err.message : String(err)})`;
+  }
+}
+
+// ─── Knowledge auto-prefetch (Hybrid RAG layer 1) ────────────────────────
+//
+// Mirrors buildRecalledMemoriesSection but for the Acknowledge knowledge
+// base. Each turn we run a single semantic search with the user's raw
+// message and inject the top-K hits as **previews** (title + 80 字 snippet)
+// into Layer 3. This gives the model "知识库里大概有什么" awareness without
+// dumping full chunks (cheap, low noise).
+//
+// Multi-hop is then driven by system-prompt instructions next to the
+// `search_knowledge` tool guidance: when the model sees the prefetch is
+// relevant, it calls search_knowledge with refined queries to dig deeper
+// (up to 3 hops per turn before answering).
+//
+// Soft fallbacks:
+//   - No embedding API key set → searchKnowledge falls back to text search
+//   - Empty knowledge base → returns no hits → section omitted from prompt
+//   - Embedding error → caught, returns empty (never kills turn)
+
+const AUTO_KNOWLEDGE_LIMIT = 2;
+/** Show only the first N chars of each hit so the prompt stays small.
+ * Model can call search_knowledge for the full chunk on demand. */
+const KNOWLEDGE_PREVIEW_CHARS = 120;
+
+export async function buildRecalledKnowledgeSection(
+  agentId: string,
+  userMessage: string
+): Promise<string> {
+  try {
+    const hits = await searchKnowledge(agentId, userMessage, AUTO_KNOWLEDGE_LIMIT);
+    if (!hits.length) return "";
+    const lines: string[] = [
+      `# 自动召回的知识库条目（top ${hits.length}，预览，未必相关）`,
+      `（如果跟当前问题相关，调用 \`search_knowledge\` 用更精准的关键词拿完整内容；多跳策略见工具指南）`,
+    ];
+    for (const h of hits) {
+      const tagStr = h.tags?.length ? ` [${h.tags.map((t: string) => `#${t}`).join(" ")}]` : "";
+      const score = h.score ? ` (score=${h.score.toFixed(2)})` : "";
+      const preview = (h.content || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, KNOWLEDGE_PREVIEW_CHARS);
+      lines.push(`- **${h.title}**${tagStr}${score}`);
+      if (preview) lines.push(`  ${preview}…`);
+      lines.push(`  id: ${h.id}（用 \`search_knowledge\` 检索完整内容）`);
+    }
+    return lines.join("\n");
+  } catch (err) {
+    return `# 自动召回的知识库条目\n(召回失败: ${err instanceof Error ? err.message : String(err)})`;
   }
 }
 
@@ -730,6 +813,8 @@ export interface PrebuiltSystemLayers {
   identity: string;
   snapshot: string;
   recalled: string | null;
+  /** Hybrid RAG layer 1 — auto-prefetched knowledge base previews. */
+  recalledKnowledge: string | null;
   analystHandles: string | null;
   runtime?: {
     model: ModelEntry;
@@ -844,6 +929,7 @@ export function buildSystemText(
   }
   layer3Parts.push(layers.snapshot);
   if (layers.recalled) layer3Parts.push(layers.recalled);
+  if (layers.recalledKnowledge) layer3Parts.push(layers.recalledKnowledge);
   if (layers.analystHandles) layer3Parts.push(layers.analystHandles);
   if (layers.userMentions) layer3Parts.push(layers.userMentions);
 
@@ -882,16 +968,19 @@ async function assembleInput(
   availableSkills: SkillDefinition[] = allSkills,
   availableSkillsByName: Record<string, SkillDefinition> = skillsByName,
 ): Promise<{ input: ArkInputItem[]; layers: PrebuiltSystemLayers }> {
-  const [identity, snapshot, recalled, analystHandles] = await Promise.all([
+  const [identity, snapshot, recalled, recalledKnowledge, analystHandles] = await Promise.all([
     buildIdentityLayer(agentId),
     buildWorkspaceSnapshot(workspaceId),
     buildRecalledMemoriesSection(agentId, newUserMessage),
+    // Hybrid RAG layer 1 — runs in parallel with the other layers so the
+    // added latency is bounded by the slowest (usually workspace snapshot).
+    buildRecalledKnowledgeSection(agentId, newUserMessage),
     buildAnalystHandlesSection(conversationId),
   ]);
   // PR8.5: buildUserMentionsLayer is now async (block content fetch).
   const userMentionsText = await buildUserMentionsLayer(userMentions);
   const layers: PrebuiltSystemLayers = {
-    identity, snapshot, recalled, analystHandles, runtime,
+    identity, snapshot, recalled, recalledKnowledge, analystHandles, runtime,
     userMentions: userMentionsText,
   };
   const systemText = buildSystemText(layers, activeSkillNames, availableSkills, availableSkillsByName);
