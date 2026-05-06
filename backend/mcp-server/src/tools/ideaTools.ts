@@ -239,7 +239,9 @@ export const ideaWriteTools: ToolDefinition[] = [
       "在灵感文档的末尾追加 Markdown 内容。适合没有明确章节锚点、直接续写新段落的场景。" +
       "payload 允许嵌入 HTML（<div> / <figure> / <pre> 等都可以），以及 @ mention 链接——" +
       "mention 链接格式：[@标签](mention://<type>/<id>[?query])，type ∈ {view,taste,idea,idea-section}。" +
-      "写 mention 前先用 find_mentionable 拿到 markdown 字段，把它原样嵌入即可。",
+      "写 mention 前先用 find_mentionable 拿到 markdown 字段，把它原样嵌入即可。\n" +
+      "🛑 **互斥约束**：本轮如果已经调用过 begin_idea_stream_write + end_idea_stream_write(finalize:true) " +
+      "把同样的内容流式写过一次,**不要再 append**——内容已经在 DB 里,再 append 会让同一段文字出现两遍。",
     inputSchema: {
       type: "object",
       properties: {
@@ -603,7 +605,10 @@ export const ideaStreamTools: ToolDefinition[] = [
     description:
       "关闭 begin_idea_stream_write 打开的流式写入会话。finalize:true 提交（buffer 写入 DB + version 自增 + mention 重建）；" +
       "finalize:false 丢弃（文档回滚到开启前的状态，不产生 version 变化）。即使你觉得写完了也必须显式调用一次——" +
-      "省略会被 2 分钟空闲超时自动丢弃。",
+      "省略会被 2 分钟空闲超时自动丢弃。\n" +
+      "🛑 **关键约束**：finalize:true 已经把流式期间输出的正文持久化进 DB,内容现在是 idea 文档的一部分。" +
+      "本轮内**绝对不要**再为同一份内容调用 append_to_idea / insert_into_idea / replace_idea_content / write_analysis_to_idea —— " +
+      "那会让相同内容在文档里出现两次。如果你刚刚 stream 写了一段分析结论,任务已经完成,直接回复用户即可。",
     inputSchema: {
       type: "object",
       properties: {

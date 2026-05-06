@@ -116,7 +116,10 @@ export const analystWriteTools: ToolDefinition[] = [
       "将 Analyst 的分析结果落地为一份 Idea 文档（高频出口）。" +
       "自动包含：分析结论正文（narrative）+ 核心结果 Markdown 表格 + 时点声明 + 可选 vega-lite 图表代码块。" +
       "若 ideaId 为空则创建新文档（标题用 title 或自动生成）；指定 ideaId 则追加到该文档末尾。" +
-      "**仅当用户明确表达导出 / 整理文档 / 保存意图时才调用**，不要主动落地。",
+      "**仅当用户明确表达导出 / 整理文档 / 保存意图时才调用**，不要主动落地。\n" +
+      "🛑 **互斥约束**：本轮如果已经用 begin_idea_stream_write + end_idea_stream_write(finalize:true) " +
+      "把分析结论流式写进了同一篇 idea,**不要再调这个工具**——内容已经在 DB 里,再调会让同一段分析出现两遍。" +
+      "stream 写 + 这个工具二选一,不能并用。",
     inputSchema: {
       type: "object",
       required: ["handle", "narrative", "workspaceId"],

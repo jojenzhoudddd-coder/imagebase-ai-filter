@@ -252,49 +252,72 @@ export function CanvasProvider({
     // BlockState 设好,避免 React 多帧再 patch 期间的"空状态闪现 + fallback
     // 路径错跑"问题(典型:topbar new chat 创建新 conv 后再 patch,期间
     // ChatSidebar 已经按 fallback 跑去挑别的 conv)。
+    //
+    // 用 functional setState((prev) => next) 而不是直接读闭包里的 state ——
+    // 之前的 [state] 闭包写法在 patchBlockState 后立刻调 addBlock(同 tick)
+    // 时会用到 STALE state,把刚 patch 的 sidebarWidth 等字段覆盖回旧值。
+    // 用户表现为"sidebar 宽度动不动就自动复原"。functional 更新 + 在更新
+    // 函数里捕获 next 用于持久化,完整闭环。
     (type: BlockType, initialState?: BlockState): string | null => {
-      if (countLeaves(state.layout) >= MAX_BLOCKS) return null;
-      // Agency block singleton constraint — only one allowed
-      if (type === "agency") {
-        const existing = Object.values(state.blocks).find((b) => b.type === "agency");
-        if (existing) return existing.id; // Return existing instead of creating new
+      let createdId: string | null = null;
+      let snapshot: CanvasState | null = null;
+      setState((prev) => {
+        if (countLeaves(prev.layout) >= MAX_BLOCKS) return prev;
+        // Agency block singleton constraint — only one allowed
+        if (type === "agency") {
+          const existing = Object.values(prev.blocks).find((b) => b.type === "agency");
+          if (existing) {
+            createdId = existing.id; // 已有,返回现存 id 但不改 state
+            return prev;
+          }
+        }
+        const id = `blk_${cryptoId()}`;
+        createdId = id;
+        const block: Block = { id, type };
+        const defaultState: BlockState = type === "artifact" ? defaultArtifactState() : {};
+        const blockState: BlockState = initialState
+          ? { ...(defaultState as object), ...(initialState as object) } as BlockState
+          : defaultState;
+        const newLayout = insertNewBlock(prev.layout, id);
+        const next: CanvasState = {
+          blocks: { ...prev.blocks, [id]: block },
+          blockStates: { ...prev.blockStates, [id]: blockState },
+          layout: newLayout,
+        };
+        snapshot = next;
+        return next;
+      });
+      if (snapshot) {
+        // 立即保存(低频操作);useEffect[state] 也会 800ms 兜底,叠加无副作用
+        writeLocalCache(snapshot);
+        void persistToBackend(snapshot);
       }
-      const id = `blk_${cryptoId()}`;
-      const block: Block = { id, type };
-      const defaultState: BlockState = type === "artifact" ? defaultArtifactState() : {};
-      const blockState: BlockState = initialState
-        ? { ...(defaultState as object), ...(initialState as object) } as BlockState
-        : defaultState;
-      const newLayout = insertNewBlock(state.layout, id);
-      const next: CanvasState = {
-        blocks: { ...state.blocks, [id]: block },
-        blockStates: { ...state.blockStates, [id]: blockState },
-        layout: newLayout,
-      };
-      setState(next);
-      // 立即保存(低频操作)
-      writeLocalCache(next);
-      void persistToBackend(next);
-      return id;
+      return createdId;
     },
-    [state],
+    [],
   );
 
   const removeBlock = useCallback(
     (blockId: string) => {
-      // 至少保留 1 个 block
-      if (countLeaves(state.layout) <= 1) return;
-      const newLayout = removeLeaf(state.layout, blockId);
-      const newBlocks = { ...state.blocks };
-      delete newBlocks[blockId];
-      const newBlockStates = { ...state.blockStates };
-      delete newBlockStates[blockId];
-      const next: CanvasState = { blocks: newBlocks, blockStates: newBlockStates, layout: newLayout };
-      setState(next);
-      writeLocalCache(next);
-      void persistToBackend(next);
+      let snapshot: CanvasState | null = null;
+      setState((prev) => {
+        // 至少保留 1 个 block
+        if (countLeaves(prev.layout) <= 1) return prev;
+        const newLayout = removeLeaf(prev.layout, blockId);
+        const newBlocks = { ...prev.blocks };
+        delete newBlocks[blockId];
+        const newBlockStates = { ...prev.blockStates };
+        delete newBlockStates[blockId];
+        const next: CanvasState = { blocks: newBlocks, blockStates: newBlockStates, layout: newLayout };
+        snapshot = next;
+        return next;
+      });
+      if (snapshot) {
+        writeLocalCache(snapshot);
+        void persistToBackend(snapshot);
+      }
     },
-    [state],
+    [],
   );
 
   const swapBlocks = useCallback((idA: string, idB: string) => {
