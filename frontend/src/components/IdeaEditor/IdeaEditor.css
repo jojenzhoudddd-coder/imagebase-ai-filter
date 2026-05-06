@@ -242,7 +242,11 @@
  * 不像 grid 表格。 */
 .idea-preview-body table,
 .idea-preview-body .idea-preview-table {
-  border-collapse: collapse;
+  /* separate(默认值)+ spacing 0 —— collapse 会让外层 border 跟 cell 边
+   * 重合,然后 cell 的 background 把外 border 盖掉(尤其 <th> 的 surface-1
+   * 灰底),导致看起来"没边框"。separate 模式下 table border 是独立的层. */
+  border-collapse: separate;
+  border-spacing: 0;
   margin: 8px 0;
   width: 100%;
   table-layout: auto;
@@ -250,7 +254,8 @@
   border: 1px solid var(--border-default);
   border-radius: 6px;
   background: var(--surface-2);
-  /* 让 border-radius 对内部 cell 也起作用(border-collapse 默认会把外圆角覆盖) */
+  /* overflow:hidden 让 border-radius 对内部第一/最后 cell 也裁切(separate
+   * 模式下 cell 自己背景色会方角出现在圆角内) */
   overflow: hidden;
   font-size: 12px;
 }
