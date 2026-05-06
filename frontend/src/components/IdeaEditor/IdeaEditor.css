@@ -659,16 +659,6 @@
   white-space: nowrap;
 }
 
-/* ─── CodeMirror selection in DM ─────────────────────────────────────
- * Source 模式选中色 LM 用 CSS 系统 keyword `Highlight`(浏览器吐 OS 选中色),
- * 跟 preview / chat / 其它 contenteditable 自动一致。但 DM 下 `Highlight`
- * 在 Chrome / Safari 不会自动切到 dark 变体(还是 LM 那个浅蓝),要显式覆盖。
- * 用项目 token 颜色:rgba(74, 130, 255, 0.32) —— 跟 DM 下 preview 浏览器
- * ::selection 的视觉感受对齐(中等蓝在暗色 surface 上的半透明高亮)。 */
-[data-theme="dark"] .cm-editor .cm-selectionBackground {
-  background: rgba(74, 130, 255, 0.32) !important;
-}
-[data-theme="dark"] .cm-editor .cm-content ::selection {
-  background: rgba(74, 130, 255, 0.32);
-  color: var(--text-primary);
-}
+/* CodeMirror 选中色完全走 tokens.css 里的 --selection-bg(LM / DM 各自值),
+ * 见 CodeMirrorSource.tsx 的 .cm-selectionBackground 规则。不再需要这里
+ * 单独 [data-theme=dark] 覆写。 */

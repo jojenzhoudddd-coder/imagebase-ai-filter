@@ -162,8 +162,9 @@
   --info:                #6B9AFF;
   --info-bg:             #1A2543;
 
-  /* ── Selection (DM)—中等蓝在 #1C1C1E 上仍可读 ─── */
-  --selection-bg:        rgba(74, 130, 255, 0.32);
+  /* ── Selection (DM)—中等蓝在 #1C1C1E 上仍可读。alpha 0.45 比 0.32 更醒目,
+   * 跟 macOS 浏览器原生 ::selection 在 DM 下的视觉感受更接近. ─── */
+  --selection-bg:        rgba(74, 130, 255, 0.45);
 
   /* ── Icon ─── */
   --icon-primary:        #E6E8EB;
