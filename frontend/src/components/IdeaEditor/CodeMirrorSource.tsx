@@ -86,12 +86,14 @@ const ideaEditorTheme = EditorView.theme({
     color: "var(--text-placeholder)",
     fontFamily: "inherit",
   },
-  // 选中态对齐 preview 模式视觉(preview 走浏览器 ::selection 默认 = 系统蓝高亮)。
-  // 用 --selection-bg token(LM rgba(20,86,240,.22) / DM rgba(74,130,255,.32))
-  // 直接走 rgba(),兼容 Chrome 110- 等老版本。color-mix() 在 Chrome 111+ 才稳,
-  // 老版本会 fallback 到 transparent —— 看起来"选中没颜色",这是上一版的问题。
-  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-    backgroundColor: "var(--selection-bg)",
+  // 选中态对齐 preview 模式视觉。CodeMirror 自带的 dark/light theme 用了高
+  // 特异性选择器 `&light.cm-focused > .cm-scroller > .cm-selectionLayer
+  // .cm-selectionBackground { background: #d7d4f0 }`(LM 紫粉色硬编码),
+  // 简单 `.cm-selectionBackground` 选不动它 —— 之前看到的"颜色不对"就是
+  // 这条 vendor default 在生效。用 !important 强制覆盖。
+  // --selection-bg token: LM rgba(20,86,240,.22) / DM rgba(74,130,255,.32)。
+  ".cm-selectionBackground": {
+    background: "var(--selection-bg) !important",
   },
   ".cm-activeLine": {
     backgroundColor: "transparent",
