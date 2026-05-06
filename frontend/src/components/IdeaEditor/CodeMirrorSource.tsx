@@ -86,25 +86,17 @@ const ideaEditorTheme = EditorView.theme({
     color: "var(--text-placeholder)",
     fontFamily: "inherit",
   },
-  // 选中态走 CSS Color L4 的新系统颜色 `SelectedItem` / `SelectedItemText`
-  // —— 比 legacy `Highlight` 更现代,在 Chrome 110+ / Safari 16.5+ / FF 96+
-  // 都会跟随 `color-scheme` 自动切换 LM/DM 变体(`Highlight` 不会切)。
-  // 配合下方 `.cm-editor` 的 colorScheme 自动继承根上的 light/dark,
-  // LM/DM 都能跟系统选中色一致。
+  // 选中态走 --selection-bg token,LM #ADD6FF / DM #264F78,直接对齐 VSCode
+  // 和 Chrome macOS 原生 ::selection 的视觉。CSS 系统 keyword(`Highlight` /
+  // `SelectedItem`)在 DM 下 Chrome/Safari 不切 dark 变体,放弃。
   // !important 是因为 CodeMirror vendor 默认 `&light.cm-focused > .cm-scroller
   // > .cm-selectionLayer .cm-selectionBackground { background:#d7d4f0 }` 特异
   // 性高,不强制覆盖会显示成紫粉色。
-  ".cm-editor": {
-    // 明确告诉浏览器这片区域跟随根上的 color-scheme(默认 normal 不传递),
-    // 让 SelectedItem keyword 能正确取 LM/DM 变体。
-    colorScheme: "inherit",
-  },
   ".cm-selectionBackground": {
-    background: "SelectedItem !important",
+    background: "var(--selection-bg) !important",
   },
   ".cm-content ::selection": {
-    background: "SelectedItem",
-    color: "SelectedItemText",
+    background: "var(--selection-bg)",
   },
   ".cm-activeLine": {
     backgroundColor: "transparent",

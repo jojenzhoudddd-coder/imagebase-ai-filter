@@ -64,10 +64,13 @@
   --info-bg:             #F0F4FF;
 
   /* ── Selection 文本选中色 ────────────────────────────────────────
-   * 用于编辑器 / 代码块的文字选中态视觉。LM 浅粉蓝(类 macOS browser
-   * 原生 #B4D5FE),DM 中等蓝(对深背景仍醒目)。两端都是 rgba 而非
-   * color-mix(),以兼容 Chrome 110 等老版本(color-mix 需 Chrome 111+)。 */
-  --selection-bg:        rgba(20, 86, 240, 0.22);
+   * 直接对齐 VSCode / Chrome on macOS 原生 ::selection 配色,不再用 CSS
+   * 系统 keyword(`Highlight` / `SelectedItem` 在 DM 下 Chrome/Safari 不
+   * 跟随主题切换,LM 那个浅蓝继续生效)。VSCode 的值几乎等同于 macOS
+   * 浏览器原生 ::selection,跨平台体感一致。
+   * LM: #ADD6FF (浅天蓝,opaque,接近 macOS Highlight)
+   * DM: #264F78 (深海军蓝,opaque,接近 macOS DM 浏览器 ::selection) */
+  --selection-bg:        #ADD6FF;
 
   /* ── Icon ────────────────────────────────────────────────────── */
   --icon-primary:        #2B2F36;
@@ -162,9 +165,8 @@
   --info:                #6B9AFF;
   --info-bg:             #1A2543;
 
-  /* ── Selection (DM)—中等蓝在 #1C1C1E 上仍可读。alpha 0.45 比 0.32 更醒目,
-   * 跟 macOS 浏览器原生 ::selection 在 DM 下的视觉感受更接近. ─── */
-  --selection-bg:        rgba(74, 130, 255, 0.45);
+  /* ── Selection (DM)—对齐 VSCode DM / Chrome macOS DM ::selection 配色 ─── */
+  --selection-bg:        #264F78;
 
   /* ── Icon ─── */
   --icon-primary:        #E6E8EB;
