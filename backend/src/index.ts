@@ -59,6 +59,7 @@ import { maybeRefreshDailySummaries, regenerateMissingSummaries } from "./servic
 // boot. Must happen before the first runAgent() call.
 import "./services/providers/index.js";
 import { evaluateCron } from "./services/cronScheduler.js";
+import { consumeFiredJobs } from "./services/inboxConsumer.js";
 import { startAnalystCleanup, stopAnalystCleanup } from "./services/analyst/cleanupCron.js";
 import { startWorktreeCleanupCron, stopWorktreeCleanupCron } from "./services/worktreeManager.js";
 
@@ -406,6 +407,10 @@ async function start() {
             schedule: job.schedule,
             inboxMessageId: inboxMessage.id,
           }));
+          // Fire-and-forget: run the agent for each fired habit.
+          // Don't await — LLM calls can take minutes; we must not block the
+          // heartbeat re-entrancy guard.
+          void consumeFiredJobs(ctx.agentId, cronResult.fired);
         }
         const invalid = cronResult.skipped.filter((s) => s.reason === "invalid-expression");
         if (invalid.length > 0) {
