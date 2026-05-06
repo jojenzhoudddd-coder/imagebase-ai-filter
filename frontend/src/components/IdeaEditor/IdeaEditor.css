@@ -236,37 +236,59 @@
 }
 
 /* ─── Tables (GFM markdown table + raw <table>) ────────────────────
- * Tiptap 的 Table 节点渲染出来是嵌套 <table><tbody><tr>(<td>|<th>)
- * 结构。这里用边框 + collapse 模拟 GitHub 风格,header 行带 surface-1
- * 背景色加强区分。块级显示,水平溢出滚动避免长表格撑爆容器。 */
+ * 视觉对齐 chat .chat-table-block:外层一个圆角 border-default 容器(承担
+ * 全部边框),内部表格只有横向 row-divider,无垂直列分隔。表头浅色 surface-1
+ * 底色,字号 11px,粗细 500。这样大量数据表格视觉上像 chat 里的 analyst 输出,
+ * 不像 grid 表格。 */
 .idea-preview-body table,
 .idea-preview-body .idea-preview-table {
   border-collapse: collapse;
-  margin: 12px 0;
+  margin: 8px 0;
   width: 100%;
   table-layout: auto;
-  overflow-x: auto;
-  display: block;
-  /* 行内文字大小跟正文统一 */
-  font-size: var(--fs-base);
-}
-.idea-preview-body th,
-.idea-preview-body td {
+  /* 外层边框 + 圆角 + bg 让整张表看着像一张卡片 */
   border: 1px solid var(--border-default);
-  padding: 6px 12px;
-  text-align: left;
-  vertical-align: top;
-  min-width: 60px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  /* 让 border-radius 对内部 cell 也起作用(border-collapse 默认会把外圆角覆盖) */
+  overflow: hidden;
+  font-size: 12px;
 }
+/* 单元格只保留底部 row-divider —— 不要 border 在 th/td 自身 (会在 th-tr-th
+ * 之间出现重叠造成不齐),改用 border-bottom on td. th 不需要 border. */
 .idea-preview-body th {
   background: var(--surface-1);
-  font-weight: 600;
-  color: var(--text-primary);
+  color: var(--icon-primary);
+  font-weight: 500;
+  text-align: left;
+  vertical-align: top;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-default);
+  white-space: nowrap;
+  font-size: 11px;
 }
-/* 选中态(编辑表格时 ProseMirror 注入此 class) —— 浅色高亮单元格 */
+.idea-preview-body td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--surface-3);
+  vertical-align: top;
+  color: var(--icon-primary);
+  /* idea 是文档语境(chat 是数据气泡),允许换行让长文本可读;chat 的
+   * white-space:nowrap 是为压缩气泡空间,这里不需要。 */
+  word-break: break-word;
+}
+/* 最后一行去掉 row-divider 让外层圆角连续 */
+.idea-preview-body tr:last-child td { border-bottom: none; }
+/* 选中态(编辑表格时 ProseMirror 注入此 class) */
 .idea-preview-body .selectedCell {
   position: relative;
   background: var(--primary-bg);
+}
+
+/* ─── Chart blocks (vega-lite / vega code blocks via ChartCodeBlock) ──
+ * 给 NodeView 包裹一层正常的 block 间距;ChatChartBlock 自身的
+ * .chat-chart-block 已经带边框 + 内边距,这里只管外层节奏. */
+.idea-preview-body .idea-preview-chart {
+  margin: 12px 0;
 }
 
 /* ─── Dark mode: Tiptap Preview ─── */
@@ -287,14 +309,16 @@
 [data-theme="dark"] .idea-preview-body a {
   color: var(--primary);
 }
-/* DM 表格 —— 用 border-default(已经是 DM token)即可,header 走 surface-2
- * (比 base 高一档,跟 LM 的 surface-1 视觉对应). selectedCell 走 primary-bg. */
-[data-theme="dark"] .idea-preview-body th,
-[data-theme="dark"] .idea-preview-body td {
-  border-color: var(--border-default);
-}
+/* DM 表格 —— 跟 LM 同结构,只换 surface 配色:外层 surface-2 → DM 自动跟
+ * tokens.css(DM 下 surface-2=#2C2C2E)。td bottom-divider 用 surface-3 即可。 */
 [data-theme="dark"] .idea-preview-body th {
-  background: var(--surface-2);
+  background: var(--surface-3);
+  color: var(--text-primary);
+  border-bottom-color: var(--border-default);
+}
+[data-theme="dark"] .idea-preview-body td {
+  color: var(--text-primary);
+  border-bottom-color: var(--border-default);
 }
 
 

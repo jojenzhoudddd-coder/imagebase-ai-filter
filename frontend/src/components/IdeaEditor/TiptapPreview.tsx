@@ -25,6 +25,7 @@ import { Markdown } from "tiptap-markdown";
 import { Extension } from "@tiptap/core";
 import { createImageExtension } from "./extensions/ImageExtension";
 import type { ImageUploadResult } from "./extensions/ImageExtension";
+import { ChartCodeBlock } from "./extensions/ChartCodeBlockExtension";
 import { toMarkdown } from "./markdownBridge";
 
 /**
@@ -115,7 +116,12 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
       extensions: [
         StarterKit.configure({
           heading: { levels: [1, 2, 3, 4, 5, 6] },
+          // 关掉默认 CodeBlock,下面用 ChartCodeBlock 替换 —— vega-lite /
+          // vega 语言走 ChatChartBlock 渲染图表(包含热力图),其它语言仍是
+          // 普通 <pre><code>。
+          codeBlock: false,
         }),
+        ChartCodeBlock,
         Link.configure({
           openOnClick: false,
           HTMLAttributes: { class: "" },
