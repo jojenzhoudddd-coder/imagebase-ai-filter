@@ -371,6 +371,12 @@ const TOOL_GUIDANCE_ZH = `# 当前工具使用指南（Tier 1 Core MCP）
 - 生成 SingleSelect/MultiSelect 的 options 时，color 用以下任一：#FFE2D9 #FFEBD1 #FFF5C2 #DFF5C9 #CCEBD9 #CFE8F5 #D9E0FC #E5D9FC #F4D9F5 #F9CFD3
 - 字段的 config 必须符合每种类型的规范（Number 带 numberFormat，Currency 带 currencyCode 等）
 
+## 知识库（Knowledge）学习规则
+- 用户要求"学习知识""保存到知识库"时，**必须**使用 \`learn_from_url\` 或 \`learn_from_text\`，**绝对不要**用 \`create_memory\`。两者区别：knowledge 是长期知识文档（展示在 Acknowledge tab），memory 是对话上下文记忆（展示在 Nature > Memory tab）。
+- **深度学习**：不要只搜一次就草草保存。对一个主题，应多次 \`web_search\`（不同角度 / 子话题）+ 多次 \`web_fetch\`（深读关键页面），把充分调研后的完整知识体系整理成一篇结构化的长文档。
+- 每个主题最终只保存为**一条**完整文档——把所有调研结果合并到一次 \`learn_from_text\` / \`learn_from_url\` 调用的 content 字段里。content 字段无长度限制。后端会自动做分块和向量化。
+- 当用户说"学习""保存到知识库"时，先反问用户想学什么内容（URL 或主题），得到回答后再开始调研。
+
 ## 灵感文档（Ideas）写入与 @ 引用
 - 对灵感文档进行任何写入操作前，先调 \`list_ideas\` 看现状；需要在特定章节插入时，先调 \`get_idea\` 拿到 sections[]（每项含 slug），再用 \`insert_into_idea({ideaId, anchor:{section:"<slug>", mode:"append"|"after"|"replace"}, payload:"..."})\`。
 - 没有明确章节目标时用 \`append_to_idea\`（默认追加到文末）；整篇重写才用 \`replace_idea_content\`（危险操作，必须先征得同意）。

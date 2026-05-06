@@ -40,7 +40,72 @@ export interface KnowledgeCreateInput {
   tags?: string[];
 }
 
-export async function addKnowledge(input: KnowledgeCreateInput) {
+// ─── Per-agent serial queue ────────────────────────────────────────────
+// Agent calls learn_from_text many times in parallel (same model turn).
+// Without serialisation the merge-window check races and every call creates
+// a separate entry. A simple promise-chain per agentId fixes this.
+const agentQueues = new Map<string, Promise<any>>();
+
+function enqueue<T>(agentId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = agentQueues.get(agentId) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  agentQueues.set(agentId, next);
+  return next;
+}
+
+const MERGE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
+export function addKnowledge(input: KnowledgeCreateInput) {
+  return enqueue(input.agentId, () => _addKnowledgeImpl(input));
+}
+
+async function _addKnowledgeImpl(input: KnowledgeCreateInput) {
+  const cutoff = new Date(Date.now() - MERGE_WINDOW_MS);
+  const existing = await prisma.knowledgeEntry.findFirst({
+    where: { agentId: input.agentId, chunkIndex: 0, createdAt: { gte: cutoff } },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (existing) {
+    let existingContent = existing.content;
+    if (existing.parentId) {
+      const allChunks = await prisma.knowledgeEntry.findMany({
+        where: { parentId: existing.parentId },
+        orderBy: { chunkIndex: "asc" },
+        select: { content: true },
+      });
+      existingContent = allChunks.map((c) => c.content).join("");
+      await prisma.knowledgeEntry.deleteMany({ where: { parentId: existing.parentId } });
+    } else {
+      await prisma.knowledgeEntry.delete({ where: { id: existing.id } });
+    }
+
+    const docTitle = existing.title;
+    const mergedContent = existingContent + "\n\n"
+      + (input.title !== docTitle ? `## ${input.title}\n\n` : "")
+      + input.content;
+    const mergedTags = Array.from(new Set([...(existing.tags as string[]), ...(input.tags ?? [])]));
+    const sourceUrl = input.sourceUrl ?? existing.sourceUrl;
+
+    const chunks = chunkText(mergedContent);
+    const embeddings = await embed(chunks);
+    const parentId = existing.parentId ?? `ke_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+
+    const entries = await Promise.all(
+      chunks.map((chunk, i) =>
+        prisma.knowledgeEntry.create({
+          data: {
+            agentId: input.agentId, title: docTitle, content: chunk,
+            sourceUrl: sourceUrl ?? null, sourceType: input.sourceType ?? existing.sourceType,
+            tags: mergedTags, embedding: embeddings ? embeddings[i] : undefined,
+            chunkIndex: i, parentId: chunks.length > 1 ? parentId : null,
+          },
+        }),
+      ),
+    );
+    return { count: entries.length, parentId, firstId: entries[0]?.id, merged: true };
+  }
+
   const chunks = chunkText(input.content);
   const embeddings = await embed(chunks);
   const parentId = `ke_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -49,15 +114,10 @@ export async function addKnowledge(input: KnowledgeCreateInput) {
     chunks.map((chunk, i) =>
       prisma.knowledgeEntry.create({
         data: {
-          agentId: input.agentId,
-          title: input.title,
-          content: chunk,
-          sourceUrl: input.sourceUrl ?? null,
-          sourceType: input.sourceType ?? "web",
-          tags: input.tags ?? [],
-          embedding: embeddings ? embeddings[i] : undefined,
-          chunkIndex: i,
-          parentId: chunks.length > 1 ? parentId : null,
+          agentId: input.agentId, title: input.title, content: chunk,
+          sourceUrl: input.sourceUrl ?? null, sourceType: input.sourceType ?? "web",
+          tags: input.tags ?? [], embedding: embeddings ? embeddings[i] : undefined,
+          chunkIndex: i, parentId: chunks.length > 1 ? parentId : null,
         },
       }),
     ),
@@ -103,6 +163,22 @@ export async function listKnowledge(
     total,
     hasMore: offset + limit < total,
   };
+}
+
+export async function getKnowledge(agentId: string, id: string) {
+  const entry = await prisma.knowledgeEntry.findUnique({ where: { id } });
+  if (!entry || entry.agentId !== agentId) return null;
+  if (entry.parentId) {
+    const chunks = await prisma.knowledgeEntry.findMany({
+      where: { parentId: entry.parentId },
+      orderBy: { chunkIndex: "asc" },
+      select: { content: true },
+    });
+    return { id: entry.id, title: entry.title, content: chunks.map((c) => c.content).join(""),
+      sourceUrl: entry.sourceUrl, sourceType: entry.sourceType, tags: entry.tags, createdAt: entry.createdAt.toISOString() };
+  }
+  return { id: entry.id, title: entry.title, content: entry.content,
+    sourceUrl: entry.sourceUrl, sourceType: entry.sourceType, tags: entry.tags, createdAt: entry.createdAt.toISOString() };
 }
 
 export async function deleteKnowledge(agentId: string, id: string) {

@@ -362,11 +362,15 @@ export default function ChatSidebar({
   const [inputValue, setInputValue] = useState("");
   // Attachments for current message
   const [attachments, setAttachments] = useState<Array<{ id: string; url: string; mime: string; size: number; originalName: string }>>([]);
-  // Prefill input from parent (e.g. "Add model" flow)
+  // Prefill input from parent (e.g. "Add by chat" flow).
+  // We do NOT call onPrefillConsumed here — it's called in handleSend instead,
+  // so that if this component remounts (layout tree restructure from closing a
+  // sibling block), the prefillMessage is still in blockState and gets re-applied.
+  const prefillAppliedRef = useRef(false);
   useEffect(() => {
-    if (prefillMessage && !inputValue) {
+    if (prefillMessage && !prefillAppliedRef.current) {
       setInputValue(prefillMessage);
-      onPrefillConsumed?.();
+      prefillAppliedRef.current = true;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillMessage]);
@@ -394,6 +398,7 @@ export default function ChatSidebar({
   // useEffect at line 236 below.
   const streamingRef = useRef(streaming);
   useEffect(() => { streamingRef.current = streaming; }, [streaming]);
+
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Thin document summary shown on the welcome page after a refresh, so the
@@ -744,6 +749,9 @@ export default function ChatSidebar({
     setAttachments([]);
     setStreaming(true);
     setError(null);
+    // Clear prefillMessage from blockState now that it's been sent,
+    // so it doesn't re-appear on future remounts.
+    onPrefillConsumed?.();
 
     // PR2: extract structured mention payload (model / table / idea / ...)
     // from the raw markdown so the host agent can apply strong-typed routing.

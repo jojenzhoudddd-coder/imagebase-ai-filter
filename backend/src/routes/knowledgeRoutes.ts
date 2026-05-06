@@ -3,7 +3,7 @@
  */
 
 import express, { type Request, type Response } from "express";
-import { addKnowledge, listKnowledge, searchKnowledge, deleteKnowledge } from "../services/knowledgeService.js";
+import { addKnowledge, listKnowledge, getKnowledge, searchKnowledge, deleteKnowledge } from "../services/knowledgeService.js";
 
 const router = express.Router();
 
@@ -50,6 +50,20 @@ router.get("/search", async (req: Request, res: Response) => {
     res.json({ results });
   } catch (err: any) {
     console.error("[knowledge] search error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+/** GET /api/knowledge/:id — get full knowledge entry (reassembled from chunks) */
+router.get("/:id", async (req: Request, res: Response) => {
+  try {
+    const agentId = req.query.agentId as string;
+    if (!agentId) { res.status(400).json({ error: "agentId required" }); return; }
+    const entry = await getKnowledge(agentId, req.params.id);
+    if (!entry) { res.status(404).json({ error: "not found" }); return; }
+    res.json(entry);
+  } catch (err: any) {
+    console.error("[knowledge] get error:", err);
     res.status(500).json({ error: err.message ?? "internal error" });
   }
 });

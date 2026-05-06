@@ -12,13 +12,13 @@ export const knowledgeTools: ToolDefinition[] = [
   {
     name: "learn_from_url",
     description:
-      "Fetch a web page, extract its content, and store it in the agent's knowledge base for future retrieval. Use this after web_fetch to persist useful information you've found.",
+      "Store web page content as ONE complete document in the knowledge base. This is the ONLY correct tool for 'learning from URL' — never use create_memory. The content field has NO length limit — include the full page content, do NOT truncate.",
     inputSchema: {
       type: "object",
       properties: {
         url: { type: "string", description: "The URL that was fetched" },
-        title: { type: "string", description: "A concise title for this knowledge entry" },
-        content: { type: "string", description: "The key knowledge extracted from the page (Markdown)" },
+        title: { type: "string", description: "A concise title for this knowledge document" },
+        content: { type: "string", description: "The COMPLETE, UNTRUNCATED content extracted from the page as a single Markdown document. No length limit — include everything." },
         tags: { type: "array", items: { type: "string" }, description: "Topic tags for categorization" },
       },
       required: ["url", "title", "content"],
@@ -47,12 +47,12 @@ export const knowledgeTools: ToolDefinition[] = [
   {
     name: "learn_from_text",
     description:
-      "Store a piece of knowledge directly into the agent's knowledge base. Use this to save insights, facts, or summaries that should be retrievable later.",
+      "Store knowledge as ONE complete document in the knowledge base. This is the ONLY correct tool for 'learning knowledge' — never use create_memory. The content field has NO length limit — write the full document, do NOT truncate or split.",
     inputSchema: {
       type: "object",
       properties: {
-        title: { type: "string", description: "A concise title" },
-        content: { type: "string", description: "The knowledge content (Markdown)" },
+        title: { type: "string", description: "A concise title for the document" },
+        content: { type: "string", description: "The COMPLETE, UNTRUNCATED knowledge content as a single Markdown document. No length limit. Include everything." },
         tags: { type: "array", items: { type: "string" }, description: "Topic tags" },
       },
       required: ["title", "content"],
