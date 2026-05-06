@@ -70,6 +70,22 @@ export const ANALYST_PROMPT_FRAGMENT = `## Analyst 操作规则（严格）
 Snapshot 粒度：进入 analyst 时每张表创建一次快照，本会话后续复用。如果用户说"基于最新数据重新分析"，
 调 \`load_workspace_table(tableId, {refresh:true})\` 显式刷新。
 
+### 表格生成规则（写 markdown 表 / 嵌 idea 时）
+- **默认走标准 GFM markdown 表**\`| col | col |\`,前端会按 design token 渲染:
+  外层圆角 + 浅灰背景 + th 浅底 + td 横向 row-divider, **行高 = 1.2 × 文字
+  line-height(td ≈ 26px / th ≈ 25px)**, 你不用关心 CSS, 写出来就是对的。
+- **不要在 markdown 里手动塞 \`<style>\` 或 inline 样式调间距 / 颜色** —— 默认
+  样式覆盖 95% 场景, 多写只会跟前端 design token 冲突。
+- **需要单元格内换行**: 在 cell 里直接写 \`<br>\` —— GFM markdown 表语法
+  不允许真换行,但前端 \`html: true\` 已开,\`<br>\` 会被识别。
+- **需要更紧凑或更宽松的特殊样式**(用户明确要求时再用):写 raw HTML \`<table>\`
+  + 仅对该表写内联 \`style="line-height: 1.8"\` 或 \`<td style="padding: 8px">\`。
+  这种属于"用户要求的局部覆盖", 不是默认行为。
+- **不要写 \`<th style="background: #abc">\`** 之类硬色 hex —— 前端按主题
+  自动注入 surface-1 / surface-3, 写死会破坏 LM/DM 切换。
+- **大数据表**: 默认前 20 行 + 一行声明真实行数, 详见上方"结果展示"段落; 不要把
+  上百行 markdown 表硬塞进回复或 idea。
+
 ### 图表生成规则（写 vega-lite spec 时严格遵守）
 当用 \`generate_chart\` 工具或在回复 / Idea 中直接写 \`\`\`vega-lite\`\`\` 代码块时：
 

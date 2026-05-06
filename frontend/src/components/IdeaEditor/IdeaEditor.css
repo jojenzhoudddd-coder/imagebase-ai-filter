@@ -261,22 +261,26 @@
 }
 /* 单元格只保留底部 row-divider —— 不要 border 在 th/td 自身 (会在 th-tr-th
  * 之间出现重叠造成不齐),改用 border-bottom on td. th 不需要 border.
- * 行高紧贴文字 line-height —— padding 上下各 2px,总行高 ≈ 22-24px,无多余空白. */
+ * 默认行高 = 1.2 × 文字 line-height ——
+ *   line-height: 1.5 (12px 文 = 18px 行高,11px 文 ≈ 17px) + 上下 4px padding
+ *   → td 行 ≈ 26px / th 行 ≈ 25px,大概是 body --lh-base(22px)× 1.2 的视觉。
+ *   模型如果要变更,在 markdown 里直接写 raw <table> + 内联 style/<br> 覆盖即可
+ *   (具体 spec 见 analyst-skill 的"表格生成规则"段落). */
 .idea-preview-body th {
   background: var(--surface-1);
   color: var(--icon-primary);
   font-weight: 500;
   text-align: left;
   vertical-align: middle;
-  padding: 2px 10px;
-  line-height: 18px;
+  padding: 4px 10px;
+  line-height: 1.5;
   border-bottom: 1px solid var(--border-default);
   white-space: nowrap;
   font-size: 11px;
 }
 .idea-preview-body td {
-  padding: 2px 10px;
-  line-height: 20px;
+  padding: 4px 10px;
+  line-height: 1.5;
   border-bottom: 1px solid var(--surface-3);
   vertical-align: middle;
   color: var(--icon-primary);
