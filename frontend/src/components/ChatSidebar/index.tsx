@@ -1704,16 +1704,9 @@ export default function ChatSidebar({
   // to silence TS until we decide whether to add a close affordance back.
   void onClose;
   return (
-    <aside
-      ref={sidebarRef}
-      className={`chat-sidebar${open ? " open" : ""}`}
-      aria-hidden={!open}
-      onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setSidebarDragging(true); }}
-      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSidebarDragging(false); }}
-      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setSidebarDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) void handleFileDrop(files); }}
-    >
-      {/* Header blocks drag events so drop overlay doesn't cover it */}
-      <header className="chat-header" onDragOver={(e) => e.stopPropagation()} onDrop={(e) => e.stopPropagation()}>
+    <>
+      {/* Header lives outside <aside> so the drop zone doesn't cover it */}
+      <header className="chat-header">
         {/* Left cluster: Agent name pill (double-click to rename, also kept in
             sync with chat-initiated renames via `update_agent_name` tool) then
             the model picker. Both are hidden behind `open` so we don't hit
@@ -1776,11 +1769,17 @@ export default function ChatSidebar({
           <BlockCloseButton />
         </div>
       </header>
-      {/* Drop overlay — positioned below header, covers messages + input + bottom padding */}
+      <aside
+        ref={sidebarRef}
+        className={`chat-sidebar${open ? " open" : ""}`}
+        aria-hidden={!open}
+        onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setSidebarDragging(true); }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSidebarDragging(false); }}
+        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setSidebarDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) void handleFileDrop(files); }}
+      >
+      {/* Drop overlay — covers messages + input + bottom padding, NOT header */}
       {sidebarDragging && (
-        <div className="chat-sidebar-drag-overlay chat-sidebar-drag-overlay--below-header">
-          Drop files here
-        </div>
+        <div className="chat-sidebar-drag-overlay">Drop files here</div>
       )}
       {/* Agent meta menu —— 7 个占位项,功能待接;onSelect 仅 console.info */}
       {agentMetaMenuOpen && agentMetaBtnRef.current && (
@@ -1986,6 +1985,7 @@ export default function ChatSidebar({
         </>
       )}
     </aside>
+    </>
   );
 }
 

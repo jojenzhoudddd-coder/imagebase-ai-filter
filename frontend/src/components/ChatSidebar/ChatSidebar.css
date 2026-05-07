@@ -9,11 +9,14 @@
 .chat-sidebar {
   position: relative;
   width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   background: var(--surface-2);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Bottom padding moved here from .chat-part so the drop zone covers it */
+  padding-bottom: 20px;
 }
 
 /* ─── Header ────────────────────────────────────────────────────────
@@ -2843,8 +2846,4 @@
   font-weight: 500;
   z-index: 50;
   pointer-events: none;
-}
-.chat-sidebar-drag-overlay--below-header {
-  top: 44px;
-  border-radius: 0 0 6px 6px;
 }

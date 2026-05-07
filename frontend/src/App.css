@@ -52,7 +52,7 @@
      左右 20px padding 维持原对齐。
      Mirror rule of artifact-part: only the top corner facing artifact is
      rounded. Default layout places chat on the right, so round top-left. */
-  padding: 0 0 20px 0;
+  padding: 0;
   border: 1px solid var(--border-default);
   border-radius: 8px 0 0 0;
 }
