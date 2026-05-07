@@ -275,9 +275,19 @@ export function CanvasProvider({
         createdId = id;
         const block: Block = { id, type };
         const defaultState: BlockState = type === "artifact" ? defaultArtifactState() : {};
-        const blockState: BlockState = initialState
-          ? { ...(defaultState as object), ...(initialState as object) } as BlockState
-          : defaultState;
+        // Agency block: restore stashed state from previous collapse
+        let restoredAgencyState: BlockState | undefined;
+        if (type === "agency") {
+          try {
+            const raw = localStorage.getItem("agency_block_state_v1");
+            if (raw) { restoredAgencyState = JSON.parse(raw); localStorage.removeItem("agency_block_state_v1"); }
+          } catch { /* ignore */ }
+        }
+        const blockState: BlockState = restoredAgencyState
+          ? restoredAgencyState
+          : initialState
+            ? { ...(defaultState as object), ...(initialState as object) } as BlockState
+            : defaultState;
         const newLayout = insertNewBlock(prev.layout, id);
         const next: CanvasState = {
           blocks: { ...prev.blocks, [id]: block },
@@ -303,6 +313,11 @@ export function CanvasProvider({
       setState((prev) => {
         // 至少保留 1 个 block
         if (countLeaves(prev.layout) <= 1) return prev;
+        // Agency block: stash blockState before deleting so re-open restores it
+        const block = prev.blocks[blockId];
+        if (block?.type === "agency" && prev.blockStates[blockId]) {
+          try { localStorage.setItem("agency_block_state_v1", JSON.stringify(prev.blockStates[blockId])); } catch { /* quota */ }
+        }
         const newLayout = removeLeaf(prev.layout, blockId);
         const newBlocks = { ...prev.blocks };
         delete newBlocks[blockId];

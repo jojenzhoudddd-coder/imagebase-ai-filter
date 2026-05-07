@@ -913,7 +913,22 @@ export default function AgencyBlock({ blockId }: Props) {
       });
     }
 
-    events.forEach((ev, i) => {
+    // Pre-pass: merge consecutive milestone:progress events into single text blocks
+    // so the feed doesn't show dozens of one-word lines from streaming deltas.
+    const merged: AgencyEvent[] = [];
+    for (const ev of events) {
+      if (ev.type === "milestone:progress") {
+        const prev = merged[merged.length - 1];
+        if (prev?.type === "milestone:progress" && prev.data.milestoneId === ev.data.milestoneId) {
+          // Accumulate text into the previous progress event
+          prev.data = { ...prev.data, text: String(prev.data.text ?? "") + String(ev.data.text ?? ev.data.message ?? "") };
+          continue;
+        }
+      }
+      merged.push({ ...ev, data: { ...ev.data } });
+    }
+
+    merged.forEach((ev, i) => {
       switch (ev.type) {
         case "roadmap:planned":
         case "roadmap:replanned": {
@@ -945,13 +960,15 @@ export default function AgencyBlock({ blockId }: Props) {
           break;
         }
         case "milestone:progress": {
-          // Progress lines are rendered as inline updates (CLI lines)
+          // Consolidated progress — single block per milestone run
+          const text = String(ev.data.text ?? ev.data.message ?? "...").replace(/\n+/g, " ").trim();
+          if (!text) break;
           feedItems.push(
             <div key={`prog-${i}`} className="ha-cli-block">
               <div className="ha-cli-row ha-cli-row-head">
                 <span className="ha-cli-chev">{" "}</span>
                 <Sigil status="running" />
-                <span className="ha-cli-label">{String(ev.data.text ?? ev.data.message ?? "...").replace(/\n+/g, " ").trim()}</span>
+                <span className="ha-cli-label ha-cli-label-wrap">{text}</span>
               </div>
             </div>
           );

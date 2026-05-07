@@ -218,7 +218,7 @@ async function* executeMilestoneWithRetry(
     // ── Execute via Chat Agent ───────────────────────────────────────────
     const userMessage = buildMilestonePrompt(milestone.title, milestone.description, criteria, failureHistory);
     const convTitle = `Agency: ${milestone.title}`;
-    const conv = await convStore.createConversation(session.workspaceId, convTitle, session.agentId);
+    const conv = await convStore.createConversation(session.workspaceId, convTitle, session.agentId, { type: "agency", id: session.id });
 
     // Update conversation reference
     await prisma.agencyMilestone.update({

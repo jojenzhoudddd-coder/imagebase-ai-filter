@@ -135,6 +135,9 @@ export async function listConversations(
   const sortBy = opts?.sortBy ?? "createdAt";
   const where: any = { workspaceId };
   if (opts?.agentId !== undefined) where.agentId = opts.agentId;
+  // Hide agency-spawned conversations from the sidebar list — they're
+  // internal execution traces, not user-facing chat sessions.
+  where.attachedToType = { not: "agency" };
   const rows = await prisma.conversation.findMany({
     where,
     orderBy: { [sortBy]: "desc" },

@@ -991,6 +991,14 @@
   color: var(--text-primary);
   font-weight: 500;
 }
+/* Variant: merged progress text should wrap instead of truncate */
+.ha-cli-label-wrap {
+  white-space: normal;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
 
 /* Meta — right-aligned dim text (counts, durations) */
 .ha-cli-meta {
