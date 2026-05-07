@@ -138,8 +138,11 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         dirtyRef.current = false;
         previewRef.current?.clearDirty();
         setSaveStatus("saved");
-        // Do NOT setContent here — getCurrentContent already picked the
-        // best version. Setting content would overwrite blank lines.
+        // Sync contentRef with what was actually saved (e.g. after an
+        // image drop in preview mode, the Tiptap markdown includes the
+        // new image but contentRef still had the old text). Without this,
+        // switching away loses the image because contentRef is stale.
+        contentRef.current = text;
       }
     } catch {
       setSaveStatus("offline");
@@ -164,9 +167,15 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         saveTimerRef.current = null;
       }
       if (dirtyRef.current) {
-        const text = modeRef.current === "preview" && previewRef.current?.isDirty()
-          ? previewRef.current.getMarkdown()
-          : contentRef.current;
+        // In preview mode, try to get the latest markdown from Tiptap
+        // (includes image drops etc). Fall back to contentRef if the
+        // editor was already destroyed during unmount.
+        let text = contentRef.current;
+        try {
+          if (modeRef.current === "preview" && previewRef.current?.isDirty()) {
+            text = previewRef.current.getMarkdown() || text;
+          }
+        } catch { /* editor destroyed — use contentRef */ }
         void saveIdeaContent(ideaId, text, versionRef.current).catch(() => {});
         dirtyRef.current = false;
       }
