@@ -504,6 +504,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  padding-left: 8px;
   font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
@@ -511,6 +512,7 @@
 
 .ha-work-welcome-sub {
   margin: 0;
+  padding-left: 8px;
   font-size: 14px;
   color: var(--text-secondary);
   line-height: 1.5;
@@ -519,7 +521,7 @@
 .ha-work-suggestions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 /* Matches .chat-preset-chip from ChatSidebar */
