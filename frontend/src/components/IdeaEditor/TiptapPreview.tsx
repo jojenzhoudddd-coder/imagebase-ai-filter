@@ -132,8 +132,11 @@ const HardBreakNewline = Extension.create({
  * Renders:  <p>A</p> <p>&nbsp;</p> <p>&nbsp;</p> <p>B</p>
  */
 function preserveBlankLines(md: string): string {
-  // Split into lines, walk through and replace empty lines (beyond
-  // the first in a run) with &nbsp; spacers.
+  // Split into lines. Each "extra" blank line (2nd+ consecutive) is
+  // replaced with &nbsp; so markdown-it creates a <p>&nbsp;</p> that
+  // Tiptap preserves. CSS collapses these spacer paragraphs to just
+  // their margin-bottom (matching the paragraph gap), making the
+  // spacing linear: 2 Enters = 1 gap, 3 Enters = 2 gaps, etc.
   const lines = md.split("\n");
   const result: string[] = [];
   let consecutiveEmpty = 0;
@@ -142,9 +145,11 @@ function preserveBlankLines(md: string): string {
     if (line.trim() === "") {
       consecutiveEmpty++;
       if (consecutiveEmpty >= 2) {
-        // This is a 2nd+ blank line in a row — add spacer
-        result.push("&nbsp;");
-        result.push(""); // keep the blank line for paragraph break
+        // Use <br> as spacer — markdown-it with html:true passes it
+        // through, Tiptap parses it as hardBreak inside a <p>, and
+        // CSS p:has(> br:only-child) collapses it to zero height.
+        result.push("<br>");
+        result.push("");
       } else {
         result.push(line);
       }

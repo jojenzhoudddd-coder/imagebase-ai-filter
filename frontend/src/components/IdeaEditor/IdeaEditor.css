@@ -223,10 +223,14 @@
 .idea-preview-body a:hover {
   text-decoration: underline;
 }
-/* Empty paragraph: ensure visible height so blank lines show up */
+/* Spacer paragraphs (from preserveBlankLines &nbsp; insertion).
+   Collapse content height to zero so they only occupy their
+   margin-bottom — makes blank-line spacing perfectly linear:
+   each extra Enter adds exactly one margin-bottom (20px). */
 .idea-preview-body p:empty,
 .idea-preview-body p:has(> br:only-child) {
-  min-height: 1.7em;
+  font-size: 0;
+  line-height: 0;
 }
 /* Hide trailing <br> in paragraphs that also have text content.
    When markdown "text\n![img]()" is parsed with breaks:true, the image
