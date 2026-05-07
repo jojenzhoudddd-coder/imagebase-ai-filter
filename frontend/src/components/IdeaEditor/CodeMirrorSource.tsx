@@ -146,19 +146,40 @@ function fileInterceptor(
       onPasteFiles(files);
       return true;
     },
-    drop(event) {
+    drop(event, view) {
+      // Always prevent default for file drops to stop browser preview
+      if (event.dataTransfer?.types?.includes("Files")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       if (!onDropFiles) return false;
       const files = Array.from(event.dataTransfer?.files ?? []);
       if (files.length === 0) return false;
-      event.preventDefault();
+      // Move cursor to drop position before inserting
+      const dropPos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (dropPos != null) {
+        view.dispatch({ selection: { anchor: dropPos } });
+      }
+      // Remove drop indicator
+      view.dom.classList.remove("cm-drop-target");
       onDropFiles(files);
       return true;
     },
-    dragover(event) {
+    dragover(event, view) {
       if (event.dataTransfer?.types?.includes("Files")) {
         event.preventDefault();
+        // Move cursor to indicate drop position
+        const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+        if (pos != null) {
+          view.dispatch({ selection: { anchor: pos } });
+          view.dom.classList.add("cm-drop-target");
+        }
         return true;
       }
+      return false;
+    },
+    dragleave(_event, view) {
+      view.dom.classList.remove("cm-drop-target");
       return false;
     },
   });
