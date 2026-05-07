@@ -509,8 +509,17 @@
   display: inline-block;
   border-radius: 3px;
   cursor: pointer;
-  /* Paragraph-level spacing so image\n\nimage has visible gap */
   margin: 0 0 1em 0;
+}
+/* Tiptap renders images as block-level <img> nodes (not wrapped in <p>).
+   Give them paragraph-equivalent margin so image\n\nimage has spacing. */
+.idea-preview-body > img,
+.idea-preview-body > .ProseMirror-separator + img,
+.idea-preview-body img[src] {
+  display: block;
+  max-width: 100%;
+  margin: 0 0 1em 0;
+  border-radius: 3px;
 }
 .idea-preview-body .idea-image-wrap:hover {
   outline: 1px dashed var(--color-text-tertiary, #9ca3af);
