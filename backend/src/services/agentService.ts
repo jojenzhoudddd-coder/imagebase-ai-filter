@@ -163,33 +163,78 @@ export async function ensureAgentFiles(agentId: string): Promise<void> {
   if (!(await fileExists(heartbeatPath))) await fs.writeFile(heartbeatPath, "", "utf8");
 }
 
+/**
+ * Habit prompts — 通用约束(写在每条 prompt 末尾):
+ *  · 这是 cron 触发的自动任务,**没有用户在线**。绝不反问、绝不等用户输入,
+ *    遇到不确定的地方直接根据 workspace 现有内容推理后执行。
+ *  · "根据当前 workspace" 不是空话,必须遍历:list_tables / list_ideas /
+ *    list_designs / list_demos + 必要时 get_idea / query_records 等读取细节。
+ *  · 输出要落到具体载体(soul/profile / 知识库 / 推荐 prompt 等),不要只
+ *    在对话里讲。
+ */
+const HABIT_COMMON_CONSTRAINTS = `
+
+⚠️ 自动任务硬约束:
+- 这是 cron 触发,没有用户在线 → **绝不反问 / 绝不等待 user input**,遇到不确定的地方直接根据 workspace 已有内容推理后执行。
+- "当前 workspace" = 必须真的遍历 — 至少调用 list_tables / list_ideas / list_designs / list_demos / list_my_skills 看一遍现状,需要细节再 get_idea / query_records 等深挖。不能只看对话历史就猜。
+- 任务必须落到**具体载体**(soul.md / profile.md / 知识库文档 / 推荐 prompt API 等),只在对话里讲不算完成。
+- 完成后用一段简短自然语言总结做了什么、写到了哪里。`;
+
 const SYSTEM_HABITS_SEED = [
   {
     id: "habit_system_evolve",
     schedule: "0 2 * * *",
-    prompt: "回顾今天的全部对话，提炼关键信息，更新我的 soul.md（自我认知）和 profile.md（用户画像）。只更新有新发现的部分，不要重复已有内容。",
+    prompt:
+      "遍历当前 workspace 的近期对话(用 list_tables / list_ideas / list_designs / list_demos 先扫一遍现状,然后看最近几条相关对话),提炼用户的偏好 / 工作节奏 / 表达习惯 / 关注点变化,更新 soul.md(我自己的认知)和 profile.md(用户画像)。只追加新发现,不重复已有内容,不删除老条目除非明确发现错误。" +
+      HABIT_COMMON_CONSTRAINTS,
     type: "system",
     enabled: true,
     displayName: "自我进化",
-    description: "每天回顾对话，提炼并更新 soul 和 user profile",
+    description: "每天 02:00 — 遍历 workspace 提炼新认知,更新 soul + user profile",
   },
   {
     id: "habit_system_suggest",
     schedule: "0 1 * * *",
-    prompt: "刷新 workspace 的 Todo Suggestions：1) 为 Chat 欢迎页生成 3-5 条推荐 prompt；2) 为 High Agency 模式生成 3 个前沿级别的目标建议。",
+    prompt:
+      "刷新当前 workspace 的 Todo Suggestions。先遍历 workspace(list_tables / list_ideas / list_designs / list_demos / 最近对话),理解用户当下在做什么、卡在哪、下一步可能要什么,然后:" +
+      "\n1) 为 Chat 欢迎页生成 3-5 条具体的、可点击就执行的推荐 prompt(不要泛泛'帮我分析数据',要带 workspace 里真实的 artifact 名字);" +
+      "\n2) 为 High Agency 模式生成 3 个前沿级别的目标建议(跨多步、有可衡量产出)。" +
+      HABIT_COMMON_CONSTRAINTS,
     type: "system",
     enabled: true,
     displayName: "Todo Suggestions",
-    description: "每天 1:00 更新 Chat 推荐 prompt + Agency 目标建议",
+    description: "每天 01:00 — 基于 workspace 现状刷新 Chat 推荐 + Agency 目标",
   },
   {
     id: "habit_system_learn",
     schedule: "0 3 * * *",
-    prompt: "根据当前 workspace 的特征和领域，去互联网搜索学习相关的新知识和最佳实践。",
+    prompt:
+      "基于当前 workspace 的领域去互联网学习新知识。流程严格:" +
+      "\n1) 遍历 workspace(list_tables / list_ideas / list_designs / list_demos)+ 读 soul.md / profile.md,识别 1-3 个核心领域 / 主题。" +
+      "\n2) 对每个主题做深度调研:多次 web_search(不同角度 / 子话题)+ web_fetch(精读关键页面),收集近期(过去 1 周内优先)的实质性新内容。" +
+      "\n3) **必须落到知识库**:用 list_knowledge / search_knowledge 查同主题是否已有文档 → 有则用 learn_from_text 追加更新(注意不要重复已收录的内容),没有则 learn_from_url / learn_from_text 创建新文档。整理成结构化长文(开头一段时间戳标记本次更新),不要短摘要。" +
+      "\n4) 用 create_memory 写一条 episodic 记录本次学习的主题和文档 id,方便后续召回。" +
+      HABIT_COMMON_CONSTRAINTS,
     type: "system",
     enabled: false,
     displayName: "知识学习",
-    description: "根据 workspace 领域去互联网学习新知识（预留）",
+    description: "每天 03:00 — 基于 workspace 领域上网深度学习,落到知识库(默认关闭)",
+  },
+  {
+    id: "habit_system_workspace_news",
+    schedule: "0 4 * * *",
+    prompt:
+      "搜索当前 workspace 相关的最新行业资讯。流程:" +
+      "\n1) 遍历 workspace(list_tables / list_ideas / list_designs / list_demos)+ 读 profile.md,提炼用户关注的 1-3 个行业 / 公司 / 主题关键词。" +
+      "\n2) 用 web_search(timeRange:'day' 或 'week')拉最新资讯,每个主题搜 2-3 个查询角度。重要新闻用 web_fetch 看全文。" +
+      "\n3) **去重**:先 search_knowledge 查最近 7 天是否已经收录过相同新闻(对比标题 / URL / 主旨),已收录的跳过。绝不重复推送昨天讲过的事。" +
+      "\n4) 把当天**真正新增**的资讯整理成一篇短文档(YYYY-MM-DD 资讯简报: <主题>),用 learn_from_text 存入知识库。如果没有任何新资讯,只在 inbox 留一条 'today: no new updates' 跳过,不创建空文档。" +
+      "\n5) 用 create_memory 写一条 episodic 记录今日抓取的关键词 + 文档 id,作为下次去重的依据。" +
+      HABIT_COMMON_CONSTRAINTS,
+    type: "system",
+    enabled: false,
+    displayName: "Workspace 资讯",
+    description: "每天 04:00 — 抓 workspace 相关行业最新资讯,去重后存知识库(默认关闭)",
   },
 ];
 

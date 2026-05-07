@@ -161,6 +161,27 @@ export async function createConversation(
   return toConversation(row);
 }
 
+/** Find the latest conversation attached to a specific anchor (e.g. habit jobId).
+ *  Used by the inbox-consumer to reuse a habit's existing conversation across
+ *  fires instead of creating a new one each time. Returns null if none. */
+export async function findConversationByAnchor(opts: {
+  agentId: string;
+  workspaceId: string;
+  attachedToType: string;
+  attachedToId: string;
+}): Promise<Conversation | null> {
+  const row = await prisma.conversation.findFirst({
+    where: {
+      agentId: opts.agentId,
+      workspaceId: opts.workspaceId,
+      attachedToType: opts.attachedToType,
+      attachedToId: opts.attachedToId,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  return row ? toConversation(row) : null;
+}
+
 /** PR9: list conversations attached to any block of the given idea.
  *  Returns rows in insertion-order; FE groups by block on its own. */
 export async function listConversationsAttachedToIdea(

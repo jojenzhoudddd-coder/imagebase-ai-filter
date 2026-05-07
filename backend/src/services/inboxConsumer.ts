@@ -9,7 +9,7 @@
  * block the re-entrancy guard. A module-level lock prevents overlapping runs.
  */
 
-import { createConversation } from "./conversationStore.js";
+import { createConversation, findConversationByAnchor } from "./conversationStore.js";
 import { ackInboxMessage, type InboxMessage } from "./agentService.js";
 import { runAgent, type AgentContext } from "./chatAgentService.js";
 import type { EvaluateCronResult } from "./cronScheduler.js";
@@ -63,13 +63,24 @@ async function consumeOne(
   console.log(`[inbox-consumer] executing habit "${displayName}" (${jobId})`);
 
   try {
-    // 1. Create a dedicated conversation for this habit run
-    const conv = await createConversation(
-      workspaceId,
-      `Habit: ${displayName}`,
+    // 1. Reuse the same per-habit conversation across fires —— 用户期望:
+    //    每个 habit 一条长对话,跨天积累上下文(类似 Slack 频道)。除非用户
+    //    手动删了对话(delete cascade),否则永远 reuse。新 habit / 删除后
+    //    重新触发 → 会落到 createConversation 创建新的。
+    let conv = await findConversationByAnchor({
       agentId,
-      { type: "habit", id: jobId },
-    );
+      workspaceId,
+      attachedToType: "habit",
+      attachedToId: jobId,
+    });
+    if (!conv) {
+      conv = await createConversation(
+        workspaceId,
+        `Habit: ${displayName}`,
+        agentId,
+        { type: "habit", id: jobId },
+      );
+    }
 
     // 2. Build headless AgentContext (no HTTP request, no auth token)
     const ctx: AgentContext = {
