@@ -1708,14 +1708,11 @@ export default function ChatSidebar({
       ref={sidebarRef}
       className={`chat-sidebar${open ? " open" : ""}`}
       aria-hidden={!open}
-      onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setSidebarDragging(true); }}
-      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSidebarDragging(false); }}
-      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setSidebarDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) void handleFileDrop(files); }}
     >
-      {/* Drag overlay portaled to .chat-part parent so it covers the full block including bottom padding */}
-      {sidebarDragging && sidebarRef.current?.parentElement && createPortal(
+      {/* Drag overlay portaled to scrollRef so it covers the messages area only, not the topbar */}
+      {sidebarDragging && scrollRef.current && createPortal(
         <div className="chat-sidebar-drag-overlay">Drop files here</div>,
-        sidebarRef.current.parentElement,
+        scrollRef.current,
       )}
       <header className="chat-header">
         {/* Left cluster: Agent name pill (double-click to rename, also kept in
@@ -1938,7 +1935,13 @@ export default function ChatSidebar({
         </div>
       ) : (
         <>
-          <div className="chat-messages" ref={scrollRef}>
+          <div
+            className="chat-messages"
+            ref={scrollRef}
+            onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setSidebarDragging(true); }}
+            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSidebarDragging(false); }}
+            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setSidebarDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) void handleFileDrop(files); }}
+          >
             {/* 历史分页 loading 指示 —— 滚到顶时 fetch 老消息,在最上方显示 spinner */}
             {loadingOlder && (
               <div className="chat-history-loading" role="status" aria-live="polite">
