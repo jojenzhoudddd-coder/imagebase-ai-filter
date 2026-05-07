@@ -661,6 +661,7 @@ export const zh: TranslationKeys = {
   "chat.model.group.openai": "OpenAI GPT",
   "chat.model.group.volcano": "火山引擎豆包",
   "chat.empty.title": "你好，我是你的智能助手",
+  "chat.empty.titlePersonal": "你好 {{user}}，我是 {{agent}}",
   "chat.empty.contextHint": "已加载 {{tables}} 张表 · {{fields}} 个字段 · {{records}} 条记录",
   "chat.empty.sectionLabel": "告诉我你想做什么",
   "chat.empty.scrollLeft": "向左滚动",

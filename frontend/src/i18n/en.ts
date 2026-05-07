@@ -659,6 +659,7 @@ export const en = {
   "chat.model.group.openai": "OpenAI GPT",
   "chat.model.group.volcano": "Volcano Doubao",
   "chat.empty.title": "Hi, I'm your chatbot",
+  "chat.empty.titlePersonal": "Hi {{user}}, I'm {{agent}}",
   "chat.empty.contextHint": "Loaded {{tables}} tables · {{fields}} fields · {{records}} records",
   "chat.empty.sectionLabel": "Start by telling me what you need",
   "chat.empty.scrollLeft": "Scroll left",

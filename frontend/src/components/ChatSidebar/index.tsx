@@ -61,7 +61,9 @@ import {
   streamChatMessage,
   sendChatConfirmation,
   stopChatTurn,
+  getAgent,
 } from "../../api";
+import { useAuth } from "../../auth/AuthContext";
 import { extractMentionPayloads } from "../Mention/mentionSyntax";
 import { useToast } from "../Toast/index";
 import { listenChatShared } from "./listenHub";
@@ -1884,7 +1886,7 @@ export default function ChatSidebar({
         <div className="chat-welcome-centered" ref={scrollRef}>
           <div className="chat-welcome-row">
             <div className="chat-welcome-stack">
-              <WelcomeHero />
+              <WelcomeHero agentId={agentId} />
               <WelcomePresets
                 suggestions={suggestions}
                 onPreset={(text) => setInputValue(text)}
@@ -2305,12 +2307,41 @@ function renderTitleWithCommaBreak(title: string) {
   );
 }
 
-/** V4.3 新欢迎页 hero — 仅标题,左对齐 input */
-function WelcomeHero() {
+/** V4.3 新欢迎页 hero — 仅标题,左对齐 input。
+ *  V4.8: 标题改成 "Hi {user}, I'm {agent}" 个性化形式,user 取 auth user
+ *  的 name/username,agent 取 getAgent(agentId).name(同 AgentNamePill)。
+ *  user 或 agent 拿不到时降级回老的通用问候 chat.empty.title。 */
+function WelcomeHero({ agentId }: { agentId: string }) {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const [agentName, setAgentName] = useState<string>("");
+
+  // Fetch agent name; refresh on `agent-name-changed` event so chat-initiated
+  // rename(`update_agent_name` 工具)实时反映到欢迎页。
+  useEffect(() => {
+    let cancelled = false;
+    getAgent(agentId)
+      .then((a) => { if (!cancelled) setAgentName(a.name || ""); })
+      .catch(() => undefined);
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.agentId === agentId && detail?.name) setAgentName(detail.name);
+    };
+    window.addEventListener("agent-name-changed", handler);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("agent-name-changed", handler);
+    };
+  }, [agentId]);
+
+  const userName = user?.name || user?.username || "";
+  const title = userName && agentName
+    ? t("chat.empty.titlePersonal", { user: userName, agent: agentName })
+    : t("chat.empty.title");
+
   return (
     <div className="chat-welcome-hero">
-      <div className="chat-welcome-title">{renderTitleWithCommaBreak(t("chat.empty.title"))}</div>
+      <div className="chat-welcome-title">{renderTitleWithCommaBreak(title)}</div>
     </div>
   );
 }
