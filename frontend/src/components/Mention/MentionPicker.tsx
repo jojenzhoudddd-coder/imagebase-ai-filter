@@ -70,8 +70,7 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
           types: types && types.length > 0 ? types : undefined,
         });
         if (lastQueryRef.current === query) {
-          // Filter out idea-section hits — only show document-level ideas
-          setHits(results.filter((h: MentionHit) => h.type !== "idea-section"));
+          setHits(results);
           setActiveIdx(0);
           setLoading(false);
         }

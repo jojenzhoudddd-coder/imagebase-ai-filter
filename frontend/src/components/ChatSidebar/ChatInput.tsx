@@ -585,7 +585,7 @@ export default function ChatInput({
               workspaceId={workspaceId}
               query={mentionState.query}
               atRect={mentionState.triggerAnchor}
-              types={["model", "table", "taste", "idea", "idea-section", "idea-block", "demo"]}
+              types={["model", "table", "taste", "idea", "demo"]}
               placement="above-right"
               onSelect={handleMentionSelect}
               onClose={handleMentionClose}
