@@ -163,6 +163,12 @@
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.7;
+  caret-color: transparent;
+  cursor: default;
+}
+/* Allow text selection but not editing */
+.idea-preview-body ::selection {
+  background: var(--accent-bg, rgba(59, 130, 246, 0.2));
 }
 .idea-preview-body:focus,
 .idea-preview-body:focus-visible {

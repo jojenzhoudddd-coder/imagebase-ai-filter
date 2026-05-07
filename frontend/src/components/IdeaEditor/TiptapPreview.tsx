@@ -23,6 +23,7 @@ import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { Markdown } from "tiptap-markdown";
 import { Extension } from "@tiptap/core";
+import { Plugin } from "@tiptap/pm/state";
 import { createImageExtension } from "./extensions/ImageExtension";
 import type { ImageUploadResult } from "./extensions/ImageExtension";
 import { ChartCodeBlock } from "./extensions/ChartCodeBlockExtension";
@@ -42,29 +43,52 @@ const EnterAsBreak = Extension.create({
 });
 
 /**
- * Tab / Shift+Tab indentation for preview mode.
- * - Inside a list: Tab sinks (indent), Shift+Tab lifts (outdent)
- * - Outside a list: Tab inserts 2 spaces, Shift+Tab is a no-op
- * Prevents Tab from moving focus away from the editor.
+ * ReadOnlyButDroppable — makes the editor visually read-only (no text
+ * editing) while still accepting image drop/paste. Tiptap's built-in
+ * `editable: false` disables ProseMirror plugins entirely, which kills
+ * the ImageExtension's handleDrop/handlePaste. This extension keeps the
+ * editor technically editable but blocks all text-mutating input at the
+ * DOM event level so the user can't type, delete, or paste text.
+ *
+ * Image insertions go through `view.dispatch(tr)` inside the
+ * ImageExtension plugin — those bypass the DOM input pipeline and are
+ * therefore not blocked.
  */
-const TabIndent = Extension.create({
-  name: "tabIndent",
-  addKeyboardShortcuts() {
-    return {
-      Tab: () => {
-        if (this.editor.can().sinkListItem("listItem")) {
-          return this.editor.commands.sinkListItem("listItem");
-        }
-        // Not in a list — insert 2 spaces
-        return this.editor.commands.insertContent("  ");
-      },
-      "Shift-Tab": () => {
-        if (this.editor.can().liftListItem("listItem")) {
-          return this.editor.commands.liftListItem("listItem");
-        }
-        return true; // consume the event so focus doesn't leave
-      },
-    };
+const ReadOnlyButDroppable = Extension.create({
+  name: "readOnlyButDroppable",
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          // Block all keyboard input (typing, backspace, enter, etc.)
+          handleKeyDown() {
+            return true; // consume → prevent
+          },
+          // Block text paste (image paste is handled by ImageExtension
+          // which runs first due to plugin ordering and calls
+          // event.preventDefault() + returns true before we get here)
+          handlePaste(_view, event) {
+            const hasImage = Array.from(event.clipboardData?.items ?? []).some(
+              (it) => it.kind === "file" && it.type.startsWith("image/"),
+            );
+            if (hasImage) return false; // let ImageExtension handle it
+            return true; // block text paste
+          },
+          // Block text drop; allow image drop (same logic as paste)
+          handleDrop(_view, event) {
+            const hasImage = Array.from(event.dataTransfer?.files ?? []).some(
+              (f) => f.type.startsWith("image/"),
+            );
+            if (hasImage) return false; // let ImageExtension handle it
+            return true; // block text drop
+          },
+          // Block IME / mobile composition input
+          handleTextInput() {
+            return true;
+          },
+        },
+      }),
+    ];
   },
 });
 
@@ -176,12 +200,16 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
           transformPastedText: true,
           transformCopiedText: true,
         }),
-        EnterAsBreak,
         HardBreakNewline,
-        TabIndent,
+        // Preview is always read-only for text, but still accepts image
+        // drop/paste. Must come AFTER createImageExtension so the image
+        // plugin gets first shot at drop/paste events.
+        ReadOnlyButDroppable,
       ],
       content: source,
-      editable,
+      // Keep technically "editable" so ProseMirror plugins (image
+      // drop/paste) still fire. ReadOnlyButDroppable blocks all text input.
+      editable: true,
       editorProps: {
         attributes: {
           class: "idea-preview-body",
@@ -214,19 +242,15 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
       },
     });
 
-    useEffect(() => {
-      if (editor) editor.setEditable(editable);
-    }, [editor, editable]);
-
-    // Sync external content changes (SSE, streaming) — NOT user edits.
+    // Sync external content changes (SSE, streaming).
     useEffect(() => {
       if (!editor) return;
-      if (editor.isFocused && editable) return;
+      if (editor.isFocused) return;
       suppressRef.current = true;
       dirtyRef.current = false;
       editor.commands.setContent(source);
       setTimeout(() => { suppressRef.current = false; }, 50);
-    }, [editor, source, editable]);
+    }, [editor, source]);
 
     useImperativeHandle(ref, () => ({
       getMarkdown: () => {

@@ -383,7 +383,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           />
         ) : (
           <TiptapPreview
-            ref={previewRef} source={content} editable={!streaming}
+            ref={previewRef} source={content}
             onDirty={handlePreviewDirty} placeholder={t("idea.empty")}
             onUploadFile={handleImageUpload} onMentionClick={() => {}}
           />
