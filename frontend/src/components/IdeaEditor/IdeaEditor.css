@@ -177,10 +177,11 @@
 .idea-preview-body h1 { font-size: 28px; font-weight: 600; margin: 24px 0 12px; }
 .idea-preview-body h2 { font-size: 22px; font-weight: 600; margin: 20px 0 10px; }
 .idea-preview-body h3 { font-size: 18px; font-weight: 600; margin: 16px 0 8px; }
-/* Two Enters (\n\n) = one paragraph break. margin-top gives visual
-   "blank line" spacing so it matches the source-mode experience where
-   a blank line separates paragraphs. */
-.idea-preview-body p { margin: 0; padding: 0; min-height: 1.7em; }
+/* Paragraphs: line-height handles single-line spacing; margin-bottom
+   adds a subtle gap between paragraphs (two Enters = \n\n). Blank-line
+   spacer paragraphs (&nbsp;) inherit the same min-height so three+
+   Enters produce visible empty lines. */
+.idea-preview-body p { margin: 0 0 0.4em 0; padding: 0; min-height: 1.7em; }
 .idea-preview-body ul, .idea-preview-body ol { padding-left: 24px; margin: 8px 0; }
 .idea-preview-body ul { list-style-type: disc; }
 .idea-preview-body ol { list-style-type: decimal; }
@@ -473,7 +474,7 @@
 .idea-preview-body h1 { font-size: 28px; font-weight: 600; margin: 24px 0 12px; }
 .idea-preview-body h2 { font-size: 22px; font-weight: 600; margin: 20px 0 10px; }
 .idea-preview-body h3 { font-size: 18px; font-weight: 600; margin: 16px 0 8px; }
-.idea-preview-body p  { margin: 8px 0; }
+.idea-preview-body p  { margin: 0 0 0.4em 0; min-height: 1.7em; }
 /* P1 fix: 显式声明 list-style-type 保护无序/有序编号不被 page-level 样式
    或 react-markdown HMR 链路某个环节意外吞掉。同时给出嵌套层级的层叠
    字符 (• → ◦ → ▪ / 1. → a. → i.) 与 chat 区一致。 */
