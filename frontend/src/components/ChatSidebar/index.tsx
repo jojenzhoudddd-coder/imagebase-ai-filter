@@ -2310,22 +2310,57 @@ function renderTitleWithCommaBreak(title: string) {
 /** V4.3 新欢迎页 hero — 仅标题,左对齐 input。
  *  V4.8: 标题改成 "Hi {user}, I'm {agent}" 个性化形式,user 取 auth user
  *  的 name/username,agent 取 getAgent(agentId).name(同 AgentNamePill)。
- *  user 或 agent 拿不到时降级回老的通用问候 chat.empty.title。 */
+ *  V4.8.1: agent name 缓存到 localStorage 按 agentId 索引,组件 mount
+ *  时同步 lazy-init 一次,避免首次渲染时拿不到 agent name 闪现 generic
+ *  "Hi, I'm your chatbot"。后台 getAgent 仍跑一次,拿到新值就更新缓存。
+ *  既无 cache 又没 fetch 完成时(全新用户首访)用 visibility: hidden 占位
+ *  保留高度,数据来了再显示 —— 不闪 fallback 文案。 */
+const AGENT_NAME_CACHE_KEY = "chat_welcome_agent_name_v1";
+
+function readAgentNameCache(agentId: string): string {
+  try {
+    const raw = localStorage.getItem(AGENT_NAME_CACHE_KEY);
+    if (!raw) return "";
+    const map = JSON.parse(raw) as Record<string, string>;
+    return map[agentId] || "";
+  } catch { return ""; }
+}
+
+function writeAgentNameCache(agentId: string, name: string) {
+  try {
+    const raw = localStorage.getItem(AGENT_NAME_CACHE_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    if (map[agentId] === name) return;
+    map[agentId] = name;
+    localStorage.setItem(AGENT_NAME_CACHE_KEY, JSON.stringify(map));
+  } catch { /* localStorage may be disabled — non-fatal */ }
+}
+
 function WelcomeHero({ agentId }: { agentId: string }) {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [agentName, setAgentName] = useState<string>("");
+  // Lazy init from cache so first paint already has the personalized title
+  // for returning users(99% of cases after first visit)。
+  const [agentName, setAgentName] = useState<string>(() => readAgentNameCache(agentId));
 
   // Fetch agent name; refresh on `agent-name-changed` event so chat-initiated
   // rename(`update_agent_name` 工具)实时反映到欢迎页。
   useEffect(() => {
     let cancelled = false;
     getAgent(agentId)
-      .then((a) => { if (!cancelled) setAgentName(a.name || ""); })
+      .then((a) => {
+        if (cancelled) return;
+        const name = a.name || "";
+        setAgentName(name);
+        if (name) writeAgentNameCache(agentId, name);
+      })
       .catch(() => undefined);
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.agentId === agentId && detail?.name) setAgentName(detail.name);
+      if (detail?.agentId === agentId && detail?.name) {
+        setAgentName(detail.name);
+        writeAgentNameCache(agentId, detail.name);
+      }
     };
     window.addEventListener("agent-name-changed", handler);
     return () => {
@@ -2335,13 +2370,22 @@ function WelcomeHero({ agentId }: { agentId: string }) {
   }, [agentId]);
 
   const userName = user?.name || user?.username || "";
-  const title = userName && agentName
+  const ready = !!userName && !!agentName;
+  const title = ready
     ? t("chat.empty.titlePersonal", { user: userName, agent: agentName })
-    : t("chat.empty.title");
+    // 首次访问、还没有 cache + fetch 未完成时,用一个 placeholder 撑高度
+    // 但 visibility: hidden 不可见 —— 比闪一下 "Hi, I'm your chatbot"
+    // 再切到个性化标题体验更连贯。
+    : t("chat.empty.titlePersonal", { user: "—", agent: "—" });
 
   return (
     <div className="chat-welcome-hero">
-      <div className="chat-welcome-title">{renderTitleWithCommaBreak(title)}</div>
+      <div
+        className="chat-welcome-title"
+        style={ready ? undefined : { visibility: "hidden" }}
+      >
+        {renderTitleWithCommaBreak(title)}
+      </div>
     </div>
   );
 }
