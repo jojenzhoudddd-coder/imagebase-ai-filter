@@ -49,6 +49,10 @@ export interface AgencyBlockState {
   sessionId?: string;
   /** 左侧任务面板模式 */
   popoverMode?: "full" | "mini";
+  /** Persisted goal text (survives refresh) */
+  goal?: string;
+  /** Persisted todo items (survives refresh) */
+  todos?: string[];
 }
 
 export type BlockState = ArtifactBlockState | ChatBlockState | SystemBlockState | AgencyBlockState | undefined;

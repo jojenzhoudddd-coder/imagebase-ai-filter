@@ -504,14 +504,14 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
 }
 
 .ha-work-welcome-sub {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-secondary);
   line-height: 1.5;
 }
@@ -903,7 +903,7 @@
 .ha-feed-inner {
   padding: 14px 16px 18px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12.5px;
+  font-size: 14px;
   line-height: 1.6;
   color: var(--text-primary);
   display: flex;
@@ -1848,7 +1848,37 @@
   gap: 12px;
 }
 
-/* ── Submit button — matches .create-table-popover-btn.primary ─────── */
+/* ── Action row (Cancel + Start) ─────── */
+.ha-rp-pop-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Cancel / Exit button — default (non-primary) style */
+.ha-rp-pop-cancel {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-family: var(--font-family, inherit);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.ha-rp-pop-cancel:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* Submit button — matches .create-table-popover-btn.primary */
 .ha-rp-pop-submit {
   height: 32px;
   padding: 0 16px;
@@ -1861,8 +1891,6 @@
   font-weight: 400;
   line-height: 22px;
   cursor: pointer;
-  align-self: flex-end;
-  margin-top: 8px;
 }
 .ha-rp-pop-submit:hover { background: var(--primary); }
 .ha-rp-pop-submit:disabled {

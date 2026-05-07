@@ -676,10 +676,10 @@ export default function AgencyBlock({ blockId }: Props) {
       .catch(() => {});
   }, [workspace.workspaceId]);
 
-  // Local state
+  // Local state — init goal/todos from persisted blockState
   const [status, setStatus] = useState<SessionStatus>("idle");
-  const [goal, setGoal] = useState("");
-  const [todos, setTodos] = useState<string[]>([]);
+  const [goal, setGoal] = useState(blockState.goal ?? "");
+  const [todos, setTodos] = useState<string[]>(blockState.todos ?? []);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [events, setEvents] = useState<AgencyEvent[]>([]);
   const [checkpoints, setCheckpoints] = useState<{ id: string; artifactType: string; label: string }[]>([]);
@@ -691,6 +691,40 @@ export default function AgencyBlock({ blockId }: Props) {
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
+
+  // ── Issue 1: Restore session state on mount (survives refresh) ──
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    const sessionId = blockState.sessionId;
+    if (!sessionId || restoredRef.current) return;
+    restoredRef.current = true;
+
+    // Fetch session details (goal, status, milestones) from REST
+    (async () => {
+      try {
+        const res = await fetch(`/api/agency/sessions/${sessionId}`);
+        if (!res.ok) {
+          // Session was deleted / expired — clear stale reference
+          patchBlockState(blockId, { sessionId: undefined, goal: undefined, todos: undefined });
+          scheduleSave();
+          return;
+        }
+        const session = await res.json();
+        setGoal(session.goal ?? "");
+        setTodos(Array.isArray(session.todos) ? session.todos : []);
+        setStatus(session.status as SessionStatus);
+        if (Array.isArray(session.milestones)) {
+          setMilestones(session.milestones);
+          // Find the currently-running milestone
+          const running = session.milestones.find((m: any) => m.status === "running" || m.status === "executing");
+          if (running) setCurrentMilestoneId(running.id);
+        }
+        // Also fetch checkpoints
+        const cpRes = await fetch(`/api/agency/sessions/${sessionId}/checkpoints`);
+        if (cpRes.ok) setCheckpoints(await cpRes.json());
+      } catch { /* ignore — SSE will pick up live events */ }
+    })();
+  }, [blockState.sessionId, blockId, patchBlockState, scheduleSave]);
 
   // Auto-scroll timeline
   useEffect(() => {
@@ -796,7 +830,7 @@ export default function AgencyBlock({ blockId }: Props) {
         return;
       }
       const session = await res.json();
-      patchBlockState(blockId, { sessionId: session.id });
+      patchBlockState(blockId, { sessionId: session.id, goal: goal.trim(), todos: todos.filter((t) => t.trim()) });
       scheduleSave();
     } catch (err: any) {
       setStatus("idle");
@@ -817,6 +851,20 @@ export default function AgencyBlock({ blockId }: Props) {
     } catch { /* ignore */ }
   }, [blockState.sessionId]);
 
+  // Cancel / exit running session
+  const handleCancel = useCallback(async () => {
+    const sessionId = blockState.sessionId;
+    if (!sessionId) return;
+    try {
+      await fetch(`/api/agency/sessions/${sessionId}`, { method: "DELETE" });
+    } catch { /* ignore */ }
+    // Close SSE
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+    setStatus("cancelled");
+    setEvents((prev) => [...prev, { type: "session:status", data: { status: "cancelled" } }]);
+  }, [blockState.sessionId]);
+
   // Toggle popover mode
   const handleTogglePopover = useCallback(() => {
     const next = popoverMode === "full" ? "mini" : "full";
@@ -831,11 +879,39 @@ export default function AgencyBlock({ blockId }: Props) {
 
   // ─── Map events to feed cards ─────────────────────────────────────────
   function renderFeed() {
-    if (events.length === 0 && status === "idle") {
+    if (events.length === 0 && status === "idle" && !blockState.sessionId) {
       return <GoalEmpty />;
     }
 
     const feedItems: React.ReactNode[] = [];
+
+    // ── Issue 1: After refresh, events are empty but milestones are restored.
+    // Reconstruct a static feed from the persisted milestones.
+    if (events.length === 0 && milestones.length > 0) {
+      // Show roadmap
+      feedItems.push(
+        <PlanningCard
+          key="restored-plan"
+          goal={goal}
+          milestones={milestones.map((m) => m.title)}
+          status="ready"
+        />
+      );
+      // Show each milestone with its persisted status
+      milestones.forEach((ms, idx) => {
+        if (ms.status === "pending") return; // don't show not-yet-started
+        feedItems.push(
+          <MilestoneCard
+            key={`restored-ms-${ms.id}`}
+            idx={idx + 1}
+            title={ms.title}
+            status={ms.status === "running" || ms.status === "executing" ? "running" : ms.status}
+            log={[]}
+            defaultOpen={ms.status === "running" || ms.status === "executing"}
+          />
+        );
+      });
+    }
 
     events.forEach((ev, i) => {
       switch (ev.type) {
@@ -875,7 +951,7 @@ export default function AgencyBlock({ blockId }: Props) {
               <div className="ha-cli-row ha-cli-row-head">
                 <span className="ha-cli-chev">{" "}</span>
                 <Sigil status="running" />
-                <span className="ha-cli-label">{String(ev.data.text ?? ev.data.message ?? "...")}</span>
+                <span className="ha-cli-label">{String(ev.data.text ?? ev.data.message ?? "...").replace(/\n+/g, " ").trim()}</span>
               </div>
             </div>
           );
@@ -1000,7 +1076,7 @@ export default function AgencyBlock({ blockId }: Props) {
                 <span className="ha-cli-chev">{" "}</span>
                 <Sigil status="pending" />
                 <span className="ha-cli-label">
-                  {ev.data.title != null ? String(ev.data.title) : formatEventType(ev.type)}
+                  {(ev.data.title != null ? String(ev.data.title) : formatEventType(ev.type)).replace(/\n+/g, " ").trim()}
                 </span>
               </div>
             </div>
@@ -1157,14 +1233,24 @@ export default function AgencyBlock({ blockId }: Props) {
                 </div>
               </div>
 
-              {/* Submit button — always visible at bottom */}
-              <button
-                className="ha-rp-pop-submit"
-                disabled={!goal.trim() || isRunning}
-                onClick={() => { handleStart(); setShowRoutePopover(false); }}
-              >
-                {isRunning ? "Running…" : "Start"}
-              </button>
+              {/* Submit / Cancel buttons */}
+              <div className="ha-rp-pop-actions">
+                {isRunning && (
+                  <button
+                    className="ha-rp-pop-cancel"
+                    onClick={() => { handleCancel(); setShowRoutePopover(false); }}
+                  >
+                    Exit
+                  </button>
+                )}
+                <button
+                  className="ha-rp-pop-submit"
+                  disabled={!goal.trim() || isRunning}
+                  onClick={() => { handleStart(); setShowRoutePopover(false); }}
+                >
+                  {isRunning ? "Running…" : "Start"}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1232,7 +1318,7 @@ export default function AgencyBlock({ blockId }: Props) {
 
           {/* Right: Agent work area */}
           <div className="ha-work-area">
-            {status === "idle" && events.length === 0 && (
+            {status === "idle" && events.length === 0 && !blockState.sessionId && (
               <div className="ha-work-welcome">
                 <div className="ha-work-welcome-header">
                   <span>What would you like to achieve?</span>
@@ -1261,7 +1347,7 @@ export default function AgencyBlock({ blockId }: Props) {
                 </div>
               </div>
             )}
-            {(status !== "idle" || events.length > 0) && (
+            {(status !== "idle" || events.length > 0 || blockState.sessionId) && (
               <div className="ha-feed">
                 <div className="ha-feed-inner">
                   {renderFeed()}
