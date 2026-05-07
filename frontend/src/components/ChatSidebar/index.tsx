@@ -2364,7 +2364,11 @@ function WelcomeHero({ agentId }: { agentId: string }) {
 
   // Fetch agent name; refresh on `agent-name-changed` event so chat-initiated
   // rename(`update_agent_name` 工具)实时反映到欢迎页。
+  // V4.8.2: 跳过 "agent_default" / 空串 / null —— 这些是 auth 还在 loading
+  // 时父级传过来的 fallback,真发请求会被 requireArtifactAccess 中间件
+  // 403(因为 agent_default 不属于当前用户)。
   useEffect(() => {
+    if (!agentId || agentId === "agent_default") return;
     let cancelled = false;
     getAgent(agentId)
       .then((a) => {

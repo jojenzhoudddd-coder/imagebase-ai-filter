@@ -604,12 +604,19 @@ export default function AgencyBlock({ blockId }: Props) {
   const [cropSource, setCropSource] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const avatarFileRef = useRef<HTMLInputElement>(null);
+  // 只有 useAuth 真正吐出 agentId 后才用它发请求 —— 之前 auth 还在
+  // loading 时就 fallback 到 "agent_default" 去 GET /api/agents/agent_default,
+  // 而该 id 在 DB 里属于其他用户(seed agent 残留),requireArtifactAccess
+  // 中间件返回 403 "You don't own this agent"。Console 里看到的就是
+  // "Failed to load resource: 403"。其它 mutation handler(rename / avatar)
+  // 还沿用 resolvedAgentId 因为只在用户主动操作时执行,那时 agentId 必已就绪。
   const resolvedAgentId = agentId || "agent_default";
 
   useEffect(() => {
-    if (!resolvedAgentId) return;
-    getAgent(resolvedAgentId).then(setAgent).catch(() => {});
-  }, [resolvedAgentId]);
+    // Skip until auth resolves the real agentId; don't probe "agent_default".
+    if (!agentId) return;
+    getAgent(agentId).then(setAgent).catch(() => {});
+  }, [agentId]);
 
   // Sync avatar/name from other blocks
   useEffect(() => {
