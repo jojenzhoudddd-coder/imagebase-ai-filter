@@ -139,14 +139,6 @@ export default function Toolbar({
         />
         <ToolbarBtn icon={<SortIcon />} label={t("toolbar.sort")} />
         {/* V2.9 #9: 去掉竖分隔线;V2.9 #10: 8px gap 由 .table-topbar-actions 统一控制 */}
-        {/* Undo —— 与其它动作一致用 icon + 文字（"Undo" / "撤销"）,disabled
-            状态走 ToolbarBtn 的内置态.  */}
-        <ToolbarBtn
-          icon={<UndoIcon />}
-          label={t("toolbar.undo")}
-          onClick={() => canUndo && onUndo?.()}
-          disabled={!canUndo}
-        />
         {/* Magic Canvas 关闭 block 按钮 —— BlockShell 不在时自动 noop */}
         <BlockCloseButton />
       </div>

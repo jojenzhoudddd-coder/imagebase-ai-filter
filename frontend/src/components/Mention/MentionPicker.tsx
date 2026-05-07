@@ -70,7 +70,8 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
           types: types && types.length > 0 ? types : undefined,
         });
         if (lastQueryRef.current === query) {
-          setHits(results);
+          // Filter out idea-section hits — only show document-level ideas
+          setHits(results.filter((h: MentionHit) => h.type !== "idea-section"));
           setActiveIdx(0);
           setLoading(false);
         }
@@ -99,7 +100,6 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
       hit.type === "table" ? t("idea.mentionTable")
       : hit.type === "design" ? t("idea.mentionDesign")
       : hit.type === "taste" ? t("idea.mentionTaste")
-      : hit.type === "idea-section" ? t("idea.mentionSection")
       : hit.type === "demo" ? t("idea.mentionDemo")
       : hit.type === "model" ? t("idea.mentionModel")
       : t("idea.mentionIdea");
