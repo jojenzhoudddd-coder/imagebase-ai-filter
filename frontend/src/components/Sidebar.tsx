@@ -116,7 +116,7 @@ const CM_ICONS = {
 const SIDEBAR_WIDTH_KEY = "sidebar_width";
 const SIDEBAR_MIN_W = 120;
 const SIDEBAR_MAX_W = 400;
-const SIDEBAR_DEFAULT_W = 190;
+const SIDEBAR_DEFAULT_W = 200;
 
 export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onCreateIdea, onDeleteItem, onMoveItem, scrollToItemId, onCollapse, width: widthProp, onWidthChange }: Props) {
   const { t } = useTranslation();

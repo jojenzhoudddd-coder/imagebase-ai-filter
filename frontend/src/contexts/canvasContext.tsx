@@ -33,7 +33,7 @@ import {
 import type { CanvasEdge, DropSide } from "../canvas/layoutAlgorithms";
 
 const MAX_BLOCKS = 16;
-const DEFAULT_SIDEBAR_WIDTH = 190;
+const DEFAULT_SIDEBAR_WIDTH = 200;
 
 function defaultArtifactState(): ArtifactBlockState {
   return { active: null, sidebarCollapsedPreference: false, sidebarWidth: DEFAULT_SIDEBAR_WIDTH };

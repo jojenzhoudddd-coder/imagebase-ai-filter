@@ -207,7 +207,7 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
             onDeleteItem={ws.onDeleteItem}
             onMoveItem={ws.onMoveItem}
             onCollapse={handleCollapse}
-            width={blockState.sidebarWidth ?? 190}
+            width={blockState.sidebarWidth ?? 200}
             onWidthChange={(w) => patchBlockState(blockId, { sidebarWidth: w })}
           />
         </div>
