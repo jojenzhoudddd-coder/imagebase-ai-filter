@@ -133,11 +133,18 @@ export async function listConversations(
   // V3.0 PR1: 默认 createdAt desc (最新建在最上,符合用户期望);
   // 老调用没传 opts 仍按 updatedAt 兼容(不破坏现有接口)。
   const sortBy = opts?.sortBy ?? "createdAt";
-  const where: any = { workspaceId };
-  if (opts?.agentId !== undefined) where.agentId = opts.agentId;
   // Hide agency-spawned conversations from the sidebar list — they're
   // internal execution traces, not user-facing chat sessions.
-  where.attachedToType = { not: "agency" };
+  // Must use OR because SQL `NULL != 'agency'` evaluates to NULL (falsy),
+  // excluding normal conversations whose attachedToType is null.
+  const where: any = {
+    workspaceId,
+    OR: [
+      { attachedToType: null },
+      { attachedToType: { not: "agency" } },
+    ],
+  };
+  if (opts?.agentId !== undefined) where.agentId = opts.agentId;
   const rows = await prisma.conversation.findMany({
     where,
     orderBy: { [sortBy]: "desc" },
