@@ -118,6 +118,44 @@ const HardBreakNewline = Extension.create({
     };
   },
 });
+/**
+ * Preprocess markdown to preserve multiple consecutive blank lines.
+ *
+ * Standard markdown collapses `\n\n\n` into a single paragraph break.
+ * To make preview match source-mode's visual spacing, we convert each
+ * "extra" blank line (beyond the first paragraph-separating one) into
+ * a line containing only `&nbsp;`, which markdown-it renders as a `<p>`
+ * with visible content — Tiptap keeps it as a real paragraph node.
+ *
+ * Example:  "A\n\n\n\nB"  (3 blank lines)
+ *        →  "A\n\n&nbsp;\n\n&nbsp;\n\nB"
+ * Renders:  <p>A</p> <p>&nbsp;</p> <p>&nbsp;</p> <p>B</p>
+ */
+function preserveBlankLines(md: string): string {
+  // Split into lines, walk through and replace empty lines (beyond
+  // the first in a run) with &nbsp; spacers.
+  const lines = md.split("\n");
+  const result: string[] = [];
+  let consecutiveEmpty = 0;
+
+  for (const line of lines) {
+    if (line.trim() === "") {
+      consecutiveEmpty++;
+      if (consecutiveEmpty >= 2) {
+        // This is a 2nd+ blank line in a row — add spacer
+        result.push("&nbsp;");
+        result.push(""); // keep the blank line for paragraph break
+      } else {
+        result.push(line);
+      }
+    } else {
+      consecutiveEmpty = 0;
+      result.push(line);
+    }
+  }
+  return result.join("\n");
+}
+
 import { parseMentionHref } from "../Mention/mentionSyntax";
 import type { ParsedMention } from "../Mention/mentionSyntax";
 
@@ -206,7 +244,7 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
         // plugin gets first shot at drop/paste events.
         ReadOnlyButDroppable,
       ],
-      content: source,
+      content: preserveBlankLines(source),
       // Keep technically "editable" so ProseMirror plugins (image
       // drop/paste) still fire. ReadOnlyButDroppable blocks all text input.
       editable: true,
@@ -248,7 +286,7 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
       if (editor.isFocused) return;
       suppressRef.current = true;
       dirtyRef.current = false;
-      editor.commands.setContent(source);
+      editor.commands.setContent(preserveBlankLines(source));
       setTimeout(() => { suppressRef.current = false; }, 50);
     }, [editor, source]);
 
@@ -296,7 +334,7 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
         if (!editor) return;
         suppressRef.current = true;
         dirtyRef.current = false;
-        editor.commands.setContent(source);
+        editor.commands.setContent(preserveBlankLines(source));
         setTimeout(() => { suppressRef.current = false; }, 50);
       },
     }), [editor, source]);
