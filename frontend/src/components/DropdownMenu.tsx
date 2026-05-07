@@ -36,11 +36,18 @@ interface Props {
   extraContainers?: React.RefObject<HTMLElement | null>[];
   /** Additional CSS class for the menu container */
   className?: string;
+  /** Optional boundary element. When set, the menu's max-height is clamped
+   *  so its bottom edge stays within boundary's bottom minus 20px,使弹窗
+   *  在 chat block / artifact block 这种内嵌容器里不会探出底边。超出则
+   *  内部纵向滚动。 */
+  boundaryEl?: HTMLElement | null;
 }
 
-export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "auto", width, activeSubMenuKey, onMenuRef, onItemRef, extraContainers, className }: Props) {
+export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "auto", width, activeSubMenuKey, onMenuRef, onItemRef, extraContainers, className, boundaryEl }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number }>({ top: -9999, left: -9999 });
+  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number | null }>({
+    top: -9999, left: -9999, maxHeight: null,
+  });
 
   useLayoutEffect(() => {
     const rect = anchorEl.getBoundingClientRect();
@@ -49,6 +56,16 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
     const menuW = menuRect?.width ?? (width ?? 220);
     const vh = window.innerHeight;
     const vw = window.innerWidth;
+    // Boundary clamp: 弹窗底部至少距 boundary 底边 20px。viewport 底边
+    // 也作 fallback,无 boundaryEl 时仍走 viewport 行为。
+    const BOUNDARY_BOTTOM_GAP = 20;
+    const boundaryRect = boundaryEl?.getBoundingClientRect();
+    const effectiveBottom = boundaryRect
+      ? Math.min(vh, boundaryRect.bottom) - BOUNDARY_BOTTOM_GAP
+      : vh;
+    const effectiveTop = boundaryRect
+      ? Math.max(0, boundaryRect.top)
+      : 0;
 
     if (position === "right") {
       // Sub-menu: dock to the right of anchor (the parent menu item), top-
@@ -57,7 +74,7 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
       let left = rect.right + 4;
       if (left + menuW > vw - 8) left = rect.left - menuW - 4;
       const top = Math.max(8, Math.min(rect.top, vh - menuH - 8));
-      setPos({ top, left });
+      setPos({ top, left, maxHeight: null });
       return;
     }
 
@@ -73,24 +90,40 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
       return left;
     };
 
+    /** Helper: 给定 top, 算 maxHeight = effectiveBottom - top。如果 menu
+     *  自然高度小于这个值, maxHeight 为 null(不限制)。否则给上限 + 触发滚动。 */
+    const computeMaxHeight = (top: number): number | null => {
+      const available = effectiveBottom - top;
+      if (available <= 0) return 80; // 兜底,容器太窄给 80px 至少能看到一行
+      return menuH > available ? available : null;
+    };
+
     if (position === "above") {
-      setPos({ top: rect.top - menuH - 4, left: clampLeft(rect.left) });
+      // 上弹:bottom 固定 = anchor.top - 4,top 由 maxHeight 反推
+      let top = rect.top - menuH - 4;
+      if (top < effectiveTop) top = effectiveTop;
+      setPos({ top, left: clampLeft(rect.left), maxHeight: rect.top - 4 - top });
       return;
     }
     if (position === "below") {
-      setPos({ top: rect.bottom + 4, left: clampLeft(rect.left) });
+      const top = rect.bottom + 4;
+      setPos({ top, left: clampLeft(rect.left), maxHeight: computeMaxHeight(top) });
       return;
     }
-    // auto: prefer below; flip to above if not enough room below (and there IS
-    // room above).
-    const spaceBelow = vh - rect.bottom;
-    const spaceAbove = rect.top;
+    // auto: prefer below if there's room (with boundary), else flip above.
+    const spaceBelow = effectiveBottom - rect.bottom;
+    const spaceAbove = rect.top - effectiveTop;
     if (spaceBelow >= menuH + 8 || spaceBelow >= spaceAbove) {
-      setPos({ top: rect.bottom + 4, left: clampLeft(rect.left) });
+      const top = rect.bottom + 4;
+      setPos({ top, left: clampLeft(rect.left), maxHeight: computeMaxHeight(top) });
     } else {
-      setPos({ top: Math.max(8, rect.top - menuH - 4), left: clampLeft(rect.left) });
+      // Above mode: 锚点上方空间塞不下时给 maxHeight 让其滚动
+      const desiredTop = rect.top - menuH - 4;
+      const top = Math.max(effectiveTop + 8, desiredTop);
+      const maxH = rect.top - 4 - top;
+      setPos({ top, left: clampLeft(rect.left), maxHeight: menuH > maxH ? maxH : null });
     }
-  }, [anchorEl, position, width]);
+  }, [anchorEl, position, width, boundaryEl]);
 
   // Expose menu ref on mount only
   useEffect(() => {
@@ -133,7 +166,15 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
     <div
       ref={menuRef}
       className={`dropdown-menu${className ? ` ${className}` : ""}`}
-      style={{ top: pos.top, left: pos.left, width: width ?? undefined }}
+      style={{
+        top: pos.top,
+        left: pos.left,
+        width: width ?? undefined,
+        // boundaryEl 限高时溢出滚动。CSS 兜底 padding 4px(.dropdown-menu)
+        // 跟 max-height 一起作用,内容超出会出现纵向滚动条。
+        maxHeight: pos.maxHeight ?? undefined,
+        overflowY: pos.maxHeight != null ? "auto" : undefined,
+      }}
     >
       {groups.map((group, gi) => (
         <div key={group.title || gi} className="dropdown-menu-group">
