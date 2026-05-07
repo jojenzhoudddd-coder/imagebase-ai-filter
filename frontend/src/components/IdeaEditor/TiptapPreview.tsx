@@ -42,6 +42,33 @@ const EnterAsBreak = Extension.create({
 });
 
 /**
+ * Tab / Shift+Tab indentation for preview mode.
+ * - Inside a list: Tab sinks (indent), Shift+Tab lifts (outdent)
+ * - Outside a list: Tab inserts 2 spaces, Shift+Tab is a no-op
+ * Prevents Tab from moving focus away from the editor.
+ */
+const TabIndent = Extension.create({
+  name: "tabIndent",
+  addKeyboardShortcuts() {
+    return {
+      Tab: () => {
+        if (this.editor.can().sinkListItem("listItem")) {
+          return this.editor.commands.sinkListItem("listItem");
+        }
+        // Not in a list — insert 2 spaces
+        return this.editor.commands.insertContent("  ");
+      },
+      "Shift-Tab": () => {
+        if (this.editor.can().liftListItem("listItem")) {
+          return this.editor.commands.liftListItem("listItem");
+        }
+        return true; // consume the event so focus doesn't leave
+      },
+    };
+  },
+});
+
+/**
  * Override hardBreak serializer: output plain `\n` instead of `\\\n`.
  * With `breaks: true` in markdown-it, `\n` round-trips as `<br>`.
  */
@@ -151,6 +178,7 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
         }),
         EnterAsBreak,
         HardBreakNewline,
+        TabIndent,
       ],
       content: source,
       editable,
