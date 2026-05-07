@@ -10,12 +10,36 @@
  */
 
 import { createConversation, findConversationByAnchor } from "./conversationStore.js";
-import { ackInboxMessage, readInbox, type InboxMessage } from "./agentService.js";
+import { ackInboxMessage, readInbox, getAgent, type InboxMessage } from "./agentService.js";
+import { listUserWorkspaces } from "./authService.js";
 import { listCronJobs } from "./cronScheduler.js";
 import { runAgent, type AgentContext } from "./chatAgentService.js";
 import type { EvaluateCronResult } from "./cronScheduler.js";
 
-const DEFAULT_WORKSPACE_ID = "doc_default";
+/**
+ * Resolve which workspace a habit run should land in. Old code hard-coded
+ * `doc_default` as fallback,但所有非 default 用户的 agent 也会 fall back,
+ * 把他们的 habit 对话都倒进 user_default 的 doc_default workspace —— 用户
+ * 在自己的 chat 里看到一堆别人 agent 的"Habit: ..."conv,且自己历史对话
+ * 被淹没。修复:走 agent → owning user → user 的第一个 workspace 链路。
+ */
+async function resolveWorkspaceIdForAgent(
+  agentId: string,
+  inboxMeta: InboxMessage["meta"],
+): Promise<string | null> {
+  // 1. inbox.meta.workspaceId 优先(如果 cron job 显式指定了)
+  const fromMeta = inboxMeta?.workspaceId;
+  if (typeof fromMeta === "string" && fromMeta) return fromMeta;
+  // 2. agent → user → user's primary workspace
+  try {
+    const agent = await getAgent(agentId);
+    if (!agent) return null;
+    const wss = await listUserWorkspaces(agent.userId);
+    return wss[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /** Per-agent guard — same agent serializes(避免一个 agent 并发跑多 habit
  *  把 LLM 打爆),不同 agent 互不阻塞。
@@ -97,8 +121,16 @@ async function consumeOne(
 ): Promise<void> {
   const jobId = job.id;
   const prompt = inboxMessage.body || inboxMessage.subject;
-  const workspaceId =
-    (inboxMessage.meta?.workspaceId as string) || DEFAULT_WORKSPACE_ID;
+  const workspaceId = await resolveWorkspaceIdForAgent(agentId, inboxMessage.meta);
+  if (!workspaceId) {
+    console.warn(
+      `[inbox-consumer] habit "${jobId}" agent=${agentId}: no resolvable workspace, skipping`,
+    );
+    // Ack the message so we don't keep retrying — the agent has no workspace
+    // (orphaned account?) and there's nothing to do.
+    await ackInboxMessage(agentId, inboxMessage.id).catch(() => undefined);
+    return;
+  }
   const displayName =
     (job as any).displayName || jobId;
 
