@@ -181,6 +181,135 @@ export async function getKnowledge(agentId: string, id: string) {
     sourceUrl: entry.sourceUrl, sourceType: entry.sourceType, tags: entry.tags, createdAt: entry.createdAt.toISOString() };
 }
 
+// ─── Update ─────────────────────────────────────────────────────────────
+// Update an existing knowledge entry by id (any chunk's id resolves to its
+// parent group). All four input fields are optional — only non-undefined
+// fields override existing. Two modes:
+//   - "replace" (default): input.content fully replaces existing content
+//   - "append":  input.content appended after existing (then re-chunked)
+//
+// Why this matters: agent's only previous option was delete + re-create,
+// which churns the parentId / firstId. External references (memories,
+// activity logs, future Mention-style backrefs) that point at a knowledge
+// entry would break. updateKnowledge preserves the original parentId so
+// the document remains "the same" from outside; only the chunk rows get
+// rebuilt in-place. firstId DOES change (chunks are deleted+reinserted)
+// but parentId is the stable identity.
+//
+// Runs inside the per-agent serial queue so concurrent learn_from_text
+// calls don't race with an in-flight update on the same agent.
+
+export interface KnowledgeUpdateInput {
+  agentId: string;
+  id: string;
+  title?: string;
+  content?: string;
+  sourceUrl?: string | null;
+  tags?: string[];
+  mode?: "replace" | "append";
+}
+
+export function updateKnowledge(input: KnowledgeUpdateInput) {
+  return enqueue(input.agentId, () => _updateKnowledgeImpl(input));
+}
+
+async function _updateKnowledgeImpl(input: KnowledgeUpdateInput) {
+  // 1. Resolve target — id may be any chunk; we want the whole group.
+  const probe = await prisma.knowledgeEntry.findUnique({ where: { id: input.id } });
+  if (!probe || probe.agentId !== input.agentId) {
+    return { ok: false as const, error: "not found" };
+  }
+
+  // 2. Reassemble existing content (needed for append mode AND to keep
+  //    title/sourceUrl/tags fall-through behavior consistent).
+  let existingContent: string;
+  let existingChunks: { id: string }[];
+  if (probe.parentId) {
+    const allChunks = await prisma.knowledgeEntry.findMany({
+      where: { parentId: probe.parentId },
+      orderBy: { chunkIndex: "asc" },
+      select: { id: true, content: true },
+    });
+    existingContent = allChunks.map((c) => c.content).join("");
+    existingChunks = allChunks.map((c) => ({ id: c.id }));
+  } else {
+    existingContent = probe.content;
+    existingChunks = [{ id: probe.id }];
+  }
+
+  // 3. Compute new fields. Only fall through to existing when caller didn't
+  //    pass the field at all (undefined). Explicit null on sourceUrl clears
+  //    it; empty array on tags clears it.
+  const mode = input.mode ?? "replace";
+  const newTitle = input.title ?? probe.title;
+  const newSourceUrl = input.sourceUrl === undefined ? probe.sourceUrl : input.sourceUrl;
+  const newTags = input.tags === undefined ? (probe.tags as string[]) : input.tags;
+  const newContent = (() => {
+    if (input.content === undefined) return existingContent; // metadata-only edit
+    if (mode === "append") return existingContent + "\n\n" + input.content;
+    return input.content; // replace
+  })();
+
+  // 4. Re-chunk + re-embed, then atomically delete old chunks and insert new.
+  const chunks = chunkText(newContent);
+  const embeddings = await embed(chunks);
+  // Reuse parentId for stability; if the original was single-chunk and now
+  // we have multiple, mint one. If now single-chunk, we still keep the old
+  // parentId on the row so external references resolve via getKnowledge —
+  // but null it on the row when only 1 chunk to match addKnowledge's shape.
+  const stableParentId = probe.parentId
+    ?? (chunks.length > 1
+      ? `ke_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
+      : null);
+
+  // Best-effort transactional swap: delete all existing chunks then insert
+  // new ones. If insert throws midway we lose the old document — acceptable
+  // tradeoff vs. the complexity of two-phase swap; agent can re-learn from
+  // the model output that drove the update if it really matters.
+  await prisma.$transaction(async (tx) => {
+    if (probe.parentId) {
+      await tx.knowledgeEntry.deleteMany({ where: { parentId: probe.parentId } });
+    } else {
+      await tx.knowledgeEntry.delete({ where: { id: probe.id } });
+    }
+    await Promise.all(
+      chunks.map((chunk, i) =>
+        tx.knowledgeEntry.create({
+          data: {
+            agentId: input.agentId,
+            title: newTitle,
+            content: chunk,
+            sourceUrl: newSourceUrl ?? null,
+            sourceType: probe.sourceType,
+            tags: newTags,
+            embedding: embeddings ? embeddings[i] : undefined,
+            chunkIndex: i,
+            parentId: chunks.length > 1 ? stableParentId : null,
+          },
+        }),
+      ),
+    );
+  });
+
+  // 5. Reload firstId for return — caller often wants to navigate to it.
+  const first = await prisma.knowledgeEntry.findFirst({
+    where: stableParentId
+      ? { parentId: stableParentId, chunkIndex: 0 }
+      : { agentId: input.agentId, title: newTitle, chunkIndex: 0 },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+
+  return {
+    ok: true as const,
+    count: chunks.length,
+    parentId: stableParentId,
+    firstId: first?.id ?? null,
+    mode,
+    previousChunkCount: existingChunks.length,
+  };
+}
+
 export async function deleteKnowledge(agentId: string, id: string) {
   // Find entry to get parentId
   const entry = await prisma.knowledgeEntry.findUnique({ where: { id } });

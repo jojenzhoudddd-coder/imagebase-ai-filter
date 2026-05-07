@@ -126,8 +126,48 @@ export const knowledgeTools: ToolDefinition[] = [
     },
   },
   {
+    name: "update_knowledge",
+    description:
+      "Update an existing knowledge entry IN PLACE — preserves the document's stable identity (parentId), so external references to it stay valid. Prefer this over delete + learn_from_text when revising a known document. Two modes: 'replace' (default) overwrites content wholesale; 'append' adds new content after existing content (then re-chunks the combined whole). All fields except id are optional — pass only what you want to change. Returns {parentId, firstId, count, mode}.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The knowledge entry ID (any chunk's id; resolves to its parent group)" },
+        title: { type: "string", description: "New title (optional — omit to keep existing)" },
+        content: { type: "string", description: "New content. Behavior depends on `mode`. Optional if you only want to change metadata (title/tags/sourceUrl)." },
+        sourceUrl: { type: "string", description: "New source URL (optional — pass null to clear)" },
+        tags: { type: "array", items: { type: "string" }, description: "New tags array — REPLACES existing tags entirely (not merged). Omit to keep existing." },
+        mode: { type: "string", enum: ["replace", "append"], description: "How to apply `content`. 'replace' (default) overwrites; 'append' concatenates after existing content." },
+      },
+      required: ["id"],
+    },
+    handler: async (args: Record<string, unknown>, ctx?: any) => {
+      const agentId = ctx?.agentId ?? "agent_default";
+      const body: Record<string, unknown> = { agentId };
+      // Only forward fields the caller actually passed — undefined means
+      // "keep existing", not "clear". sourceUrl: null IS forwarded so callers
+      // can explicitly clear the field.
+      if (args.title !== undefined) body.title = args.title;
+      if (args.content !== undefined) body.content = args.content;
+      if (args.sourceUrl !== undefined) body.sourceUrl = args.sourceUrl;
+      if (args.tags !== undefined) body.tags = args.tags;
+      if (args.mode !== undefined) body.mode = args.mode;
+      const res = await fetch(`${BASE_URL}/api/knowledge/${args.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Cookie: `auth_token=${ctx?.authToken ?? ""}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return JSON.stringify({ ok: false, error: (err as any).error ?? `HTTP ${res.status}` });
+      }
+      const data = await res.json();
+      return JSON.stringify(data);
+    },
+  },
+  {
     name: "delete_knowledge",
-    description: "Delete a knowledge entry from the agent's knowledge base by its ID.",
+    description: "Delete a knowledge entry from the agent's knowledge base by its ID. Use update_knowledge instead if you want to revise an existing document — delete loses the stable parentId.",
     inputSchema: {
       type: "object",
       properties: {
