@@ -60,9 +60,11 @@ const ReadOnlyButDroppable = Extension.create({
     return [
       new Plugin({
         props: {
-          // Block all keyboard input (typing, backspace, enter, etc.)
-          handleKeyDown() {
-            return true; // consume → prevent
+          // Block all keyboard input EXCEPT copy/select-all shortcuts
+          handleKeyDown(_view, event) {
+            const mod = event.metaKey || event.ctrlKey;
+            if (mod && (event.key === "c" || event.key === "a")) return false; // allow copy + select-all
+            return true; // block everything else
           },
           // Block text paste (image paste is handled by ImageExtension
           // which runs first due to plugin ordering and calls
