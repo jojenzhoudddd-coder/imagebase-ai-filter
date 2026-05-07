@@ -306,19 +306,19 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       if (m === "source") {
         caretOffsetRef.current = cmRef.current?.getCaret() ?? 0;
       } else {
-        // preview → source
+        // preview → source: sync any changes made in preview (e.g. image drop)
         caretOffsetRef.current = previewRef.current?.getCaretSourceOffset() ?? 0;
         if (previewRef.current?.isDirty()) {
           const tiptapMd = previewRef.current.getMarkdown();
-          // Only overwrite content if the user made a REAL content change
-          // (not just whitespace normalization from Tiptap's round-trip).
-          if (normalizeMd(tiptapMd) !== normalizeMd(contentRef.current)) {
-            setContent(tiptapMd);
-          }
+          // Update contentRef so source mode sees the latest
+          contentRef.current = tiptapMd;
           previewRef.current.clearDirty();
         }
-        // If not dirty, or only whitespace changed → content stays as-is
-        // (blank lines preserved)
+        // Always sync content state from contentRef. This covers two cases:
+        // 1. Tiptap was dirty (image drop) → contentRef just updated above
+        // 2. Autosave already ran → contentRef was updated by flushSave
+        //    but content state was stale
+        setContent(contentRef.current);
       }
       return m === "source" ? "preview" : "source";
     });
