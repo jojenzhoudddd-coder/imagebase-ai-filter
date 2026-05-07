@@ -382,7 +382,7 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
       res.status(404).json({ error: "Conversation not found" });
       return;
     }
-    const { message, mentions } = req.body as {
+    const { message, mentions, attachments } = req.body as {
       message?: string;
       // PR2: structured @ mentions extracted FE-side. Used by the host
       // agent loop to apply strong typed routing — `model` mentions force
@@ -396,6 +396,15 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
         | { type: "design"; designId: string }
         | { type: "taste"; tasteId: string; designId: string }
       >;
+      // Vision: structured image/file attachments uploaded via /api/chat/attachments
+      attachments?: Array<{
+        kind: "image";
+        url: string;
+        mime: string;
+        fileId: string;
+        width?: number;
+        height?: number;
+      }>;
     };
     if (!message || typeof message !== "string" || !message.trim()) {
       res.status(400).json({ error: "message is required" });
@@ -432,6 +441,8 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
       // PR2: passthrough — chatAgentService.runAgent reads this to compose
       // routing hints into the system prompt's Turn Context block.
       userMentions: Array.isArray(mentions) ? mentions : undefined,
+      // Vision: structured image attachments for this turn
+      attachments: Array.isArray(attachments) ? attachments : undefined,
     };
 
     try {

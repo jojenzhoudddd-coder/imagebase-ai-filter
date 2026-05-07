@@ -19,8 +19,8 @@ export const arkVideoAdapter: ProviderAdapter = {
     const apiKey = process.env.ARK_SEEDANCE_API_KEY || process.env.ARK_API_KEY || "";
     let prompt = "";
     for (const item of [...params.input].reverse()) {
-      if ("role" in item && item.role === "user" && item.content?.[0]?.text) {
-        prompt = item.content[0].text;
+      if ("role" in item && item.role === "user" && item.content?.[0]?.type === "input_text") {
+        prompt = (item.content[0] as { type: "input_text"; text: string }).text;
         break;
       }
     }

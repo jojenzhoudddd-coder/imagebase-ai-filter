@@ -279,6 +279,9 @@ model Message {
   thinking       String?
   toolCalls      Json?
   toolResult     Json?
+  /// Structured attachments (images, files) sent with this message.
+  /// Array of {kind:"image", url:string, mime:string, fileId:string, width?:number, height?:number}
+  attachments    Json?
   timestamp      DateTime @default(now())
   // V3.0 multi-conversation
   branchTag       String?  // "main" | "appended" | "synthesis" | null (legacy)

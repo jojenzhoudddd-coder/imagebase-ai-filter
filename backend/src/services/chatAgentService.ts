@@ -18,6 +18,7 @@
 
 import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import {
   allTools,
@@ -51,7 +52,8 @@ import { searchKnowledge } from "./knowledgeService.js";
 // Must happen before the first runAgent() call. Don't remove the import
 // even though `arkAdapter` is not referenced by name here.
 import "./providers/index.js";
-import type { ProviderInputItem, ProviderStreamEvent } from "./providers/types.js";
+import type { ProviderInputItem, ProviderStreamEvent, ImageContentBlock, ArkInputMessage } from "./providers/types.js";
+import { analyzeImagesViaSubagent, modelSupportsVision } from "./visionSubagentService.js";
 // MCP loopback 透传 JWT —— 见 dataStoreClient.ts 顶部注释
 import { authStorage } from "../../mcp-server/src/dataStoreClient.js";
 import { createSubagentRun, updateSubagentRun } from "./subagentRunStore.js";
@@ -964,6 +966,39 @@ export function buildSystemText(
   return systemParts.join("\n\n");
 }
 
+// ─── Vision: build image content block from attachment ────────────────────
+//
+// Reads the local upload file and encodes as base64 for inline transmission.
+// When S3 is wired up, this should switch to {url} mode instead.
+
+function buildImageBlock(url: string, mime: string): ImageContentBlock {
+  // `url` is a relative path like `/uploads/chat/<fileId>.<ext>`.
+  // Resolve to absolute fs path under ~/.imagebase/uploads/chat/.
+  const UPLOAD_ROOT = path.join(
+    process.env.IMAGEBASE_HOME?.trim() || path.join(os.homedir(), ".imagebase"),
+    "uploads", "chat"
+  );
+  const fileName = url.split("/").pop() ?? "";
+  const filePath = path.join(UPLOAD_ROOT, fileName);
+
+  try {
+    const buf = fs.readFileSync(filePath);
+    return {
+      type: "input_image",
+      data: buf.toString("base64"),
+      media_type: mime,
+    };
+  } catch {
+    // File missing — return a placeholder text block won't work for image type,
+    // so return a minimal 1px transparent PNG as fallback
+    return {
+      type: "input_image",
+      data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+      media_type: "image/png",
+    };
+  }
+}
+
 async function assembleInput(
   conversationId: string,
   workspaceId: string,
@@ -979,6 +1014,8 @@ async function assembleInput(
   /** Skill Creator V1: optional turn-scoped merged skill list (builtin + user). */
   availableSkills: SkillDefinition[] = allSkills,
   availableSkillsByName: Record<string, SkillDefinition> = skillsByName,
+  /** Vision: structured image attachments for the current user message. */
+  attachments?: AgentContext["attachments"],
 ): Promise<{ input: ArkInputItem[]; layers: PrebuiltSystemLayers }> {
   const [identity, snapshot, recalled, recalledKnowledge, analystHandles] = await Promise.all([
     buildIdentityLayer(agentId),
@@ -1016,7 +1053,17 @@ async function assembleInput(
 
   for (const m of windowed) {
     if (m.role === "user") {
-      input.push({ role: "user", content: [{ type: "input_text", text: m.content }] });
+      const contentBlocks: ArkInputMessage["content"] = [{ type: "input_text", text: m.content }];
+      // Inject image blocks from persisted attachments (history replay)
+      const msgAttachments = (m as any).attachments as Array<{ kind: string; url: string; mime: string }> | null;
+      if (msgAttachments?.length) {
+        for (const att of msgAttachments) {
+          if (att.kind === "image") {
+            contentBlocks.push(buildImageBlock(att.url, att.mime));
+          }
+        }
+      }
+      input.push({ role: "user", content: contentBlocks });
     } else if (m.role === "assistant") {
       // Prefer the visible text (m.content). If the assistant turn emitted
       // only a `thinking` stream and no user-visible content (common with
@@ -1045,7 +1092,16 @@ async function assembleInput(
     // role === "tool" messages are not replayed to the model
   }
 
-  input.push({ role: "user", content: [{ type: "input_text", text: newUserMessage }] });
+  // Build the current user message with optional image attachments
+  const newMsgBlocks: ArkInputMessage["content"] = [{ type: "input_text", text: newUserMessage }];
+  if (attachments?.length) {
+    for (const att of attachments) {
+      if (att.kind === "image") {
+        newMsgBlocks.push(buildImageBlock(att.url, att.mime));
+      }
+    }
+  }
+  input.push({ role: "user", content: newMsgBlocks });
   return { input, layers };
 }
 
@@ -1205,6 +1261,15 @@ export interface AgentContext {
   authToken?: string;
   /** PR2: structured @ mentions extracted from the user's raw message. */
   userMentions?: UserMention[];
+  /** Vision: structured image attachments for this turn. */
+  attachments?: Array<{
+    kind: "image";
+    url: string;
+    mime: string;
+    fileId: string;
+    width?: number;
+    height?: number;
+  }>;
 }
 
 const DEFAULT_AGENT_ID = "agent_default";
@@ -2226,6 +2291,44 @@ async function* runAgentImpl(
   // stream queued progress/heartbeat events in real time while a tool is
   // executing — see the pump section inside the runAgent round loop.
 
+  // ── Vision subagent: pre-process images for non-vision models ────────
+  // If the main model doesn't support vision but the user sent images,
+  // call a vision-capable model (Claude/GPT) to analyze the images first,
+  // then inject the text description into the user message. The user
+  // doesn't need to know this happened — experience is seamless.
+  let effectiveAttachments = ctx.attachments;
+  let effectiveUserMessage = userMessage;
+  const hasImages = ctx.attachments?.some((a) => a.kind === "image");
+  if (hasImages && !modelSupportsVision(model)) {
+    // Build image blocks for the subagent
+    const imageBlocks: ImageContentBlock[] = [];
+    for (const att of ctx.attachments!) {
+      if (att.kind === "image") {
+        imageBlocks.push(buildImageBlock(att.url, att.mime));
+      }
+    }
+    const visionResult = await analyzeImagesViaSubagent(imageBlocks, userMessage);
+    if (visionResult) {
+      // Inject the analysis into the user message for the non-vision model
+      effectiveUserMessage = `${userMessage}\n\n[图片分析结果 (by ${visionResult.modelId})]\n${visionResult.description}\n[/图片分析结果]`;
+      // Don't pass image attachments to assembleInput — the main model
+      // can't handle them, and the text description is sufficient.
+      effectiveAttachments = undefined;
+      logAgent({
+        event: "vision_subagent_used",
+        conversationId,
+        mainModel: model.id,
+        visionModel: visionResult.modelId,
+        imageCount: imageBlocks.length,
+      });
+    } else {
+      // No vision model available — still strip images to avoid ARK crash,
+      // add a note so the user knows.
+      effectiveUserMessage = `${userMessage}\n\n[注意：当前无可用视觉模型，无法分析图片内容。请切换到 Claude 或 GPT 模型以启用图片理解。]`;
+      effectiveAttachments = undefined;
+    }
+  }
+
   // Running copy of ARK input — appended as tool calls happen. Pass the
   // currently-active skills so the system prompt's skill catalog can mark
   // them as ✅ already-loaded (prevents the model from re-activating).
@@ -2237,12 +2340,13 @@ async function* runAgentImpl(
     conversationId,
     workspaceId,
     agentId,
-    userMessage,
+    effectiveUserMessage,
     [...skillState.active],
     { model, requestedId: storedModelId, usedFallback },
     ctx.userMentions,
     availableSkillsForTurn,
     availableSkillsByNameForTurn,
+    effectiveAttachments,
   );
   // Track which skills the system prompt currently reflects so we only
   // rebuild when the set actually changes (cheap guard; string concat is
@@ -2255,6 +2359,7 @@ async function* runAgentImpl(
   await convStore.appendMessage(conversationId, {
     role: "user",
     content: userMessage,
+    attachments: ctx.attachments ?? null,
   });
 
   let accumulatedText = "";

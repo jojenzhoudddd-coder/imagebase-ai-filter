@@ -222,6 +222,14 @@ function extractText(item: ProviderInputItem): string {
   return "";
 }
 
+/** Check if a role-based input item contains any image content blocks. */
+function hasImageBlocks(item: ProviderInputItem): boolean {
+  if ("content" in item && Array.isArray(item.content)) {
+    return item.content.some((c) => "type" in c && c.type === "input_image");
+  }
+  return false;
+}
+
 /** ARK → Anthropic: split into `system` (concatenated) + `messages[]`. */
 function toAnthropicShape(input: ProviderInputItem[]): {
   system: string;
@@ -248,6 +256,27 @@ function toAnthropicShape(input: ProviderInputItem[]): {
         continue;
       }
       if (it.role === "user" || it.role === "assistant") {
+        // Vision: if user message contains image blocks, push text + image blocks
+        if (it.role === "user" && hasImageBlocks(it)) {
+          for (const c of it.content) {
+            if (c.type === "input_text" && c.text) {
+              pushBlock("user", { type: "text", text: c.text });
+            } else if (c.type === "input_image") {
+              if (c.data) {
+                pushBlock("user", {
+                  type: "image",
+                  source: { type: "base64", media_type: c.media_type, data: c.data },
+                });
+              } else if (c.url) {
+                pushBlock("user", {
+                  type: "image",
+                  source: { type: "url", url: c.url },
+                });
+              }
+            }
+          }
+          continue;
+        }
         const t = extractText(it);
         if (t) pushBlock(it.role, { type: "text", text: t });
         continue;
@@ -317,9 +346,13 @@ function toAnthropicShape(input: ProviderInputItem[]): {
 
 // ─── OpenAI shape ────────────────────────────────────────────────────────
 
+type OpenAIContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } };
+
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
+  content: string | null | OpenAIContentPart[];
   name?: string;
   tool_call_id?: string;
   tool_calls?: Array<{
@@ -334,8 +367,26 @@ function toOpenAIShape(input: ProviderInputItem[]): OpenAIMessage[] {
   const out: OpenAIMessage[] = [];
   for (const it of input) {
     if ("role" in it) {
-      const t = extractText(it);
       if (it.role === "system" || it.role === "user" || it.role === "assistant") {
+        // Vision: if user message contains image blocks, build multipart content
+        if (it.role === "user" && hasImageBlocks(it)) {
+          const parts: OpenAIContentPart[] = [];
+          for (const c of it.content) {
+            if (c.type === "input_text" && c.text) {
+              parts.push({ type: "text", text: c.text });
+            } else if (c.type === "input_image") {
+              const imageUrl = c.data
+                ? `data:${c.media_type};base64,${c.data}`
+                : c.url ?? "";
+              if (imageUrl) {
+                parts.push({ type: "image_url", image_url: { url: imageUrl, detail: "auto" } });
+              }
+            }
+          }
+          if (parts.length) out.push({ role: "user", content: parts });
+          continue;
+        }
+        const t = extractText(it);
         // Skip empty assistant messages — OpenAI rejects them.
         if (!t && it.role === "assistant") continue;
         out.push({ role: it.role, content: t });

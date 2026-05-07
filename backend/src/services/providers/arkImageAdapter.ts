@@ -17,8 +17,8 @@ export const arkImageAdapter: ProviderAdapter = {
     // Extract user text from the last user input item
     let prompt = "";
     for (const item of [...params.input].reverse()) {
-      if ("role" in item && item.role === "user" && item.content?.[0]?.text) {
-        prompt = item.content[0].text;
+      if ("role" in item && item.role === "user" && item.content?.[0]?.type === "input_text") {
+        prompt = (item.content[0] as { type: "input_text"; text: string }).text;
         break;
       }
     }

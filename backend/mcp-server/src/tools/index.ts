@@ -38,6 +38,7 @@ import { demoNavTools } from "./demoTools.js";
 import { subagentTools } from "./subagentTools.js";
 import { workflowTools } from "./workflowTools.js";
 import { webTools } from "./webTools.js";
+import { visionTools } from "./visionTools.js";
 import { modelTools } from "./modelTools.js";
 import { knowledgeTools } from "./knowledgeTools.js";
 import { allSkills, skillsByName } from "../skills/index.js";
@@ -100,6 +101,8 @@ const TIER1_NAMES = new Set([
   // Web tools — always-on info retrieval (knowledge cutoff bypass)
   "web_search",
   "web_fetch",
+  // Vision tool — always-on deep image analysis (OCR, table extract, UI audit)
+  "analyze_image",
 ]);
 
 /** Tier 0 — identity + memory + skill routing + cron + user-skill management.
@@ -127,6 +130,7 @@ export const tier1Tools: ToolDefinition[] = [
   ...subagentTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...workflowTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...webTools.filter((t) => TIER1_NAMES.has(t.name)),
+  ...visionTools.filter((t) => TIER1_NAMES.has(t.name)),
 ];
 
 /**

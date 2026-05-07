@@ -1165,10 +1165,22 @@ export type ChatMentionPayload =
   | { type: "taste"; tasteId: string; designId: string }
   | { type: "skill"; skillName: string };
 
+/** Structured image attachment for vision capability. */
+export interface ChatImageAttachment {
+  kind: "image";
+  url: string;
+  mime: string;
+  fileId: string;
+  width?: number;
+  height?: number;
+}
+
 export interface StreamChatOptions {
   conversationId: string;
   message: string;
   mentions?: ChatMentionPayload[];
+  /** Vision: structured image attachments uploaded via /api/chat/attachments */
+  attachments?: ChatImageAttachment[];
   onStart?: (messageId: string) => void;
   onThinking?: (delta: string) => void;
   onMessage?: (delta: string) => void;
@@ -1457,6 +1469,7 @@ export function streamChatMessage(opts: StreamChatOptions): () => void {
         body: JSON.stringify({
           message: opts.message,
           ...(opts.mentions && opts.mentions.length > 0 ? { mentions: opts.mentions } : {}),
+          ...(opts.attachments && opts.attachments.length > 0 ? { attachments: opts.attachments } : {}),
         }),
         signal: controller.signal,
       });

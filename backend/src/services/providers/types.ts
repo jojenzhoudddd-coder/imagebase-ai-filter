@@ -47,9 +47,19 @@ export type ProviderStreamEvent =
 
 // ─── Input shape (ARK Responses API today; provider-agnostic on Day 2) ───
 
+export interface ImageContentBlock {
+  type: "input_image";
+  /** base64-encoded image data */
+  data?: string;
+  /** Public URL to the image */
+  url?: string;
+  /** MIME type, e.g. "image/png" */
+  media_type: string;
+}
+
 export interface ArkInputMessage {
   role: "system" | "user" | "assistant";
-  content: Array<{ type: "input_text"; text: string }>;
+  content: Array<{ type: "input_text"; text: string } | ImageContentBlock>;
 }
 
 export type ProviderInputItem =

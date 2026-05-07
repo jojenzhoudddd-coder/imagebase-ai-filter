@@ -258,12 +258,14 @@ export async function appendMessage(
     // V3.0 multi-conv 字段
     branchTag?: string | null;
     parentMessageId?: string | null;
-    // V3.0 UX:per-turn meta(GeneratingMeta freeze 后的最终值)
+    // V3.0 UX:per-turn meta（GeneratingMeta freeze 后的最终值）
     durationMs?: number | null;
     promptTokens?: number | null;
     completionTokens?: number | null;
     modelId?: string | null;
     source?: string | null;
+    // Vision: structured image/file attachments
+    attachments?: unknown[] | null;
   }
 ): Promise<Message | undefined> {
   // Ensure the conversation exists — keeps the old Map-era null-return behavior.
@@ -301,6 +303,7 @@ export async function appendMessage(
         completionTokens: msg.completionTokens ?? null,
         modelId: (msg as any).modelId ?? null,
         source: (msg as any).source ?? null,
+        attachments: (msg.attachments?.length ? msg.attachments : undefined) as never,
       },
     });
     const count = await tx.message.count({ where: { conversationId } });

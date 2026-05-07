@@ -66,6 +66,19 @@ const IBASE_IMAGE_MARKER = "__IBASE_IMAGE_v1__";
 function sanitizeInputForArk(input: unknown[]): unknown[] {
   return input.map((it: any) => {
     if (!it || typeof it !== "object") return it;
+    // Strip input_image blocks from user messages — ARK doesn't support vision.
+    // Keep only input_text blocks. The visionSubagentService will pre-process
+    // images into text descriptions before they reach ARK.
+    if (it.role === "user" && Array.isArray(it.content)) {
+      const hasImage = it.content.some((c: any) => c?.type === "input_image");
+      if (hasImage) {
+        const textOnly = it.content.filter((c: any) => c?.type !== "input_image");
+        if (!textOnly.length) {
+          textOnly.push({ type: "input_text", text: "[用户发送了图片]" });
+        }
+        return { ...it, content: textOnly };
+      }
+    }
     if (it.type !== "function_call_output") return it;
     const raw = typeof it.output === "string" ? it.output : "";
     if (!raw.startsWith(IBASE_IMAGE_MARKER)) return it;

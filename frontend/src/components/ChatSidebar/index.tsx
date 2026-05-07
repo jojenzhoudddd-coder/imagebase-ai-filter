@@ -377,12 +377,18 @@ export default function ChatSidebar({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillMessage]);
 
-  // Handle file drop/paste → upload → add to attachments
+  // Handle file drop/paste → resize images → upload → add to attachments
   const handleFileDrop = useCallback(async (files: File[]) => {
     for (const file of files) {
       try {
+        // Vision: resize images to 1568px max before upload (saves tokens)
+        let fileToUpload = file;
+        if (file.type.startsWith("image/")) {
+          const { resizeImageIfNeeded } = await import("../../services/imageResize");
+          fileToUpload = await resizeImageIfNeeded(file);
+        }
         const { uploadChatAttachment } = await import("../../api");
-        const att = await uploadChatAttachment(file);
+        const att = await uploadChatAttachment(fileToUpload);
         setAttachments((prev) => [...prev, att]);
       } catch (err) {
         console.warn("[chat] file upload failed:", err);
@@ -775,10 +781,21 @@ export default function ChatSidebar({
       );
     };
 
+    // Vision: build structured image attachments for the backend
+    const imageAttachments = attachments
+      .filter((a) => a.mime.startsWith("image/"))
+      .map((a) => ({
+        kind: "image" as const,
+        url: a.url,
+        mime: a.mime,
+        fileId: a.id,
+      }));
+
     cancelRef.current = streamChatMessage({
       conversationId: activeConv.id,
       message: fullContent,
       mentions,
+      attachments: imageAttachments.length > 0 ? imageAttachments : undefined,
       onStart: (serverId) => {
         // V3.0 (queue model): a `start` event can mean two things:
         //  1) First turn — replace the local `assistantMsgId` placeholder with
