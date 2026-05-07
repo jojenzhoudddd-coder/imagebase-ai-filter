@@ -20,13 +20,19 @@ interface Props {
   blockId: string;
 }
 
-const ADD_HABIT_PROMPT = `我想添加一个新的定时习惯（Habit）。请引导我完成配置：
-1. 习惯名称（如"每周总结"）
-2. 执行频率（如每天/每周几/每月几号，几点执行）
-3. 具体要做的事情（Agent 执行时的指令）
-4. 需要激活的技能（可选）
+const ADD_HABIT_PROMPT = `我想添加一个新的定时习惯（Habit）。请引导我配置完后用 schedule_task 工具登记。
 
-请一步步引导我。`;
+需要从我这里收集 4 件事:
+1. **标题（displayName）**:Habits tab 卡片上显示的短标题,≤12 字。例如"每周表结构复盘" / "月度记忆清理"。
+2. **执行频率（schedule）**:每天 / 每周几 / 每月几号几点。你要把它转成 cron 表达式(5 字段或 @daily 等别名)。
+3. **具体任务（prompt）**:到期那一刻你自己将读到的完整指令,写得像给自己留的便签。
+4. **激活技能（skills,可选）**:执行时要不要带 table-skill / analyst-skill 之类的。
+
+收集完后再:
+- 帮我合成一句卡片小字说明（description,≤30 字,概述这条 habit 在做什么 + 什么时候执行,例如"每周五下午 17:00 — 总结这周表结构变化"）。
+- 调 schedule_task 工具,**displayName + description 两个字段一定要传**(否则 UI 卡片会把整段 prompt 灌进标题,体验极差)。
+
+请一步步引导我,问完就直接登记,不用再确认一遍。`;
 
 function cronToHuman(schedule: string): string {
   // Aliases

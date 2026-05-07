@@ -282,6 +282,13 @@ export async function addCronJob(
     skills: input.skills,
     lastFiredAt: null,
     meta: input.meta,
+    // V4.6: 持久化 UI 标题 / 描述,避免 custom habit 在 HabitsTab 把整段
+    // prompt 灌进卡片标题(导致 badge 顶到第二行)。schedule_task MCP 工具
+    // 现在会要求 Agent 同时给出 displayName + description。
+    displayName: input.displayName,
+    description: input.description,
+    type: input.type,
+    enabled: input.enabled,
   };
   cron.jobs.push(job);
   await writeCron(agentId, cron);

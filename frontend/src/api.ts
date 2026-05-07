@@ -1861,7 +1861,11 @@ export async function listHabits(
     id: j.id,
     schedule: j.schedule,
     prompt: j.prompt,
-    displayName: j.displayName ?? j.prompt,
+    // 不在这里 fallback 到 j.prompt —— HabitsTab.useHabitI18n 用
+     // 三段式 fallback:i18n key → displayName → deriveShortTitle(prompt),
+     // 如果这里把 prompt 灌进 displayName,deriveShortTitle 就永远不触发,
+     // 长 prompt 还是会顶飞 badge。保持 displayName 为空让下游决定。
+    displayName: j.displayName ?? undefined,
     description: j.description,
     type: j.type ?? "user",
     enabled: j.enabled !== false,
