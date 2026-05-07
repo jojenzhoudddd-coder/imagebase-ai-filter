@@ -342,9 +342,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  /* flex: 1 让 title 占满 row 剩余空间,触发 ellipsis;之前缺这个属性时
-     title 按内容宽度撑开,badge 没地方放只能换行。 */
-  flex: 1 1 auto;
+  /* flex: 0 1 auto = 不 grow / 允许 shrink / 起点是内容宽度。
+     · 短标题(如 "Doubao 2.0")按内容宽度,badge 紧跟其后 — 不会被
+       推到卡片右边缘。
+     · 长标题(custom habit 一段 prompt)靠 shrink + min-width:0 触发
+       ellipsis,badge 始终留在末尾不换行。
+     之前 flex: 1 1 auto 让 title 占满整行 → 短标题时把 badge 推到右边。 */
+  flex: 0 1 auto;
   min-width: 0;
 }
 
