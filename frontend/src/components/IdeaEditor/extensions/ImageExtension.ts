@@ -18,7 +18,7 @@ export interface ImageUploadResult {
 export function createImageExtension(
   onUpload?: (file: File) => Promise<ImageUploadResult>,
 ) {
-  return Image.extend({
+  return Image.configure({ inline: true }).extend({
     addProseMirrorPlugins() {
       const uploadFn = onUpload;
       if (!uploadFn) return [];
