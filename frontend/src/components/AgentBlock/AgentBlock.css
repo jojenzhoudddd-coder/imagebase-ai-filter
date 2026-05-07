@@ -327,7 +327,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  /* 不换行 —— 长 title 走 ellipsis 截断,badge 永远跟在同一行末尾。
+     之前 flex-wrap: wrap 导致 custom habit 的长 prompt 把 badge 顶到第二行。 */
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .ab-card-title {
@@ -339,6 +342,9 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* flex: 1 让 title 占满 row 剩余空间,触发 ellipsis;之前缺这个属性时
+     title 按内容宽度撑开,badge 没地方放只能换行。 */
+  flex: 1 1 auto;
   min-width: 0;
 }
 

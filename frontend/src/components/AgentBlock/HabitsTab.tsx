@@ -77,18 +77,45 @@ function timeAgo(ts: string | null | undefined): string {
   return `${days}d ago`;
 }
 
+/** Derive a short display title from a long prompt. Custom habits created
+ *  via the schedule_task MCP tool only carry `prompt` (no displayName/desc),
+ *  so we used to dump the full prompt as the card title — it overflowed and
+ *  pushed the system/custom badge to the next line.
+ *  Strategy: take the first sentence (split on common terminators) and clip
+ *  to ~24 chars; if first line is itself short enough use it as-is. */
+function deriveShortTitle(prompt: string): string {
+  const trimmed = prompt.trim().replace(/\s+/g, " ");
+  if (!trimmed) return "Custom habit";
+  // First sentence — split on Chinese / English terminators or newline
+  const firstSentence = trimmed.split(/[。!?;\n.!?]/)[0] ?? trimmed;
+  const candidate = firstSentence.trim() || trimmed;
+  const chars = Array.from(candidate); // CJK-safe length
+  if (chars.length <= 24) return candidate;
+  return chars.slice(0, 24).join("") + "…";
+}
+
 function useHabitI18n() {
   const { t } = useTranslation();
   return {
     name: (h: HabitSummary) => {
       const key = `habit.${h.id}.name` as any;
       const translated = t(key);
-      return translated !== key ? translated : (h.displayName || h.prompt);
+      if (translated !== key) return translated;
+      // System habits without i18n key still have displayName from seed.
+      if (h.displayName) return h.displayName;
+      // Custom habits: derive a short title from prompt (full prompt
+      // shows up in description below).
+      return deriveShortTitle(h.prompt);
     },
     desc: (h: HabitSummary) => {
       const key = `habit.${h.id}.desc` as any;
       const translated = t(key);
-      return translated !== key ? translated : h.description;
+      if (translated !== key) return translated;
+      // Custom habits don't carry a separate description field — fall back
+      // to the full prompt so the user can see what the habit actually does
+      // (truncated by .ab-card-desc CSS to one line + ellipsis,Tooltip on
+      // hover shows the full text).
+      return h.description || h.prompt;
     },
   };
 }
