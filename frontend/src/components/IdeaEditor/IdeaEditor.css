@@ -192,7 +192,8 @@
 .idea-preview-body ul, .idea-preview-body ol { padding-left: 24px; margin: 8px 0; }
 .idea-preview-body ul { list-style-type: disc; }
 .idea-preview-body ol { list-style-type: decimal; }
-.idea-preview-body li { margin: 4px 0; }
+.idea-preview-body li { margin: 0; }
+.idea-preview-body li p { margin: 0; }
 .idea-preview-body blockquote {
   border-left: 3px solid var(--border-strong);
   padding-left: 16px;
@@ -497,7 +498,8 @@
 .idea-preview-body ol { list-style-type: decimal; }
 .idea-preview-body ol ol { list-style-type: lower-alpha; }
 .idea-preview-body ol ol ol { list-style-type: lower-roman; }
-.idea-preview-body li { margin: 4px 0; }
+.idea-preview-body li { margin: 0; }
+.idea-preview-body li p { margin: 0; }
 .idea-preview-body code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13px;

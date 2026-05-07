@@ -134,14 +134,28 @@ const HardBreakNewline = Extension.create({
 function preserveBlankLines(md: string): string {
   // Split into lines. Each "extra" blank line (2nd+ consecutive) is
   // replaced with &nbsp; so markdown-it creates a <p>&nbsp;</p> that
-  // Tiptap preserves. CSS collapses these spacer paragraphs to just
-  // their margin-bottom (matching the paragraph gap), making the
-  // spacing linear: 2 Enters = 1 gap, 3 Enters = 2 gaps, etc.
+  // Tiptap preserves. IMPORTANT: skip fenced code blocks (``` ... ```)
+  // — inserting &nbsp; inside JSON/code would break chart rendering.
   const lines = md.split("\n");
   const result: string[] = [];
   let consecutiveEmpty = 0;
+  let inFencedBlock = false;
 
   for (const line of lines) {
+    // Track fenced code block boundaries (``` or ~~~)
+    if (/^(`{3,}|~{3,})/.test(line.trim())) {
+      inFencedBlock = !inFencedBlock;
+      consecutiveEmpty = 0;
+      result.push(line);
+      continue;
+    }
+
+    // Inside a code block — pass through untouched
+    if (inFencedBlock) {
+      result.push(line);
+      continue;
+    }
+
     if (line.trim() === "") {
       consecutiveEmpty++;
       if (consecutiveEmpty >= 2) {
