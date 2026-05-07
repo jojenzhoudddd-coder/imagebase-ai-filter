@@ -180,7 +180,7 @@
 /* Paragraphs: margin-bottom adds a subtle gap between paragraphs (two
    Enters = \n\n). No min-height on normal paragraphs — that only goes
    on empty ones (below) so blank-line spacers render at line height. */
-.idea-preview-body p { margin: 0 0 0.4em 0; padding: 0; }
+.idea-preview-body p { margin: 0 0 1em 0; padding: 0; }
 .idea-preview-body ul, .idea-preview-body ol { padding-left: 24px; margin: 8px 0; }
 .idea-preview-body ul { list-style-type: disc; }
 .idea-preview-body ol { list-style-type: decimal; }
@@ -483,7 +483,7 @@
 .idea-preview-body h1 { font-size: 28px; font-weight: 600; margin: 24px 0 12px; }
 .idea-preview-body h2 { font-size: 22px; font-weight: 600; margin: 20px 0 10px; }
 .idea-preview-body h3 { font-size: 18px; font-weight: 600; margin: 16px 0 8px; }
-.idea-preview-body p  { margin: 0 0 0.4em 0; }
+.idea-preview-body p  { margin: 0 0 1em 0; }
 /* P1 fix: 显式声明 list-style-type 保护无序/有序编号不被 page-level 样式
    或 react-markdown HMR 链路某个环节意外吞掉。同时给出嵌套层级的层叠
    字符 (• → ◦ → ▪ / 1. → a. → i.) 与 chat 区一致。 */
@@ -509,6 +509,8 @@
   display: inline-block;
   border-radius: 3px;
   cursor: pointer;
+  /* Paragraph-level spacing so image\n\nimage has visible gap */
+  margin: 0 0 1em 0;
 }
 .idea-preview-body .idea-image-wrap:hover {
   outline: 1px dashed var(--color-text-tertiary, #9ca3af);
