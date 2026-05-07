@@ -595,6 +595,8 @@ export const zh: TranslationKeys = {
   "habit.habit_system_suggest.desc": "每天 Review 工作空间，生成推荐 prompt",
   "habit.habit_system_learn.name": "知识学习",
   "habit.habit_system_learn.desc": "根据工作空间领域去互联网学习新知识",
+  "habit.habit_system_workspace_news.name": "Workspace 资讯",
+  "habit.habit_system_workspace_news.desc": "每天抓取 workspace 主题相关的最新行业资讯",
   "chat.input.dropFiles": "拖拽文件到此处",
   "agent.toast.skillEnabled": "技能已启用",
   "agent.toast.skillDisabled": "技能已禁用",

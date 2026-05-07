@@ -594,6 +594,8 @@ export const en = {
   "habit.habit_system_suggest.desc": "Daily workspace review to generate recommended prompts",
   "habit.habit_system_learn.name": "Knowledge Learning",
   "habit.habit_system_learn.desc": "Learn new knowledge from the internet based on workspace domain",
+  "habit.habit_system_workspace_news.name": "Workspace News",
+  "habit.habit_system_workspace_news.desc": "Daily fetch of latest industry news related to workspace topics",
   "chat.input.dropFiles": "Drop files here",
   "agent.toast.skillEnabled": "Skill enabled",
   "agent.toast.skillDisabled": "Skill disabled",

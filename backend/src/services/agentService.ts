@@ -224,17 +224,17 @@ const SYSTEM_HABITS_SEED = [
     id: "habit_system_workspace_news",
     schedule: "0 4 * * *",
     prompt:
-      "搜索当前 workspace 相关的最新行业资讯。流程:" +
+      "搜索当前 workspace 相关的最新行业资讯,直接在对话中呈现给用户(**不要**写入知识库)。流程:" +
       "\n1) 遍历 workspace(list_tables / list_ideas / list_designs / list_demos)+ 读 profile.md,提炼用户关注的 1-3 个行业 / 公司 / 主题关键词。" +
       "\n2) 用 web_search(timeRange:'day' 或 'week')拉最新资讯,每个主题搜 2-3 个查询角度。重要新闻用 web_fetch 看全文。" +
-      "\n3) **去重**:先 search_knowledge 查最近 7 天是否已经收录过相同新闻(对比标题 / URL / 主旨),已收录的跳过。绝不重复推送昨天讲过的事。" +
-      "\n4) 把当天**真正新增**的资讯整理成一篇短文档(YYYY-MM-DD 资讯简报: <主题>),用 learn_from_text 存入知识库。如果没有任何新资讯,只在 inbox 留一条 'today: no new updates' 跳过,不创建空文档。" +
-      "\n5) 用 create_memory 写一条 episodic 记录今日抓取的关键词 + 文档 id,作为下次去重的依据。" +
+      "\n3) **去重**:这个 habit 复用同一条对话(每天往同一对话里追加),回顾本对话最近几轮的内容,如果某条资讯在过去 7 天讲过(对比标题 / URL / 主旨)就跳过。绝不重复推送昨天讲过的事。" +
+      "\n4) 把当天**真正新增**的资讯组织成一段结构化 Markdown 直接输出在对话里(格式:`# YYYY-MM-DD 资讯简报` + 按主题分章节列条目,每条带标题 / 出处 URL / 一两句要点)。如果没有任何新资讯,只回一句 '今日无新增资讯,跳过' 即可。" +
+      "\n5) 用 create_memory 写一条 episodic 记录今日抓取的关键词 + 已推送的资讯标题 / URL,作为明天去重的依据。**不要**写入知识库 —— 资讯是时效性内容,不适合长期检索,知识库只放真正的常青知识。" +
       HABIT_COMMON_CONSTRAINTS,
     type: "system",
     enabled: false,
     displayName: "Workspace 资讯",
-    description: "每天 04:00 — 抓 workspace 相关行业最新资讯,去重后存知识库(默认关闭)",
+    description: "每天 04:00 — 抓 workspace 相关行业最新资讯,直接在对话呈现(不入知识库,默认关闭)",
   },
 ];
 
