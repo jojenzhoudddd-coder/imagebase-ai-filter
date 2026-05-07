@@ -123,7 +123,10 @@ export default function NatureTab({ agentId }: Props) {
               {working.length > 0 && (
                 <div className="ab-memory-group">
                   <div className="ab-memory-group-label">{t("agent.nature.workingMemory")}</div>
-                  {working.map((w, i) => (
+                  {/* 时间倒序展示:最新的 turn 排在最上面。后端 working.jsonl
+                   *  是 append-only(老的在前),前端 reverse 一下让用户先看到
+                   *  最近活动。slice() 先复制再 reverse,避免改变 state. */}
+                  {[...working].reverse().map((w, i) => (
                     <div key={`w-${i}`} className="ab-memory-card">
                       <div className="ab-memory-card-title">
                         {w.userMessage.length > 60 ? w.userMessage.slice(0, 60) + "…" : w.userMessage}
