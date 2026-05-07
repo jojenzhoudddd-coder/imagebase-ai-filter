@@ -59,7 +59,7 @@ import { maybeRefreshDailySummaries, regenerateMissingSummaries } from "./servic
 // boot. Must happen before the first runAgent() call.
 import "./services/providers/index.js";
 import { evaluateCron } from "./services/cronScheduler.js";
-import { consumeFiredJobs } from "./services/inboxConsumer.js";
+import { consumeFiredJobs, recoverOrphanedJobs } from "./services/inboxConsumer.js";
 import { startAnalystCleanup, stopAnalystCleanup } from "./services/analyst/cleanupCron.js";
 import { startWorktreeCleanupCron, stopWorktreeCleanupCron } from "./services/worktreeManager.js";
 
@@ -401,16 +401,23 @@ async function start() {
         void maybeRefreshDailySummaries(ctx.firedAt);
         const cronResult = await evaluateCron(ctx.agentId, ctx.firedAt);
         const details: Record<string, unknown> = {};
-        if (cronResult.fired.length > 0) {
-          details.cronFired = cronResult.fired.map(({ job, inboxMessage }) => ({
+        // Recovery: pick up unread cron inbox messages from previous ticks
+        // that were dropped by the per-agent lock(老 bug:single module-
+        // level boolean,跨 agent 串行 → 慢 agent 跑时其它 agent 的 fire
+        // 全被 skip)。merge orphans + 新 fired 一起送 consumer。
+        const orphans = await recoverOrphanedJobs(ctx.agentId);
+        const allJobs = [...orphans, ...cronResult.fired];
+        if (allJobs.length > 0) {
+          details.cronFired = allJobs.map(({ job, inboxMessage }) => ({
             jobId: job.id,
             schedule: job.schedule,
             inboxMessageId: inboxMessage.id,
+            recovered: orphans.some((o) => o.inboxMessage.id === inboxMessage.id),
           }));
           // Fire-and-forget: run the agent for each fired habit.
           // Don't await — LLM calls can take minutes; we must not block the
           // heartbeat re-entrancy guard.
-          void consumeFiredJobs(ctx.agentId, cronResult.fired);
+          void consumeFiredJobs(ctx.agentId, allJobs);
         }
         const invalid = cronResult.skipped.filter((s) => s.reason === "invalid-expression");
         if (invalid.length > 0) {

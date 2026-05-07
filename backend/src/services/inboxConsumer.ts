@@ -10,14 +10,23 @@
  */
 
 import { createConversation, findConversationByAnchor } from "./conversationStore.js";
-import { ackInboxMessage, type InboxMessage } from "./agentService.js";
+import { ackInboxMessage, readInbox, type InboxMessage } from "./agentService.js";
+import { listCronJobs } from "./cronScheduler.js";
 import { runAgent, type AgentContext } from "./chatAgentService.js";
 import type { EvaluateCronResult } from "./cronScheduler.js";
 
 const DEFAULT_WORKSPACE_ID = "doc_default";
 
-/** Module-level guard — skip if a previous consume batch is still running. */
-let consuming = false;
+/** Per-agent guard — same agent serializes(避免一个 agent 并发跑多 habit
+ *  把 LLM 打爆),不同 agent 互不阻塞。
+ *
+ *  历史 bug:之前是 module-level 单 boolean,Testtenant 跑 suggest 30+ 秒
+ *  期间,agent_default 的 cron tick 在另一个时区点 fire,evaluateCron 已经
+ *  把 lastFiredAt 写进 cron.json,但 consumeFiredJobs 看到 consuming=true
+ *  直接 skip → 任务永久丢失(下次 tick 因为 lastFiredAt 已设而不再 fire)。
+ *  日志里翻出来 18 条 "skipped: previous batch still running",对应 18 个
+ *  被永远丢失的 habit 触发。 */
+const consumingByAgent = new Set<string>();
 
 export interface FiredJob {
   job: EvaluateCronResult["fired"][number]["job"];
@@ -25,26 +34,59 @@ export interface FiredJob {
 }
 
 /**
+ * Recovery: pick up cron inbox messages that are still unread —— previous
+ * heartbeat ticks that got blocked by the per-agent lock would write inbox
+ * + bump lastFiredAt but never consume. Without this recovery,evaluateCron
+ * won't re-fire (lastFiredAt is set),the message is permanently orphaned.
+ *
+ * Called from the same heartbeat onTick that calls consumeFiredJobs(fired)
+ * for the freshly-fired batch. We merge the orphans in BEFORE the fresh
+ * batch so they're processed first.
+ */
+export async function recoverOrphanedJobs(agentId: string): Promise<FiredJob[]> {
+  try {
+    const [inbox, jobs] = await Promise.all([
+      readInbox(agentId, { onlyUnread: true, limit: 50 }),
+      listCronJobs(agentId),
+    ]);
+    const jobById = new Map(jobs.map((j) => [j.id, j]));
+    const orphans: FiredJob[] = [];
+    for (const msg of inbox) {
+      if (msg.source !== "cron") continue;
+      const cronJobId = (msg.meta?.cronJobId as string) || null;
+      if (!cronJobId) continue;
+      const job = jobById.get(cronJobId);
+      if (!job) continue; // job was deleted; skip orphan
+      orphans.push({ job: job as FiredJob["job"], inboxMessage: msg });
+    }
+    return orphans;
+  } catch (err) {
+    console.error(`[inbox-consumer] recoverOrphanedJobs failed for ${agentId}:`, err);
+    return [];
+  }
+}
+
+/**
  * Consume fired cron jobs by running the Agent headlessly.
- * Jobs are executed serially to avoid parallel LLM pressure.
- * Errors in one job don't block the others.
+ * Jobs are executed serially within an agent to avoid parallel LLM pressure;
+ * different agents run concurrently. Errors in one job don't block the others.
  */
 export async function consumeFiredJobs(
   agentId: string,
   fired: FiredJob[],
 ): Promise<void> {
   if (fired.length === 0) return;
-  if (consuming) {
-    console.warn("[inbox-consumer] skipped: previous batch still running");
+  if (consumingByAgent.has(agentId)) {
+    console.warn(`[inbox-consumer] agent ${agentId}: previous batch still running, skipping`);
     return;
   }
-  consuming = true;
+  consumingByAgent.add(agentId);
   try {
     for (const { job, inboxMessage } of fired) {
       await consumeOne(agentId, job, inboxMessage);
     }
   } finally {
-    consuming = false;
+    consumingByAgent.delete(agentId);
   }
 }
 
