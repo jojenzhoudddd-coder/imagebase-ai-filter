@@ -228,6 +228,16 @@
 .idea-preview-body p:has(> br:only-child) {
   min-height: 1.7em;
 }
+/* Hide trailing <br> in paragraphs that also have text content.
+   When markdown "text\n![img]()" is parsed with breaks:true, the image
+   gets extracted into its own block and leaves <p>text<br></p> — the
+   trailing <br> creates a false blank line before the image. Hiding it
+   makes single-newline spacing consistent. This does NOT affect:
+   - Inline <br> between text: "a<br>b" — <br> is not :last-child
+   - Empty-line spacers: <p><br></p> — matched by :only-child above */
+.idea-preview-body p > br:last-child:not(:only-child) {
+  display: none;
+}
 
 /* Tiptap placeholder */
 .idea-preview-body p.is-editor-empty:first-child::before {
