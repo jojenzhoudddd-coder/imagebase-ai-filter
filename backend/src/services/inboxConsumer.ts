@@ -14,6 +14,7 @@ import { ackInboxMessage, readInbox, getAgent, type InboxMessage } from "./agent
 import { listUserWorkspaces } from "./authService.js";
 import { listCronJobs } from "./cronScheduler.js";
 import { runAgent, type AgentContext } from "./chatAgentService.js";
+import { generateForWorkspace } from "./workspaceSummaryService.js";
 import type { EvaluateCronResult } from "./cronScheduler.js";
 
 /**
@@ -133,6 +134,35 @@ async function consumeOne(
   }
   const displayName =
     (job as any).displayName || jobId;
+
+  // Special case: slogan habit doesn't go through the chat agent — it just
+  // calls the workspace summary service directly (one LLM call, JSON-out,
+  // writes Workspace.aiSlogan). Going through the chat loop would be
+  // overkill (multi-round tool calls, conversation persistence) and also
+  // wouldn't correctly write to the DB without a new MCP tool.
+  // 刷新 agent 拥有的所有 workspace 的 slogan,不只是 [0] —— 一个用户可能
+  // 有多个 workspace 但 TopBar 在不同 workspace 之间会切换。
+  if (jobId === "habit_system_slogan") {
+    console.log(`[inbox-consumer] executing slogan habit "${jobId}"`);
+    try {
+      const agent = await getAgent(agentId);
+      const workspaces = agent ? await listUserWorkspaces(agent.userId) : [];
+      let refreshed = 0;
+      for (const ws of workspaces) {
+        try {
+          await generateForWorkspace(ws.id);
+          refreshed++;
+        } catch (err) {
+          console.warn(`[inbox-consumer] slogan ws=${ws.id} failed:`, err);
+        }
+      }
+      console.log(`[inbox-consumer] slogan habit done — ${refreshed}/${workspaces.length} workspaces refreshed`);
+    } catch (err) {
+      console.error(`[inbox-consumer] slogan habit failed:`, err);
+    }
+    await ackInboxMessage(agentId, inboxMessage.id).catch(() => undefined);
+    return;
+  }
 
   console.log(`[inbox-consumer] executing habit "${displayName}" (${jobId})`);
 

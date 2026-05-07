@@ -117,7 +117,7 @@ function tryParseSummary(raw: string): SummaryResult | null {
   }
 }
 
-async function generateForWorkspace(workspaceId: string): Promise<void> {
+export async function generateForWorkspace(workspaceId: string): Promise<void> {
   const ws = await prisma.workspace.findUnique({
     where: { id: workspaceId },
     select: {

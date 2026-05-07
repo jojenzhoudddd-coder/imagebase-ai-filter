@@ -54,7 +54,7 @@ import { startSuggestionScheduler } from "./services/suggestionService.js";
 import { ensureDefaultAgent } from "./services/agentService.js";
 import { startHeartbeat, stopHeartbeat } from "./services/runtimeService.js";
 import { startModelProbe, stopModelProbe } from "./services/modelRegistry.js";
-import { maybeRefreshDailySummaries, regenerateMissingSummaries } from "./services/workspaceSummaryService.js";
+import { regenerateMissingSummaries } from "./services/workspaceSummaryService.js";
 // Side-effect import: registers every provider adapter with the registry at
 // boot. Must happen before the first runAgent() call.
 import "./services/providers/index.js";
@@ -396,9 +396,10 @@ async function start() {
   if (process.env.RUNTIME_DISABLED !== "1") {
     startHeartbeat({
       onTick: async (ctx) => {
-        // 每天 UTC+8 04:00 之后第一次 tick 触发一次 workspace summary 刷新。
-        // module-level 去重，多 agent tick 只会有第一个真正跑。fire-and-forget。
-        void maybeRefreshDailySummaries(ctx.firedAt);
+        // V4.6: workspace slogan 不再走 heartbeat 自带的 hidden scheduler,
+        // 改为 system habit `habit_system_slogan`(08:00),在 inboxConsumer
+        // 里 special-case 直接调用 generateForWorkspace。这样用户能在
+        // Habits tab 看到它、toggle 它,跟其他 system habit 一致。
         const cronResult = await evaluateCron(ctx.agentId, ctx.firedAt);
         const details: Record<string, unknown> = {};
         // Recovery: pick up unread cron inbox messages from previous ticks

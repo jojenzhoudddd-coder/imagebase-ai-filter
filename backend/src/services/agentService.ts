@@ -236,6 +236,23 @@ const SYSTEM_HABITS_SEED = [
     displayName: "Workspace 资讯",
     description: "每天 04:00 — 抓 workspace 相关行业最新资讯,直接在对话呈现(不入知识库,默认关闭)",
   },
+  {
+    // 注意:这个 habit 不走 chat agent loop,inboxConsumer 会 special-case
+    // 直接调用 workspaceSummaryService.generateForWorkspace —— 因为 slogan
+    // 是写入 Workspace.aiSlogan(DB 字段)、TopBar 渲染的,不需要走对话 +
+    // tool call,直接一次 LLM 调用更稳定 + 省 token。
+    // prompt 字段只是给用户在 Habits tab 看的描述,不会被实际执行。
+    id: "habit_system_slogan",
+    schedule: "0 8 * * *",
+    prompt:
+      "刷新当前 workspace 的 AI Slogan(显示在 TopBar 顶部那行 ≤20 字的短句)。" +
+      "流程:遍历 workspace 名称 / 描述 / 表 / 灵感 / 画布的标题 → 用 doubao-2.0 生成一句 ≤20 字的中文 slogan → 写回 Workspace.aiSlogan,前端 TopBar 即时刷新。" +
+      "由 inboxConsumer 直接调用 workspaceSummaryService.generateForWorkspace,不走 chat agent loop。",
+    type: "system",
+    enabled: true,
+    displayName: "Workspace Slogan",
+    description: "每天 08:00 — 基于 workspace 内容刷新 TopBar 的 AI Slogan",
+  },
 ];
 
 async function fileExists(p: string): Promise<boolean> {

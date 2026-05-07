@@ -596,6 +596,8 @@ export const en = {
   "habit.habit_system_learn.desc": "Learn new knowledge from the internet based on workspace domain",
   "habit.habit_system_workspace_news.name": "Workspace News",
   "habit.habit_system_workspace_news.desc": "Daily fetch of latest industry news related to workspace topics",
+  "habit.habit_system_slogan.name": "Workspace Slogan",
+  "habit.habit_system_slogan.desc": "Daily at 08:00 — refresh the TopBar AI slogan based on workspace content",
   "chat.input.dropFiles": "Drop files here",
   "agent.toast.skillEnabled": "Skill enabled",
   "agent.toast.skillDisabled": "Skill disabled",
