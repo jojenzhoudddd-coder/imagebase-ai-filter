@@ -783,7 +783,8 @@ export default function AgencyBlock({ blockId }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          workspaceId: "ws_default",
+          workspaceId: workspace.workspaceId,
+          agentId: agentId || undefined,
           goal: goal.trim(),
           todos: todos.filter((t) => t.trim()),
         }),
@@ -801,7 +802,7 @@ export default function AgencyBlock({ blockId }: Props) {
       setStatus("idle");
       setEvents([{ type: "error", data: { message: err.message } }]);
     }
-  }, [goal, todos, blockId, patchBlockState, scheduleSave]);
+  }, [goal, todos, blockId, patchBlockState, scheduleSave, workspace.workspaceId, agentId]);
 
   // Mid-flight edit
   const handleMidFlightEdit = useCallback(async (patch: { goal?: string; todos?: string[] }) => {
