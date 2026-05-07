@@ -165,6 +165,10 @@
   line-height: 1.7;
   caret-color: transparent;
   cursor: default;
+  /* Preserve newlines in rendered content so \n inside paragraphs
+     displays as a line break even if <br> parsing fails */
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 /* Allow text selection but not editing */
 .idea-preview-body ::selection {
