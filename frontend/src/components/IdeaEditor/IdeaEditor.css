@@ -223,14 +223,23 @@
 .idea-preview-body a:hover {
   text-decoration: underline;
 }
-/* Spacer paragraphs (from preserveBlankLines &nbsp; insertion).
-   Collapse content height to zero so they only occupy their
-   margin-bottom — makes blank-line spacing perfectly linear:
-   each extra Enter adds exactly one margin-bottom (20px). */
+/* Blank-line spacer paragraphs (&nbsp; from preserveBlankLines).
+   Collapse to zero content height — only margin-bottom (20px from the
+   general p rule) contributes to the gap. This makes spacing linear:
+   each extra Enter = +20px. */
+.idea-preview-body p.blank-line-spacer {
+  font-size: 0;
+  line-height: 0;
+  height: 0;
+  overflow: hidden;
+}
+/* Empty/br-only paragraphs (edge cases) — same treatment. */
 .idea-preview-body p:empty,
 .idea-preview-body p:has(> br:only-child) {
   font-size: 0;
   line-height: 0;
+  height: 0;
+  overflow: hidden;
 }
 /* Hide trailing <br> in paragraphs that also have text content.
    When markdown "text\n![img]()" is parsed with breaks:true, the image

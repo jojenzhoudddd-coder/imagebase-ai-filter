@@ -145,10 +145,7 @@ function preserveBlankLines(md: string): string {
     if (line.trim() === "") {
       consecutiveEmpty++;
       if (consecutiveEmpty >= 2) {
-        // Use <br> as spacer — markdown-it with html:true passes it
-        // through, Tiptap parses it as hardBreak inside a <p>, and
-        // CSS p:has(> br:only-child) collapses it to zero height.
-        result.push("<br>");
+        result.push("&nbsp;");
         result.push("");
       } else {
         result.push(line);
@@ -159,6 +156,21 @@ function preserveBlankLines(md: string): string {
     }
   }
   return result.join("\n");
+}
+
+/** Walk the editor DOM and mark &nbsp;-only <p> elements with a class
+ *  so CSS can collapse them to just their margin (spacer paragraphs). */
+function markSpacerParagraphs(ed: { view: { dom: HTMLElement } }) {
+  const root = ed.view.dom;
+  root.querySelectorAll("p").forEach((p) => {
+    // Check if the paragraph contains only &nbsp; (U+00A0)
+    const text = p.textContent ?? "";
+    if (text === "\u00A0" && p.childNodes.length === 1 && p.childNodes[0].nodeType === Node.TEXT_NODE) {
+      p.classList.add("blank-line-spacer");
+    } else {
+      p.classList.remove("blank-line-spacer");
+    }
+  });
 }
 
 import { parseMentionHref } from "../Mention/mentionSyntax";
@@ -273,10 +285,12 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
           return false;
         },
       },
-      onCreate() {
+      onCreate({ editor: ed }) {
         setTimeout(() => { suppressRef.current = false; }, 50);
+        markSpacerParagraphs(ed);
       },
-      onUpdate() {
+      onUpdate({ editor: ed }) {
+        markSpacerParagraphs(ed);
         if (suppressRef.current) return;
         if (!dirtyRef.current) {
           dirtyRef.current = true;
