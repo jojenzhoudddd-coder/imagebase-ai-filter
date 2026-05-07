@@ -1776,6 +1776,12 @@ export default function ChatSidebar({
           <BlockCloseButton />
         </div>
       </header>
+      {/* Drop overlay — positioned below header, covers messages + input + bottom padding */}
+      {sidebarDragging && (
+        <div className="chat-sidebar-drag-overlay chat-sidebar-drag-overlay--below-header">
+          Drop files here
+        </div>
+      )}
       {/* Agent meta menu —— 7 个占位项,功能待接;onSelect 仅 console.info */}
       {agentMetaMenuOpen && agentMetaBtnRef.current && (
         <DropdownMenu
@@ -1978,11 +1984,6 @@ export default function ChatSidebar({
             externalDragging={sidebarDragging}
           />
         </>
-      )}
-      {/* Drag overlay — covers the entire aside (messages + input + bottom padding) except header */}
-      {sidebarDragging && sidebarRef.current?.parentElement && createPortal(
-        <div className="chat-sidebar-drag-overlay">Drop files here</div>,
-        sidebarRef.current.parentElement,
       )}
     </aside>
   );

@@ -2844,3 +2844,7 @@
   z-index: 50;
   pointer-events: none;
 }
+.chat-sidebar-drag-overlay--below-header {
+  top: 44px;
+  border-radius: 0 0 6px 6px;
+}
