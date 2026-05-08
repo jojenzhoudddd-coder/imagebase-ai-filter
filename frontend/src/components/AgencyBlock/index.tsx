@@ -1020,6 +1020,9 @@ export default function AgencyBlock({ blockId }: Props) {
     }
 
     merged.forEach((ev, i) => {
+      // Skip meta events that shouldn't render in the feed
+      if (ev.type === "session:status") return;
+
       switch (ev.type) {
         case "roadmap:planned":
         case "roadmap:replanned": {
