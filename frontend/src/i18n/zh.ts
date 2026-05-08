@@ -872,6 +872,7 @@ export const zh: TranslationKeys = {
   "agency.route.running": "运行中\u2026",
   "agency.route.start": "开始",
   "agency.route.restart": "重启",
+  "agency.route.clear": "清除",
   "agency.welcome.title": "你想达成什么目标？",
   "agency.welcome.subtitle": "设定一个目标，Agent 将自主驱动执行。以下是基于你工作区的一些建议：",
   "agency.welcome.steps": "步",

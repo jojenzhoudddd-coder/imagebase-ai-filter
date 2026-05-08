@@ -366,13 +366,9 @@
   align-items: center;
   gap: 0;
   padding: 0 0 20px;
-  /* Stick to the top of .ha-body's scroll viewport and fill it,
-     so the route line always spans from top to 20px above the bottom
-     regardless of how far down the feed scrolls. */
-  position: sticky;
-  top: 0;
-  align-self: flex-start;
-  height: var(--ha-route-height, 300px);
+  /* min-height from JS ensures route fills the visible viewport;
+     natural flex stretch makes it grow when feed content is taller. */
+  min-height: var(--ha-route-height, 300px);
 }
 .ha-route-side-track {
   flex: 1;
@@ -907,7 +903,7 @@
   background: var(--surface-1);
 }
 .ha-feed-inner {
-  padding: 14px 16px 18px;
+  padding: 0 16px 20px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 14px;
   line-height: 1.6;

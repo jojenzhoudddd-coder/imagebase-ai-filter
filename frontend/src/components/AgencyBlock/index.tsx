@@ -920,6 +920,24 @@ export default function AgencyBlock({ blockId }: Props) {
     setEvents((prev) => [...prev, { type: "session:status", data: { status: "cancelled" } }]);
   }, [blockState.sessionId]);
 
+  // Clear — reset everything back to welcome page
+  const handleClear = useCallback(() => {
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+    setStatus("idle");
+    setGoal("");
+    setTodos([]);
+    setEvents([]);
+    setMilestones([]);
+    setCheckpoints([]);
+    setCurrentMilestoneId(null);
+    setDirty(false);
+    setTotalTokens(0);
+    setSessionStartTime(null);
+    patchBlockState(blockId, { sessionId: undefined, goal: undefined, todos: undefined });
+    scheduleSave();
+  }, [blockId, patchBlockState, scheduleSave]);
+
   // Restart — cancel current session, then start fresh with updated goal/todos
   const handleRestart = useCallback(async () => {
     const sessionId = blockState.sessionId;
@@ -1238,7 +1256,14 @@ export default function AgencyBlock({ blockId }: Props) {
             {checkpoints.length > 0 && <span className="ha-checkpoint-count">{checkpoints.length}</span>}
           </button>
 
-          {/* 3) AI icon — collapse block to infra topbar */}
+          {/* 3) Clear — visible after exit/complete */}
+          {(status === "cancelled" || status === "completed") && (
+            <button className="ha-topbar-text-btn" onClick={handleClear}>
+              {t("agency.route.clear")}
+            </button>
+          )}
+
+          {/* 4) AI icon — collapse block to infra topbar */}
           <button
             className="ha-topbar-ai-btn"
             title="Collapse to topbar"

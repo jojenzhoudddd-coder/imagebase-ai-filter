@@ -867,6 +867,7 @@ export const en = {
   "agency.route.running": "Running\u2026",
   "agency.route.start": "Start",
   "agency.route.restart": "Restart",
+  "agency.route.clear": "Clear",
   "agency.welcome.title": "What would you like to achieve?",
   "agency.welcome.subtitle": "Set a goal and the agent will drive autonomously. Here are some ideas based on your workspace:",
   "agency.welcome.steps": "steps",
