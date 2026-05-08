@@ -110,7 +110,7 @@ export default function AcknowledgeTab({ agentId }: Props) {
                 </svg>
               </div>
               <div className="ab-memory-card-meta">
-                <span>{formatCardDate(e.createdAt)}</span>
+                <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{formatCardDate(e.createdAt)}</span>
                 {e.sourceType === "web" && <span className="ab-memory-tag">web</span>}
                 {e.sourceUrl && (
                   <a
