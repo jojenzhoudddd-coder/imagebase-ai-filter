@@ -716,6 +716,29 @@ export default function AgencyBlock({ blockId }: Props) {
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const mainRowRef = useRef<HTMLDivElement>(null);
+
+  // Compute route side height = main-row visible height (body height - hero - padding)
+  useEffect(() => {
+    const body = bodyRef.current;
+    const mainRow = mainRowRef.current;
+    if (!body || !mainRow) return;
+    const update = () => {
+      const bodyRect = body.getBoundingClientRect();
+      const rowRect = mainRow.getBoundingClientRect();
+      // visible height of main-row within body's viewport
+      const visibleTop = Math.max(rowRect.top, bodyRect.top);
+      const visibleBottom = bodyRect.bottom;
+      const h = Math.max(100, visibleBottom - visibleTop - 20);
+      mainRow.style.setProperty("--ha-route-height", `${h}px`);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(body);
+    body.addEventListener("scroll", update, { passive: true });
+    return () => { ro.disconnect(); body.removeEventListener("scroll", update); };
+  }, []);
 
   // ── Issue 1: Restore session state on mount (survives refresh) ──
   const restoredRef = useRef(false);
@@ -1343,7 +1366,7 @@ export default function AgencyBlock({ blockId }: Props) {
         )}
 
       {/* Body — centered container, max 800px */}
-      <div className="ha-body">
+      <div className="ha-body" ref={bodyRef}>
         <div className="ha-body-center">
 
           {/* Agent hero header (avatar + name + model) */}
@@ -1383,7 +1406,7 @@ export default function AgencyBlock({ blockId }: Props) {
           </div>
 
           {/* Main content: route line + work area */}
-          <div className="ha-main-row">
+          <div className="ha-main-row" ref={mainRowRef}>
           {/* Left: Route line (From dot → dashed line → To dot) */}
           <div className="ha-route-side">
             <span className="ha-rp-pop-marker ha-rp-pop-marker-from" />

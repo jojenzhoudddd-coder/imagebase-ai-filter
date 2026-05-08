@@ -365,7 +365,14 @@
   flex-direction: column;
   align-items: center;
   gap: 0;
-  padding: 0 0 8px;
+  padding: 0 0 20px;
+  /* Stick to the top of .ha-body's scroll viewport and fill it,
+     so the route line always spans from top to 20px above the bottom
+     regardless of how far down the feed scrolls. */
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: var(--ha-route-height, 300px);
 }
 .ha-route-side-track {
   flex: 1;
