@@ -1938,16 +1938,13 @@ textarea.ha-compound-field-textarea {
 
 /* ── Session status bar ─────────────────────────────────────────── */
 .ha-status-bar {
-  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 4px 16px;
+  padding: 8px 0;
   font-size: 11px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color: var(--text-muted);
-  border-top: 1px solid var(--border-subtle);
-  background: var(--surface-2);
 }
 .ha-status-bar .ha-cli-time {
   font-size: 11px;

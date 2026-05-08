@@ -1486,6 +1486,12 @@ export default function AgencyBlock({ blockId }: Props) {
               <div className="ha-feed">
                 <div className="ha-feed-inner">
                   {renderFeed()}
+                  {isRunning && sessionStartTime && (
+                    <div className="ha-status-bar">
+                      <LiveTimer startTime={sessionStartTime} />
+                      {totalTokens > 0 && <span className="ha-status-tokens">{(totalTokens / 1000).toFixed(1)}k tok</span>}
+                    </div>
+                  )}
                   <div ref={eventsEndRef} />
                 </div>
               </div>
@@ -1495,13 +1501,6 @@ export default function AgencyBlock({ blockId }: Props) {
         </div>
       </div>
 
-      {/* Session status bar */}
-      {isRunning && sessionStartTime && (
-        <div className="ha-status-bar">
-          <LiveTimer startTime={sessionStartTime} />
-          {totalTokens > 0 && <span className="ha-status-tokens">{(totalTokens / 1000).toFixed(1)}k tok</span>}
-        </div>
-      )}
 
       {/* Avatar crop dialog */}
       {cropSource && (
