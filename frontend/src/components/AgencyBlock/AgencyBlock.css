@@ -365,9 +365,11 @@
   flex-direction: column;
   align-items: center;
   gap: 0;
-  padding: 0 0 20px;
-  /* min-height from JS ensures route fills the visible viewport;
-     natural flex stretch makes it grow when feed content is taller. */
+  padding: 8px 0 0;
+  /* JS sets --ha-route-height = body bottom − main-row top − 20px,
+     so the route always ends 20px above the block bottom.
+     min-height ensures it fills that space; flex stretch grows it
+     when feed content is taller. */
   min-height: var(--ha-route-height, 300px);
 }
 .ha-route-side-track {

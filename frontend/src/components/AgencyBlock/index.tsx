@@ -719,25 +719,23 @@ export default function AgencyBlock({ blockId }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const mainRowRef = useRef<HTMLDivElement>(null);
 
-  // Compute route side height = main-row visible height (body height - hero - padding)
+  // Compute route side height so it ends 20px above the block bottom.
+  // height = block bottom − main-row top − 20px
+  const blockRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const body = bodyRef.current;
+    const block = blockRef.current;
     const mainRow = mainRowRef.current;
-    if (!body || !mainRow) return;
+    if (!block || !mainRow) return;
     const update = () => {
-      const bodyRect = body.getBoundingClientRect();
+      const blockRect = block.getBoundingClientRect();
       const rowRect = mainRow.getBoundingClientRect();
-      // visible height of main-row within body's viewport
-      const visibleTop = Math.max(rowRect.top, bodyRect.top);
-      const visibleBottom = bodyRect.bottom;
-      const h = Math.max(100, visibleBottom - visibleTop - 20);
+      const h = Math.max(100, blockRect.bottom - rowRect.top - 20);
       mainRow.style.setProperty("--ha-route-height", `${h}px`);
     };
     update();
     const ro = new ResizeObserver(update);
-    ro.observe(body);
-    body.addEventListener("scroll", update, { passive: true });
-    return () => { ro.disconnect(); body.removeEventListener("scroll", update); };
+    ro.observe(block);
+    return () => ro.disconnect();
   }, []);
 
   // ── Issue 1: Restore session state on mount (survives refresh) ──
@@ -1217,7 +1215,7 @@ export default function AgencyBlock({ blockId }: Props) {
   // ─── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <div className={`ha-block ha-state-${status}`}>
+    <div className={`ha-block ha-state-${status}`} ref={blockRef}>
 
       {/* TopBar */}
       <header className="ha-topbar">
@@ -1256,14 +1254,7 @@ export default function AgencyBlock({ blockId }: Props) {
             {checkpoints.length > 0 && <span className="ha-checkpoint-count">{checkpoints.length}</span>}
           </button>
 
-          {/* 3) Clear — visible after exit/complete */}
-          {(status === "cancelled" || status === "completed") && (
-            <button className="ha-topbar-text-btn" onClick={handleClear}>
-              {t("agency.route.clear")}
-            </button>
-          )}
-
-          {/* 4) AI icon — collapse block to infra topbar */}
+          {/* 3) AI icon — collapse block to infra topbar */}
           <button
             className="ha-topbar-ai-btn"
             title="Collapse to topbar"
@@ -1374,6 +1365,14 @@ export default function AgencyBlock({ blockId }: Props) {
                     onClick={() => { setShowRoutePopover(false); handleRestart(); }}
                   >
                     {t("agency.route.restart")}
+                  </button>
+                )}
+                {!isRunning && (status === "cancelled" || status === "completed") && (
+                  <button
+                    className="ha-rp-pop-cancel"
+                    onClick={() => { handleClear(); setShowRoutePopover(false); }}
+                  >
+                    {t("agency.route.clear")}
                   </button>
                 )}
                 {!isRunning && (
