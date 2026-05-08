@@ -1367,14 +1367,12 @@ export default function AgencyBlock({ blockId }: Props) {
                     {t("agency.route.restart")}
                   </button>
                 )}
-                {!isRunning && (status === "cancelled" || status === "completed") && (
-                  <button
-                    className="ha-rp-pop-cancel"
-                    onClick={() => { handleClear(); setShowRoutePopover(false); }}
-                  >
-                    {t("agency.route.clear")}
-                  </button>
-                )}
+                <button
+                  className="ha-rp-pop-cancel"
+                  onClick={() => { handleClear(); setShowRoutePopover(false); }}
+                >
+                  {t("agency.route.clear")}
+                </button>
                 {!isRunning && (
                   <button
                     className="ha-rp-pop-submit"
