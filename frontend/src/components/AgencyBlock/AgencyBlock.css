@@ -365,7 +365,7 @@
   flex-direction: column;
   align-items: center;
   gap: 0;
-  padding: 8px 0;
+  padding: 0 0 8px;
 }
 .ha-route-side-track {
   flex: 1;
@@ -576,7 +576,6 @@
 .ha-work-area .ha-feed {
   flex: 1;
   min-height: 0;
-  overflow: auto;
   background: transparent;
 }
 
@@ -896,10 +895,8 @@
 
 .ha-feed {
   flex: 1;
-  overflow: auto;
   min-width: 0;
   min-height: 0;
-  scrollbar-width: thin;
   background: var(--surface-1);
 }
 .ha-feed-inner {
@@ -1804,6 +1801,13 @@
   font-size: 12px;
   color: var(--text-primary);
 }
+textarea.ha-compound-field-textarea {
+  resize: none;
+  overflow: hidden;
+  line-height: 1.5;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
 .ha-compound-field::placeholder {
   color: var(--text-placeholder);
 }
@@ -1887,6 +1891,26 @@
   border-color: var(--border-strong);
 }
 
+/* Restart button — warning style */
+.ha-rp-pop-restart {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-2);
+  color: var(--warning, #e8a900);
+  font-family: var(--font-family, inherit);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.ha-rp-pop-restart:hover {
+  background: var(--surface-3);
+  border-color: var(--warning, #e8a900);
+}
+
 /* Submit button — matches .create-table-popover-btn.primary */
 .ha-rp-pop-submit {
   height: 32px;
@@ -1905,6 +1929,26 @@
 .ha-rp-pop-submit:disabled {
   background: var(--primary-light);
   cursor: not-allowed;
+}
+
+/* ── Session status bar ─────────────────────────────────────────── */
+.ha-status-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 16px;
+  font-size: 11px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-2);
+}
+.ha-status-bar .ha-cli-time {
+  font-size: 11px;
+}
+.ha-status-tokens {
+  color: var(--text-muted);
 }
 
 /* Remove body/button global resets that leak to other blocks */

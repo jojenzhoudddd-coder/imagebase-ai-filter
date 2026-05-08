@@ -7,10 +7,12 @@ import { useEffect, useRef, useState } from "react";
 import { useCanvas, MAX_BLOCKS } from "../../contexts/canvasContext";
 import { useAuth } from "../../auth/AuthContext";
 import { createConversation } from "../../api";
+import { useTranslation } from "../../i18n";
 
 export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject<HTMLElement | null> }) {
   const { addBlock, visibleBlockIds } = useCanvas();
   const { workspaceId, agentId } = useAuth();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const popRef = useRef<HTMLDivElement>(null);
 
@@ -75,7 +77,7 @@ export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject
         }}
       >
         <SparkleIcon />
-        <span>Chat</span>
+        <span>{t("addBlock.chat")}</span>
       </button>
       <button
         className="mc-add-block-item"
@@ -86,7 +88,7 @@ export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject
         }}
       >
         <ArtifactIcon />
-        <span>Artifact</span>
+        <span>{t("addBlock.artifact")}</span>
       </button>
       <button
         className="mc-add-block-item"
@@ -97,10 +99,10 @@ export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject
         }}
       >
         <SystemIcon />
-        <span>System</span>
+        <span>{t("addBlock.brain")}</span>
       </button>
       {reachedMax && (
-        <div className="mc-add-block-foot">已达上限 {MAX_BLOCKS} 个 block</div>
+        <div className="mc-add-block-foot">{t("addBlock.maxBlocks").replace("{max}", String(MAX_BLOCKS))}</div>
       )}
     </div>
   );

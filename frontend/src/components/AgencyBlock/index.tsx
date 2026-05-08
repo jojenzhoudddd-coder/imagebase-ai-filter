@@ -99,6 +99,7 @@ type SessionStatus = "idle" | "planning" | "executing" | "validating" | "replann
 
 /** Chaos Monkey popover */
 function ChaosPopover({ isValidating, onClose }: { isValidating: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="ha-chaos-popover" onClick={(e) => e.stopPropagation()}>
       <div className="ha-chaos-id">
@@ -109,37 +110,37 @@ function ChaosPopover({ isValidating, onClose }: { isValidating: boolean; onClos
           <div className="ha-chaos-name">
             chaos_monkey
             <span className={`ha-chaos-status ${isValidating ? "is-on" : "is-idle"}`}>
-              {isValidating ? "\u25CF validating" : "\u25CB idle"}
+              {isValidating ? `\u25CF ${t("agency.chaos.validating")}` : `\u25CB ${t("agency.chaos.idle")}`}
             </span>
           </div>
-          <div className="ha-chaos-role">adversarial validator &middot; v0.4</div>
+          <div className="ha-chaos-role">{t("agency.chaos.role")}</div>
         </div>
       </div>
       <div className="ha-chaos-config">
         <div className="ha-chaos-row">
-          <span className="ha-cli-mono-key">sensitivity</span>
+          <span className="ha-cli-mono-key">{t("agency.chaos.sensitivity")}</span>
           <span className="ha-cli-mono-eq">=</span>
-          <span className="ha-cli-mono-val">strict</span>
-          <span className="ha-cli-mono-hint">(retry on any criterion fail)</span>
+          <span className="ha-cli-mono-val">{t("agency.chaos.sensitivityVal")}</span>
+          <span className="ha-cli-mono-hint">{t("agency.chaos.sensitivityHint")}</span>
         </div>
         <div className="ha-chaos-row">
-          <span className="ha-cli-mono-key">criteria_src</span>
+          <span className="ha-cli-mono-key">{t("agency.chaos.criteriaSrc")}</span>
           <span className="ha-cli-mono-eq">=</span>
-          <span className="ha-cli-mono-val">auto + goal-derived</span>
+          <span className="ha-cli-mono-val">{t("agency.chaos.criteriaSrcVal")}</span>
         </div>
         <div className="ha-chaos-row">
-          <span className="ha-cli-mono-key">retry_budget</span>
+          <span className="ha-cli-mono-key">{t("agency.chaos.retryBudget")}</span>
           <span className="ha-cli-mono-eq">=</span>
-          <span className="ha-cli-mono-val">3 / step</span>
+          <span className="ha-cli-mono-val">{t("agency.chaos.retryBudgetVal")}</span>
         </div>
         <div className="ha-chaos-row">
-          <span className="ha-cli-mono-key">history</span>
+          <span className="ha-cli-mono-key">{t("agency.chaos.history")}</span>
           <span className="ha-cli-mono-eq">=</span>
-          <span className="ha-cli-mono-val">0 approved &middot; 0 retry</span>
+          <span className="ha-cli-mono-val">{t("agency.chaos.historyVal")}</span>
         </div>
       </div>
       <div className="ha-chaos-foot">
-        Chaos Monkey gates each milestone before checkpointing.
+        {t("agency.chaos.footer")}
       </div>
     </div>
   );
@@ -165,20 +166,30 @@ function Sigil({ status }: { status: string }) {
   return <span className={`ha-cli-sigil ${m.cls}`}>{m.ch}</span>;
 }
 
+/** LiveTimer — ticking elapsed time display */
+function LiveTimer({ startTime }: { startTime: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return <span className="ha-cli-time">{formatDuration(now - startTime)}</span>;
+}
+
 /** CliBlock — collapsible block in the feed */
 function CliBlock({
   status,
-  time,
   label,
   meta,
+  timer,
   defaultOpen = false,
   children,
   expandable = true,
 }: {
   status: string;
-  time?: string;
   label: React.ReactNode;
   meta?: string | null;
+  timer?: React.ReactNode;
   defaultOpen?: boolean;
   children?: React.ReactNode;
   expandable?: boolean;
@@ -195,8 +206,8 @@ function CliBlock({
       >
         <span className="ha-cli-chev">{hasBody ? (open ? "\u25BE" : "\u25B8") : " "}</span>
         <Sigil status={status} />
-        {time && <span className="ha-cli-time">{time}</span>}
         <span className="ha-cli-label">{label}</span>
+        {timer}
         {meta && <span className="ha-cli-meta">{meta}</span>}
       </div>
       {open && hasBody && <div className="ha-cli-body">{children}</div>}
@@ -216,13 +227,14 @@ function CliLine({ children, kind = "default", isLast = false }: { children: Rea
 
 /** PlanningCard — roadmap planned event */
 function PlanningCard({ goal, milestones, status }: { goal: string; milestones: string[]; status: "thinking" | "ready" }) {
+  const { t } = useTranslation();
   const isReady = status === "ready";
   const sigilStatus = isReady ? "plan" : "thinking";
-  const label = isReady ? "Roadmap ready" : "Planning roadmap\u2026";
-  const meta = isReady ? `${milestones.length} steps` : null;
+  const label = isReady ? t("agency.plan.ready") : t("agency.plan.planning");
+  const meta = isReady ? `${milestones.length} ${t("agency.plan.steps")}` : null;
 
   return (
-    <CliBlock status={sigilStatus} time="00:00" label={label} meta={meta} defaultOpen expandable={isReady}>
+    <CliBlock status={sigilStatus} label={label} meta={meta} defaultOpen expandable={isReady}>
       {isReady &&
         milestones.map((m, i) => (
           <CliLine key={i} kind="step" isLast={i === milestones.length - 1}>
@@ -240,7 +252,8 @@ function MilestoneCard({
   title,
   status,
   log,
-  duration,
+  startTime,
+  durationMs,
   tokens,
   defaultOpen,
 }: {
@@ -248,14 +261,11 @@ function MilestoneCard({
   title: string;
   status: string;
   log: { t: string; kind: string; text: string }[];
-  duration?: string;
+  startTime?: number;
+  durationMs?: number;
   tokens?: string;
   defaultOpen?: boolean;
 }) {
-  const meta =
-    (status === "passed" || status === "failed") && (duration || tokens)
-      ? [duration, tokens && `${tokens} tok`].filter(Boolean).join(" \u00B7 ")
-      : null;
   const label = (
     <>
       <span className="ha-cli-num">[{String(idx).padStart(2, "0")}]</span>{" "}
@@ -263,8 +273,16 @@ function MilestoneCard({
     </>
   );
 
+  const timer = status === "running" && startTime
+    ? <LiveTimer startTime={startTime} />
+    : durationMs != null
+      ? <span className="ha-cli-time">{formatDuration(durationMs)}</span>
+      : null;
+
+  const meta = tokens ? `${tokens} tok` : null;
+
   return (
-    <CliBlock status={status} time={`00:${String(idx * 30 + 12).padStart(2, "0")}`} label={label} meta={meta} defaultOpen={defaultOpen ?? false}>
+    <CliBlock status={status} label={label} timer={timer} meta={meta} defaultOpen={defaultOpen ?? false}>
       {log.map((line, i) => (
         <CliLine key={i} kind={`log-${line.kind}`} isLast={i === log.length - 1}>
           <span className="ha-cli-log-time">{line.t}</span>
@@ -289,10 +307,11 @@ function ValidationCard({
   nextAction?: string;
   defaultOpen?: boolean;
 }) {
+  const { t } = useTranslation();
   const titleMap: Record<string, string> = {
-    approved: "validate \u00B7 approved",
-    retry: "validate \u00B7 retry needed",
-    checking: "validate \u00B7 checking\u2026",
+    approved: t("agency.validate.approved"),
+    retry: t("agency.validate.retry"),
+    checking: t("agency.validate.checking"),
   };
   const passCount = criteria.filter((c) => c.ok).length;
   const totalCount = criteria.length;
@@ -339,7 +358,7 @@ function ValidationCard({
       kind: "reason",
       node: (
         <>
-          <span className="ha-cli-mono-key">why</span>
+          <span className="ha-cli-mono-key">{t("agency.validate.why")}</span>
           <span className="ha-cli-mono-arrow">&rsaquo;</span>
           <span className="ha-cli-line-text">{reason}</span>
         </>
@@ -353,10 +372,10 @@ function ValidationCard({
       kind: verdict === "retry" ? "next-retry" : "next-ok",
       node: (
         <>
-          <span className="ha-cli-mono-key">next</span>
+          <span className="ha-cli-mono-key">{t("agency.validate.next")}</span>
           <span className="ha-cli-mono-arrow">&rsaquo;</span>
           <span className="ha-cli-line-text">
-            {verdict === "retry" ? (nextAction || "retry step with adjusted params") : "proceed to next milestone"}
+            {verdict === "retry" ? (nextAction || t("agency.validate.nextRetry")) : t("agency.validate.nextOk")}
           </span>
         </>
       ),
@@ -366,7 +385,6 @@ function ValidationCard({
   return (
     <CliBlock
       status={verdict}
-      time="01:42"
       label={titleMap[verdict]}
       meta={verdict !== "checking" ? `chaos_monkey \u00B7 ${passCount}/${totalCount}` : undefined}
       defaultOpen={defaultOpen ?? verdict === "retry"}
@@ -382,8 +400,9 @@ function ValidationCard({
 
 /** CheckpointChips — checkpoint/artifact saved event */
 function CheckpointChips({ items }: { items: { name: string }[] }) {
+  const { t } = useTranslation();
   return (
-    <CliBlock status="save" label="checkpoint saved" meta={`${items.length} ${items.length === 1 ? "artifact" : "artifacts"}`} defaultOpen={false}>
+    <CliBlock status="save" label={t("agency.checkpoint.saved")} meta={`${items.length} ${items.length === 1 ? t("agency.checkpoint.artifact") : t("agency.checkpoint.artifacts")}`} defaultOpen={false}>
       {items.map((c, i) => (
         <CliLine key={i} kind="artifact" isLast={i === items.length - 1}>
           <span className="ha-cli-art-name">{c.name}</span>
@@ -395,21 +414,20 @@ function CheckpointChips({ items }: { items: { name: string }[] }) {
 
 /** GoalEmpty — quiet CLI banner before run starts */
 function GoalEmpty() {
+  const { t } = useTranslation();
   return (
     <div className="ha-cli-empty">
       <div className="ha-cli-empty-row">
         <span className="ha-cli-prompt">$</span>
         <span className="ha-cli-empty-cursor" />
       </div>
-      <div className="ha-cli-empty-hint">
-        Press <b>Start run</b> on the left to plan a route. The agent's progress will stream here.
-      </div>
+      <div className="ha-cli-empty-hint" dangerouslySetInnerHTML={{ __html: t("agency.empty.hint") }} />
       <div className="ha-cli-empty-stages">
-        <span className="ha-cli-empty-stage"><span className="ha-cli-empty-stage-num">1</span> plan</span>
+        <span className="ha-cli-empty-stage"><span className="ha-cli-empty-stage-num">1</span> {t("agency.empty.plan")}</span>
         <span className="ha-cli-empty-stage-arrow">&rarr;</span>
-        <span className="ha-cli-empty-stage"><span className="ha-cli-empty-stage-num">2</span> execute</span>
+        <span className="ha-cli-empty-stage"><span className="ha-cli-empty-stage-num">2</span> {t("agency.empty.execute")}</span>
         <span className="ha-cli-empty-stage-arrow">&rarr;</span>
-        <span className="ha-cli-empty-stage"><span className="ha-cli-empty-stage-num">3</span> validate</span>
+        <span className="ha-cli-empty-stage"><span className="ha-cli-empty-stage-num">3</span> {t("agency.empty.validate")}</span>
       </div>
     </div>
   );
@@ -417,11 +435,12 @@ function GoalEmpty() {
 
 /** GoalDone — completion banner */
 function GoalDone({ artifacts, duration, tokens }: { artifacts: number; duration: string; tokens: string }) {
+  const { t } = useTranslation();
   return (
     <CliBlock
       status="done"
-      label="goal achieved"
-      meta={`${artifacts} artifacts \u00B7 ${duration} \u00B7 ${tokens} tok`}
+      label={t("agency.done.title")}
+      meta={`${artifacts} ${t("agency.checkpoint.artifacts")} \u00B7 ${duration} \u00B7 ${tokens} tok`}
       defaultOpen={false}
       expandable={false}
     />
@@ -448,6 +467,7 @@ function RoutePlannerPopover({
   isRunning: boolean;
   sessionId?: string;
 }) {
+  const { t } = useTranslation();
   const addTodo = () => setTodos([...todos, ""]);
   const deleteTodo = (i: number) => {
     const next = todos.filter((_, j) => j !== i);
@@ -468,7 +488,7 @@ function RoutePlannerPopover({
         {/* From */}
         <div className="ha-rp-pop-from-row">
           <span className="ha-rp-pop-marker ha-rp-pop-marker-from" />
-          <span className="ha-rp-pop-from-txt">Now</span>
+          <span className="ha-rp-pop-from-txt">{t("agency.route.now")}</span>
         </div>
 
         {/* Steps */}
@@ -486,7 +506,7 @@ function RoutePlannerPopover({
                     onMidFlightEdit({ todos: todos.filter((t) => t.trim()) });
                   }
                 }}
-                placeholder={`Step ${i + 1}`}
+                placeholder={t("agency.route.stepPlaceholder").replace("{n}", String(i + 1))}
               />
               <button className="ha-rp-pop-del" onClick={() => deleteTodo(i)} aria-label="delete">
                 <Icon d={ICONS.close} size={10} />
@@ -496,7 +516,7 @@ function RoutePlannerPopover({
 
           <button className="ha-rp-pop-add" onClick={addTodo}>
             <Icon d={ICONS.plus} size={10} />
-            <span>Add step</span>
+            <span>{t("agency.route.addStep")}</span>
           </button>
         </div>
 
@@ -514,7 +534,7 @@ function RoutePlannerPopover({
                 onMidFlightEdit({ goal: goal.trim() });
               }
             }}
-            placeholder="What's the desired outcome?"
+            placeholder={t("agency.route.goalPlaceholder")}
           />
         </div>
 
@@ -522,7 +542,7 @@ function RoutePlannerPopover({
         {!isRunning && goal.trim() && (
           <button className="ha-rp-pop-start" onClick={onStart}>
             <Icon d={ICONS.play} size={10} />
-            Start run
+            {t("agency.route.startRun")}
           </button>
         )}
 
@@ -531,7 +551,7 @@ function RoutePlannerPopover({
 
       <div className="ha-rp-cta">
         <Icon d={ICONS.plus} size={11} />
-        <span>Plan a route</span>
+        <span>{t("agency.route.planRoute")}</span>
       </div>
     </div>
   );
@@ -689,6 +709,11 @@ export default function AgencyBlock({ blockId }: Props) {
   const [showCheckpoints, setShowCheckpoints] = useState(false);
   const [showRoutePopover, setShowRoutePopover] = useState(false);
 
+  const [dirty, setDirty] = useState(false); // user edited goal/todos while running
+  const [milestoneStartTimes, setMilestoneStartTimes] = useState<Record<string, number>>({});
+  const [totalTokens, setTotalTokens] = useState(0);
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+
   const eventSourceRef = useRef<EventSource | null>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
 
@@ -757,11 +782,16 @@ export default function AgencyBlock({ blockId }: Props) {
         fetchMilestones(sessionId);
       } else if (eventType === "milestone:started") {
         setCurrentMilestoneId(data.milestoneId as string);
+        setMilestoneStartTimes((prev) => ({ ...prev, [data.milestoneId as string]: Date.now() }));
         setStatus("executing");
       } else if (eventType === "milestone:validating") {
         setStatus("validating");
       } else if (eventType === "milestone:passed" || eventType === "milestone:failed") {
         fetchMilestones(sessionId);
+        // Accumulate tokens
+        const pt = (data.promptTokens as number) || 0;
+        const ct = (data.completionTokens as number) || 0;
+        if (pt + ct > 0) setTotalTokens((prev) => prev + pt + ct);
       } else if (eventType === "checkpoint:created") {
         fetchCheckpoints(sessionId);
       } else if (eventType === "session:completed") {
@@ -811,6 +841,8 @@ export default function AgencyBlock({ blockId }: Props) {
     if (!goal.trim()) return;
     setStatus("planning");
     setEvents([]);
+    setSessionStartTime(Date.now());
+    setTotalTokens(0);
 
     try {
       const res = await fetch("/api/agency/sessions", {
@@ -864,6 +896,26 @@ export default function AgencyBlock({ blockId }: Props) {
     setStatus("cancelled");
     setEvents((prev) => [...prev, { type: "session:status", data: { status: "cancelled" } }]);
   }, [blockState.sessionId]);
+
+  // Restart — cancel current session, then start fresh with updated goal/todos
+  const handleRestart = useCallback(async () => {
+    const sessionId = blockState.sessionId;
+    if (sessionId) {
+      try { await fetch(`/api/agency/sessions/${sessionId}`, { method: "DELETE" }); } catch {}
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
+    }
+    setDirty(false);
+    setStatus("idle");
+    setEvents([]);
+    setMilestones([]);
+    setCheckpoints([]);
+    setCurrentMilestoneId(null);
+    patchBlockState(blockId, { sessionId: undefined });
+    scheduleSave();
+    // Start new session after a tick so state is clean
+    setTimeout(() => handleStart(), 50);
+  }, [blockState.sessionId, blockId, patchBlockState, scheduleSave, handleStart]);
 
   // Toggle popover mode
   const handleTogglePopover = useCallback(() => {
@@ -954,6 +1006,7 @@ export default function AgencyBlock({ blockId }: Props) {
               title={ms?.title ?? (ev.data.title as string) ?? "Milestone"}
               status="running"
               log={[]}
+              startTime={milestoneStartTimes[msId]}
               defaultOpen
             />
           );
@@ -991,8 +1044,8 @@ export default function AgencyBlock({ blockId }: Props) {
           const msId = ev.data.milestoneId as string;
           const ms = milestones.find((m) => m.id === msId);
           const idx = ms ? ms.milestoneIndex + 1 : 1;
-          const durationMs = ev.data.durationMs as number | undefined;
-          const tokens = ev.data.promptTokens != null
+          const dMs = ev.data.durationMs as number | undefined;
+          const tok = ev.data.promptTokens != null
             ? `${(((ev.data.promptTokens as number) + ((ev.data.completionTokens as number) || 0)) / 1000).toFixed(1)}k`
             : undefined;
           feedItems.push(
@@ -1002,8 +1055,8 @@ export default function AgencyBlock({ blockId }: Props) {
               title={ms?.title ?? (ev.data.title as string) ?? "Milestone"}
               status="passed"
               log={[]}
-              duration={durationMs != null ? formatDuration(durationMs) : undefined}
-              tokens={tokens}
+              durationMs={dMs}
+              tokens={tok}
             />
           );
           // Show validation card if criteria exist
@@ -1134,7 +1187,7 @@ export default function AgencyBlock({ blockId }: Props) {
           >
             {goal
               ? <span className="ha-topbar-goal-txt">{goal}</span>
-              : <span className="ha-topbar-goal-placeholder">Set your goal&hellip;</span>}
+              : <span className="ha-topbar-goal-placeholder">{t("agency.topbar.placeholder")}</span>}
           </button>
         </div>
         <div className="ha-topbar-actions">
@@ -1145,7 +1198,7 @@ export default function AgencyBlock({ blockId }: Props) {
               onClick={() => setChaosOpen(!chaosOpen)}
             >
               <Icon d={ICONS.monkey} size={14} />
-              <span>Chaos Monkey</span>
+              <span>{t("agency.topbar.chaosMonkey")}</span>
             </button>
             {chaosOpen && (
               <ChaosPopover isValidating={isValidating} onClose={() => setChaosOpen(false)} />
@@ -1158,7 +1211,7 @@ export default function AgencyBlock({ blockId }: Props) {
             onClick={() => setShowCheckpoints((v) => !v)}
           >
             <Icon d={ICONS.checkpoint} size={14} />
-            <span>Checkpoints</span>
+            <span>{t("agency.topbar.checkpoints")}</span>
             {checkpoints.length > 0 && <span className="ha-checkpoint-count">{checkpoints.length}</span>}
           </button>
 
@@ -1183,9 +1236,9 @@ export default function AgencyBlock({ blockId }: Props) {
               <div className="ha-rp-pop-row">
                 <span className="ha-rp-pop-marker ha-rp-pop-marker-from" />
                 <div className="ha-compound-input ha-compound-input-sm">
-                  <div className="ha-compound-prefix">From</div>
+                  <div className="ha-compound-prefix">{t("agency.route.from")}</div>
                   <div className="ha-compound-divider" />
-                  <input type="text" className="ha-compound-field" value="Now" readOnly />
+                  <input type="text" className="ha-compound-field" value={t("agency.route.now")} readOnly />
                 </div>
               </div>
 
@@ -1195,7 +1248,7 @@ export default function AgencyBlock({ blockId }: Props) {
                   <div className="ha-rp-pop-step" key={i}>
                     <span className="ha-rp-pop-marker ha-rp-pop-marker-step" />
                     <div className="ha-compound-input ha-compound-input-sm">
-                      <div className="ha-compound-prefix">Todo {i + 1}</div>
+                      <div className="ha-compound-prefix">{t("agency.route.todo")} {i + 1}</div>
                       <div className="ha-compound-divider" />
                       <input
                         type="text"
@@ -1205,13 +1258,14 @@ export default function AgencyBlock({ blockId }: Props) {
                           const next = [...todos];
                           next[i] = e.target.value;
                           setTodos(next);
+                          if (isRunning) setDirty(true);
                         }}
                         onBlur={() => {
                           if (isRunning && blockState.sessionId) {
                             handleMidFlightEdit({ todos: todos.filter((t) => t.trim()) });
                           }
                         }}
-                        placeholder="Describe a todo…"
+                        placeholder={t("agency.route.todoPlaceholder")}
                       />
                     </div>
                     <button className="ha-rp-pop-step-del" onClick={() => setTodos(todos.filter((_, j) => j !== i))} aria-label="delete">
@@ -1222,9 +1276,9 @@ export default function AgencyBlock({ blockId }: Props) {
                   </div>
                 ))}
 
-                <button className="ha-rp-pop-add" onClick={() => setTodos([...todos, ""])}>
+                <button className="ha-rp-pop-add" onClick={() => { setTodos([...todos, ""]); if (isRunning) setDirty(true); }}>
                   <Icon d={ICONS.plus} size={12} />
-                  <span>Add Todo</span>
+                  <span>{t("agency.route.addTodo")}</span>
                 </button>
               </div>
 
@@ -1232,41 +1286,57 @@ export default function AgencyBlock({ blockId }: Props) {
               <div className="ha-rp-pop-row">
                 <span className="ha-rp-pop-marker ha-rp-pop-marker-to" />
                 <div className="ha-compound-input ha-compound-input-sm">
-                  <div className="ha-compound-prefix">To</div>
+                  <div className="ha-compound-prefix">{t("agency.route.to")}</div>
                   <div className="ha-compound-divider" />
-                  <input
-                    type="text"
-                    className="ha-compound-field"
+                  <textarea
+                    className="ha-compound-field ha-compound-field-textarea"
+                    rows={1}
                     value={goal}
-                    onChange={(e) => setGoal(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !isRunning) { e.preventDefault(); handleStart(); setShowRoutePopover(false); } }}
+                    onChange={(e) => {
+                      setGoal(e.target.value);
+                      if (isRunning) setDirty(true);
+                      // Auto-grow
+                      e.target.style.height = "auto";
+                      e.target.style.height = e.target.scrollHeight + "px";
+                    }}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !isRunning) { e.preventDefault(); handleStart(); setShowRoutePopover(false); } }}
                     onBlur={() => {
                       if (isRunning && blockState.sessionId) {
                         handleMidFlightEdit({ goal: goal.trim() });
                       }
                     }}
-                    placeholder="Set your goal…"
+                    placeholder={t("agency.route.setGoal")}
                   />
                 </div>
               </div>
 
-              {/* Submit / Cancel buttons */}
+              {/* Submit / Cancel / Restart buttons */}
               <div className="ha-rp-pop-actions">
                 {isRunning && (
                   <button
                     className="ha-rp-pop-cancel"
                     onClick={() => { handleCancel(); setShowRoutePopover(false); }}
                   >
-                    Exit
+                    {t("agency.route.exit")}
                   </button>
                 )}
-                <button
-                  className="ha-rp-pop-submit"
-                  disabled={!goal.trim() || isRunning}
-                  onClick={() => { handleStart(); setShowRoutePopover(false); }}
-                >
-                  {isRunning ? "Running…" : "Start"}
-                </button>
+                {isRunning && dirty && (
+                  <button
+                    className="ha-rp-pop-restart"
+                    onClick={() => { setShowRoutePopover(false); handleRestart(); }}
+                  >
+                    {t("agency.route.restart")}
+                  </button>
+                )}
+                {!isRunning && (
+                  <button
+                    className="ha-rp-pop-submit"
+                    disabled={!goal.trim()}
+                    onClick={() => { handleStart(); setShowRoutePopover(false); }}
+                  >
+                    {t("agency.route.start")}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1338,10 +1408,10 @@ export default function AgencyBlock({ blockId }: Props) {
             {status === "idle" && events.length === 0 && !blockState.sessionId && (
               <div className="ha-work-welcome">
                 <div className="ha-work-welcome-header">
-                  <span>What would you like to achieve?</span>
+                  <span>{t("agency.welcome.title")}</span>
                   <span className="ha-work-cursor" />
                 </div>
-                <p className="ha-work-welcome-sub">Set a goal and the agent will drive autonomously. Here are some ideas based on your workspace:</p>
+                <p className="ha-work-welcome-sub">{t("agency.welcome.subtitle")}</p>
                 <div className="ha-work-suggestions">
                   {recommendations.map((rec, i) => (
                     <button
@@ -1356,7 +1426,7 @@ export default function AgencyBlock({ blockId }: Props) {
                       <span className="ha-work-suggestion-goal">{rec.goal}</span>
                       {rec.todos && (
                         <span className="ha-work-suggestion-todos">
-                          {rec.todos.length} steps: {rec.todos.join(" → ")}
+                          {rec.todos.length} {t("agency.welcome.steps")}: {rec.todos.join(" → ")}
                         </span>
                       )}
                     </button>
@@ -1376,6 +1446,14 @@ export default function AgencyBlock({ blockId }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Session status bar */}
+      {isRunning && sessionStartTime && (
+        <div className="ha-status-bar">
+          <LiveTimer startTime={sessionStartTime} />
+          {totalTokens > 0 && <span className="ha-status-tokens">{(totalTokens / 1000).toFixed(1)}k tok</span>}
+        </div>
+      )}
 
       {/* Avatar crop dialog */}
       {cropSource && (
