@@ -1364,7 +1364,7 @@ export default function AgencyBlock({ blockId }: Props) {
                 )}
                 {isRunning && dirty && (
                   <button
-                    className="ha-rp-pop-restart"
+                    className="ha-rp-pop-cancel"
                     onClick={() => { setShowRoutePopover(false); handleRestart(); }}
                   >
                     {t("agency.route.restart")}
