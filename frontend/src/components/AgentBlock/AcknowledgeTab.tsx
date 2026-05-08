@@ -124,9 +124,12 @@ export default function AcknowledgeTab({ agentId }: Props) {
                     source
                   </a>
                 )}
-                {e.tags.map((tag) => (
+                {e.tags.slice(0, 5).map((tag) => (
                   <span key={tag} className="ab-memory-tag">{tag}</span>
                 ))}
+                {e.tags.length > 5 && (
+                  <span className="ab-memory-tag" style={{ opacity: 0.6 }}>+{e.tags.length - 5}</span>
+                )}
               </div>
               {expandedId === e.id && (
                 <pre className="ab-code-block ab-code-block-sm" onClick={(ev) => ev.stopPropagation()}><code>{fullContent[e.id] || e.content}</code></pre>

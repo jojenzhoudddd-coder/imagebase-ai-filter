@@ -596,7 +596,8 @@
   margin-bottom: 4px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 4px 6px;
 }
 
 .ab-memory-card-preview {
