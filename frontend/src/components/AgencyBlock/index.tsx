@@ -1369,7 +1369,7 @@ export default function AgencyBlock({ blockId }: Props) {
                 )}
                 <button
                   className="ha-rp-pop-cancel"
-                  onClick={() => { handleClear(); setShowRoutePopover(false); }}
+                  onClick={() => handleClear()}
                 >
                   {t("agency.route.clear")}
                 </button>
