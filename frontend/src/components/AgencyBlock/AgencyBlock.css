@@ -932,7 +932,6 @@
 }
 .ha-cli-row-head {
   cursor: default;
-  user-select: none;
   padding: 1px 0;
   border-radius: 3px;
 }

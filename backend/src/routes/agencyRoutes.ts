@@ -143,8 +143,16 @@ router.get("/sessions/:id/events", async (req: Request, res: Response) => {
   if (!sseConnections.has(sessionId)) sseConnections.set(sessionId, new Set());
   sseConnections.get(sessionId)!.add(res);
 
+  // SSE heartbeat — prevent browser/nginx from closing idle connections.
+  // Agency milestones can take 60s+ with no events; without heartbeat the
+  // TCP connection silently dies after ~42s (browser keep-alive timeout).
+  const heartbeat = setInterval(() => {
+    try { res.write(`:heartbeat\n\n`); } catch { /* connection closed */ }
+  }, 15_000);
+
   // Cleanup on close
   req.on("close", () => {
+    clearInterval(heartbeat);
     sseConnections.get(sessionId)?.delete(res);
     if (sseConnections.get(sessionId)?.size === 0) sseConnections.delete(sessionId);
   });
