@@ -468,18 +468,6 @@
   font-weight: 500;
 }
 
-/* Narrow viewport: keep only Share, More, Avatar */
-@media (max-width: 1399px) {
-  .topbar-right > .topbar-icon-group:first-of-type > .topbar-icon-btn:not([title="More"]) {
-    display: none;
-  }
-  .topbar-right > .topbar-icon-group:nth-of-type(2) {
-    display: none;
-  }
-  .topbar-right > .topbar-divider {
-    display: none;
-  }
-}
 
 /* ─── Profile popover (merged avatar menu) —— 水平布局 + 固定 280px ─── */
 /* 头像 popover ——
