@@ -84,7 +84,7 @@ async function _addKnowledgeImpl(input: KnowledgeCreateInput) {
     const mergedContent = existingContent + "\n\n"
       + (input.title !== docTitle ? `## ${input.title}\n\n` : "")
       + input.content;
-    const mergedTags = Array.from(new Set([...(existing.tags as string[]), ...(input.tags ?? [])]));
+    const mergedTags = Array.from(new Set([...(existing.tags as string[]), ...(input.tags ?? [])])).slice(0, 5);
     const sourceUrl = input.sourceUrl ?? existing.sourceUrl;
 
     const chunks = chunkText(mergedContent);
@@ -116,7 +116,7 @@ async function _addKnowledgeImpl(input: KnowledgeCreateInput) {
         data: {
           agentId: input.agentId, title: input.title, content: chunk,
           sourceUrl: input.sourceUrl ?? null, sourceType: input.sourceType ?? "web",
-          tags: input.tags ?? [], embedding: embeddings ? embeddings[i] : undefined,
+          tags: (input.tags ?? []).slice(0, 5), embedding: embeddings ? embeddings[i] : undefined,
           chunkIndex: i, parentId: chunks.length > 1 ? parentId : null,
         },
       }),
@@ -243,7 +243,7 @@ async function _updateKnowledgeImpl(input: KnowledgeUpdateInput) {
   const mode = input.mode ?? "replace";
   const newTitle = input.title ?? probe.title;
   const newSourceUrl = input.sourceUrl === undefined ? probe.sourceUrl : input.sourceUrl;
-  const newTags = input.tags === undefined ? (probe.tags as string[]) : input.tags;
+  const newTags = input.tags === undefined ? (probe.tags as string[]) : input.tags.slice(0, 5);
   const newContent = (() => {
     if (input.content === undefined) return existingContent; // metadata-only edit
     if (mode === "append") return existingContent + "\n\n" + input.content;

@@ -596,8 +596,12 @@
   margin-bottom: 4px;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 6px;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.ab-memory-card-meta .ab-memory-tag {
+  flex-shrink: 0;
 }
 
 .ab-memory-card-preview {
