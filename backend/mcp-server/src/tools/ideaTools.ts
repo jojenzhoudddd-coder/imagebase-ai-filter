@@ -54,8 +54,8 @@ export const ideaNavTools: ToolDefinition[] = [
         workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
       },
     },
-    handler: async (args) => {
-      const wsId = args.workspaceId || "doc_default";
+    handler: async (args, ctx) => {
+      const wsId = args.workspaceId || ctx?.workspaceId || "doc_default";
       const result = await apiRequest<{ ideas: any[] }>(
         `/api/ideas?workspaceId=${encodeURIComponent(wsId)}`
       );
@@ -172,10 +172,10 @@ export const ideaWriteTools: ToolDefinition[] = [
       },
       required: ["name"],
     },
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       const body = {
         name: String(args.name),
-        workspaceId: args.workspaceId || "doc_default",
+        workspaceId: args.workspaceId || ctx?.workspaceId || "doc_default",
         parentId: args.parentId || null,
       };
       const idea = await apiRequest<any>("/api/ideas", { method: "POST", body });

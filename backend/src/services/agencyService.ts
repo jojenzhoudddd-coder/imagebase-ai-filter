@@ -203,8 +203,13 @@ async function* executeMilestoneWithRetry(
   let failureHistory: { reason: string; suggestions?: string[]; timestamp: string }[] = [];
 
   while (true) {
-    // Check abort
+    // Check abort signal or DB-level cancellation
     if (opts?.abortSignal?.aborted) return;
+    const freshStatus = await prisma.agencySession.findUnique({
+      where: { id: session.id },
+      select: { status: true },
+    });
+    if (freshStatus?.status === "cancelled") return;
 
     yield { type: "milestone:started", data: { milestoneId: milestone.id, title: milestone.title, retryCount: failureHistory.length } };
 

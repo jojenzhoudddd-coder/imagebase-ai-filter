@@ -44,8 +44,8 @@ export const mentionTools: ToolDefinition[] = [
         },
       },
     },
-    handler: async (args) => {
-      const wsId = args.workspaceId || "doc_default";
+    handler: async (args, ctx) => {
+      const wsId = args.workspaceId || ctx?.workspaceId || "doc_default";
       const params = new URLSearchParams();
       if (args.q) params.set("q", String(args.q));
       if (args.types) params.set("types", String(args.types));
@@ -78,8 +78,8 @@ export const mentionTools: ToolDefinition[] = [
       },
       required: ["targetType", "targetId"],
     },
-    handler: async (args) => {
-      const wsId = args.workspaceId || "doc_default";
+    handler: async (args, ctx) => {
+      const wsId = args.workspaceId || ctx?.workspaceId || "doc_default";
       const params = new URLSearchParams({
         workspaceId: wsId,
         targetType: String(args.targetType),

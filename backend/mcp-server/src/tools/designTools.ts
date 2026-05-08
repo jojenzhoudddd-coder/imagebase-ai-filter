@@ -32,8 +32,8 @@ export const designNavTools: ToolDefinition[] = [
         workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
       },
     },
-    handler: async (args) => {
-      const wsId = args.workspaceId || "doc_default";
+    handler: async (args, ctx) => {
+      const wsId = args.workspaceId || ctx?.workspaceId || "doc_default";
       // Reuse the tree endpoint — it returns designs directly for the workspace
       // without needing a dedicated list route.
       const tree = await apiRequest<{
@@ -83,10 +83,10 @@ export const designWriteTools: ToolDefinition[] = [
       },
       required: ["name"],
     },
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       const body: Record<string, unknown> = {
         name: String(args.name),
-        workspaceId: args.workspaceId || "doc_default",
+        workspaceId: args.workspaceId || ctx?.workspaceId || "doc_default",
         parentId: args.parentId || null,
       };
       if (args.figmaUrl) body.figmaUrl = String(args.figmaUrl);

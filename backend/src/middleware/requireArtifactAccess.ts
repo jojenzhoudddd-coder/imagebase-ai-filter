@@ -22,6 +22,7 @@ import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { currentUser, userCanAccessWorkspace } from "../services/authService.js";
+import { mcpLoopbackSecret } from "../services/mcpSecret.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -94,6 +95,21 @@ const PUBLIC_PREFIXES = [
   "/api/health",
 ];
 
+/**
+ * MCP loopback 信任：agent 内部工具调用（habit / agency 等 headless 场景）
+ * 没有用户 cookie，但请求来自同进程的 MCP server（X-Client-Id: mcp-agent）。
+ * 这些请求已经经过 agent 权限体系审计，直接放行。
+ *
+ * 安全：仅检查 X-Client-Id 不够（外部可伪造），同时要求携带进程内生成的
+ * 一次性 secret（X-MCP-Secret），该 secret 不会暴露给外部客户端。
+ */
+function isTrustedMcpLoopback(req: Request): boolean {
+  return (
+    req.headers["x-client-id"] === "mcp-agent" &&
+    req.headers["x-mcp-secret"] === mcpLoopbackSecret
+  );
+}
+
 export async function requireArtifactAccess(
   req: Request,
   res: Response,
@@ -107,6 +123,12 @@ export async function requireArtifactAccess(
 
   // 豁免公共路径
   if (PUBLIC_PREFIXES.some((p) => fullPath.startsWith(p))) {
+    next();
+    return;
+  }
+
+  // 豁免：MCP 内部 loopback 请求（habit / agency headless 场景无 cookie）
+  if (isTrustedMcpLoopback(req)) {
     next();
     return;
   }

@@ -149,37 +149,27 @@ router.get("/sessions/:id/events", async (req: Request, res: Response) => {
     if (sseConnections.get(sessionId)?.size === 0) sseConnections.delete(sessionId);
   });
 
-  // If session is in planning status, start the loop
+  // If session is in planning status, start the loop in background.
+  // The loop runs independently of any single SSE connection — browser
+  // disconnect / refresh / network blip will NOT abort it. Events are
+  // broadcast to all connected SSE listeners via broadcastAgencyEvent.
   if (session.status === "planning") {
-    // Run the agency loop and stream events
-    const abortController = new AbortController();
-    req.on("close", () => abortController.abort());
-
-    try {
-      for await (const event of runAgencyLoop(sessionId, {
-        authToken: (req as any).cookies?.ibase_auth,
-        abortSignal: abortController.signal,
-      })) {
-        const payload = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
-        res.write(payload);
-        // Also broadcast to other listeners
-        const conns = sseConnections.get(sessionId);
-        if (conns) {
-          for (const conn of conns) {
-            if (conn !== res) {
-              try { conn.write(payload); } catch { /* closed */ }
-            }
-          }
+    (async () => {
+      try {
+        for await (const event of runAgencyLoop(sessionId, {
+          authToken: (req as any).cookies?.ibase_auth,
+          // No abortSignal — loop is not tied to any SSE connection
+        })) {
+          broadcastAgencyEvent(sessionId, event);
         }
+      } catch (err: any) {
+        broadcastAgencyEvent(sessionId, { type: "error", data: { message: err.message } });
       }
-    } catch (err: any) {
-      const errorPayload = `event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`;
-      try { res.write(errorPayload); } catch { /* closed */ }
-    }
+    })();
   }
 
-  // If session is already running (reconnect scenario), just keep connection open
-  // Events will be broadcast via broadcastAgencyEvent
+  // Keep SSE connection open for receiving broadcast events.
+  // Works for both first-connect and reconnect scenarios.
 });
 
 // ─── POST /api/agency/sessions/:id/start — manually start/resume ────────────

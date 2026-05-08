@@ -187,6 +187,15 @@ export function nextFireAfter(
   return null;
 }
 
+// ─── Per-agent evaluation lock ─────────────────────────────────────────
+//
+// Prevents TOCTOU race: two concurrent evaluateCron calls for the same agent
+// could both read the same cron.json (with lastFiredAt = null), each append
+// an InboxMessage, then both write back — resulting in a duplicated fire.
+// A per-agent promise-based semaphore serializes evaluation.
+
+const evaluateLocks = new Map<string, Promise<EvaluateCronResult>>();
+
 // ─── Evaluation (reads cron.json, fires due jobs) ───────────────────────
 
 export interface EvaluateCronResult {
@@ -215,6 +224,24 @@ export interface EvaluateCronResult {
 export async function evaluateCron(
   agentId: string,
   now: Date = new Date()
+): Promise<EvaluateCronResult> {
+  // Serialize per-agent: wait for any in-flight evaluation to finish before
+  // starting ours. This prevents the TOCTOU race where two concurrent calls
+  // both read stale lastFiredAt and each fire the same job.
+  const prev = evaluateLocks.get(agentId) ?? Promise.resolve({} as EvaluateCronResult);
+  const current = prev.catch(() => {}).then(() => evaluateCronImpl(agentId, now));
+  evaluateLocks.set(agentId, current);
+  try {
+    return await current;
+  } finally {
+    // Clean up if we're still the latest — avoids unbounded Map growth
+    if (evaluateLocks.get(agentId) === current) evaluateLocks.delete(agentId);
+  }
+}
+
+async function evaluateCronImpl(
+  agentId: string,
+  now: Date
 ): Promise<EvaluateCronResult> {
   const cron = await readCron(agentId);
   const result: EvaluateCronResult = { fired: [], skipped: [] };

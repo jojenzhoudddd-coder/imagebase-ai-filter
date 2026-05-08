@@ -124,8 +124,8 @@ export const tableTools: ToolDefinition[] = [
         workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
       },
     },
-    handler: async (args) => {
-      const wsId = args.workspaceId || "doc_default";
+    handler: async (args, ctx) => {
+      const wsId = args.workspaceId || ctx?.workspaceId || "doc_default";
       const tables = await apiRequest<unknown>(`/api/workspaces/${encodeURIComponent(wsId)}/tables`);
       return toolResult(tables);
     },
@@ -180,10 +180,10 @@ export const tableTools: ToolDefinition[] = [
       },
       required: ["name"],
     },
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       const body = {
         name: String(args.name),
-        workspaceId: args.workspaceId || "doc_default",
+        workspaceId: args.workspaceId || ctx?.workspaceId || "doc_default",
         language: args.language || "zh",
       };
       const tbl = await apiRequest<any>("/api/tables", { method: "POST", body });

@@ -18,6 +18,7 @@
  */
 
 import { AsyncLocalStorage } from "async_hooks";
+import { mcpLoopbackSecret } from "../../src/services/mcpSecret.js";
 
 const BACKEND_BASE_URL = process.env.BACKEND_BASE_URL || "http://localhost:3001";
 const MCP_CLIENT_ID = process.env.MCP_CLIENT_ID || "mcp-agent";
@@ -51,6 +52,7 @@ export async function apiRequest<T = unknown>(path: string, opts: HttpOptions = 
   const url = `${BACKEND_BASE_URL}${path}`;
   const headers: Record<string, string> = {
     "X-Client-Id": opts.clientId || MCP_CLIENT_ID,
+    "X-MCP-Secret": mcpLoopbackSecret,
   };
   if (opts.conversationId) headers["X-Conversation-Id"] = opts.conversationId;
   if (opts.workspaceId) headers["X-Workspace-Id"] = opts.workspaceId;
