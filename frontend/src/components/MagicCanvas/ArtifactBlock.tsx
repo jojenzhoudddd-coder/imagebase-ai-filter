@@ -48,7 +48,7 @@ function toArtifactKind(t: TreeItemType | undefined): ArtifactKind | null {
 
 export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlobalTable }: Props) {
   const ws = useWorkspace();
-  const { state, patchBlockState } = useCanvas();
+  const { state, patchBlockState, hydrated } = useCanvas();
   const { t } = useTranslation();
 
   const blockState = (state.blockStates[blockId] ?? {}) as ArtifactBlockState;
@@ -73,7 +73,9 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
     }
   }, [blockId, blockState.active, globalActiveTableId, patchBlockState]);
 
-  const userCollapsed = blockState.sidebarCollapsedPreference ?? false;
+  // hydration 未完成前忽略 localStorage 的 stale 偏好,默认展开 sidebar,
+  // 避免 server preferences 尚未加载时 sidebar 闪现收起状态。
+  const userCollapsed = hydrated ? (blockState.sidebarCollapsedPreference ?? false) : false;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState<number>(800);

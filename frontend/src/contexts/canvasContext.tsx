@@ -110,6 +110,10 @@ export interface CanvasContextValue {
   state: CanvasState;
   /** state 的最新 ref —— 给 pointermove 等 closure 用,避免读到 stale state */
   stateRef: React.MutableRefObject<CanvasState>;
+  /** hydration 是否完成(server preferences 已加载或确认不存在)。
+   *  hydration 前 blockState 可能来自 stale localStorage,消费方应对
+   *  用户偏好类字段(如 sidebarCollapsedPreference)做保守处理。 */
+  hydrated: boolean;
   /** 当前可见的 block id 列表(layout 树上的所有叶子) */
   visibleBlockIds: string[];
   /** 当前是否有 block 正在拖动 —— canvas 根据这个加 .mc-canvas--dragging class */
@@ -197,15 +201,18 @@ export function CanvasProvider({
   // hydrate from initial 仅一次。后续 authPreferences 因为别的字段(theme/locale)
   // 变化而 re-render 不会复原 canvas state(否则用户拖了 block,patch 主题就回原)。
   const hydratedRef = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     if (hydratedRef.current) return;
     if (initial && initial.layout) {
       setState(initial);
       hydratedRef.current = true;
+      setHydrated(true);
     } else if (authPreferencesLoaded) {
       // V2.9 #13: /me 已返回但用户没存过 canvasLayout → 视为 hydrate 完成,
       // state 走默认(readLocalCache 或 defaultLayout)。后续变更需要持久化。
       hydratedRef.current = true;
+      setHydrated(true);
     }
     // 否则 initial 还在加载中,继续等待
   }, [initial, authPreferencesLoaded]);
@@ -366,6 +373,7 @@ export function CanvasProvider({
     () => ({
       state,
       stateRef,
+      hydrated,
       visibleBlockIds,
       dragging,
       setDragging,
@@ -382,7 +390,7 @@ export function CanvasProvider({
       patchBlockState,
       scheduleSave,
     }),
-    [state, stateRef, visibleBlockIds, dragging, dragSourceId, dropTarget, addBlock, removeBlock, swapBlocks, moveBlock, moveBlockToEdge, setRatioByPath, patchBlockState, scheduleSave],
+    [state, stateRef, hydrated, visibleBlockIds, dragging, dragSourceId, dropTarget, addBlock, removeBlock, swapBlocks, moveBlock, moveBlockToEdge, setRatioByPath, patchBlockState, scheduleSave],
   );
 
   return <CanvasCtx.Provider value={value}>{children}</CanvasCtx.Provider>;
