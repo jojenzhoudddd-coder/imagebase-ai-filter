@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import * as store from "../services/dbStore.js";
+import { DEFAULT_WORKSPACE_ID } from "../services/dbStore.js";
 import { filterRecords } from "../services/filterEngine.js";
 import { sortRecords } from "../services/sortEngine.js";
 import { queryView } from "../services/viewEngine.js";
@@ -35,7 +36,7 @@ router.post("/", async (req: Request, res: Response) => {
     res.status(400).json({ error: "表名不能为空" });
     return;
   }
-  const wsId = workspaceId || "doc_default";
+  const wsId = workspaceId || DEFAULT_WORKSPACE_ID;
   const finalName = await store.generateTableName(wsId, name);
   const table = await store.createTable({ name: finalName, workspaceId: wsId, language });
   eventBus.emitWorkspaceChange({
@@ -58,7 +59,7 @@ router.put("/reorder", async (req: Request, res: Response) => {
   await store.batchReorderTables(updates);
   eventBus.emitWorkspaceChange({
     type: "table:reorder",
-    workspaceId: workspaceId || "doc_default",
+    workspaceId: workspaceId || DEFAULT_WORKSPACE_ID,
     clientId: getClientId(req),
     timestamp: Date.now(),
     payload: { updates },
@@ -75,7 +76,7 @@ router.delete("/:tableId", async (req: Request, res: Response) => {
   }
   eventBus.emitWorkspaceChange({
     type: "table:delete",
-    workspaceId: "doc_default",
+    workspaceId: DEFAULT_WORKSPACE_ID,
     clientId: getClientId(req),
     timestamp: Date.now(),
     payload: { tableId },

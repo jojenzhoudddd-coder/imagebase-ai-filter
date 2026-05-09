@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import "./index.css";
 import App from "./App";
 import { ToastProvider } from "./components/Toast/index";
@@ -26,15 +26,23 @@ function RedirectToOwnWorkspace() {
 }
 
 /**
- * Router layout (all artifacts get readable URLs — see docs/vibe-demo-plan.md §3):
- *   /                                                      → redirect to doc_default
- *   /workspace/:workspaceId                                 → <App />, no focus
- *   /workspace/:workspaceId/:artifactType/:artifactId       → <App /> with focus
- *     artifactType ∈ {table, idea, design, demo, conversation}
+ * Backward-compat redirect: old URLs with artifact segments
+ * (`/workspace/:wsId/table/:id`) strip the artifact part and redirect to
+ * `/workspace/:wsId`. Artifact focus is now restored from localStorage /
+ * canvasLayout preferences, not the URL.
+ */
+function RedirectStripArtifact() {
+  const { workspaceId } = useParams<{ workspaceId: string }>();
+  return <Navigate to={`/workspace/${workspaceId}`} replace />;
+}
+
+/**
+ * Router layout:
+ *   /                                → redirect to user's own workspace
+ *   /workspace/:workspaceId          → <App />
+ *   /workspace/:wsId/:type/:id       → redirect to /workspace/:wsId (legacy)
  *
- * <App /> reads useParams and drives its existing state (activeTableId /
- * activeItemType) from the URL. Calls to navigate() propagate the other
- * direction. /share/:slug lives on the backend, not the SPA.
+ * /share/:slug lives on the backend, not the SPA.
  */
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -58,7 +66,7 @@ createRoot(document.getElementById("root")!).render(
                 <RequireAuth><App /></RequireAuth>
               } />
               <Route path="/workspace/:workspaceId/:artifactType/:artifactId" element={
-                <RequireAuth><App /></RequireAuth>
+                <RequireAuth><RedirectStripArtifact /></RequireAuth>
               } />
               <Route path="*" element={
                 <RequireAuth><App /></RequireAuth>

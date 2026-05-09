@@ -372,8 +372,10 @@ async function start() {
   });
 
   // Kick off the chat-sidebar prompt-suggestion scheduler. Runs an initial
-  // pass on `doc_default` after a short delay and refreshes every 10 min.
-  startSuggestionScheduler(["doc_default"]);
+  // pass on all workspaces after a short delay and refreshes every 10 min.
+  // Dynamic: schedule suggestions for all workspaces, not just a hardcoded seed.
+  const allWs = await treePrisma.workspace.findMany({ select: { id: true } });
+  startSuggestionScheduler(allWs.map((w) => w.id));
 
   // Phase 4 Day 1+2 · Agent heartbeat. Day 1 plumbing + Day 2 cron handler:
   // on each tick we read the agent's state/cron.json and fire any due jobs

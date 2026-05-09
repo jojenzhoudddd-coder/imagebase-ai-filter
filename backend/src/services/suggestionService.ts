@@ -272,7 +272,7 @@ export async function refreshSuggestions(workspaceId: string): Promise<Suggestio
 }
 
 /** Called on server startup. Runs once now, then every 10 minutes. */
-export function startSuggestionScheduler(seedWorkspaceIds: string[] = ["doc_default"]) {
+export function startSuggestionScheduler(seedWorkspaceIds: string[] = []) {
   const tick = async () => {
     for (const wsId of seedWorkspaceIds) {
       try {

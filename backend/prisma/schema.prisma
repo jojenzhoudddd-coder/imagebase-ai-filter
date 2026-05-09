@@ -114,7 +114,7 @@ model OrgMember {
 // ─── 工作空间（Phase 0 前原名 Document，现为实际承载 artifact 的容器） ───
 
 model Workspace {
-  id          String   @id @default(cuid())
+  id          String   @id
   orgId       String
   createdById String
   name        String

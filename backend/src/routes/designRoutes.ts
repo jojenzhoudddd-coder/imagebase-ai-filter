@@ -4,6 +4,7 @@ import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { eventBus } from "../services/eventBus.js";
 import { parseFigmaUrl, extractNameFromUrl } from "../utils/figmaParser.js";
+import { DEFAULT_WORKSPACE_ID } from "../services/dbStore.js";
 import path from "path";
 import fs from "fs/promises";
 
@@ -51,7 +52,7 @@ router.post("/", async (req: Request, res: Response) => {
     }
   }
 
-  const docId = workspaceId || "doc_default";
+  const docId = workspaceId || DEFAULT_WORKSPACE_ID;
   const finalName = (name && typeof name === "string" && name.trim())
     ? name.trim().slice(0, 100)
     : (figmaUrl ? extractNameFromUrl(figmaUrl) : "Untitled Canvas");
@@ -102,7 +103,7 @@ router.put("/reorder", async (req: Request, res: Response) => {
     res.status(400).json({ error: "updates must be an array" });
     return;
   }
-  const docId = workspaceId || "doc_default";
+  const docId = workspaceId || DEFAULT_WORKSPACE_ID;
   await Promise.all(
     updates.map((u: { id: string; order: number }) =>
       prisma.design.update({ where: { id: u.id }, data: { order: u.order } })

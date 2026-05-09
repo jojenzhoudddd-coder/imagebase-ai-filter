@@ -3,6 +3,7 @@ import { PrismaClient } from "../generated/prisma/client.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { eventBus } from "../services/eventBus.js";
+import { DEFAULT_WORKSPACE_ID } from "../services/dbStore.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -43,7 +44,7 @@ router.post("/", async (req: Request, res: Response) => {
     res.status(400).json({ error: "文件夹名不能为空" });
     return;
   }
-  const docId = workspaceId || "doc_default";
+  const docId = workspaceId || DEFAULT_WORKSPACE_ID;
 
   // New folder should appear at the bottom of the sidebar at its level, so
   // compute the max order across all sibling items (folders + tables +
@@ -142,7 +143,7 @@ router.put("/move", async (req: Request, res: Response) => {
 
   eventBus.emitWorkspaceChange({
     type: "item:move",
-    workspaceId: "doc_default",
+    workspaceId: DEFAULT_WORKSPACE_ID,
     clientId: getClientId(req),
     timestamp: Date.now(),
     payload: { itemId, itemType, newParentId: parentId },
@@ -158,7 +159,7 @@ router.put("/reorder", async (req: Request, res: Response) => {
     res.status(400).json({ error: "updates must be an array" });
     return;
   }
-  const docId = workspaceId || "doc_default";
+  const docId = workspaceId || DEFAULT_WORKSPACE_ID;
   await Promise.all(
     updates.map((u: { id: string; order: number }) =>
       prisma.folder.update({ where: { id: u.id }, data: { order: u.order } })

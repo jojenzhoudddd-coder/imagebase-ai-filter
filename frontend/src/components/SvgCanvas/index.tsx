@@ -590,7 +590,7 @@ interface Props {
   onNavigateToDemo?: (demoId: string) => void;
 }
 
-export default function SvgCanvas({ designId, designName, onRename, hidden = false, workspaceId = "doc_default", onNavigateToDemo }: Props) {
+export default function SvgCanvas({ designId, designName, onRename, hidden = false, workspaceId = "", onNavigateToDemo }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);

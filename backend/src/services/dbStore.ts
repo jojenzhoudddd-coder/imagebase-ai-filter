@@ -1010,8 +1010,7 @@ export async function clearAll(): Promise<void> {
 
 const DEFAULT_USER_ID = "user_default";
 const DEFAULT_ORG_ID = "org_default";
-// Note: 保留 ID 字面值 "doc_default" 以兼容历史数据库记录。
-const DEFAULT_WORKSPACE_ID = "doc_default";
+export const DEFAULT_WORKSPACE_ID = "ws000000000001";
 
 let defaultsEnsured = false;
 

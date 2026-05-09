@@ -16,6 +16,7 @@ import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { ensureAgentFiles } from "./agentService.js";
+import { generateId } from "./idGenerator.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -268,12 +269,15 @@ export async function createUserWithWorkspace(input: {
     await tx.orgMember.create({
       data: { orgId: org.id, userId: user.id, role: "owner" },
     });
+    const wsId = await generateId("workspace", async (id) => {
+      const existing = await tx.workspace.findUnique({ where: { id } });
+      return !!existing;
+    });
     const ws = await tx.workspace.create({
       data: {
+        id: wsId,
         orgId: org.id,
         createdById: user.id,
-        // 默认 workspace 名 = "<username>'s Workspace"。不直接用 username，
-        // 否则面包屑 `username > username` 看起来很蠢。
         name: `${name}'s Workspace`,
       },
     });

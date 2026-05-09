@@ -18,6 +18,7 @@ import {
 import { applyIdeaWrite } from "../services/ideaWriteService.js";
 import { withArtifactWriteLock } from "../services/artifactWriteQueue.js";
 import * as ideaStream from "../services/ideaStreamSessionService.js";
+import { DEFAULT_WORKSPACE_ID } from "../services/dbStore.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -103,7 +104,7 @@ router.get("/", asyncHandler(async (req: Request, res: Response) => {
 router.post("/", asyncHandler(async (req: Request, res: Response) => {
   const { name, workspaceId, parentId } = req.body;
 
-  const wsId = workspaceId || "doc_default";
+  const wsId = workspaceId || DEFAULT_WORKSPACE_ID;
   const baseName = (name && typeof name === "string" && name.trim())
     ? name.trim().slice(0, 100)
     : "Idea"; // default label; frontend passes localized default
@@ -158,7 +159,7 @@ router.put("/reorder", asyncHandler(async (req: Request, res: Response) => {
     res.status(400).json({ error: "updates must be an array" });
     return;
   }
-  const wsId = workspaceId || "doc_default";
+  const wsId = workspaceId || DEFAULT_WORKSPACE_ID;
   await Promise.all(
     updates.map((u: { id: string; order: number }) =>
       prisma.idea.update({ where: { id: u.id }, data: { order: u.order } })

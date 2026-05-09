@@ -18,6 +18,7 @@ import express, { type Request, type Response } from "express";
 import * as runtime from "../services/analyst/duckdbRuntime.js";
 import * as snapshot from "../services/analyst/snapshotService.js";
 import * as store from "../services/dbStore.js";
+import { DEFAULT_WORKSPACE_ID } from "../services/dbStore.js";
 import * as domain from "../services/analyst/domainFunctions.js";
 import * as cache from "../services/analyst/resultCache.js";
 import {
@@ -51,7 +52,7 @@ function getWorkspaceId(req: Request): string {
   const header = req.header("x-workspace-id");
   const body = typeof (req.body as any)?.workspaceId === "string" ? (req.body as any).workspaceId : undefined;
   const q = typeof req.query.workspaceId === "string" ? req.query.workspaceId : undefined;
-  return header || body || q || "doc_default";
+  return header || body || q || DEFAULT_WORKSPACE_ID;
 }
 
 function handleError(res: Response, err: unknown, fallback = "Internal error"): void {

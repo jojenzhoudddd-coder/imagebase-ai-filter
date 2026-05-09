@@ -19,6 +19,7 @@ import { publishChatEvent, subscribeChat } from "../services/chatPubsub.js";
 import { dispatchMessage } from "../services/turnOrchestrator.js";
 import { runAgent, resumeAfterConfirm, type AgentContext, type SseEvent } from "../services/chatAgentService.js";
 import * as store from "../services/dbStore.js";
+import { DEFAULT_WORKSPACE_ID } from "../services/dbStore.js";
 import { listSubagentRunsForConversation } from "../services/subagentRunStore.js";
 import { listWorkflowRunsForConversation } from "../services/workflowRunStore.js";
 import {
@@ -106,7 +107,7 @@ function writeEventBoth(res: Response, convId: string, e: SseEvent) {
 // The full context (Document Snapshot) is still built inside chatAgentService
 // on each message; this endpoint is purely a UX warm-up.
 router.get("/context-snapshot", async (req: Request, res: Response) => {
-  const workspaceId = (req.query.workspaceId as string) || "doc_default";
+  const workspaceId = (req.query.workspaceId as string) || DEFAULT_WORKSPACE_ID;
   try {
     const tables = await store.listTablesForWorkspace(workspaceId);
     let fieldCount = 0;
@@ -136,7 +137,7 @@ router.get("/context-snapshot", async (req: Request, res: Response) => {
 // welcome page. On cache-miss, kicks off an async refresh and returns
 // defaults so the UI never shows an empty state.
 router.get("/suggestions", (req: Request, res: Response) => {
-  const workspaceId = (req.query.workspaceId as string) || "doc_default";
+  const workspaceId = (req.query.workspaceId as string) || DEFAULT_WORKSPACE_ID;
   const entry = getSuggestions(workspaceId);
   if (entry) {
     res.json({
@@ -162,7 +163,7 @@ router.get("/suggestions", (req: Request, res: Response) => {
 // freshly generated pack once ready — the scheduler will also pick it up on
 // its next tick, this is just an impatient shortcut.
 router.post("/suggestions/refresh", async (req: Request, res: Response) => {
-  const { workspaceId = "doc_default" } = (req.body as { workspaceId?: string }) || {};
+  const { workspaceId = DEFAULT_WORKSPACE_ID } = (req.body as { workspaceId?: string }) || {};
   try {
     const suggestions = await refreshSuggestions(workspaceId);
     const entry = getSuggestions(workspaceId);
@@ -183,7 +184,7 @@ router.post("/suggestions/refresh", async (req: Request, res: Response) => {
 // GET /api/chat/goal-suggestions?workspaceId=xxx
 // Returns AI-generated goal recommendations for the High Agency Block.
 router.get("/goal-suggestions", async (req: Request, res: Response) => {
-  const workspaceId = (req.query.workspaceId as string) || "doc_default";
+  const workspaceId = (req.query.workspaceId as string) || DEFAULT_WORKSPACE_ID;
   const entry = getGoalSuggestions(workspaceId);
   if (entry) {
     res.json({ workspaceId, goals: entry.goals, updatedAt: entry.updatedAt, stale: false });
@@ -197,7 +198,7 @@ router.get("/goal-suggestions", async (req: Request, res: Response) => {
 // GET /api/chat/conversations?workspaceId=xxx&agentId=xxx&sortBy=createdAt|updatedAt
 // V3.0 PR1: 默认 createdAt desc (新建在最上);可选 agentId 过滤
 router.get("/conversations", async (req: Request, res: Response) => {
-  const workspaceId = (req.query.workspaceId as string) || "doc_default";
+  const workspaceId = (req.query.workspaceId as string) || DEFAULT_WORKSPACE_ID;
   const agentId = (req.query.agentId as string) || undefined;
   const sortByRaw = req.query.sortBy as string | undefined;
   const sortBy = sortByRaw === "updatedAt" ? "updatedAt" : "createdAt";

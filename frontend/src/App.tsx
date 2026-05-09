@@ -33,9 +33,8 @@ import ChatSidebar from "./components/ChatSidebar/index";
 import { useAuth } from "./auth/AuthContext";
 
 // WORKSPACE_ID + AGENT_ID 都在组件内部根据 AuthContext 动态派生（见 App()
-// 顶部）。之前两者都是 module-level 常量 `"doc_default"` / `"agent_default"`，
-// 导致所有登录用户都共享同一套数据 + 同一个 chatbot identity —— 是严重的
-// 跨用户泄漏，已修掉。
+// 顶部）。URL 只携带 workspaceId，不再包含 artifactType/artifactId —— artifact
+// 焦点通过 localStorage `lastActiveArtifact_v2` / canvasLayout 恢复。
 
 const MAX_UNDO = 20;
 type CellValue = string | number | boolean | string[] | null;
@@ -82,86 +81,30 @@ export default function App() {
   const [scrollToItemId, setScrollToItemId] = useState<string | null>(null);
   const [activeItemType, setActiveItemType] = useState<TreeItemType>("table");
 
-  // ── URL ↔ state sync (Vibe Demo V1) ────────────────────────────────────
-  //
-  // Routes we handle (declared in main.tsx):
-  //   /workspace/:workspaceId
-  //   /workspace/:workspaceId/:artifactType/:artifactId
-  //
-  // One-way flow: URL → state. When the URL changes (user typed, back/forward,
-  // or navigate() called elsewhere), reflect it into activeTableId +
-  // activeItemType. The setter callsites that do `setActiveTableId(...) +
-  // setActiveItemType(...)` additionally call navigateToArtifact() to push
-  // the change back to the URL — see navigateToArtifact() below.
+  // ── URL: workspace scoping only ──────────────────────────────────────
+  // URL is `/workspace/:workspaceId` — no artifact segments. Artifact focus
+  // is restored from localStorage `lastActiveArtifact_v2` / canvasLayout.
   const navigate = useNavigate();
-  const urlParams = useParams<{ workspaceId?: string; artifactType?: string; artifactId?: string }>();
+  const urlParams = useParams<{ workspaceId?: string }>();
 
-  // ── Workspace scoping ────────────────────────────────────────────────
-  // Derived from URL first; falls back to the user's own first workspace
-  // when URL is missing (e.g. deep links that dropped the segment).
-  // A guard effect below kicks any user off URLs targeting a workspace
-  // they don't actually own.
   const { workspaces: userWorkspaces, workspaceId: authWorkspaceId, agentId: authAgentId, preferences: authPreferences } = useAuth();
   const WORKSPACE_ID = urlParams.workspaceId || authWorkspaceId || "";
-  // Agent id 跟登录用户绑定（后端 /me 返回）。空字符串保护：未加载完成时
-  // 不应触发 agent-scoped 请求。所有用到它的地方都是在 RequireAuth 之后，
-  // AuthContext 已经拿到数据。
   const AGENT_ID = authAgentId || "";
   const userOwnsThisWorkspace = useMemo(
     () => userWorkspaces.some((w) => w.id === WORKSPACE_ID),
     [userWorkspaces, WORKSPACE_ID],
   );
   useEffect(() => {
-    if (!urlParams.workspaceId) return; // no URL workspace → fall through to auth default
-    if (userWorkspaces.length === 0) return; // /me not loaded yet
-    if (userOwnsThisWorkspace) return; // fine
+    if (!urlParams.workspaceId) return;
+    if (userWorkspaces.length === 0) return;
+    if (userOwnsThisWorkspace) return;
     if (authWorkspaceId && urlParams.workspaceId !== authWorkspaceId) {
-      // eslint-disable-next-line no-console
       console.warn(
         `[auth] URL targets workspace ${urlParams.workspaceId} which isn't yours — redirecting to ${authWorkspaceId}`,
       );
       navigate(`/workspace/${authWorkspaceId}`, { replace: true });
     }
   }, [urlParams.workspaceId, userWorkspaces, userOwnsThisWorkspace, authWorkspaceId, navigate]);
-
-  useEffect(() => {
-    const { artifactType, artifactId } = urlParams;
-    if (!artifactType || !artifactId) return;
-    // Map URL artifactType → TreeItemType (they're mostly the same)
-    const mapped: TreeItemType | null =
-      artifactType === "table" ? "table"
-      : artifactType === "idea" ? "idea"
-      : artifactType === "design" ? "design"
-      : artifactType === "demo" ? "demo"
-      : null;
-    if (!mapped) return;
-    if (activeTableId !== artifactId) setActiveTableId(artifactId);
-    if (activeItemType !== mapped) setActiveItemType(mapped);
-  }, [urlParams.artifactType, urlParams.artifactId]);  // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Push state-driven changes back to the URL. Used everywhere that was
-  // previously calling `setActiveTableId + setActiveItemType` as a pair.
-  const navigateToArtifact = useCallback(
-    (type: TreeItemType, id: string) => {
-      const ws = urlParams.workspaceId || authWorkspaceId || WORKSPACE_ID;
-      const urlType =
-        type === "table" ? "table"
-        : type === "idea" ? "idea"
-        : type === "design" ? "design"
-        : type === "demo" ? "demo"
-        : null;
-      if (!urlType) return;
-      navigate(`/workspace/${ws}/${urlType}/${id}`);
-    },
-    [navigate, urlParams.workspaceId, authWorkspaceId, WORKSPACE_ID],
-  );
-
-  // Note: we do NOT have a state→URL sync effect. Prior experiment showed it
-  // re-fires infinitely because `useParams()` returns a new object reference
-  // every render and including it in deps triggers each cycle. Instead,
-  // user-intent handlers (handleSelectItem, mention chip clicks, create flows)
-  // call navigateToArtifact() **directly** after their setState calls. The
-  // URL→state effect above handles back/forward + direct URL entry.
 
   const SIDEBAR_NAMES_KEY = "sidebar_item_names";
   const [sidebarNames, setSidebarNames] = useState<Record<string, string>>(() => {
@@ -378,18 +321,13 @@ export default function App() {
   // Load initial data: workspace tree → decide active artifact → load it.
   //
   // Selection precedence (first-match wins):
-  //   1. URL-carried artifact (?/workspace/:ws/:type/:id) — user arrived via
-  //      deep link, back/forward, or a deliberate refresh on a non-root URL.
-  //      We honour the URL as-is, don't override.
-  //   2. lastActiveArtifact_v2 in localStorage — refresh on a root URL
-  //      restores whichever artifact (table / idea / design / demo) was
-  //      active before reload. Promoted to the URL via navigateToArtifact
-  //      so subsequent refreshes at the new URL stay stable.
-  //   3. Legacy lastActiveTableId in localStorage — backward-compat for
+  //   1. lastActiveArtifact_v2 in localStorage — refresh restores whichever
+  //      artifact (table / idea / design / demo) was active before reload.
+  //   2. Legacy lastActiveTableId in localStorage — backward-compat for
   //      users whose only stored preference is a table id.
-  //   4. First table in the workspace tree — fresh entry.
+  //   3. First artifact in the workspace tree — fresh entry.
   //
-  // Non-table artifacts (idea / design / demo) only need state + URL set;
+  // Non-table artifacts (idea / design / demo) only need state set;
   // their respective panels (IdeaEditor / SvgCanvas / DemoPreviewPanel)
   // fetch their own detail from the active id. Tables are loaded inline
   // here because fields/records/views feed the main TableView.
@@ -430,21 +368,7 @@ export default function App() {
         | { type: "demo"; id: string };
       let target: Target | null = null;
 
-      // 1. URL
-      const urlType = urlParams.artifactType;
-      const urlId = urlParams.artifactId;
-      if (urlType && urlId) {
-        if (urlType === "table" && tables.find(t => t.id === urlId)) target = { type: "table", id: urlId };
-        else if (urlType === "idea" && ideas.find(i => i.id === urlId)) target = { type: "idea", id: urlId };
-        else if (urlType === "design" && designs.find(d => d.id === urlId)) target = { type: "design", id: urlId };
-        else if (urlType === "demo" && demos.find(d => d.id === urlId)) target = { type: "demo", id: urlId };
-        // else: URL references a now-deleted artifact — fall through to
-        // localStorage / first-table. We intentionally don't navigate the
-        // URL yet; if we end up with a different target, the
-        // `navigateToArtifact` call below replaces the URL cleanly.
-      }
-
-      // 2. lastActiveArtifact_v2
+      // 1. lastActiveArtifact_v2
       if (!target) {
         try {
           const stored = localStorage.getItem("lastActiveArtifact_v2");
@@ -460,13 +384,13 @@ export default function App() {
         } catch { /* bad JSON — ignore */ }
       }
 
-      // 3. Legacy lastActiveTableId
+      // 2. Legacy lastActiveTableId
       if (!target) {
         const legacy = localStorage.getItem("lastActiveTableId");
         if (legacy && tables.find(t => t.id === legacy)) target = { type: "table", id: legacy };
       }
 
-      // 4. First-artifact fallback — V2.9.8 修复:之前用 tables[0] 直接选第一张
+      // 3. First-artifact fallback — V2.9.8 修复:之前用 tables[0] 直接选第一张
       //    表,但 sidebar 把 table/design/idea/demo 全部按 order 混排,如果有 design
       //    或 idea 的 order 小于第一张表,sidebar 的视觉首项 ≠ 当前激活的 artifact
       //    导致用户看到"默认进来的 artifact 不是 sidebar 选中那一行"。
@@ -492,12 +416,6 @@ export default function App() {
       // ── Apply selection ───────────────────────────────────────────────
       setActiveTableId(target.id);
       setActiveItemType(target.type);
-      // Reflect into URL if the URL doesn't already match — needed for
-      // localStorage-restored / first-table-fallback paths so refresh stays
-      // on the artifact.
-      if (target.id !== urlId || target.type !== urlType) {
-        navigateToArtifact(target.type, target.id);
-      }
 
       // Tables need their fields/records/views loaded here because the main
       // TableView reads them from App state. Other artifact types own their
@@ -1515,7 +1433,6 @@ export default function App() {
     if (next.type === "table") {
       void switchTable(next.id);
     }
-    navigateToArtifact(next.type, next.id);
   }, [pickNextActiveAfterDelete, switchTable]);
 
   const handleDeleteTable = useCallback(async (tableId: string) => {
@@ -1681,19 +1598,15 @@ export default function App() {
       setActiveTableId(id);
       setActiveItemType("design");
       setFocusEntity(null);
-      navigateToArtifact("design", id);
     } else if (type === "idea") {
       setActiveTableId(id);
       setActiveItemType("idea");
       setFocusEntity(null);
-      navigateToArtifact("idea", id);
     } else if (type === "demo") {
       setActiveTableId(id);
       setActiveItemType("demo");
       setFocusEntity(null);
-      navigateToArtifact("demo", id);
     } else if (type === "folder") {
-      // Folders are not selectable as content
       return;
     } else {
       const isTable = documentTables.some(t => t.id === id);
@@ -1701,10 +1614,9 @@ export default function App() {
         setActiveItemType("table");
         setFocusEntity(null);
         switchTable(id);
-        navigateToArtifact("table", id);
       }
     }
-  }, [documentTables, switchTable, navigateToArtifact]);
+  }, [documentTables, switchTable]);
 
   // ── Navigate to a mentioned entity (from an @mention chip click) ──
   // v2 mention scope: view / taste / idea. View = open the parent table and
@@ -1722,41 +1634,29 @@ export default function App() {
       setActiveItemType("table");
       setFocusEntity(null);
       void switchTable(target.id);
-      navigateToArtifact("table", target.id);
     } else if (target.type === "design") {
       setActiveTableId(target.id);
       setActiveItemType("design");
       setFocusEntity(null);
-      navigateToArtifact("design", target.id);
     } else if (target.type === "taste") {
       setActiveTableId(target.designId);
       setActiveItemType("design");
       setFocusEntity({ type: "taste", id: target.tasteId });
-      navigateToArtifact("design", target.designId);
     } else if (target.type === "idea") {
       setActiveTableId(target.id);
       setActiveItemType("idea");
       setFocusEntity(null);
-      navigateToArtifact("idea", target.id);
     } else if (target.type === "idea-section") {
-      // Open the parent idea and stash the heading slug on `window` so the
-      // IdeaEditor that mounts (or is already mounted) can pick it up and
-      // scroll. Using a window-scoped handoff avoids routing the anchor
-      // through every intermediate state atom.
       (window as unknown as { __pendingIdeaAnchor?: { ideaId: string; slug: string } })
         .__pendingIdeaAnchor = { ideaId: target.ideaId, slug: target.headingSlug };
       setActiveTableId(target.ideaId);
       setActiveItemType("idea");
       setFocusEntity(null);
-      navigateToArtifact("idea", target.ideaId);
-      // Fire a DOM event so an already-mounted IdeaEditor for the same idea
-      // (common case: jumping between sections in the same doc) can re-scroll
-      // without waiting for an unmount cycle.
       window.dispatchEvent(new CustomEvent("idea-anchor", {
         detail: { ideaId: target.ideaId, slug: target.headingSlug },
       }));
     }
-  }, [switchTable, navigateToArtifact]);
+  }, [switchTable]);
 
   // ── Rename for design/folder ──
   const handleRenameSidebarItemExtended = useCallback(async (itemId: string, newName: string) => {
@@ -1962,7 +1862,7 @@ export default function App() {
           designName={d.name}
           workspaceId={WORKSPACE_ID}
           onRename={(name) => handleRenameSidebarItemExtended(activeTableId, name)}
-          onNavigateToDemo={(demoId) => navigateToArtifact("demo", demoId)}
+          onNavigateToDemo={(demoId) => { setActiveTableId(demoId); setActiveItemType("demo"); }}
         />
       );
     }

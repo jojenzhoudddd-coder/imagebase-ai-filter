@@ -31,6 +31,7 @@ import {
   type DemoDetail,
   type Capabilities,
 } from "../schemas/demoSchema.js";
+import { DEFAULT_WORKSPACE_ID } from "../services/dbStore.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -101,7 +102,7 @@ async function toDetail(d: any, withFiles = false): Promise<DemoDetail> {
 // ─── List ─────────────────────────────────────────────────────────────────
 
 router.get("/", asyncHandler(async (req, res) => {
-  const workspaceId = (req.query.workspaceId as string) || "doc_default";
+  const workspaceId = (req.query.workspaceId as string) || DEFAULT_WORKSPACE_ID;
   const rows = await prisma.demo.findMany({
     where: { workspaceId },
     orderBy: { order: "asc" },
@@ -119,7 +120,7 @@ router.put("/reorder", asyncHandler(async (req, res) => {
     res.status(400).json({ error: "updates must be an array" });
     return;
   }
-  const wsId = workspaceId || "doc_default";
+  const wsId = workspaceId || DEFAULT_WORKSPACE_ID;
   await Promise.all(
     updates.map((u: { id: string; order: number }) =>
       prisma.demo.update({ where: { id: u.id }, data: { order: u.order } })
