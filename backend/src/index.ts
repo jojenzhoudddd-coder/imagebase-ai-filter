@@ -407,13 +407,18 @@ async function start() {
         // level boolean,跨 agent 串行 → 慢 agent 跑时其它 agent 的 fire
         // 全被 skip)。merge orphans + 新 fired 一起送 consumer。
         const orphans = await recoverOrphanedJobs(ctx.agentId);
-        const allJobs = [...orphans, ...cronResult.fired];
+        // Deduplicate: orphans may contain inbox messages that evaluateCron
+        // just created (they're already unread in inbox.jsonl by the time
+        // recoverOrphanedJobs scans). Without this filter every habit fires twice.
+        const freshIds = new Set(cronResult.fired.map((f) => f.inboxMessage.id));
+        const dedupedOrphans = orphans.filter((o) => !freshIds.has(o.inboxMessage.id));
+        const allJobs = [...dedupedOrphans, ...cronResult.fired];
         if (allJobs.length > 0) {
           details.cronFired = allJobs.map(({ job, inboxMessage }) => ({
             jobId: job.id,
             schedule: job.schedule,
             inboxMessageId: inboxMessage.id,
-            recovered: orphans.some((o) => o.inboxMessage.id === inboxMessage.id),
+            recovered: dedupedOrphans.some((o) => o.inboxMessage.id === inboxMessage.id),
           }));
           // Fire-and-forget: run the agent for each fired habit.
           // Don't await — LLM calls can take minutes; we must not block the
