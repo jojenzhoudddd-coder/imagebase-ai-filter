@@ -63,9 +63,19 @@ async function main() {
       // Use raw SQL in a transaction to update the PK + all FK references.
       // Prisma doesn't support updating @id fields via the typed client.
       await prisma.$transaction(async (tx) => {
-        // Update all FK references first (order doesn't matter within a transaction,
-        // but updating children before parent avoids any transient FK violations
-        // on databases without deferred constraints).
+        // Strategy: INSERT a new workspace row (copy of old), re-point all FK
+        // references to the new ID, then DELETE the old row. This avoids any
+        // FK violation because both old and new workspace rows exist during
+        // the FK update window.
+        await tx.$executeRawUnsafe(
+          `INSERT INTO "workspaces" ("id", "orgId", "createdById", "name", "description", "aiSummary", "aiSlogan", "aiSummaryAt", "createdAt", "updatedAt")
+           SELECT $1, "orgId", "createdById", "name", "description", "aiSummary", "aiSlogan", "aiSummaryAt", "createdAt", "updatedAt"
+           FROM "workspaces" WHERE "id" = $2`,
+          newId,
+          oldId,
+        );
+
+        // Update all FK references to point to the new ID
         const fkTables = [
           "tables",
           "folders",
@@ -87,10 +97,9 @@ async function main() {
           );
         }
 
-        // Update the workspace row itself
+        // Delete the old workspace row (no FK references remain)
         await tx.$executeRawUnsafe(
-          `UPDATE "workspaces" SET "id" = $1 WHERE "id" = $2`,
-          newId,
+          `DELETE FROM "workspaces" WHERE "id" = $1`,
           oldId,
         );
       });
