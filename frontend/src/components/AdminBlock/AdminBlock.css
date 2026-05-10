@@ -81,7 +81,7 @@
 .adb-metric-card {
   flex: 1;
   min-width: 140px;
-  background: var(--surface-3);
+  background: var(--surface-1);
   border-radius: 8px;
   padding: 16px 20px;
   display: flex;
@@ -141,7 +141,7 @@
   text-align: left;
   font-weight: 500;
   color: var(--text-secondary);
-  background: var(--surface-3);
+  background: var(--surface-1);
   border-bottom: 1px solid var(--border-light);
   white-space: nowrap;
 }
@@ -155,7 +155,7 @@
   min-width: 140px;
 }
 .adb-table th:first-child {
-  background: var(--surface-3);
+  background: var(--surface-1);
 }
 .adb-table td:first-child {
   background: var(--surface-2);
