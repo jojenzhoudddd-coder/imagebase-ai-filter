@@ -127,8 +127,10 @@ export default function UserTable({ users, onUserUpdated }: Props) {
     const dir = sortKey === key ? sortDir : null;
     return (
       <th className="adb-th-sortable" onClick={() => handleSort(key)}>
-        <span>{label}</span>
-        <SortIndicator dir={dir} />
+        <span className="adb-th-inner">
+          <span>{label}</span>
+          <SortIndicator dir={dir} />
+        </span>
       </th>
     );
   };
