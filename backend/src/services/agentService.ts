@@ -125,6 +125,11 @@ export async function ensureAgentFiles(agentId: string): Promise<void> {
           cronFile.jobs.push({ ...seed, seedSchedule: seed.schedule });
           changed = true;
         } else if (existing.type === "system") {
+          // Migration: force all system habits to disabled (save token cost)
+          if (existing.enabled === true) {
+            existing.enabled = false;
+            changed = true;
+          }
           // Update code-owned fields (prompt, displayName, description)
           const textFields: (keyof typeof seed)[] = ["prompt", "displayName", "description"];
           for (const key of textFields) {
@@ -188,7 +193,7 @@ const SYSTEM_HABITS_SEED = [
       "遍历当前 workspace 的近期对话(用 list_tables / list_ideas / list_designs / list_demos 先扫一遍现状,然后看最近几条相关对话),提炼用户的偏好 / 工作节奏 / 表达习惯 / 关注点变化,更新 soul.md(我自己的认知)和 profile.md(用户画像)。只追加新发现,不重复已有内容,不删除老条目除非明确发现错误。" +
       HABIT_COMMON_CONSTRAINTS,
     type: "system",
-    enabled: true,
+    enabled: false,
     displayName: "自我进化",
     description: "每天 02:00 — 遍历 workspace 提炼新认知,更新 soul + user profile",
   },
@@ -201,7 +206,7 @@ const SYSTEM_HABITS_SEED = [
       "\n2) 为 High Agency 模式生成 3 个前沿级别的目标建议(跨多步、有可衡量产出)。" +
       HABIT_COMMON_CONSTRAINTS,
     type: "system",
-    enabled: true,
+    enabled: false,
     displayName: "Todo Suggestions",
     description: "每天 01:00 — 基于 workspace 现状刷新 Chat 推荐 + Agency 目标",
   },
@@ -249,7 +254,7 @@ const SYSTEM_HABITS_SEED = [
       "流程:遍历 workspace 名称 / 描述 / 表 / 灵感 / 画布的标题 → 用 doubao-2.0 生成一句 ≤20 字的中文 slogan → 写回 Workspace.aiSlogan,前端 TopBar 即时刷新。" +
       "由 inboxConsumer 直接调用 workspaceSummaryService.generateForWorkspace,不走 chat agent loop。",
     type: "system",
-    enabled: true,
+    enabled: false,
     displayName: "Workspace Slogan",
     description: "每天 08:00 — 基于 workspace 内容刷新 TopBar 的 AI Slogan",
   },
@@ -262,6 +267,42 @@ async function fileExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Boot-time migration: scan ALL agent directories and force system habits to disabled.
+ * Returns the number of agents that were actually modified.
+ */
+export async function migrateAllHabitsDisabled(): Promise<number> {
+  const root = agentHomeRoot();
+  let dirs: string[];
+  try {
+    dirs = await fs.readdir(root);
+  } catch {
+    return 0; // no agents dir yet
+  }
+  let migrated = 0;
+  for (const dir of dirs) {
+    const cronPath = path.join(root, dir, "state", "cron.json");
+    try {
+      const raw = await fs.readFile(cronPath, "utf8");
+      const cronFile = JSON.parse(raw) as { jobs: any[] };
+      let changed = false;
+      for (const job of cronFile.jobs) {
+        if (job.type === "system" && job.enabled === true) {
+          job.enabled = false;
+          changed = true;
+        }
+      }
+      if (changed) {
+        await fs.writeFile(cronPath, JSON.stringify(cronFile, null, 2), "utf8");
+        migrated++;
+      }
+    } catch {
+      // skip agents without valid cron.json
+    }
+  }
+  return migrated;
 }
 
 function assertSize(content: string, label: string) {
