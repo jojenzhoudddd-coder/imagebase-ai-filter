@@ -267,7 +267,7 @@
 .adb-toggle {
   position: relative;
   display: inline-block;
-  width: 36px;
+  width: 34px;
   height: 20px;
   flex-shrink: 0;
   cursor: pointer;
@@ -306,7 +306,7 @@
 }
 
 .adb-toggle input:checked + .adb-toggle-track::after {
-  transform: translateX(16px);
+  transform: translateX(14px);
 }
 
 /* Empty state */
