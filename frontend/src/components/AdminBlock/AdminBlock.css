@@ -287,7 +287,7 @@
 }
 
 .adb-toggle input:checked + .adb-toggle-track {
-  background: var(--color-primary);
+  background: var(--color-primary, #1456F0);
 }
 
 .adb-toggle input:checked + .adb-toggle-track::after {

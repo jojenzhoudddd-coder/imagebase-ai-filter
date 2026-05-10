@@ -75,24 +75,28 @@ export default function UserTable({ users, onUserUpdated }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
-  const [sortStack, setSortStack] = useState<SortEntry[]>([]);
+  const [sortStack, setSortStack] = useState<SortEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem("admin_sort");
+      if (saved) return JSON.parse(saved) as SortEntry[];
+    } catch { /* ignore */ }
+    return [];
+  });
 
   const handleSort = (key: SortableKey) => {
     setSortStack((prev) => {
       const idx = prev.findIndex((s) => s.key === key);
+      let next: SortEntry[];
       if (idx === -1) {
-        // new field: add as desc
-        return [...prev, { key, dir: "desc" }];
-      }
-      const entry = prev[idx];
-      if (entry.dir === "desc") {
-        // desc → asc
-        const next = [...prev];
+        next = [...prev, { key, dir: "desc" }];
+      } else if (prev[idx].dir === "desc") {
+        next = [...prev];
         next[idx] = { key, dir: "asc" };
-        return next;
+      } else {
+        next = prev.filter((_, i) => i !== idx);
       }
-      // asc → remove
-      return prev.filter((_, i) => i !== idx);
+      try { localStorage.setItem("admin_sort", JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
     });
   };
 
