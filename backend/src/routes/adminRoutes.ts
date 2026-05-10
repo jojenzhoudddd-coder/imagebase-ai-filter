@@ -260,13 +260,16 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
     const { rows } = await pool.query(`
       SELECT
         u.id, u.email, u.username, u.name, u."avatarUrl",
-        u.admin, u.related, u."createdAt", u."updatedAt", u."lastLoginAt",
+        u.admin, u.related,
+        to_char(u."createdAt", 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "createdAt",
+        to_char(u."updatedAt", 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "updatedAt",
+        to_char(u."lastLoginAt", 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "lastLoginAt",
         -- Agent (first per user)
         ag.name AS "agentName", ag."avatarUrl" AS "agentAvatarUrl",
         -- Conversations & activities (through agents → conversations → messages)
         COALESCE(conv_stats.conv_count, 0)::int AS "conversationCount",
         COALESCE(conv_stats.activity_count, 0)::int AS "activityCount",
-        conv_stats.last_message_at AS "lastMessageAt",
+        to_char(conv_stats.last_message_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "lastMessageAt",
         -- Tokens
         COALESCE(tk.total, 0)::int AS "totalTokens",
         -- Workspaces
@@ -312,27 +315,7 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
       ORDER BY u."createdAt" DESC
     `);
 
-    // pg driver misinterprets "timestamp without time zone" as local TZ (Asia/Shanghai)
-    // but Prisma stores UTC values. Manually append 'Z' to raw ISO strings to fix.
-    const fixTz = (d: any) => {
-      if (!d) return null;
-      if (d instanceof Date) {
-        // pg parsed it with wrong TZ offset — get the raw UTC components
-        // by adding back the local offset pg subtracted
-        const offset = d.getTimezoneOffset() * 60000; // mins → ms
-        return new Date(d.getTime() + offset).toISOString();
-      }
-      return String(d);
-    };
-    const users = rows.map((r: any) => ({
-      ...r,
-      createdAt: fixTz(r.createdAt),
-      updatedAt: fixTz(r.updatedAt),
-      lastLoginAt: fixTz(r.lastLoginAt),
-      lastMessageAt: fixTz(r.lastMessageAt),
-    }));
-
-    res.json({ users });
+    res.json({ users: rows });
   } catch (err: any) {
     console.error("[admin] users list error:", err);
     res.status(500).json({ error: err.message ?? "internal error" });
