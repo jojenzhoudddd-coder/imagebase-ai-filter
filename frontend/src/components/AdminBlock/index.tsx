@@ -255,7 +255,34 @@ export default function AdminBlock({ blockId: _blockId }: Props) {
     <div className="adb-root">
       <div className="adb-header">
         <span className="adb-header-title">{t("admin.title")}</span>
-        <div style={{ flex: 1 }} />
+        <div className="adb-header-actions">
+          <button
+            ref={fieldsBtnRef}
+            className={`table-topbar-btn${hiddenColumns.size > 0 ? " active" : ""}`}
+            onClick={() => { setFieldsOpen((v) => !v); setFilterOpen(false); }}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M2.88557 13.1558L2.67815 12.9299C1.95199 12.1389 1.40718 11.1955 1.08778 10.1652L0.997742 9.87475L2.36311 8.00002L0.997742 6.12529L1.08778 5.83484C1.40718 4.80455 1.95199 3.86115 2.67815 3.07019L2.88557 2.84426L5.18011 3.09506L6.11209 0.970504L6.41093 0.903226C6.92877 0.786644 7.46076 0.727295 8 0.727295C8.53924 0.727295 9.07123 0.786644 9.58906 0.903226L9.88791 0.970504L10.8199 3.09506L13.1144 2.84426L13.3218 3.07019C14.048 3.86115 14.5928 4.80455 14.9122 5.83484L15.0023 6.12529L13.6369 8.00002L15.0023 9.87475L14.9122 10.1652C14.5928 11.1955 14.048 12.1389 13.3218 12.9299L13.1144 13.1558L10.8199 12.905L9.88791 15.0295L9.58906 15.0968C9.07123 15.2134 8.53924 15.2728 8 15.2728C7.46076 15.2728 6.92877 15.2134 6.41093 15.0968L6.11209 15.0295L5.18011 12.905L2.88557 13.1558ZM5.20896 11.6825C5.63971 11.6354 6.05118 11.8733 6.22525 12.2701L6.97221 13.9729C7.30911 14.0311 7.65252 14.0606 8 14.0606C8.34748 14.0606 8.69089 14.0311 9.02779 13.9729L9.77475 12.2701C9.94882 11.8733 10.3603 11.6354 10.791 11.6825L12.6272 11.8831C13.0706 11.3494 13.4203 10.7428 13.659 10.0892L12.5627 8.58403C12.3092 8.23593 12.3092 7.76404 12.5627 7.41594L13.659 5.91073C13.4203 5.25712 13.0706 4.6506 12.6272 4.11682L10.791 4.31752C10.3603 4.3646 9.94882 4.12667 9.77475 3.72986L9.02779 2.02707C8.69089 1.96889 8.34748 1.93938 8 1.93938C7.65252 1.93938 7.30911 1.96889 6.97221 2.02707L6.22525 3.72986C6.05118 4.12667 5.63971 4.3646 5.20896 4.31752L3.37282 4.11682C2.92936 4.6506 2.57971 5.25712 2.34102 5.91073L3.43727 7.41594C3.69079 7.76404 3.69079 8.23593 3.43727 8.58403L2.34102 10.0892C2.57971 10.7428 2.92936 11.3494 3.37282 11.8831L5.20896 11.6825ZM8 11.0303C6.33214 11.0303 4.98124 9.67296 4.98124 8.00002C4.98124 6.32707 6.33214 4.96971 8 4.96971C9.66786 4.96971 11.0188 6.32707 11.0188 8.00002C11.0188 9.67296 9.66786 11.0303 8 11.0303ZM8 9.81824C8.99713 9.81824 9.80664 9.00486 9.80664 8.00006C9.80664 6.99526 8.99713 6.18188 8 6.18188C7.00287 6.18188 6.19336 6.99526 6.19336 8.00006C6.19336 9.00486 7.00287 9.81824 8 9.81824Z" fill="currentColor"/>
+            </svg>
+            <span className="table-topbar-btn-label">{t("admin.toolbar.fields")}</span>
+          </button>
+          <button
+            ref={filterBtnRef}
+            className={`table-topbar-btn${activeFilterCount > 0 ? " active" : ""}`}
+            onClick={() => { setFilterOpen((v) => !v); setFieldsOpen(false); }}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M8.66669 7.66671L11.7157 5.53243C11.8939 5.40767 12 5.20381 12 4.98627V2.66671C12 1.93033 11.4031 1.33337 10.6667 1.33337H2.00002C1.26364 1.33337 0.666687 1.93033 0.666687 2.66671V4.98627C0.666687 5.20381 0.772828 5.40767 0.951046 5.53243L4.00002 7.66671V12.4542C4.00002 12.9876 4.31788 13.4696 4.80813 13.6797L7.73741 14.9351C8.17732 15.1236 8.66669 14.801 8.66669 14.3223V7.66671ZM5.33335 6.9725L2.00002 4.63917V2.66671H10.6667V4.63917L7.33335 6.9725V13.3113L5.33335 12.4542V6.9725Z" fill="currentColor"/>
+              <path d="M10 9.33337C10 8.96518 10.2985 8.66671 10.6667 8.66671H14C14.3682 8.66671 14.6667 8.96518 14.6667 9.33337C14.6667 9.70156 14.3682 10 14 10H10.6667C10.2985 10 10 9.70156 10 9.33337Z" fill="currentColor"/>
+              <path d="M10.6667 11.3334C10.2985 11.3334 10 11.6319 10 12C10 12.3682 10.2985 12.6667 10.6667 12.6667H12.6667C13.0349 12.6667 13.3334 12.3682 13.3334 12C13.3334 11.6319 13.0349 11.3334 12.6667 11.3334H10.6667Z" fill="currentColor"/>
+            </svg>
+            <span className="table-topbar-btn-label">
+              {activeFilterCount > 0
+                ? t("admin.toolbar.filterCount").replace("{count}", String(activeFilterCount))
+                : t("admin.toolbar.filter")}
+            </span>
+          </button>
+        </div>
         <button className="adb-header-btn" onClick={loadData} title={t("admin.refresh")}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
             <path d="M13.65 2.35A7.96 7.96 0 008 0C3.58 0 0 3.58 0 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 018 14 6 6 0 012 8a6 6 0 016-6c1.66 0 3.14.69 4.22 1.78L9 7h7V0l-2.35 2.35z" fill="currentColor" />
@@ -273,32 +300,6 @@ export default function AdminBlock({ blockId: _blockId }: Props) {
         {loading ? null : (
           <>
             <MetricCards stats={stats} />
-
-            {/* Toolbar */}
-            <div className="adb-toolbar">
-              <button
-                ref={fieldsBtnRef}
-                className={`adb-toolbar-btn${hiddenColumns.size > 0 ? " active" : ""}`}
-                onClick={() => { setFieldsOpen((v) => !v); setFilterOpen(false); }}
-              >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                  <path d="M8 3C4.5 3 1.7 5.1 0.5 8c1.2 2.9 4 5 7.5 5s6.3-2.1 7.5-5c-1.2-2.9-4-5-7.5-5zm0 8.3A3.3 3.3 0 1 1 8 4.7a3.3 3.3 0 0 1 0 6.6zm0-5.3a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" fill="currentColor"/>
-                </svg>
-                {t("admin.toolbar.fields")}
-              </button>
-              <button
-                ref={filterBtnRef}
-                className={`adb-toolbar-btn${activeFilterCount > 0 ? " active" : ""}`}
-                onClick={() => { setFilterOpen((v) => !v); setFieldsOpen(false); }}
-              >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                  <path d="M1 2h14l-5.5 6.5V14l-3-2V8.5L1 2z" fill="currentColor"/>
-                </svg>
-                {activeFilterCount > 0
-                  ? t("admin.toolbar.filterCount").replace("{count}", String(activeFilterCount))
-                  : t("admin.toolbar.filter")}
-              </button>
-            </div>
 
             {/* Fields Panel */}
             {fieldsOpen && (

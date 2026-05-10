@@ -32,6 +32,14 @@
   color: var(--text-primary);
 }
 
+.adb-header-actions {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+}
+
 .adb-header-btn,
 .adb-header-close {
   width: 28px;
@@ -243,37 +251,6 @@
 
 .adb-models-badge--active {
   background: rgba(20, 86, 240, 0.1);
-  color: var(--color-primary, #1456F0);
-}
-
-/* ══════ Toolbar ═════════════════════════════════════════════════════════ */
-.adb-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.adb-toolbar-btn {
-  height: 28px;
-  padding: 0 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 13px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.adb-toolbar-btn:hover {
-  background: var(--surface-3);
-  color: var(--text-primary);
-}
-.adb-toolbar-btn.active {
-  background: rgba(20, 86, 240, 0.10);
   color: var(--color-primary, #1456F0);
 }
 
