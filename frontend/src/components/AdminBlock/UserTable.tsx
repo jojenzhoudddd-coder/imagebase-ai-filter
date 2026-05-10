@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { useToast } from "../Toast/index";
 import type { AdminUser } from "../../api";
@@ -21,10 +21,82 @@ function formatTokenCount(n: number): string {
   return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0).replace(/\.0$/, "")}M`;
 }
 
+/* ─── Sort logic ────────────────────────────────────────────────────── */
+type SortDir = "desc" | "asc" | null;
+type SortableKey = "related" | "lastLogin" | "lastMessage" | "conversations" | "activities" | "tokens" | "workspaces" | "artifacts" | "workends";
+
+const SORTABLE_KEYS = new Set<SortableKey>([
+  "related", "lastLogin", "lastMessage", "conversations", "activities",
+  "tokens", "workspaces", "artifacts", "workends",
+]);
+
+function getSortValue(user: AdminUser, key: SortableKey): number | string {
+  switch (key) {
+    case "related": return user.related ? 1 : 0;
+    case "lastLogin": return user.lastLoginAt || "";
+    case "lastMessage": return user.lastMessageAt || "";
+    case "conversations": return user.conversationCount;
+    case "activities": return user.activityCount;
+    case "tokens": return user.totalTokens;
+    case "workspaces": return user.workspaceCount;
+    case "artifacts": return user.artifactCount;
+    case "workends": return user.workendCount;
+  }
+}
+
+function SortIndicator({ dir }: { dir: SortDir }) {
+  if (!dir) {
+    // idle: faint up+down arrows
+    return (
+      <svg className="adb-sort-icon idle" width="10" height="14" viewBox="0 0 10 14" fill="none">
+        <path d="M5 1L8.5 5H1.5L5 1Z" fill="currentColor" opacity="0.3"/>
+        <path d="M5 13L1.5 9H8.5L5 13Z" fill="currentColor" opacity="0.3"/>
+      </svg>
+    );
+  }
+  return (
+    <svg className="adb-sort-icon active" width="10" height="14" viewBox="0 0 10 14" fill="none">
+      <path d="M5 1L8.5 5H1.5L5 1Z" fill="currentColor" opacity={dir === "asc" ? 1 : 0.2}/>
+      <path d="M5 13L1.5 9H8.5L5 13Z" fill="currentColor" opacity={dir === "desc" ? 1 : 0.2}/>
+    </svg>
+  );
+}
+
 export default function UserTable({ users, onUserUpdated }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<SortableKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>(null);
+
+  const handleSort = (key: SortableKey) => {
+    if (sortKey !== key) {
+      // activate new field: start with desc
+      setSortKey(key);
+      setSortDir("desc");
+    } else if (sortDir === "desc") {
+      setSortDir("asc");
+    } else {
+      // asc → reset
+      setSortKey(null);
+      setSortDir(null);
+    }
+  };
+
+  const sortedUsers = useMemo(() => {
+    if (!sortKey || !sortDir) return users;
+    return [...users].sort((a, b) => {
+      const va = getSortValue(a, sortKey);
+      const vb = getSortValue(b, sortKey);
+      let cmp: number;
+      if (typeof va === "number" && typeof vb === "number") {
+        cmp = va - vb;
+      } else {
+        cmp = String(va).localeCompare(String(vb));
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [users, sortKey, sortDir]);
 
   const handleToggleRelated = useCallback(async (user: AdminUser) => {
     const newValue = !user.related;
@@ -48,28 +120,41 @@ export default function UserTable({ users, onUserUpdated }: Props) {
     return <div className="adb-empty">{t("admin.noUsers")}</div>;
   }
 
+  const th = (label: string, key?: SortableKey) => {
+    if (!key || !SORTABLE_KEYS.has(key)) {
+      return <th>{label}</th>;
+    }
+    const dir = sortKey === key ? sortDir : null;
+    return (
+      <th className="adb-th-sortable" onClick={() => handleSort(key)}>
+        <span>{label}</span>
+        <SortIndicator dir={dir} />
+      </th>
+    );
+  };
+
   return (
     <div className="adb-table-wrap">
       <table className="adb-table">
         <thead>
           <tr>
-            <th>{t("admin.table.name")}</th>
-            <th>{t("admin.table.email")}</th>
-            <th>{t("admin.table.related")}</th>
-            <th>{t("admin.table.models")}</th>
-            <th>{t("admin.table.lastLogin")}</th>
-            <th>{t("admin.table.agent")}</th>
-            <th>{t("admin.table.lastMessage")}</th>
-            <th>{t("admin.table.conversations")}</th>
-            <th>{t("admin.table.activities")}</th>
-            <th>{t("admin.table.tokens")}</th>
-            <th>{t("admin.table.workspaces")}</th>
-            <th>{t("admin.table.artifacts")}</th>
-            <th>{t("admin.table.workends")}</th>
+            {th(t("admin.table.name"))}
+            {th(t("admin.table.email"))}
+            {th(t("admin.table.related"), "related")}
+            {th(t("admin.table.models"))}
+            {th(t("admin.table.lastLogin"), "lastLogin")}
+            {th(t("admin.table.agent"))}
+            {th(t("admin.table.lastMessage"), "lastMessage")}
+            {th(t("admin.table.conversations"), "conversations")}
+            {th(t("admin.table.activities"), "activities")}
+            {th(t("admin.table.tokens"), "tokens")}
+            {th(t("admin.table.workspaces"), "workspaces")}
+            {th(t("admin.table.artifacts"), "artifacts")}
+            {th(t("admin.table.workends"), "workends")}
           </tr>
         </thead>
         <tbody>
-          {users.map((user) => (
+          {sortedUsers.map((user) => (
             <tr key={user.id}>
               <td>
                 <div className="adb-user-cell">
