@@ -28,8 +28,10 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
   const [dragging, setDragging] = useState(false);
   const [spring, setSpring] = useState(false);
   const [done, setDone] = useState(false);
+  const [nudge, setNudge] = useState(false);
   const startXRef = useRef(0);
   const maxOffsetRef = useRef(0);
+  const movedRef = useRef(false);
 
   const THUMB_START = 1; // px from left edge
   const THUMB_WIDTH = 36; // includes 4px padding each side
@@ -45,6 +47,7 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     startXRef.current = e.clientX;
     maxOffsetRef.current = getMaxOffset();
+    movedRef.current = false;
     setDragging(true);
     setSpring(false);
   }, [disabled, done, getMaxOffset]);
@@ -53,6 +56,7 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
     if (!dragging) return;
     e.stopPropagation();
     const dx = e.clientX - startXRef.current;
+    if (Math.abs(dx) > 3) movedRef.current = true;
     const clamped = Math.max(0, Math.min(dx, maxOffsetRef.current));
     setOffset(clamped);
   }, [dragging]);
@@ -61,6 +65,13 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
     if (!dragging) return;
     e.stopPropagation();
     setDragging(false);
+
+    // Click without drag → nudge hint
+    if (!movedRef.current) {
+      setNudge(true);
+      setTimeout(() => setNudge(false), 400);
+      return;
+    }
 
     const threshold = maxOffsetRef.current * 0.9;
     if (offset >= threshold) {
@@ -93,7 +104,13 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
       ref={trackRef}
       className={`swipe-del-root${spring ? " swipe-del-spring" : ""}${disabled ? " swipe-del-disabled" : ""}`}
       onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!disabled && !done && !dragging) {
+          setNudge(true);
+          setTimeout(() => setNudge(false), 400);
+        }
+      }}
     >
       {/* Fill gradient */}
       <div
@@ -104,7 +121,7 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
       <span className="swipe-del-label">{label}</span>
       {/* Draggable thumb */}
       <div
-        className={`swipe-del-thumb${done ? " swipe-del-done" : ""}`}
+        className={`swipe-del-thumb${done ? " swipe-del-done" : ""}${nudge ? " swipe-del-nudge" : ""}`}
         style={{ left: offset + THUMB_START }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
