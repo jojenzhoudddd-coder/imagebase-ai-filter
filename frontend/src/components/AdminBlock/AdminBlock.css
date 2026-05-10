@@ -156,23 +156,33 @@
 .adb-th-inner {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
 }
 .adb-th-sortable:hover {
   color: var(--text-primary);
 }
 
-.adb-sort-icon {
+.adb-sort-btn {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
   flex-shrink: 0;
-}
-.adb-sort-icon.idle {
+  color: var(--text-secondary);
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, background 0.15s;
 }
-.adb-th-sortable:hover .adb-sort-icon.idle {
+.adb-th-sortable:hover .adb-sort-btn {
   opacity: 1;
 }
-.adb-sort-icon.active {
+.adb-sort-btn:hover {
+  background: var(--surface-3);
+}
+.adb-sort-btn.active {
+  opacity: 1;
+  background: rgba(20, 86, 240, 0.10);
   color: var(--color-primary, #1456F0);
 }
 

@@ -45,20 +45,13 @@ function getSortValue(user: AdminUser, key: SortableKey): number | string {
 }
 
 function SortIndicator({ dir }: { dir: SortDir }) {
-  if (!dir) {
-    // idle: faint up+down arrows
-    return (
-      <svg className="adb-sort-icon idle" width="10" height="14" viewBox="0 0 10 14" fill="none">
-        <path d="M5 1L8.5 5H1.5L5 1Z" fill="currentColor" opacity="0.3"/>
-        <path d="M5 13L1.5 9H8.5L5 13Z" fill="currentColor" opacity="0.3"/>
-      </svg>
-    );
-  }
   return (
-    <svg className="adb-sort-icon active" width="10" height="14" viewBox="0 0 10 14" fill="none">
-      <path d="M5 1L8.5 5H1.5L5 1Z" fill="currentColor" opacity={dir === "asc" ? 1 : 0.2}/>
-      <path d="M5 13L1.5 9H8.5L5 13Z" fill="currentColor" opacity={dir === "desc" ? 1 : 0.2}/>
-    </svg>
+    <span className={`adb-sort-btn${dir ? " active" : ""}`}>
+      <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
+        <path d="M5 1L8.5 5H1.5L5 1Z" fill="currentColor" opacity={dir === "asc" ? 1 : 0.3}/>
+        <path d="M5 13L1.5 9H8.5L5 13Z" fill="currentColor" opacity={dir === "desc" ? 1 : 0.3}/>
+      </svg>
+    </span>
   );
 }
 
