@@ -32,6 +32,24 @@
   color: var(--text-primary);
 }
 
+.adb-header-close {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.adb-header-close:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
 /* ══════ Body (scrollable) ════════════════════════════════════════════ */
 .adb-body {
   flex: 1;

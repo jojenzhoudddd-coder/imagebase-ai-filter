@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { useBlockShell } from "../../contexts/blockShellContext";
 import { useTranslation } from "../../i18n";
 import type { AdminStats, AdminUser } from "../../api";
 import { fetchAdminStats, fetchAdminUsers } from "../../api";
@@ -20,6 +21,7 @@ interface Props {
 
 export default function AdminBlock({ blockId: _blockId }: Props) {
   const { user } = useAuth();
+  const shell = useBlockShell();
   const { t } = useTranslation();
 
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -37,8 +39,8 @@ export default function AdminBlock({ blockId: _blockId }: Props) {
         setStats(s);
         setUsers(u.users);
       })
-      .catch(() => {
-        // silently fail — user sees empty state
+      .catch((err) => {
+        console.error("[AdminBlock] failed to load:", err);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -66,6 +68,14 @@ export default function AdminBlock({ blockId: _blockId }: Props) {
     <div className="adb-root">
       <div className="adb-header">
         <span className="adb-header-title">{t("admin.title")}</span>
+        <div style={{ flex: 1 }} />
+        {shell?.canClose && (
+          <button className="adb-header-close" onClick={shell.onClose} title="Close">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
       </div>
       <div className="adb-body">
         {loading ? null : (
