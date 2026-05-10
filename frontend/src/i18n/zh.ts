@@ -902,6 +902,7 @@ export const zh: TranslationKeys = {
   "admin.table.workends": "Workend",
   "admin.table.conversations": "对话",
   "admin.table.activities": "活动",
+  "admin.refresh": "刷新",
   "admin.toast.userUpdated": "用户已更新",
   "admin.toast.updateFailed": "更新用户失败",
   "admin.noUsers": "暂无用户",

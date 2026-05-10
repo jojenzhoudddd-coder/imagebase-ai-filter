@@ -104,13 +104,12 @@ export default function UserTable({ users, onUserUpdated }: Props) {
               <td>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "-"}</td>
               <td>
                 <div className="adb-user-cell">
-                  {user.agentAvatarUrl ? (
-                    <img className="adb-avatar" src={user.agentAvatarUrl} alt="" />
-                  ) : (
-                    <span className="adb-avatar-fallback" style={{ background: "var(--text-secondary)", fontSize: 10 }}>
-                      {(user.agentName || "A").charAt(0).toUpperCase()}
-                    </span>
-                  )}
+                  <img
+                    className="adb-avatar"
+                    src={user.agentAvatarUrl || "/avatars/avatar_1.png"}
+                    alt=""
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/avatars/avatar_1.png"; }}
+                  />
                   <span className="adb-user-name">{user.agentName || "-"}</span>
                 </div>
               </td>

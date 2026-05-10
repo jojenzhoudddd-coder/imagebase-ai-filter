@@ -897,6 +897,7 @@ export const en = {
   "admin.table.workends": "Workends",
   "admin.table.conversations": "Conversations",
   "admin.table.activities": "Activities",
+  "admin.refresh": "Refresh",
   "admin.toast.userUpdated": "User updated",
   "admin.toast.updateFailed": "Failed to update user",
   "admin.noUsers": "No users found",
