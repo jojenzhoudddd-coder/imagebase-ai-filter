@@ -256,6 +256,7 @@ export const zh: TranslationKeys = {
   // Toast messages
   "toast.saveFailed": "保存失败，修改已回退",
   "toast.undoFailed": "撤销失败，数据未能同步，请刷新页面",
+  "toast.deleted": "已删除",
   "toast.deleteFailed": "删除失败，请重试",
   "toast.clearFailed": "清除失败，修改已回退",
   "toast.deletedRecords": "已删除 {{count}} 条记录",

@@ -19,8 +19,6 @@ interface Props {
   documentName: string;
   /** 当前 workspace id —— 用来拉 stats（artifact 数 / token / AI 摘要）。 */
   workspaceId: string;
-  deleteProtection?: boolean;
-  onDeleteProtectionChange?: (on: boolean) => void;
   onRenameTable?: (newName: string) => void;
   onRenameDocument?: (newName: string) => void;
   onOpenChatAgent?: () => void;
@@ -55,7 +53,7 @@ function formatTokenCount(n: number): string {
   return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0).replace(/\.0$/, "")}M`;
 }
 
-export default function TopBar({ tableName, documentName, workspaceId, deleteProtection = true, onDeleteProtectionChange, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount }: Props) {
+export default function TopBar({ tableName, documentName, workspaceId, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount }: Props) {
   const { t, locale } = useTranslation();
   const { user, patchUser, logout, patchPreferences } = useAuth();
   const toast = useToast();
@@ -233,14 +231,12 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [langSubOpen, setLangSubOpen] = useState(false);
   const [themeSubOpen, setThemeSubOpen] = useState(false);
-  const [settingsSubOpen, setSettingsSubOpen] = useState(false);
   const avatarRef = useRef<HTMLImageElement>(null);
   const avatarMenuRef = useRef<HTMLDivElement>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const [avatarMenuPos, setAvatarMenuPos] = useState<{ top: number; left: number } | null>(null);
   const langSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const themeSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settingsSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Close avatar menu on outside click
   useEffect(() => {
@@ -284,15 +280,6 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
     }
   };
 
-  // safe-delete 开关：透传给父级 + 持久化到后端 preferences
-  const handleSafeDeleteChange = (val: boolean) => {
-    onDeleteProtectionChange?.(val);
-    if (user) {
-      patchPreferences({ deleteProtection: val }).catch((err) => {
-        console.warn("[topbar] persist safe-delete failed:", err);
-      });
-    }
-  };
 
   return (
     <div className="topbar">
@@ -612,48 +599,6 @@ export default function TopBar({ tableName, documentName, workspaceId, deletePro
                       <path d="M3 7.5l3 3 5-6" stroke="#3370FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   )}
-                </div>
-              </div>
-            )}
-          </div>
-          {/* 设置 submenu（含安全删除，从 More 菜单迁移而来） */}
-          <div
-            className="topbar-menu-item has-submenu"
-            onMouseEnter={() => {
-              if (settingsSubCloseTimer.current) { clearTimeout(settingsSubCloseTimer.current); settingsSubCloseTimer.current = null; }
-              setSettingsSubOpen(true);
-            }}
-            onMouseLeave={() => {
-              settingsSubCloseTimer.current = setTimeout(() => setSettingsSubOpen(false), 300);
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon" aria-hidden="true">
-              <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.2"/>
-              <path d="M13 8a5 5 0 01-.1 1l1.3 1-1 1.7-1.5-.4a5 5 0 01-1.8 1L9.5 14h-3l-.4-1.7a5 5 0 01-1.8-1L2.8 11.7 1.8 10l1.3-1a5 5 0 01-.1-1 5 5 0 01.1-1L1.8 6 2.8 4.3l1.5.4a5 5 0 011.8-1L6.5 2h3l.4 1.7a5 5 0 011.8 1l1.5-.4 1 1.7-1.3 1a5 5 0 01.1 1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill="none"/>
-            </svg>
-            <span className="topbar-menu-label">{t("topbar.settings")}</span>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="topbar-menu-arrow">
-              <path d="M4.5 2.5l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            {settingsSubOpen && (
-              <div
-                className="topbar-submenu"
-                onMouseEnter={() => { if (settingsSubCloseTimer.current) { clearTimeout(settingsSubCloseTimer.current); settingsSubCloseTimer.current = null; } }}
-                onMouseLeave={() => { settingsSubCloseTimer.current = setTimeout(() => setSettingsSubOpen(false), 300); }}
-              >
-                <div
-                  className="topbar-menu-item"
-                  onClick={(e) => { e.stopPropagation(); handleSafeDeleteChange(!deleteProtection); }}
-                >
-                  <span className="topbar-menu-label">{t("topbar.safeDelete")}</span>
-                  <label className="tb-switch" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={deleteProtection}
-                      onChange={(e) => handleSafeDeleteChange(e.target.checked)}
-                    />
-                    <span className="tb-switch-track" />
-                  </label>
                 </div>
               </div>
             )}

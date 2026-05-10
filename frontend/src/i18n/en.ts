@@ -254,6 +254,7 @@ export const en = {
   // Toast messages
   "toast.saveFailed": "Save failed, changes reverted",
   "toast.undoFailed": "Undo failed, data not synced. Please refresh the page",
+  "toast.deleted": "Deleted",
   "toast.deleteFailed": "Delete failed, please retry",
   "toast.clearFailed": "Clear failed, changes reverted",
   "toast.deletedRecords": "Deleted {{count}} record(s)",

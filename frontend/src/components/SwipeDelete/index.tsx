@@ -15,15 +15,10 @@ const TRASH_ICON = (
   </svg>
 );
 
-const CHECK_ICON = (
-  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <path
-      d="M3 7.5l3 3 5-6"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
+// icon_delete-trash_filled — shown when swipe completes
+const DONE_ICON = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+    <path d="M10 2C8.89543 2 8 2.89543 8 4H3C2.44772 4 2 4.44772 2 5C2 5.55228 2.44772 6 3 6H4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V6H21C21.5523 6 22 5.55228 22 5C22 4.44772 21.5523 4 21 4H16C16 2.89543 15.1046 2 14 2H10ZM9.5 9C10.0523 9 10.5 9.44772 10.5 10V16C10.5 16.5523 10.0523 17 9.5 17C8.94772 17 8.5 16.5523 8.5 16V10C8.5 9.44772 8.94772 9 9.5 9ZM14.5 9C15.0523 9 15.5 9.44772 15.5 10V16C15.5 16.5523 15.0523 17 14.5 17C13.9477 17 13.5 16.5523 13.5 16V10C13.5 9.44772 13.9477 9 14.5 9Z" fill="currentColor"/>
   </svg>
 );
 
@@ -114,7 +109,7 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
-        {done ? CHECK_ICON : (icon || TRASH_ICON)}
+        {done ? DONE_ICON : (icon || TRASH_ICON)}
       </div>
     </div>
   );
