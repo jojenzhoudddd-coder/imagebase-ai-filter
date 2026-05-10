@@ -71,16 +71,16 @@ function cronToHuman(schedule: string): string {
   return schedule;
 }
 
-function timeAgo(ts: string | null | undefined): string {
+function formatLastUsed(ts: string | null | undefined, timezone: string): string {
   if (!ts) return "—";
-  const diff = Date.now() - new Date(ts).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(ts));
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
 }
 
 /** Derive a short display title from a long prompt. Custom habits created
@@ -129,7 +129,8 @@ function useHabitI18n() {
 export default function HabitsTab({ agentId, blockId }: Props) {
   const { t } = useTranslation();
   const { name: localName, desc: localDesc } = useHabitI18n();
-  const { workspaceId } = useAuth();
+  const { workspaceId, preferences } = useAuth();
+  const timezone = preferences.timezone ?? "Asia/Shanghai";
   const { addBlock, patchBlockState } = useCanvas();
   const toast = useToast();
   const [habits, setHabits] = useState<HabitSummary[]>([]);
@@ -229,7 +230,7 @@ export default function HabitsTab({ agentId, blockId }: Props) {
                 </div>
                 <div className="ab-card-kv-row">
                   <dt>{t("agent.card.lastUsed")}</dt>
-                  <dd>{timeAgo(h.lastFiredAt)}</dd>
+                  <dd>{formatLastUsed(h.lastFiredAt, timezone)}</dd>
                 </div>
               </dl>
             </div>
