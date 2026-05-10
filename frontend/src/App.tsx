@@ -1436,22 +1436,33 @@ export default function App() {
   }, [pickNextActiveAfterDelete, switchTable]);
 
   const handleDeleteTable = useCallback(async (tableId: string) => {
-    // Don't allow deleting the last table
-    if (documentTables.length <= 1) return;
-    // V2.9.3: 跨 artifact 类型挑选下一个 active —— 不再固定回到 table。
-    // 在 setDocumentTables 之前先 snapshot pickNext (用最新的 sidebarItems);
-    // setDocumentTables 触发重渲染后,activateAfterDelete 自然走新列表。
+    // Snapshot the next-active pick BEFORE mutating state, so sidebarItems is still complete.
+    const nextActive = pickNextActiveAfterDelete(tableId);
+
+    // Optimistic removal from sidebar
     setDocumentTables(prev => prev.filter(t => t.id !== tableId));
+
+    // Navigate away if we just deleted the active artifact
     if (tableId === activeTableIdRef.current) {
-      activateAfterDelete(tableId);
+      if (nextActive) {
+        setActiveTableId(nextActive.id);
+        setActiveItemType(nextActive.type);
+        setFocusEntity(null);
+        if (nextActive.type === "table") {
+          void switchTable(nextActive.id);
+        }
+      } else {
+        setActiveTableId("");
+      }
     }
+
     try {
       await apiDeleteTable(tableId);
     } catch {
       toast.error(t("toast.deleteFailed"));
       fetchWorkspaceTree(WORKSPACE_ID).then(tree => setDocumentTables(tree.tables.map(t => ({ ...t, parentId: t.parentId ?? null }))));
     }
-  }, [documentTables, activateAfterDelete, toast, t]);
+  }, [pickNextActiveAfterDelete, switchTable, toast, t]);
 
   // ── Create folder ──
   const handleCreateFolder = useCallback(async () => {
