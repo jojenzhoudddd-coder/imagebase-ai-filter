@@ -1886,16 +1886,7 @@ export default function ChatSidebar({
                 suggestions={suggestions}
                 onPreset={(text) => setInputValue(text)}
               />
-              {/* V4.7.1: 把 mascots 锚定到 ChatInput 上方,用一个 input-anchor
-                  wrapper 让它们 absolute 定位到 chat-input-box 顶部右侧。 */}
               <div className="chat-welcome-input-anchor">
-                <div className="chat-welcome-mascots" aria-hidden="true">
-                  <AnimatedCharacters
-                    isTyping={false}
-                    showPassword={true}
-                    passwordLength={inputValue.length}
-                  />
-                </div>
                 <ChatInput
                   value={inputValue}
                   onChange={setInputValue}
