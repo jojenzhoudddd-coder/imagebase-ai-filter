@@ -125,11 +125,6 @@ export async function ensureAgentFiles(agentId: string): Promise<void> {
           cronFile.jobs.push({ ...seed, seedSchedule: seed.schedule });
           changed = true;
         } else if (existing.type === "system") {
-          // Migration: force all system habits to disabled (save token cost)
-          if (existing.enabled === true) {
-            existing.enabled = false;
-            changed = true;
-          }
           // Update code-owned fields (prompt, displayName, description)
           const textFields: (keyof typeof seed)[] = ["prompt", "displayName", "description"];
           for (const key of textFields) {
@@ -273,8 +268,20 @@ async function fileExists(p: string): Promise<boolean> {
  * Boot-time migration: scan ALL agent directories and force system habits to disabled.
  * Returns the number of agents that were actually modified.
  */
+/**
+ * One-time boot migration: scan ALL agent directories and force system habits to disabled.
+ * Uses a marker file to ensure it only runs once — subsequent restarts skip it,
+ * so users who manually re-enable habits will have their preference preserved.
+ */
 export async function migrateAllHabitsDisabled(): Promise<number> {
   const root = agentHomeRoot();
+  const markerPath = path.join(root, ".migrated_habits_disabled");
+  try {
+    await fs.access(markerPath);
+    return 0; // already migrated
+  } catch {
+    // marker doesn't exist, proceed
+  }
   let dirs: string[];
   try {
     dirs = await fs.readdir(root);
@@ -302,6 +309,8 @@ export async function migrateAllHabitsDisabled(): Promise<number> {
       // skip agents without valid cron.json
     }
   }
+  // Write marker so this migration never runs again
+  await fs.writeFile(markerPath, new Date().toISOString(), "utf8");
   return migrated;
 }
 
