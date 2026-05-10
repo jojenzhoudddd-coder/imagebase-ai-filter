@@ -122,10 +122,12 @@ export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject
 }
 
 function SparkleIcon() {
-  // icon_chat_outlined — 圆角气泡 + 两条横线
+  // icon_chat_outlined — 描边气泡 + 两条横线
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <path d="M12 2C6.477 2 2 6.477 2 12c0 1.821.487 3.53 1.338 5.002L2.05 21.95l4.948-1.288A9.953 9.953 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2zM8 10.5h8a.75.75 0 010 1.5H8a.75.75 0 010-1.5zm0 3h5a.75.75 0 010 1.5H8a.75.75 0 010-1.5z" fill="currentColor"/>
+      <path d="M12 3C7.038 3 3 7.038 3 12c0 1.66.45 3.216 1.235 4.553l.156.27-1.196 4.372 4.372-1.196.27.156A8.96 8.96 0 0012 21c4.962 0 9-4.038 9-9s-4.038-9-9-9zM1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11a10.96 10.96 0 01-5.244-1.332L1.1 22.9l2.232-5.656A10.96 10.96 0 011 12z" fill="currentColor"/>
+      <path d="M8 10h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M8 14h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
     </svg>
   );
 }
