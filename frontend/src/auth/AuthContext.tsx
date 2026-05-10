@@ -24,6 +24,7 @@ export interface AuthUser {
   username: string | null;
   name: string;
   avatarUrl: string | null;
+  admin?: boolean;
 }
 
 export interface AuthWorkspace {

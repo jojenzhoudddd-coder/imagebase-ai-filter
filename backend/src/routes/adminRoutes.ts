@@ -243,4 +243,106 @@ router.get("/metrics", async (req: Request, res: Response) => {
   }
 });
 
+// ─── Admin-only middleware ────────────────────────────────────────────────────
+function requireAdmin(req: any, res: any, next: any) {
+  if (req.user?.admin !== true) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  next();
+}
+
+// ─── User management endpoints (admin-only) ──────────────────────────────────
+
+router.get("/users", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        name: true,
+        avatarUrl: true,
+        admin: true,
+        related: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Gather per-user stats in parallel
+    const enriched = await Promise.all(
+      users.map(async (u) => {
+        const [conversationCount, activityCount, tokenAgg] = await Promise.all([
+          prisma.conversation.count({
+            where: { agent: { userId: u.id } },
+          }),
+          prisma.message.count({
+            where: {
+              role: "user",
+              conversation: { agent: { userId: u.id } },
+            },
+          }),
+          prisma.tokenUsage.aggregate({
+            where: { userId: u.id },
+            _sum: { totalTokens: true },
+          }),
+        ]);
+        return {
+          ...u,
+          conversationCount,
+          activityCount,
+          totalTokens: tokenAgg._sum.totalTokens ?? 0,
+        };
+      }),
+    );
+
+    res.json({ users: enriched });
+  } catch (err: any) {
+    console.error("[admin] users list error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+router.patch("/users/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { related, admin } = req.body ?? {};
+    const data: Record<string, boolean> = {};
+    if (typeof related === "boolean") data.related = related;
+    if (typeof admin === "boolean") data.admin = admin;
+
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ error: "no valid fields to update" });
+    }
+
+    const updated = await prisma.user.update({ where: { id }, data });
+    res.json(updated);
+  } catch (err: any) {
+    console.error("[admin] users update error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+router.get("/stats", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const [userCount, conversationCount, activityCount, tokenAgg] = await Promise.all([
+      prisma.user.count(),
+      prisma.conversation.count(),
+      prisma.message.count({ where: { role: "user" } }),
+      prisma.tokenUsage.aggregate({ _sum: { totalTokens: true } }),
+    ]);
+
+    res.json({
+      userCount,
+      conversationCount,
+      activityCount,
+      totalTokens: tokenAgg._sum.totalTokens ?? 0,
+    });
+  } catch (err: any) {
+    console.error("[admin] stats error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
 export default router;

@@ -35,6 +35,7 @@ import ArtifactBlock from "./ArtifactBlock";
 import AgencyBlock from "../AgencyBlock";
 import ChatBlock from "./ChatBlock";
 import AgentBlock from "../AgentBlock";
+import AdminBlock from "../AdminBlock";
 import DropIndicator from "./DropIndicator";
 import type { AdjacencyEdges, Block } from "../../canvas/types";
 import "./MagicCanvas.css";
@@ -214,6 +215,7 @@ function PortalBlock(props: {
   onPickGlobalTable: (id: string) => void;
 }) {
   const { slot, blockId, block, edges, visibleCount, canvasContainerRef, globalActiveTableId, onPickGlobalTable } = props;
+  const { state } = useCanvas();
   return createPortal(
     <BlockShell
       blockId={blockId}
@@ -229,7 +231,11 @@ function PortalBlock(props: {
           onPickGlobalTable={onPickGlobalTable}
         />
       )}
-      {block.type === "system" && <AgentBlock blockId={blockId} />}
+      {block.type === "system" && (
+        (state.blockStates[blockId] as any)?.view === "admin"
+          ? <AdminBlock blockId={blockId} />
+          : <AgentBlock blockId={blockId} />
+      )}
       {block.type === "agency" && <AgencyBlock blockId={blockId} />}
     </BlockShell>,
     slot,

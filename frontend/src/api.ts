@@ -2367,3 +2367,54 @@ export async function moveIdeaBlock(
 // (PR9 块级评论功能已移除 2026-04-29 — 保留 createConversation 的双签名形态
 //  以防其它处需要 title/attachedTo*,但 fetchIdeaComments / IdeaCommentBrief
 //  这条独立的"评论列表"路径已经无人调用,完整删掉。)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Admin APIs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface AdminStats {
+  userCount: number;
+  conversationCount: number;
+  activityCount: number;
+  totalTokens: number;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  username: string | null;
+  name: string;
+  avatarUrl: string | null;
+  admin: boolean;
+  related: boolean;
+  createdAt: string;
+  updatedAt: string;
+  conversationCount: number;
+  activityCount: number;
+  totalTokens: number;
+}
+
+export async function fetchAdminStats(): Promise<AdminStats> {
+  const res = await fetch(`${BASE}/admin/stats`);
+  if (!res.ok) throw new Error(`fetchAdminStats failed (${res.status})`);
+  return res.json();
+}
+
+export async function fetchAdminUsers(): Promise<{ users: AdminUser[] }> {
+  const res = await fetch(`${BASE}/admin/users`);
+  if (!res.ok) throw new Error(`fetchAdminUsers failed (${res.status})`);
+  return res.json();
+}
+
+export async function patchAdminUser(
+  id: string,
+  patch: { related?: boolean; admin?: boolean },
+): Promise<any> {
+  const res = await mutationFetch(`${BASE}/admin/users/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(`patchAdminUser failed (${res.status})`);
+  return res.json();
+}

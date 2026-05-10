@@ -11,7 +11,7 @@ import { useTranslation } from "../../i18n";
 
 export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject<HTMLElement | null> }) {
   const { addBlock, visibleBlockIds } = useCanvas();
-  const { workspaceId, agentId } = useAuth();
+  const { workspaceId, agentId, user } = useAuth();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const popRef = useRef<HTMLDivElement>(null);
@@ -101,6 +101,19 @@ export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject
         <SystemIcon />
         <span>{t("addBlock.brain")}</span>
       </button>
+      {user?.admin && (
+        <button
+          className="mc-add-block-item"
+          disabled={reachedMax}
+          onClick={() => {
+            addBlock("system", { view: "admin" } as any);
+            setOpen(false);
+          }}
+        >
+          <AdminIcon />
+          <span>{t("addBlock.admin")}</span>
+        </button>
+      )}
       {reachedMax && (
         <div className="mc-add-block-foot">{t("addBlock.maxBlocks").replace("{max}", String(MAX_BLOCKS))}</div>
       )}
@@ -129,6 +142,13 @@ function SystemIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
       <path d="M12.9995 5.00293C13.1096 5.00319 13.1987 5.09316 13.2046 5.20312C13.3053 7.1422 14.8602 8.69699 16.7993 8.79785C16.9094 8.80368 16.9993 8.89274 16.9995 9.00293C16.9994 9.11319 16.9094 9.20218 16.7993 9.20801C14.8603 9.30885 13.3054 10.8637 13.2046 12.8027C13.1987 12.9128 13.1096 13.0027 12.9995 13.0029C12.8894 13.0026 12.7993 12.9127 12.7934 12.8027C12.6926 10.8635 11.138 9.30854 9.19871 9.20801C9.08891 9.20185 8.99962 9.11297 8.99949 9.00293C8.9997 8.89296 9.08895 8.804 9.19871 8.79785C11.1381 8.69731 12.6926 7.1424 12.7934 5.20312C12.7993 5.09321 12.8895 5.00328 12.9995 5.00293Z" fill="currentColor"/>
       <path d="M12.9643 1C17.6782 1.00028 21.5002 4.76222 21.5005 9.40234C21.5005 12.2555 20.0538 14.7752 17.8452 16.2939V21.3203C17.8452 21.9076 17.844 22.2022 17.728 22.4268C17.6258 22.6241 17.4617 22.7841 17.2612 22.8848C17.0331 22.9991 16.7342 23 16.1372 23H10.8569C10.2601 23 9.96099 22.9991 9.73289 22.8848C9.53249 22.7841 9.36927 22.6241 9.26707 22.4268C9.15092 22.2022 9.15086 21.9078 9.15086 21.3203V19.5H6.13621C5.53893 19.5 5.23941 19.4991 5.01121 19.3848C4.81076 19.2841 4.64764 19.1241 4.54539 18.9268C4.42924 18.7022 4.4282 18.4079 4.4282 17.8203V14.666L2.37449 14.3291C1.98664 14.2655 1.79232 14.2336 1.67722 14.1328C1.5765 14.0445 1.51399 13.9213 1.50144 13.7891C1.48738 13.6381 1.57641 13.465 1.75437 13.1201L5.23094 5.84473C6.59207 2.98343 9.54258 1.00003 12.9643 1ZM12.9643 3C10.3309 3.00003 8.07343 4.52456 7.0366 6.7041L7.03562 6.70703L4.21726 12.6045L6.4282 12.9678V17.5H11.1509V21H15.8452V15.2422L16.7124 14.6455C18.3036 13.5511 19.3618 11.7962 19.4878 9.80371L19.5005 9.40234C19.5003 6.00605 16.7817 3.18221 13.3032 3.00879L12.9643 3Z" fill="currentColor"/>
+    </svg>
+  );
+}
+function AdminIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <path d="M8 1.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM4.5 4a3.5 3.5 0 117 0 3.5 3.5 0 01-7 0zM3.5 9.5A2.5 2.5 0 001 12v1.5a.5.5 0 00.5.5h13a.5.5 0 00.5-.5V12a2.5 2.5 0 00-2.5-2.5h-9z" fill="currentColor"/>
     </svg>
   );
 }

@@ -871,6 +871,31 @@ export const en = {
   "agency.welcome.title": "What would you like to achieve?",
   "agency.welcome.subtitle": "Set a goal and the agent will drive autonomously. Here are some ideas based on your workspace:",
   "agency.welcome.steps": "steps",
+
+  // Admin Block
+  "addBlock.admin": "Admin",
+  "admin.title": "Admin Dashboard",
+  "admin.accessDenied": "Access denied — admin only",
+  "admin.metrics.users": "Users",
+  "admin.metrics.conversations": "Conversations",
+  "admin.metrics.activities": "Activities",
+  "admin.metrics.tokens": "Tokens",
+  "admin.metrics.total": "total registered",
+  "admin.metrics.totalConversations": "total conversations",
+  "admin.metrics.totalActivities": "total user messages",
+  "admin.metrics.totalTokens": "total consumed",
+  "admin.table.name": "Name",
+  "admin.table.email": "Email",
+  "admin.table.related": "Related",
+  "admin.table.models": "Models",
+  "admin.table.lastActive": "Last Active",
+  "admin.table.conversations": "Conversations",
+  "admin.table.activities": "Activities",
+  "admin.toast.userUpdated": "User updated",
+  "admin.toast.updateFailed": "Failed to update user",
+  "admin.noUsers": "No users found",
+  "admin.models.all": "All models",
+  "admin.models.default": "Default only",
 };
 
 export type TranslationKeys = typeof en;

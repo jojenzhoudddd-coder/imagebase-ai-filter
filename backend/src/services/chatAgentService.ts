@@ -1845,14 +1845,18 @@ async function* runAgentImpl(
   const ownerAgent = await getAgent(agentId);
   const ownerUserId = ownerAgent?.userId ?? null;
 
-  // Enforce model access: non-related users can only use volcano (doubao) models.
-  // If the resolved model is non-volcano, force fallback to doubao-2.0.
-  if (ownerUserId && initialModel.group !== "volcano") {
+  // Look up owner user for access control (model gating + admin tool injection)
+  let isOwnerAdmin = false;
+  if (ownerUserId) {
     try {
       const ownerUser = await store.getUserById(ownerUserId);
-      if (ownerUser && !ownerUser.related) {
-        const fallback = resolveModelForCall("doubao-2.0");
-        initialModel = fallback.resolved;
+      if (ownerUser) {
+        isOwnerAdmin = !!ownerUser.admin;
+        // Enforce model access: non-related users can only use volcano (doubao) models.
+        if (!ownerUser.related && initialModel.group !== "volcano") {
+          const fallback = resolveModelForCall("doubao-2.0");
+          initialModel = fallback.resolved;
+        }
       }
     } catch { /* non-fatal, allow through */ }
   }
@@ -2112,7 +2116,7 @@ async function* runAgentImpl(
         workflowNodeId?: string | null;
         worktreeId?: string | null;
       }) => {
-        const activeTools = resolveActiveTools([...skillState.active], availableSkillsByNameForTurn);
+        const activeTools = resolveActiveTools([...skillState.active], availableSkillsByNameForTurn, { isAdmin: isOwnerAdmin });
         const stream = spawnSubagent(
           {
             modelId: sopts.modelId,
@@ -2245,7 +2249,7 @@ async function* runAgentImpl(
       // Host's first spawn → depth=1 (default); subagent's spawn → depth=2.
       _depth?: number;
     }) => {
-      const activeTools = resolveActiveTools([...skillState.active], availableSkillsByNameForTurn);
+      const activeTools = resolveActiveTools([...skillState.active], availableSkillsByNameForTurn, { isAdmin: isOwnerAdmin });
       // Resolve the parent-message id we'll attach the subagent run to.
       // For PR3 V1 we don't have it yet (the host's user message is
       // persisted at end-of-turn) — use the conversationId + a synthetic
@@ -2419,7 +2423,7 @@ async function* runAgentImpl(
     // round because an `activate_skill` call in this very turn should
     // expose that skill's tools on the NEXT round.
     toolCtx.activeSkills = [...skillState.active];
-    const activeTools = resolveActiveTools(toolCtx.activeSkills, availableSkillsByNameForTurn);
+    const activeTools = resolveActiveTools(toolCtx.activeSkills, availableSkillsByNameForTurn, { isAdmin: isOwnerAdmin });
 
     // Rebuild the system prompt when the active skill set changed since
     // last round. Without this the newly-activated skill's promptFragment

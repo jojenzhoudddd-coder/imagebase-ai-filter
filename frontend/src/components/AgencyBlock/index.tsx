@@ -496,11 +496,16 @@ function RoutePlannerPopover({
           {todos.map((td, i) => (
             <div className="ha-rp-pop-step" key={i}>
               <span className="ha-rp-pop-marker ha-rp-pop-marker-step" />
-              <input
-                type="text"
+              <textarea
                 className="ha-rp-pop-step-input"
+                rows={1}
                 value={td}
-                onChange={(e) => updateTodo(i, e.target.value)}
+                onChange={(e) => {
+                  updateTodo(i, e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = e.target.scrollHeight + "px";
+                }}
+                ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } }}
                 onBlur={() => {
                   if (isRunning && sessionId) {
                     onMidFlightEdit({ todos: todos.filter((t) => t.trim()) });
@@ -525,9 +530,14 @@ function RoutePlannerPopover({
           <span className="ha-rp-pop-marker ha-rp-pop-marker-to" />
           <textarea
             className="ha-rp-pop-goal"
-            rows={2}
+            rows={1}
             value={goal}
-            onChange={(e) => setGoal(e.target.value)}
+            onChange={(e) => {
+              setGoal(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = e.target.scrollHeight + "px";
+            }}
+            ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !isRunning) { e.preventDefault(); onStart(); } }}
             onBlur={() => {
               if (isRunning && sessionId) {
@@ -719,24 +729,7 @@ export default function AgencyBlock({ blockId }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const mainRowRef = useRef<HTMLDivElement>(null);
 
-  // Compute route side height so it ends 20px above the block bottom.
-  // height = block bottom − main-row top − 20px
   const blockRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const block = blockRef.current;
-    const mainRow = mainRowRef.current;
-    if (!block || !mainRow) return;
-    const update = () => {
-      const blockRect = block.getBoundingClientRect();
-      const rowRect = mainRow.getBoundingClientRect();
-      const h = Math.max(100, blockRect.bottom - rowRect.top - 20);
-      mainRow.style.setProperty("--ha-route-height", `${h}px`);
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(block);
-    return () => ro.disconnect();
-  }, []);
 
   // ── Issue 1: Restore session state on mount (survives refresh) ──
   const restoredRef = useRef(false);
@@ -1292,16 +1285,19 @@ export default function AgencyBlock({ blockId }: Props) {
                     <div className="ha-compound-input ha-compound-input-sm">
                       <div className="ha-compound-prefix">{t("agency.route.todo")} {i + 1}</div>
                       <div className="ha-compound-divider" />
-                      <input
-                        type="text"
-                        className="ha-compound-field"
+                      <textarea
+                        className="ha-compound-field ha-compound-field-textarea"
+                        rows={1}
                         value={td}
                         onChange={(e) => {
                           const next = [...todos];
                           next[i] = e.target.value;
                           setTodos(next);
                           if (isRunning) setDirty(true);
+                          e.target.style.height = "auto";
+                          e.target.style.height = e.target.scrollHeight + "px";
                         }}
+                        ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } }}
                         onBlur={() => {
                           if (isRunning && blockState.sessionId) {
                             handleMidFlightEdit({ todos: todos.filter((t) => t.trim()) });

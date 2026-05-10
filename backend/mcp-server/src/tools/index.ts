@@ -41,6 +41,7 @@ import { webTools } from "./webTools.js";
 import { visionTools } from "./visionTools.js";
 import { modelTools } from "./modelTools.js";
 import { knowledgeTools } from "./knowledgeTools.js";
+import { adminTools } from "./adminTools.js";
 import { allSkills, skillsByName } from "../skills/index.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
@@ -147,8 +148,13 @@ export const tier1Tools: ToolDefinition[] = [
 export function resolveActiveTools(
   activeSkillNames: string[] = [],
   extraSkillsByName?: Record<string, import("../skills/types.js").SkillDefinition>,
+  options?: { isAdmin?: boolean },
 ): ToolDefinition[] {
   const active: ToolDefinition[] = [...tier0Tools, ...tier1Tools];
+  // Admin-only tools: only injected when the calling user is an admin
+  if (options?.isAdmin) {
+    active.push(...adminTools);
+  }
   const seen = new Set(active.map((t) => t.name));
   for (const name of activeSkillNames) {
     const skill = extraSkillsByName?.[name] ?? skillsByName[name];
@@ -170,6 +176,9 @@ export const allTools: ToolDefinition[] = [
   ...tier1Tools,
   // Flatten every skill's tools so the lookup map covers everything.
   ...allSkills.flatMap((s) => s.tools),
+  // Admin tools — included in lookup map so handlers resolve, but only
+  // injected into the active tool list for admin users via resolveActiveTools.
+  ...adminTools,
 ];
 
 export const toolsByName: Record<string, ToolDefinition> =

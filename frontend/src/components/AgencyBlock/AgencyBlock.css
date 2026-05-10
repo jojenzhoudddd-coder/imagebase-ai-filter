@@ -366,11 +366,8 @@
   align-items: center;
   gap: 0;
   padding: 8px 0 0;
-  /* JS sets --ha-route-height = body bottom − main-row top − 20px,
-     so the route always ends 20px above the block bottom.
-     min-height ensures it fills that space; flex stretch grows it
-     when feed content is taller. */
-  min-height: var(--ha-route-height, 300px);
+  /* align-self:stretch (flex default) keeps route-side equal to work-area height */
+  min-height: 100px;
 }
 .ha-route-side-track {
   flex: 1;
@@ -1349,15 +1346,19 @@
 .ha-rp-pop-step-input {
   flex: 1;
   min-width: 0;
-  height: 28px;
-  padding: 0 28px 0 10px;
+  min-height: 28px;
+  padding: 5px 28px 5px 10px;
   background: var(--surface-1);
   border: 1px solid transparent;
   border-radius: 6px;
   font: inherit;
   font-size: 12px;
+  line-height: 1.4;
   color: var(--text-primary);
   outline: none;
+  resize: none;
+  overflow: hidden;
+  box-sizing: border-box;
   transition: background 120ms, border-color 120ms;
 }
 .ha-rp-pop-step:hover .ha-rp-pop-step-input { background: var(--surface-3); }
@@ -1425,6 +1426,7 @@
   font-weight: 500;
   line-height: 1.4;
   resize: none;
+  overflow: hidden;
   outline: none;
   box-sizing: border-box;
   transition: background 120ms, border-color 120ms;
