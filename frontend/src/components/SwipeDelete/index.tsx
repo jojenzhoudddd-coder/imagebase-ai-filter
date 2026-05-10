@@ -102,10 +102,9 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
     if (offset >= threshold) {
       triggerDelete(maxOffsetRef.current);
     } else {
-      // Spring back to last click-step position
+      // Spring back — allow dragging all the way to 0
       setAnimating(true);
-      const snapped = Math.round(offset / CLICK_STEP) * CLICK_STEP;
-      setOffset(Math.max(0, snapped));
+      setOffset(Math.max(0, offset));
       setTimeout(() => setAnimating(false), 250);
     }
   }, [dragging, offset, handleClick, triggerDelete]);
