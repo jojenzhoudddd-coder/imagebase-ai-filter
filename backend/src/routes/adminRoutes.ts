@@ -312,12 +312,24 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
       ORDER BY u."createdAt" DESC
     `);
 
+    // pg driver misinterprets "timestamp without time zone" as local TZ (Asia/Shanghai)
+    // but Prisma stores UTC values. Manually append 'Z' to raw ISO strings to fix.
+    const fixTz = (d: any) => {
+      if (!d) return null;
+      if (d instanceof Date) {
+        // pg parsed it with wrong TZ offset — get the raw UTC components
+        // by adding back the local offset pg subtracted
+        const offset = d.getTimezoneOffset() * 60000; // mins → ms
+        return new Date(d.getTime() + offset).toISOString();
+      }
+      return String(d);
+    };
     const users = rows.map((r: any) => ({
       ...r,
-      createdAt: r.createdAt?.toISOString() ?? null,
-      updatedAt: r.updatedAt?.toISOString() ?? null,
-      lastLoginAt: r.lastLoginAt?.toISOString() ?? null,
-      lastMessageAt: r.lastMessageAt?.toISOString() ?? null,
+      createdAt: fixTz(r.createdAt),
+      updatedAt: fixTz(r.updatedAt),
+      lastLoginAt: fixTz(r.lastLoginAt),
+      lastMessageAt: fixTz(r.lastMessageAt),
     }));
 
     res.json({ users });
