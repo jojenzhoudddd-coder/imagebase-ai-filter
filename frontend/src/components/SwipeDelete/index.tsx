@@ -28,11 +28,11 @@ const CLICK_STEP = 20;
 
 export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDeleteProps) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLDivElement>(null);
   const [, forceRender] = useState(0);
   const [animating, setAnimating] = useState(false);
   const [done, setDone] = useState(false);
 
-  // Use refs for drag state to avoid stale closures
   const offsetRef = useRef(0);
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
@@ -71,11 +71,64 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
     }
   }, [disabled, done, getMaxOffset, triggerDelete]);
 
+  // Use document-level listeners for move/up to avoid pointer capture issues
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (!draggingRef.current) return;
+      e.preventDefault();
+      const dx = e.clientX - startXRef.current;
+      if (Math.abs(dx) > 3) movedRef.current = true;
+      const clamped = Math.max(0, Math.min(startOffsetRef.current + dx, maxOffsetRef.current));
+      offsetRef.current = clamped;
+      forceRender((n) => n + 1);
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!draggingRef.current) return;
+      e.preventDefault();
+      draggingRef.current = false;
+
+      if (!movedRef.current) {
+        // Click on thumb — advance
+        const max = maxOffsetRef.current;
+        const next = offsetRef.current + CLICK_STEP;
+        if (next >= max * 0.9) {
+          setAnimating(true);
+          offsetRef.current = max;
+          setDone(true);
+          forceRender((n) => n + 1);
+          setTimeout(() => onDelete(), 300);
+        } else {
+          setAnimating(true);
+          offsetRef.current = next;
+          forceRender((n) => n + 1);
+          setTimeout(() => setAnimating(false), 250);
+        }
+        return;
+      }
+
+      const cur = offsetRef.current;
+      if (cur >= maxOffsetRef.current * 0.9) {
+        setAnimating(true);
+        offsetRef.current = maxOffsetRef.current;
+        setDone(true);
+        forceRender((n) => n + 1);
+        setTimeout(() => onDelete(), 300);
+      } else {
+        forceRender((n) => n + 1);
+      }
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+  }, [onDelete]);
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (disabled || done) return;
     e.stopPropagation();
     e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
     startXRef.current = e.clientX;
     startOffsetRef.current = offsetRef.current;
     maxOffsetRef.current = getMaxOffset();
@@ -84,36 +137,6 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
     setAnimating(false);
     forceRender((n) => n + 1);
   }, [disabled, done, getMaxOffset]);
-
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!draggingRef.current) return;
-    e.stopPropagation();
-    const dx = e.clientX - startXRef.current;
-    if (Math.abs(dx) > 3) movedRef.current = true;
-    const clamped = Math.max(0, Math.min(startOffsetRef.current + dx, maxOffsetRef.current));
-    offsetRef.current = clamped;
-    forceRender((n) => n + 1);
-  }, []);
-
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (!draggingRef.current) return;
-    e.stopPropagation();
-    draggingRef.current = false;
-
-    if (!movedRef.current) {
-      handleClick();
-      return;
-    }
-
-    const cur = offsetRef.current;
-    const threshold = maxOffsetRef.current * 0.9;
-    if (cur >= threshold) {
-      triggerDelete(maxOffsetRef.current);
-    } else {
-      // Keep at current drag position (user can drag all the way to 0)
-      forceRender((n) => n + 1);
-    }
-  }, [handleClick, triggerDelete]);
 
   useEffect(() => {
     if (disabled) {
@@ -125,7 +148,6 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
 
   const offset = offsetRef.current;
   const max = getMaxOffset();
-  // Fill tracks the right edge of the thumb
   const fillWidth = max > 0 ? (offset + THUMB_WIDTH) / (max + THUMB_WIDTH) * 100 : 0;
 
   return (
@@ -138,20 +160,16 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
         handleClick();
       }}
     >
-      {/* Fill gradient — aligned to thumb right edge */}
       <div
         className="swipe-del-fill"
         style={{ width: offset > 0 ? `${fillWidth}%` : 0 }}
       />
-      {/* Label */}
       <span className="swipe-del-label">{label}</span>
-      {/* Draggable thumb */}
       <div
+        ref={thumbRef}
         className={`swipe-del-thumb${done ? " swipe-del-done" : ""}${offset > 0 && !draggingRef.current ? " swipe-del-active" : ""}`}
         style={{ left: offset + THUMB_START }}
         onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
       >
         {done ? DONE_ICON : (icon || TRASH_ICON)}
       </div>

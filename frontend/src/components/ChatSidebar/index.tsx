@@ -438,7 +438,6 @@ export default function ChatSidebar({
   const [convList, setConvList] = useState<ChatConversation[]>([]);
   const [convListLoading, setConvListLoading] = useState(false);
   const convListBtnRef = useRef<HTMLButtonElement>(null);
-  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const toast = useToast();
 
   // Bumped after each streamed turn finishes, so AgentNamePill can re-fetch
@@ -1648,7 +1647,6 @@ export default function ChatSidebar({
   // V3.0.3 清空当前对话:删 messages + 重置 working memory + 保留 conv id
   const handleClearCurrentConversation = useCallback(async () => {
     const cur = activeConv?.id;
-    setClearConfirmOpen(false);
     if (!cur) return;
     try {
       if (streaming) handleStop();
@@ -1809,6 +1807,8 @@ export default function ChatSidebar({
               key: "clear",
               label: t("chat.menu.clearCurrent"),
               icon: <RefreshIcon size={16} />,
+              swipeDelete: true,
+              onSwipeDelete: () => void handleClearCurrentConversation(),
             },
             {
               key: "delete",
@@ -1818,9 +1818,8 @@ export default function ChatSidebar({
               onSwipeDelete: () => void handleDeleteCurrentConversation(),
             },
           ]}
-          onSelect={(key) => {
+          onSelect={() => {
             setMenuOpen(false);
-            if (key === "clear") setClearConfirmOpen(true);
           }}
           onClose={() => setMenuOpen(false)}
           width={200}
@@ -1863,16 +1862,6 @@ export default function ChatSidebar({
           boundaryEl={sidebarRef.current}
         />
       )}
-      {/* V3.0.3 Clear current chat confirm */}
-      <ConfirmDialog
-        open={clearConfirmOpen}
-        title={t("chat.clear.confirm.title")}
-        message={t("chat.clear.confirm.message")}
-        confirmLabel={t("chat.clear.confirm.ok")}
-        cancelLabel={t("chat.clear.confirm.cancel")}
-        onConfirm={() => void handleClearCurrentConversation()}
-        onCancel={() => setClearConfirmOpen(false)}
-      />
       {/* Old refresh confirm — V3.0 不再使用,但保留兼容(防有地方还在用) */}
       <ConfirmDialog
         open={refreshConfirmOpen}
