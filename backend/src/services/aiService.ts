@@ -1,4 +1,4 @@
-import { Field, FilterCondition, FilterGenerateRequest, FilterOperator, ViewFilter, CellValue } from "../types.js";
+import { Field, FilterCondition, FilterGenerateRequest, FilterOperator, ViewFilter, CellValue, SortGenerateRequest, ViewSort, ViewSortRule } from "../types.js";
 import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
 import path from "path";
@@ -904,7 +904,7 @@ interface ResponsesAPIResult {
 async function callResponsesAPI(
   apiKey: string,
   input: unknown[],
-  withTools: boolean
+  tools?: unknown[]
 ): Promise<ResponsesAPIResult> {
   const body: Record<string, unknown> = {
     model: ARK_MODEL,
@@ -915,8 +915,8 @@ async function callResponsesAPI(
     thinking: { type: "disabled" },
   };
 
-  if (withTools) {
-    body.tools = TOOL_DEFINITIONS;
+  if (tools) {
+    body.tools = tools;
   }
 
   const response = await fetch(`${ARK_BASE_URL}/responses`, {
@@ -1076,7 +1076,7 @@ export async function generateFilter(
       });
 
       const roundStart = Date.now();
-      const result = await callResponsesAPI(apiKey, input, true);
+      const result = await callResponsesAPI(apiKey, input, TOOL_DEFINITIONS);
       const roundElapsed = Date.now() - roundStart;
 
       // Extract usage from response
@@ -1188,6 +1188,273 @@ export async function generateFilter(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "未知错误";
     logAI({ type: "error", message });
+    onChunk("error", { code: "UNKNOWN_ERROR", message: "AI 调用失败：" + message });
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// AI Sort Generation
+// ═══════════════════════════════════════════════════════════════════════
+
+const SORT_SYSTEM_PROMPT = `# 角色
+你是多维表格的智能排序助手。你的任务是：将用户的自然语言指令转化为一个合法的排序规则 JSON。后端会将此 JSON 直接用于对表格记录排序。JSON 正确 = 排序生效，JSON 错误 = 链路失败。
+
+# 输出要求
+- 你的最终回复必须 **只包含** 一个 JSON 对象，禁止输出任何自然语言、Markdown、解释。
+- 输出完全替换当前排序状态，不做追加。
+
+# 排序规则 JSON 格式
+{
+  "rules": [
+    ["字段名", "asc"],
+    ["字段名", "desc"]
+  ]
+}
+
+- rules 是一个数组，每个元素是 [字段名, 排序方向]
+- 排序方向只有两种值: "asc"（升序）, "desc"（降序）
+- 多个规则按数组顺序决定优先级（第一个规则优先级最高）
+- 用户说"清空排序"、"取消排序"、"不排序"时，返回空规则: {"rules":[]}
+
+# 排序方向的自然语言理解
+- 升序/从小到大/从A到Z/从早到晚/从低到高/正序/按顺序 → "asc"
+- 降序/从大到小/从Z到A/从晚到早/从高到低/倒序/逆序 → "desc"
+- 如果用户没有明确指定排序方向，默认使用 "asc"
+
+# 字段名匹配规则
+- 用户可能使用字段的别名、缩写、同义词。你需要模糊匹配到 **数据结构** 中列出的确切字段名。
+- 如果找不到匹配的字段，忽略该排序条件，不要报错。
+- 字段名必须使用数据结构中的原始名称（括号里的中文名），而非字段 ID。
+
+# 无关输入处理
+用户的输入如果与排序无关（闲聊、其他功能请求等），返回空规则：
+{"rules":[]}
+
+# 示例
+
+用户: 按创建时间从新到旧排列
+输出: {"rules":[["创建时间","desc"]]}
+
+用户: 先按状态排序，再按优先级从高到低
+输出: {"rules":[["状态","asc"],["优先级","desc"]]}
+
+用户: 取消所有排序
+输出: {"rules":[]}
+`;
+
+const SORT_TOOL_DEFINITIONS = [
+  {
+    type: "function" as const,
+    name: "get_table_brief_info",
+    description: "获取当前数据表的字段列表、字段类型、选项配置。当需要确认字段名或字段类型时调用。",
+    parameters: {
+      type: "object",
+      properties: {
+        table_id: { type: "string", description: "数据表 ID" },
+      },
+      required: ["table_id"],
+    },
+  },
+];
+
+function buildSortUserPrompt(req: SortGenerateRequest, fields: Field[]): string {
+  const fieldSchema = fields
+    .map((f) => {
+      let desc = `- ${f.id}（${f.name}）: ${f.type}`;
+      if (f.config.options) {
+        desc += `，选项: [${f.config.options.map((o: any) => o.name).join(", ")}]`;
+      }
+      return desc;
+    })
+    .join("\n");
+
+  let sortConfig: string;
+  if (req.existingSort && req.existingSort.rules.length > 0) {
+    const prdRules = req.existingSort.rules.map((r) => {
+      const field = fields.find((f) => f.id === r.fieldId);
+      return [field?.name ?? r.fieldId, r.order];
+    });
+    sortConfig = JSON.stringify({ rules: prdRules });
+  } else {
+    sortConfig = '{"rules":[]}';
+  }
+
+  return `# 用户指令
+${req.query}
+
+# 当前排序
+${sortConfig}
+
+# 数据结构
+table_id: ${req.tableId}
+${fieldSchema}`;
+}
+
+interface PRDSortOutput {
+  rules: [string, "asc" | "desc"][];
+}
+
+function convertPRDSortToInternal(prd: PRDSortOutput, fields: Field[]): ViewSort {
+  const fieldByName = new Map(fields.map((f) => [f.name, f]));
+  const rules: ViewSortRule[] = [];
+  for (const [name, order] of prd.rules) {
+    const field = fieldByName.get(name);
+    if (!field) continue;
+    if (order !== "asc" && order !== "desc") continue;
+    rules.push({ fieldId: field.id, order });
+  }
+  return { rules };
+}
+
+function extractSortJSON(text: string): PRDSortOutput | null {
+  // Try to parse the whole text first
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && Array.isArray(parsed.rules)) return parsed;
+  } catch {}
+  // Try to extract JSON from mixed text
+  const match = text.match(/\{[\s\S]*"rules"[\s\S]*\}/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]);
+      if (parsed && Array.isArray(parsed.rules)) return parsed;
+    } catch {}
+  }
+  return null;
+}
+
+export async function generateSort(
+  req: SortGenerateRequest,
+  fields: Field[],
+  onChunk: (event: string, data: object) => void,
+  recordContext?: { userId: string | null; workspaceId?: string | null }
+): Promise<void> {
+  const apiKey = process.env.ARK_API_KEY;
+  if (!apiKey) {
+    onChunk("error", {
+      code: "NO_API_KEY",
+      message: "未配置 ARK_API_KEY，请在 backend/.env 文件中填入您的火山引擎 API Key",
+    });
+    return;
+  }
+
+  const userPrompt = buildSortUserPrompt(req, fields);
+
+  const input: unknown[] = [
+    { role: "system", content: [{ type: "input_text", text: SORT_SYSTEM_PROMPT }] },
+    { role: "user", content: [{ type: "input_text", text: userPrompt }] },
+  ];
+
+  const toolCallLog: unknown[] = [];
+  const sessionStart = Date.now();
+  const usageLog: unknown[] = [];
+
+  try {
+    onChunk("thinking", { text: "正在分析字段定义..." });
+
+    logAI({
+      type: "sort_session_start",
+      query: req.query,
+      tableId: req.tableId,
+      model: ARK_MODEL,
+      userPrompt,
+      existingSort: req.existingSort || null,
+    });
+
+    let finalText: string | null = null;
+
+    for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+      onChunk("thinking", {
+        text: round === 0
+          ? "AI 正在生成排序条件..."
+          : `正在查询数据（第 ${round} 轮工具调用）...`,
+      });
+
+      const roundStart = Date.now();
+      const result = await callResponsesAPI(
+        apiKey, input,
+        round === 0 ? SORT_TOOL_DEFINITIONS : undefined,
+      );
+      const roundElapsed = Date.now() - roundStart;
+      const usage = (result as unknown as Record<string, unknown>).usage || null;
+      usageLog.push({ round, elapsedMs: roundElapsed, usage });
+
+      if (recordContext && usage && typeof usage === "object") {
+        const u = usage as Record<string, unknown>;
+        const promptTokens = Number(u.input_tokens ?? u.prompt_tokens ?? 0);
+        const completionTokens = Number(u.output_tokens ?? u.completion_tokens ?? 0);
+        const totalTokens = Number(u.total_tokens ?? promptTokens + completionTokens);
+        if (totalTokens > 0) {
+          void recordTokenUsage(
+            { ...recordContext, model: ARK_MODEL, provider: "ark", feature: "ai-sort" },
+            { promptTokens, completionTokens, totalTokens, durationMs: roundElapsed },
+          );
+        }
+      }
+
+      const text = extractTextFromResponse(result);
+      if (text) {
+        finalText = text;
+        logAI({ type: "sort_final_output", query: req.query, round, modelOutput: text });
+        break;
+      }
+
+      const funcCalls = extractFunctionCalls(result);
+      if (funcCalls.length === 0) {
+        onChunk("error", { code: "PARSE_ERROR", message: "模型未返回有效内容，请重试" });
+        return;
+      }
+
+      for (const fc of funcCalls) {
+        let args: Record<string, unknown> = {};
+        try { args = JSON.parse(fc.arguments); } catch {}
+        const toolResult = await executeTool(fc.name, args);
+        toolCallLog.push({ tool: fc.name, args });
+
+        input.push({
+          type: "function_call",
+          call_id: fc.callId,
+          name: fc.name,
+          arguments: fc.arguments,
+        });
+        input.push({
+          type: "function_call_output",
+          call_id: fc.callId,
+          output: toolResult,
+        });
+      }
+    }
+
+    if (!finalText) {
+      onChunk("error", { code: "PARSE_ERROR", message: "AI 工具调用轮次超限，请简化查询后重试" });
+      return;
+    }
+
+    const prdOutput = extractSortJSON(finalText);
+    if (!prdOutput) {
+      logAI({ type: "sort_parse_error", fullText: finalText });
+      onChunk("error", { code: "PARSE_ERROR", message: "模型返回格式异常，请重试" });
+      return;
+    }
+
+    const sort = convertPRDSortToInternal(prdOutput, fields);
+
+    const sessionElapsed = Date.now() - sessionStart;
+    logAI({
+      type: "sort_session_end",
+      query: req.query,
+      prdOutput,
+      internalSort: sort,
+      toolCallLog,
+      usageLog,
+      totalElapsedMs: sessionElapsed,
+    });
+
+    onChunk("result", { sort });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "未知错误";
+    logAI({ type: "sort_error", message });
     onChunk("error", { code: "UNKNOWN_ERROR", message: "AI 调用失败：" + message });
   }
 }

@@ -31,7 +31,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Field, TableRecord, View, ViewFilter } from "../../types";
+import type { Field, TableRecord, View, ViewFilter, ViewSort } from "../../types";
 import {
   fetchFields,
   fetchRecords,
@@ -44,19 +44,24 @@ import {
   batchRestoreFields,
   updateRecord,
   createRecord,
+  createConversation,
   withClientId,
 } from "../../api";
 import { useToast } from "../Toast/index";
 import { useTranslation } from "../../i18n/index";
 import { filterRecords } from "../../services/filterEngine";
+import { sortRecords } from "../../services/sortEngine";
 import { useTableSync } from "../../hooks/useTableSync";
 import Toolbar from "../Toolbar";
 import TableView, { type TableViewHandle } from "../TableView/index";
 import FilterPanel from "../FilterPanel/index";
+import SortPanel from "../SortPanel/index";
 import FieldConfigPanel from "../FieldConfigPanel/index";
 import { AddFieldPopover, useFieldSuggestions } from "../FieldConfig/AddFieldPopover";
 import ConfirmDialog from "../ConfirmDialog/index";
 import { useWorkspace } from "../../contexts/workspaceContext";
+import { useCanvas } from "../../contexts/canvasContext";
+import { useAuth } from "../../auth/AuthContext";
 
 const MAX_UNDO = 20;
 const DELETE_PROTECTION_KEY = "doc_delete_protection";
@@ -85,6 +90,8 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
   const { t } = useTranslation();
   const toast = useToast();
   const ws = useWorkspace();
+  const { addBlock } = useCanvas();
+  const { workspaceId: authWorkspaceId, agentId } = useAuth();
 
   // 每个实例独立的 clientId —— 用于 SSE echo 过滤 + mutation 头。
   // 同 table 双开时:A 编辑发 X-Client-Id=instanceA,B 订阅 ?clientId=instanceB,
@@ -107,6 +114,10 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
   const [filter, setFilter] = useState<ViewFilter>({ logic: "and", conditions: [] });
   const [savedFilter, setSavedFilter] = useState<ViewFilter>({ logic: "and", conditions: [] });
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  // ── Sort state ──
+  const [sort, setSort] = useState<ViewSort>({ rules: [] });
+  const [savedSort, setSavedSort] = useState<ViewSort>({ rules: [] });
+  const [sortPanelOpen, setSortPanelOpen] = useState(false);
   const [fieldConfigOpen, setFieldConfigOpen] = useState(false);
   const [viewFieldOrder, setViewFieldOrder] = useState<string[]>([]);
   const [viewHiddenFields, setViewHiddenFields] = useState<string[]>([]);
@@ -125,6 +136,8 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
   // ── Refs ──
   const filterBtnRef = useRef<HTMLButtonElement>(null);
   const filterPanelRef = useRef<HTMLDivElement>(null);
+  const sortBtnRef = useRef<HTMLButtonElement>(null);
+  const sortPanelRef = useRef<HTMLDivElement>(null);
   const customizeFieldBtnRef = useRef<HTMLButtonElement>(null);
   const tableViewRef = useRef<TableViewHandle>(null);
 
@@ -172,6 +185,9 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
           const vf = firstView.filter ?? { logic: "and", conditions: [] };
           setSavedFilter(vf);
           setFilter(vf);
+          const vs = firstView.sort ?? { rules: [] };
+          setSavedSort(vs);
+          setSort(vs);
           initFieldOrderFromView(firstView, f);
         }
       })
@@ -242,6 +258,20 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
     return () => document.removeEventListener("mousedown", handler);
   }, [filterPanelOpen]);
 
+  // ── Sort outside-click ──
+  useEffect(() => {
+    if (!sortPanelOpen) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        sortPanelRef.current && !sortPanelRef.current.contains(target) &&
+        sortBtnRef.current && !sortBtnRef.current.contains(target)
+      ) setSortPanelOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [sortPanelOpen]);
+
   // ── persist field order / hidden to backend view ──
   const persistFieldOrder = useCallback(async (newOrder: string[]) => {
     try {
@@ -297,20 +327,48 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
 
   // ── Filter handlers ──
   const displayRecords = useMemo(() => {
-    if (filter.conditions.length === 0) return allRecords;
-    return filterRecords(allRecords, filter, fields);
-  }, [allRecords, filter, fields]);
+    let result = allRecords;
+    if (filter.conditions.length > 0) {
+      result = filterRecords(result, filter, fields);
+    }
+    if (sort.rules.length > 0) {
+      result = sortRecords(result, sort, fields);
+    }
+    return result;
+  }, [allRecords, filter, sort, fields]);
 
   const handleFilterChange = useCallback((next: ViewFilter) => setFilter(next), []);
   const handleClearFilter = useCallback(() => setFilter(savedFilter), [savedFilter]);
+  const handleClearSort = useCallback(() => setSort(savedSort), [savedSort]);
+  const handleSortChange = useCallback((next: ViewSort) => setSort(next), []);
+
+  const handleAddByChat = useCallback(async () => {
+    const mentionLink = `[@${tableName}](mention://table/${tableId})`;
+    const prefillMessage =
+      t("toolbar.addByChatPrompt.before") +
+      mentionLink +
+      t("toolbar.addByChatPrompt.after");
+    let conv: { id: string } | null = null;
+    if (authWorkspaceId) {
+      try { conv = await createConversation(authWorkspaceId, agentId || undefined); } catch {}
+    }
+    addBlock("chat", conv
+      ? { conversationId: conv.id, prefillMessage } as any
+      : { prefillMessage } as any
+    );
+  }, [tableName, tableId, authWorkspaceId, agentId, addBlock, t]);
+
   const handleSaveView = useCallback(async () => {
     try {
-      await withClientId(instanceClientId, () => updateViewFilter(activeViewId, filter));
+      await withClientId(instanceClientId, () =>
+        updateView(activeViewId, { filter, sort })
+      );
       setSavedFilter(filter);
+      setSavedSort(sort);
     } catch (err) {
       console.error("Failed to save view:", err);
     }
-  }, [activeViewId, filter, instanceClientId]);
+  }, [activeViewId, filter, sort, instanceClientId]);
 
   // ── Cell change ──
   const handleCellChange = useCallback((recordId: string, fieldId: string, value: CellValue) => {
@@ -764,7 +822,12 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
   );
 
   const isFiltered = filter.conditions.length > 0;
-  const isFilterDirty = useMemo(() => JSON.stringify(filter) !== JSON.stringify(savedFilter), [filter, savedFilter]);
+  const isFilterDirty = useMemo(() =>
+    JSON.stringify(filter) !== JSON.stringify(savedFilter),
+  [filter, savedFilter]);
+  const isSortDirty = useMemo(() =>
+    JSON.stringify(sort) !== JSON.stringify(savedSort),
+  [sort, savedSort]);
 
   return (
     <>
@@ -779,12 +842,19 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
         onClearFilter={handleClearFilter}
         onSaveView={handleSaveView}
         filterBtnRef={filterBtnRef}
+        isSortDirty={isSortDirty}
+        sortRuleCount={sort.rules.length}
+        sortPanelOpen={sortPanelOpen}
+        onSortClick={() => setSortPanelOpen((o) => !o)}
+        onClearSort={handleClearSort}
+        sortBtnRef={sortBtnRef}
         fieldConfigOpen={fieldConfigOpen}
         onCustomizeFieldClick={() => setFieldConfigOpen((o) => !o)}
         customizeFieldBtnRef={customizeFieldBtnRef}
         canUndo={canUndo}
         onUndo={performUndo}
         onAddRecord={() => { void tableViewRef.current?.addRecord("start"); }}
+        onAddByChat={handleAddByChat}
         recordCount={displayRecords.length}
       />
       <div className="app-content">
@@ -815,6 +885,17 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
             onFilterChange={handleFilterChange}
             onClose={() => setFilterPanelOpen(false)}
             anchorRef={filterBtnRef}
+          />
+        )}
+        {sortPanelOpen && (
+          <SortPanel
+            ref={sortPanelRef}
+            tableId={tableId}
+            fields={visibleOrderedFields}
+            sort={sort}
+            onSortChange={handleSortChange}
+            onClose={() => setSortPanelOpen(false)}
+            anchorRef={sortBtnRef}
           />
         )}
         {fieldConfigOpen && (

@@ -1,0 +1,248 @@
+/**
+ * SortPanel — matches FilterPanel V4 visual language.
+ * Single-section panel (no AI input section), conditions only.
+ */
+
+/* ── Outer panel (reuse filter-panel tokens) ─────────────────── */
+.sort-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 480px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow:
+    0 4px 8px -8px rgba(31, 35, 41, 0.06),
+    0 6px 12px 0 rgba(31, 35, 41, 0.04),
+    0 8px 24px 8px rgba(31, 35, 41, 0.04);
+  z-index: 120;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: sp-enter 0.15s ease-out;
+}
+
+@keyframes sp-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Conditions section ──────────────────────────────────────── */
+.sp-conditions-section {
+  padding: 16px 20px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Title row */
+.sp-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-secondary);
+  height: 24px;
+  width: 100%;
+}
+
+.sp-section-title-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Conditions list */
+.sp-conditions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  overflow-x: visible;
+  scrollbar-gutter: stable;
+  padding-right: 2px;
+  /* Extra vertical padding so drag indicator lines for first/last rows
+     are not clipped by overflow */
+  padding-top: 4px;
+  padding-bottom: 4px;
+  margin-top: -4px;
+  margin-bottom: -4px;
+}
+
+.sp-conditions::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sp-conditions::-webkit-scrollbar-thumb {
+  background: rgba(31, 35, 41, 0.2);
+  border-radius: 3px;
+}
+
+.sp-conditions::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Add sort rule button — matches .fp-add-btn */
+.sp-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 4px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-primary);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.sp-add-btn:hover {
+  background: var(--surface-3);
+}
+
+/* ── Sort Row ────────────────────────────────────────────────── */
+.sort-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  position: relative;
+}
+
+.sort-row.is-dragging {
+  opacity: 0.4;
+}
+
+/* Drag indicator: 2px line centered in the 12px gap between rows */
+.sort-row.drag-over-above::before,
+.sort-row.drag-over-below::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--primary);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.sort-row.drag-over-above::before {
+  top: -7px;
+}
+
+/* First row: indicator 5px above top edge */
+.sort-row:first-child.drag-over-above::before {
+  top: -5px;
+}
+
+.sort-row.drag-over-below::after {
+  bottom: -7px;
+}
+
+/* Last row: indicator 5px below bottom edge */
+.sort-row:last-child.drag-over-below::after {
+  bottom: -5px;
+}
+
+/* Drag handle */
+.sr-drag {
+  flex-shrink: 0;
+  width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  cursor: grab;
+}
+
+/* Field selector */
+.sr-field {
+  flex: 0 0 140px;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+.sr-field .cs-list {
+  min-width: 160px;
+  width: max-content;
+}
+
+/* Order toggle — pill-style button group, fills remaining row width */
+.sr-order-group {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 32px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sr-order-btn {
+  height: 32px;
+  padding: 0 10px;
+  flex: 1;
+  font-size: 14px;
+  line-height: 22px;
+  border: 1px solid var(--color-border-component);
+  background: var(--color-white);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--font-family);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.sr-order-btn {
+  position: relative;
+  margin-left: -1px;
+}
+
+.sr-order-btn:first-child {
+  border-radius: var(--radius-m) 0 0 var(--radius-m);
+  margin-left: 0;
+}
+
+.sr-order-btn:last-child {
+  border-radius: 0 var(--radius-m) var(--radius-m) 0;
+}
+
+.sr-order-btn.active {
+  background: var(--primary-bg);
+  color: var(--primary);
+  border-color: var(--primary);
+  font-weight: 500;
+  z-index: 1;
+}
+
+.sr-order-btn:not(.active):hover {
+  border-color: var(--text-muted);
+}
+
+/* Delete button — matches .fr-delete */
+.sr-delete {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-s);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sr-delete:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}

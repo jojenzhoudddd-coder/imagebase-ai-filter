@@ -12,7 +12,7 @@
  *   · Add record 主按钮带文字 + 下拉箭头，紧贴左侧
  */
 
-import { RefObject, useState } from "react";
+import { RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "../i18n/index";
 import InlineEdit from "./InlineEdit";
 import SidebarExpandButton from "./SidebarExpandButton";
@@ -30,18 +30,27 @@ interface Props {
   filterPanelOpen: boolean;
   onFilterClick: () => void;
   onClearFilter?: () => void;
-  /** Filter dirty 时点 "Save" 把当前 filter 写到 view */
+  /** Save 把当前 filter+sort 写到 view */
   onSaveView?: () => void;
   filterBtnRef: RefObject<HTMLButtonElement | null>;
   /** Customize field */
   fieldConfigOpen: boolean;
   onCustomizeFieldClick: () => void;
   customizeFieldBtnRef: RefObject<HTMLButtonElement | null>;
+  /** Sort 状态 */
+  isSortDirty?: boolean;
+  sortRuleCount?: number;
+  sortPanelOpen?: boolean;
+  onSortClick?: () => void;
+  onClearSort?: () => void;
+  sortBtnRef?: RefObject<HTMLButtonElement | null>;
   /** Undo */
   canUndo?: boolean;
   onUndo?: () => void;
   /** Add record */
   onAddRecord?: () => void;
+  /** Add by chat — opens a new chat block with prefilled prompt */
+  onAddByChat?: () => void;
   /** V2.9 #5: 记录计数,放在 Add Record 左侧。undefined 不渲染。 */
   recordCount?: number;
 }
@@ -60,13 +69,22 @@ export default function Toolbar({
   fieldConfigOpen,
   onCustomizeFieldClick,
   customizeFieldBtnRef,
+  isSortDirty,
+  sortRuleCount,
+  sortPanelOpen,
+  onSortClick,
+  onClearSort,
+  sortBtnRef,
   canUndo,
   onUndo,
   onAddRecord,
+  onAddByChat,
   recordCount,
 }: Props) {
   const { t } = useTranslation();
   const [editingName, setEditingName] = useState(false);
+  const [addRecordMenuOpen, setAddRecordMenuOpen] = useState(false);
+  const addRecordBtnRef = useRef<HTMLButtonElement>(null);
 
   return (
     <div className="table-topbar">
@@ -103,26 +121,61 @@ export default function Toolbar({
             </button>
           </span>
         )}
+        {isSortDirty && (
+          <span className="view-tab-apply-pill" onClick={(e) => e.stopPropagation()}>
+            <SortConfigIcon />
+            <span className="view-tab-apply-text">{t("viewTabs.sortConfigured")}</span>
+            <button
+              className="view-tab-apply-btn"
+              onClick={(e) => { e.stopPropagation(); onClearSort?.(); }}
+            >
+              {t("viewTabs.clear")}
+            </button>
+            <button
+              className="view-tab-apply-btn"
+              onClick={(e) => { e.stopPropagation(); onSaveView?.(); }}
+            >
+              {t("viewTabs.save")}
+            </button>
+          </span>
+        )}
       </div>
 
       {/* Right: 视图相关多按钮（带文字标签）+ 末尾 Undo */}
       <div className="table-topbar-actions">
-        {/* V2.9.1: record 计数紧贴 Add Record 左侧,小字灰色 */}
-        {typeof recordCount === "number" && (
-          <>
-            <span className="table-topbar-record-count" title={t("table.records")}>
-              {recordCount} {t("table.records")}
-            </span>
-            <span className="table-topbar-sep" aria-hidden="true" />
-          </>
-        )}
-        <button className="table-topbar-add-record" onClick={onAddRecord} title={t("toolbar.addRecord")}>
-          <AddIcon />
-          {t("toolbar.addRecord")}
-          <svg className="table-topbar-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M3 4l2 2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
+        {/* Record count + add record — collapsible when topbar is squeezed */}
+        <div className="table-topbar-collapsible">
+          {typeof recordCount === "number" && (
+            <>
+              <span className="table-topbar-record-count" title={t("table.records")}>
+                {recordCount} {t("table.records")}
+              </span>
+              <span className="table-topbar-sep" aria-hidden="true" />
+            </>
+          )}
+          <div className="table-topbar-add-record-wrap">
+            <button
+              ref={addRecordBtnRef}
+              className="table-topbar-add-record"
+              onClick={() => setAddRecordMenuOpen(v => !v)}
+              title={t("toolbar.addRecord")}
+            >
+              <AddIcon />
+              {t("toolbar.addRecord")}
+              <svg className="table-topbar-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M3 4l2 2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            {addRecordMenuOpen && (
+              <AddRecordMenu
+                anchorRef={addRecordBtnRef}
+                onAddRecord={() => { setAddRecordMenuOpen(false); onAddRecord?.(); }}
+                onAddByChat={() => { setAddRecordMenuOpen(false); onAddByChat?.(); }}
+                onClose={() => setAddRecordMenuOpen(false)}
+              />
+            )}
+          </div>
+        </div>
         <ToolbarBtn
           icon={<CustomizeFieldIcon />}
           label={t("toolbar.customizeField")}
@@ -137,12 +190,83 @@ export default function Toolbar({
           onClick={onFilterClick}
           btnRef={filterBtnRef}
         />
-        <ToolbarBtn icon={<SortIcon />} label={t("toolbar.sort")} />
+        <ToolbarBtn
+          icon={<SortIcon />}
+          label={(sortRuleCount ?? 0) > 0 ? t("toolbar.sortCount", { count: sortRuleCount ?? 0 }) : t("toolbar.sort")}
+          active={(sortRuleCount ?? 0) > 0 || sortPanelOpen}
+          onClick={onSortClick}
+          btnRef={sortBtnRef}
+        />
         {/* V2.9 #9: 去掉竖分隔线;V2.9 #10: 8px gap 由 .table-topbar-actions 统一控制 */}
         {/* Magic Canvas 关闭 block 按钮 —— BlockShell 不在时自动 noop */}
         <BlockCloseButton />
       </div>
     </div>
+  );
+}
+
+// ─── Add Record dropdown ──────────────────────────────────────
+
+function AddRecordMenu({
+  anchorRef,
+  onAddRecord,
+  onAddByChat,
+  onClose,
+}: {
+  anchorRef: React.RefObject<HTMLElement | null>;
+  onAddRecord: () => void;
+  onAddByChat: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+
+  useEffect(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const menuW = 180;
+    let left = r.left;
+    if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
+    setPos({ top: r.bottom + 4, left });
+  }, [anchorRef]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (menuRef.current?.contains(target)) return;
+      if (anchorRef.current?.contains(target)) return;
+      onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [anchorRef, onClose]);
+
+  return (
+    <div
+      ref={menuRef}
+      className="add-record-menu"
+      style={{ position: "fixed", top: pos.top, left: pos.left }}
+    >
+      <button className="add-record-menu-item" onClick={onAddRecord}>
+        <AddIcon />
+        <span>{t("toolbar.addARecord")}</span>
+      </button>
+      <button className="add-record-menu-item" onClick={onAddByChat}>
+        <ChatSparkleIcon />
+        <span>{t("toolbar.addByChat")}</span>
+      </button>
+    </div>
+  );
+}
+
+function ChatSparkleIcon() {
+  // Standard four-point star — matches TopBar AI agent icon
+  return (
+    <svg width="14" height="14" viewBox="1332 22 20 20" fill="none">
+      <path d="M1342 27.3108C1341.02 29.321 1339.43 30.97 1337.46 31.9998C1339.43 33.0294 1341.02 34.678 1342 36.688C1342.98 34.678 1344.57 33.0294 1346.54 31.9998C1344.57 30.97 1342.98 29.321 1342 27.3108ZM1350.62 31.9998C1350.62 32.2031 1350.47 32.3714 1350.27 32.3945L1350.18 32.4062C1349.52 32.4895 1348.89 32.6447 1348.28 32.8647L1347.55 33.1702C1345.67 34.0603 1344.14 35.6041 1343.27 37.5142L1342.96 38.2532C1342.75 38.8585 1342.6 39.4945 1342.51 40.1523L1342.49 40.2483C1342.43 40.4649 1342.23 40.6226 1342 40.6226L1341.9 40.613C1341.72 40.5762 1341.56 40.4341 1341.51 40.2483L1341.49 40.1523C1341.4 39.4945 1341.25 38.8585 1341.04 38.2532L1340.73 37.5142C1339.86 35.6041 1338.33 34.0603 1336.45 33.1702L1335.72 32.8647C1335.16 32.6631 1334.59 32.5156 1333.99 32.4282L1333.73 32.3945C1333.53 32.3714 1333.38 32.2031 1333.38 31.9998C1333.38 31.7964 1333.53 31.6281 1333.73 31.605C1334.33 31.535 1334.92 31.4037 1335.48 31.2175L1335.72 31.1348L1336.45 30.8293C1338.33 29.9392 1339.86 28.3954 1340.73 26.4854L1341.04 25.7463C1341.25 25.141 1341.4 24.505 1341.49 23.8472C1341.52 23.5828 1341.74 23.377 1342 23.377C1342.26 23.377 1342.48 23.5828 1342.51 23.8472C1342.6 24.505 1342.75 25.141 1342.96 25.7463L1343.27 26.4854C1344.14 28.3954 1345.67 29.9392 1347.55 30.8293L1348.28 31.1348L1348.52 31.2175C1349.08 31.4037 1349.67 31.535 1350.27 31.605C1350.47 31.6281 1350.62 31.7964 1350.62 31.9998Z" fill="currentColor"/>
+    </svg>
   );
 }
 
@@ -218,6 +342,17 @@ function UndoIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 26 26" fill="none">
       <path d="M10.8047 6.52876C11.065 6.78911 11.065 7.21122 10.8047 7.47157L8.60939 9.66683H14.6666C17.428 9.66683 19.6666 11.9054 19.6666 14.6668C19.6666 17.4283 17.428 19.6668 14.6666 19.6668H12.3333C11.9651 19.6668 11.6666 19.3684 11.6666 19.0002C11.6666 18.632 11.9651 18.3335 12.3333 18.3335H14.6666C16.6916 18.3335 18.3333 16.6919 18.3333 14.6668C18.3333 12.6418 16.6916 11.0002 14.6666 11.0002H8.60939L10.8047 13.1954C11.065 13.4558 11.065 13.8779 10.8047 14.1382C10.5443 14.3986 10.1222 14.3986 9.86185 14.1382L6.52851 10.8049C6.26816 10.5446 6.26816 10.1224 6.52851 9.86209L9.86185 6.52876C10.1222 6.26841 10.5443 6.26841 10.8047 6.52876Z" fill="currentColor"/>
+    </svg>
+  );
+}
+
+function SortConfigIcon() {
+  // Same paths as SortIcon, scaled to 12×12
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+      <path d="M11.3336 0.888916H10.1311C10.1311 0.888916 9.85196 0.979833 9.79938 1.11749L7.35669 7.51619C7.26783 7.74895 7.43972 7.99855 7.68886 7.99855H8.34057C8.48912 7.99855 8.62201 7.90621 8.67381 7.76699L9.11661 6.57693H12.3443L12.7863 7.76795C12.838 7.90733 12.9709 7.99982 13.1196 7.99982H13.7771C14.0263 7.99982 14.1982 7.75019 14.1093 7.51742L11.6654 1.11749C11.6128 0.979833 11.4808 0.888916 11.3336 0.888916ZM11.8169 5.15495H9.64086L10.7106 2.27772H10.7441L11.8169 5.15495Z" fill="currentColor"/>
+      <path d="M7.69961 9.42225C7.69961 9.22588 7.8588 9.06669 8.05517 9.06669H13.7369C13.9332 9.06669 14.0924 9.22588 14.0924 9.42225V9.89143C14.0924 9.9941 14.0481 10.0917 13.9707 10.1593L9.92512 13.6914H13.7369C13.9332 13.6914 14.0924 13.8506 14.0924 14.047V14.7556C14.0924 14.952 13.9332 15.1111 13.7369 15.1111H8.05517C7.8588 15.1111 7.69961 14.952 7.69961 14.7556V14.1066C7.69961 14.0039 7.74404 13.9062 7.82144 13.8386L11.6635 10.4871H8.05517C7.8588 10.4871 7.69961 10.3279 7.69961 10.1316V9.42225Z" fill="currentColor"/>
+      <path d="M1.75113 11.1112H3.55441V2.13341C3.55441 1.93705 3.7136 1.77786 3.90997 1.77786H4.53219C4.72856 1.77786 4.88775 1.93705 4.88775 2.13341V14.9067C4.88775 15.251 4.44718 15.3943 4.24464 15.1158L1.5786 11.45C1.47605 11.309 1.57677 11.1112 1.75113 11.1112Z" fill="currentColor"/>
     </svg>
   );
 }

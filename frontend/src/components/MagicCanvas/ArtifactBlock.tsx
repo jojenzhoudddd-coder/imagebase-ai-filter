@@ -19,6 +19,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "../../contexts/workspaceContext";
 import { useCanvas } from "../../contexts/canvasContext";
+import { useAuth } from "../../auth/AuthContext";
+import { createConversation } from "../../api";
 import { SidebarToggleProvider } from "../../contexts/sidebarToggleContext";
 import Sidebar from "../Sidebar";
 import IdeaEditor from "../IdeaEditor/index";
@@ -48,7 +50,8 @@ function toArtifactKind(t: TreeItemType | undefined): ArtifactKind | null {
 
 export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlobalTable }: Props) {
   const ws = useWorkspace();
-  const { state, patchBlockState, hydrated } = useCanvas();
+  const { state, patchBlockState, hydrated, addBlock } = useCanvas();
+  const { workspaceId, agentId } = useAuth();
   const { t } = useTranslation();
 
   const blockState = (state.blockStates[blockId] ?? {}) as ArtifactBlockState;
@@ -73,6 +76,34 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
     }
   }, [blockId, blockState.active, globalActiveTableId, patchBlockState]);
 
+  // React to workspace-level deletions: if this block's active artifact is
+  // no longer in sidebarItems, navigate to the nearest remaining artifact.
+  useEffect(() => {
+    if (!active) return;
+    const stillExists = ws.sidebarItems.some(s => s.id === active.id);
+    if (stillExists) return;
+    // Active was deleted — pick nearest remaining non-folder item
+    const remaining = ws.sidebarItems.filter(s => s.type !== "folder");
+    if (remaining.length === 0) {
+      patchBlockState(blockId, { active: null as any });
+      return;
+    }
+    // Use lastDeleted hint if available, otherwise pick first remaining
+    const del = ws.lastDeleted;
+    if (del && del.id === active.id && del.nextId && del.nextType) {
+      const kind = toArtifactKind(del.nextType);
+      if (kind) {
+        patchBlockState(blockId, { active: { type: kind, id: del.nextId } });
+        return;
+      }
+    }
+    const pick = remaining[0];
+    const kind = toArtifactKind(pick.type as TreeItemType);
+    if (kind) {
+      patchBlockState(blockId, { active: { type: kind, id: pick.id } });
+    }
+  }, [ws.sidebarItems, active, blockId, patchBlockState, ws.lastDeleted]);
+
   // hydration 未完成前忽略 localStorage 的 stale 偏好,默认展开 sidebar,
   // 避免 server preferences 尚未加载时 sidebar 闪现收起状态。
   const userCollapsed = hydrated ? (blockState.sidebarCollapsedPreference ?? false) : false;
@@ -95,6 +126,49 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
     patchBlockState(blockId, { sidebarCollapsedPreference: true });
   };
 
+  // Wrap create callbacks to auto-activate the new item in this block
+  const handleCreateBlank = useCallback(async (): Promise<string> => {
+    const id = await ws.onCreateBlank();
+    patchBlockState(blockId, { active: { type: "table", id } });
+    onPickGlobalTable(id);
+    return id;
+  }, [ws.onCreateBlank, blockId, patchBlockState, onPickGlobalTable]);
+
+  const handleCreateDesign = useCallback(async (name: string, figmaUrl?: string): Promise<string> => {
+    if (!ws.onCreateDesign) throw new Error("onCreateDesign not available");
+    const id = await ws.onCreateDesign(name, figmaUrl);
+    patchBlockState(blockId, { active: { type: "design", id } });
+    return id;
+  }, [ws.onCreateDesign, blockId, patchBlockState]);
+
+  const handleCreateIdea = useCallback(async (): Promise<string> => {
+    if (!ws.onCreateIdea) throw new Error("onCreateIdea not available");
+    const id = await ws.onCreateIdea();
+    patchBlockState(blockId, { active: { type: "idea", id } });
+    return id;
+  }, [ws.onCreateIdea, blockId, patchBlockState]);
+
+  const handleCreateDemo = useCallback(async (): Promise<string> => {
+    if (!ws.onCreateDemo) throw new Error("onCreateDemo not available");
+    const id = await ws.onCreateDemo();
+    patchBlockState(blockId, { active: { type: "demo", id } });
+    return id;
+  }, [ws.onCreateDemo, blockId, patchBlockState]);
+
+  const handleCreateByAI = useCallback(async () => {
+    const prefillMessage = t("createMenu.aiCreatePrompt");
+    let conv: { id: string } | null = null;
+    if (workspaceId) {
+      try {
+        conv = await createConversation(workspaceId, agentId || undefined);
+      } catch { /* ignore */ }
+    }
+    addBlock("chat", conv
+      ? { conversationId: conv.id, prefillMessage } as any
+      : { prefillMessage } as any
+    );
+  }, [workspaceId, agentId, addBlock, t]);
+
   const handleSelectItem = useCallback(
     (id: string, type?: TreeItemType) => {
       const kind = toArtifactKind(type);
@@ -113,11 +187,7 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
   // 渲染 artifact 内容 —— 按 active.type 选择独立 mount or fallback 到 global render()
   const artifactContent = useMemo(() => {
     if (!active) {
-      return (
-        <div className="mc-artifact-empty">
-          <p>请在左侧 sidebar 选择一个 artifact</p>
-        </div>
-      );
+      return <div className="mc-artifact-empty" />;
     }
     if (active.type === "idea") {
       const idea = ws.ideas.find((x) => x.id === active.id);
@@ -201,13 +271,15 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
             tableCount={ws.tableCount}
             onCreateWithAI={ws.onCreateWithAI}
             onResetToDefault={ws.onResetToDefault}
-            onCreateBlank={ws.onCreateBlank}
+            onCreateBlank={handleCreateBlank}
             folders={ws.folders.map((f) => ({ id: f.id, name: f.name }))}
             onCreateFolder={ws.onCreateFolder}
-            onCreateDesign={ws.onCreateDesign}
-            onCreateIdea={ws.onCreateIdea}
+            onCreateDesign={handleCreateDesign}
+            onCreateIdea={handleCreateIdea}
+            onCreateDemo={handleCreateDemo}
             onDeleteItem={ws.onDeleteItem}
             onMoveItem={ws.onMoveItem}
+            onCreateByAI={handleCreateByAI}
             onCollapse={handleCollapse}
             width={blockState.sidebarWidth ?? 200}
             onWidthChange={(w) => patchBlockState(blockId, { sidebarWidth: w })}
