@@ -328,21 +328,8 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel(
 
       {/* ── Section 2: Filter conditions ── */}
       <div className="fp-conditions-section">
-        <div className="fp-section-title">
-          <span className="fp-section-title-text">
-            <span>{t("filter.title")}</span>
-            <button
-              type="button"
-              className="fp-help-btn"
-              title={t("filter.helpHint")}
-              aria-label={t("filter.helpHint")}
-            >
-              <HelpIcon />
-            </button>
-          </span>
-          <span className="fp-section-title-spacer" />
-          {/* V4.1 match logic 与 title 同行,右对齐 */}
-          {filter.conditions.length >= 2 && (
+        {filter.conditions.length >= 2 && (
+          <div className="fp-section-title">
             <div className="fp-logic-row">
               <span className="fp-logic-label">{t("filter.match")}</span>
               <CustomSelect
@@ -356,8 +343,8 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel(
               />
               <span className="fp-logic-label">{t("filter.conditions")}</span>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {filter.conditions.length > 0 && (
           <div className="fp-conditions" ref={conditionsRef} style={condMaxH ? { maxHeight: condMaxH } : undefined}>

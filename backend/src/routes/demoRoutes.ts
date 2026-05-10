@@ -147,22 +147,43 @@ router.get("/:demoId", asyncHandler(async (req, res) => {
 
 // ─── Create ───────────────────────────────────────────────────────────────
 
+async function generateUniqueDemoName(
+  workspaceId: string,
+  baseName: string,
+): Promise<string> {
+  const existing = await prisma.demo.findMany({
+    where: { workspaceId },
+    select: { name: true },
+  });
+  const names = new Set(existing.map(d => d.name));
+  if (!names.has(baseName)) return baseName;
+  let i = 1;
+  while (names.has(`${baseName} ${i}`)) i++;
+  return `${baseName} ${i}`;
+}
+
 router.post("/", asyncHandler(async (req, res) => {
   const input = createDemoSchema.parse(req.body);
   const id = await generateId("demo", async (cand) =>
     (await prisma.demo.findUnique({ where: { id: cand }, select: { id: true } })) !== null
   );
-  // Compute next order across sibling artifacts (same parent)
-  const maxOrder = await prisma.demo.aggregate({
-    where: { workspaceId: input.workspaceId, parentId: input.parentId ?? null },
-    _max: { order: true },
-  });
-  const order = (maxOrder._max.order ?? -1) + 1;
+  // Compute next order across ALL sibling artifact types (insert at end)
+  const sibFilter = { workspaceId: input.workspaceId, parentId: input.parentId ?? null };
+  const [folderSibs, tableSibs, designSibs, ideaSibs, demoSibs] = await Promise.all([
+    prisma.folder.findMany({ where: sibFilter, select: { order: true } }),
+    prisma.table.findMany({ where: sibFilter, select: { order: true } }),
+    prisma.design.findMany({ where: sibFilter, select: { order: true } }),
+    prisma.idea.findMany({ where: sibFilter, select: { order: true } }),
+    prisma.demo.findMany({ where: sibFilter, select: { order: true } }),
+  ]);
+  const order = [...folderSibs, ...tableSibs, ...designSibs, ...ideaSibs, ...demoSibs]
+    .reduce((max, x) => Math.max(max, x.order), -1) + 1;
+  const uniqueName = await generateUniqueDemoName(input.workspaceId, input.name);
   const demo = await prisma.demo.create({
     data: {
       id,
       workspaceId: input.workspaceId,
-      name: input.name,
+      name: uniqueName,
       template: input.template,
       parentId: input.parentId ?? null,
       order,

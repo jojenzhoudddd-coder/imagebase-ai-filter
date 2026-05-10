@@ -1,4 +1,4 @@
-import { Field, FieldConfig, FieldType, TableRecord, View, ViewFilter } from "./types";
+import { Field, FieldConfig, FieldType, TableRecord, View, ViewFilter, ViewSort } from "./types";
 import type { IdeaBrief, IdeaDetail, MentionHit } from "./types";
 
 const BASE = "/api";
@@ -285,7 +285,7 @@ export async function renameTable(
 
 export async function updateView(
   viewId: string,
-  data: { fieldOrder?: string[]; hiddenFields?: string[]; name?: string }
+  data: { fieldOrder?: string[]; hiddenFields?: string[]; name?: string; filter?: any; sort?: any }
 ): Promise<View> {
   const res = await mutationFetch(`${BASE}/tables/views/${viewId}`, {
     method: "PUT",
@@ -733,6 +733,70 @@ export function generateFilter(opts: AIGenerateOptions): () => void {
             const data = JSON.parse(line.slice(6));
             if (currentEvent === "thinking") opts.onThinking?.(data.text);
             if (currentEvent === "result") opts.onResult?.(data.filter);
+            if (currentEvent === "error") opts.onError?.(data.code, data.message);
+            if (currentEvent === "done") opts.onDone?.();
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        opts.onError?.("NETWORK_ERROR", "网络请求失败，请检查后端服务");
+      }
+    }
+    opts.onDone?.();
+  })();
+
+  return () => controller.abort();
+}
+
+// ─── AI Sort Generation (mirrors generateFilter) ───
+
+export interface AISortGenerateOptions {
+  tableId: string;
+  query: string;
+  existingSort?: ViewSort;
+  onThinking?: (text: string) => void;
+  onResult?: (sort: ViewSort) => void;
+  onError?: (code: string, message: string) => void;
+  onDone?: () => void;
+}
+
+export function generateSort(opts: AISortGenerateOptions): () => void {
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const res = await fetch(`${BASE}/ai/sort/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tableId: opts.tableId,
+          query: opts.query,
+          existingSort: opts.existingSort,
+        }),
+        signal: controller.signal,
+      });
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        let currentEvent = "";
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
+            const data = JSON.parse(line.slice(6));
+            if (currentEvent === "thinking") opts.onThinking?.(data.text);
+            if (currentEvent === "result") opts.onResult?.(data.sort);
             if (currentEvent === "error") opts.onError?.(data.code, data.message);
             if (currentEvent === "done") opts.onDone?.();
           }

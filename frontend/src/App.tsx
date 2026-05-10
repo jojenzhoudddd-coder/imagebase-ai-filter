@@ -15,7 +15,7 @@ import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import { AddFieldPopover, useFieldSuggestions } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, createRecord, renameTable, fetchWorkspace, renameWorkspace, fetchWorkspaceTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, reorderIdeas, reorderDemos, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchWorkspaceTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign, createIdea as apiCreateIdea, renameIdea as apiRenameIdea, deleteIdea as apiDeleteIdea, renameDemo as apiRenameDemo, deleteDemo as apiDeleteDemo, fetchIncomingMentions, listDemos } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, createRecord, renameTable, fetchWorkspace, renameWorkspace, fetchWorkspaceTables, createTable as apiCreateTable, reorderTables, reorderFolders, reorderDesigns, reorderIdeas, reorderDemos, deleteTable as apiDeleteTable, resetTable, CLIENT_ID, fetchWorkspaceTree, createFolder as apiCreateFolder, renameFolder as apiRenameFolder, deleteFolder as apiDeleteFolder, moveItem as apiMoveItem, createDesign as apiCreateDesign, renameDesign as apiRenameDesign, deleteDesign as apiDeleteDesign, createIdea as apiCreateIdea, renameIdea as apiRenameIdea, deleteIdea as apiDeleteIdea, renameDemo as apiRenameDemo, deleteDemo as apiDeleteDemo, fetchIncomingMentions, listDemos, createDemo as apiCreateDemo } from "./api";
 import type { GeneratedField, FolderBrief, DesignBrief, IncomingMentionRef } from "./api";
 import type { SidebarItem } from "./components/Sidebar";
 import type { TreeItemType, IdeaBrief, FocusEntity } from "./types";
@@ -56,6 +56,7 @@ export default function App() {
   const [activeTableId, setActiveTableId] = useState<string>("tbl_requirements");
   const activeTableIdRef = useRef(activeTableId);
   activeTableIdRef.current = activeTableId;
+  const [lastDeleted, setLastDeleted] = useState<{ id: string; nextId: string | null; nextType: TreeItemType | null } | null>(null);
   const [documentTables, setDocumentTables] = useState<Array<{ id: string; name: string; order: number; parentId: string | null }>>([]);
   const [documentFolders, setDocumentFolders] = useState<FolderBrief[]>([]);
   const [documentDesigns, setDocumentDesigns] = useState<DesignBrief[]>([]);
@@ -1318,12 +1319,13 @@ export default function App() {
   }, [locale, initFieldOrderFromView]);
 
   // ── Create blank table (1 Text column + 5 empty rows) ──
-  const handleCreateBlankTable = useCallback(async (): Promise<void> => {
+  const handleCreateBlankTable = useCallback(async (): Promise<string> => {
     const baseName = locale === "zh" ? "数据表" : "Table";
     const result = await apiCreateTable(baseName, WORKSPACE_ID, locale as "en" | "zh");
     setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order, parentId: null }]);
     await switchTable(result.id);
     setTableName(result.name);
+    return result.id;
   }, [locale, switchTable]);
 
   // ── Reorder items (tables, folders, designs) ──
@@ -1413,16 +1415,44 @@ export default function App() {
   // 没有下一个就跳上一个;都没有就清空 active state。
   // 顺序按 sidebarItems 渲染顺序一致 (folder 不算 artifact 跳过)。
   const pickNextActiveAfterDelete = useCallback((deletedId: string): { id: string; type: TreeItemType } | null => {
-    const flat = sidebarItems.filter(s => s.type !== "folder");
-    const idx = flat.findIndex(s => s.id === deletedId);
+    // Build the same tree structure as Sidebar/TreeView to get visual DFS order
+    const nodeMap = new Map(sidebarItems.map(s => [s.id, s]));
+    const roots: SidebarItem[] = [];
+    const childrenOf = new Map<string | null, SidebarItem[]>();
+    for (const s of sidebarItems) {
+      const parentKey = s.parentId ?? null;
+      if (!childrenOf.has(parentKey)) childrenOf.set(parentKey, []);
+      childrenOf.get(parentKey)!.push(s);
+    }
+    // Sort each group by order
+    for (const arr of childrenOf.values()) arr.sort((a, b) => a.order - b.order);
+    // DFS flatten
+    const flat: SidebarItem[] = [];
+    const dfs = (parentId: string | null) => {
+      const children = childrenOf.get(parentId) || [];
+      for (const c of children) {
+        flat.push(c);
+        dfs(c.id); // recurse into folder children
+      }
+    };
+    dfs(null);
+    // Filter to only artifacts (no folders)
+    const artifacts = flat.filter(s => s.type !== "folder");
+    const idx = artifacts.findIndex(s => s.id === deletedId);
     if (idx < 0) return null;
-    const next = flat[idx + 1] ?? flat[idx - 1];
+    // Prefer previous (upper) artifact, then next (lower), then empty
+    const next = artifacts[idx - 1] ?? artifacts[idx + 1];
     if (!next) return null;
     return { id: next.id, type: next.type as TreeItemType };
   }, [sidebarItems]);
 
   const activateAfterDelete = useCallback((deletedId: string) => {
     const next = pickNextActiveAfterDelete(deletedId);
+    setLastDeleted({
+      id: deletedId,
+      nextId: next?.id ?? null,
+      nextType: next?.type ?? null,
+    });
     if (!next) {
       setActiveTableId("");
       return;
@@ -1436,14 +1466,19 @@ export default function App() {
   }, [pickNextActiveAfterDelete, switchTable]);
 
   const handleDeleteTable = useCallback(async (tableId: string) => {
-    // Don't allow deleting the last table
-    if (documentTables.length <= 1) return;
-    // V2.9.3: 跨 artifact 类型挑选下一个 active —— 不再固定回到 table。
-    // 在 setDocumentTables 之前先 snapshot pickNext (用最新的 sidebarItems);
-    // setDocumentTables 触发重渲染后,activateAfterDelete 自然走新列表。
+    // Compute next target BEFORE removing from state (sidebarItems still has the item)
+    const next = pickNextActiveAfterDelete(tableId);
+    setLastDeleted({ id: tableId, nextId: next?.id ?? null, nextType: next?.type ?? null });
     setDocumentTables(prev => prev.filter(t => t.id !== tableId));
     if (tableId === activeTableIdRef.current) {
-      activateAfterDelete(tableId);
+      if (!next) {
+        setActiveTableId("");
+      } else {
+        setActiveTableId(next.id);
+        setActiveItemType(next.type);
+        setFocusEntity(null);
+        if (next.type === "table") void switchTable(next.id);
+      }
     }
     try {
       await apiDeleteTable(tableId);
@@ -1451,7 +1486,7 @@ export default function App() {
       toast.error(t("toast.deleteFailed"));
       fetchWorkspaceTree(WORKSPACE_ID).then(tree => setDocumentTables(tree.tables.map(t => ({ ...t, parentId: t.parentId ?? null }))));
     }
-  }, [documentTables, activateAfterDelete, toast, t]);
+  }, [pickNextActiveAfterDelete, switchTable, toast, t]);
 
   // ── Create folder ──
   const handleCreateFolder = useCallback(async () => {
@@ -1501,6 +1536,25 @@ export default function App() {
     }
   }, [toast, t]);
 
+  // ── Create demo ──
+  const handleCreateDemo = useCallback(async (): Promise<string> => {
+    try {
+      const baseName = "Demo";
+      const demo = await apiCreateDemo(WORKSPACE_ID, baseName);
+      setDocumentDemos(prev => [...prev, {
+        id: demo.id, name: demo.name, order: demo.order ?? 0,
+        parentId: demo.parentId ?? null, publishSlug: demo.publishSlug ?? null,
+      }]);
+      setActiveTableId(demo.id);
+      setActiveItemType("demo");
+      setFocusEntity(null);
+      return demo.id;
+    } catch (err) {
+      toast.error((err as Error).message || t("toast.createTableFailed"));
+      throw err;
+    }
+  }, [toast, t]);
+
   // ── Delete item (folder, design, or idea) ──
   const handleDeleteItem = useCallback(async (id: string, type: TreeItemType) => {
     try {
@@ -1512,10 +1566,14 @@ export default function App() {
         setDocumentDesigns(prev => prev.map(d => d.parentId === id ? { ...d, parentId: null } : d));
         setDocumentIdeas(prev => prev.map(i => i.parentId === id ? { ...i, parentId: null } : i));
       } else if (type === "design") {
+        const next = pickNextActiveAfterDelete(id);
+        setLastDeleted({ id, nextId: next?.id ?? null, nextType: next?.type ?? null });
         await apiDeleteDesign(id);
         setDocumentDesigns(prev => prev.filter(d => d.id !== id));
         if (id === activeTableId) activateAfterDelete(id);
       } else if (type === "demo") {
+        const next = pickNextActiveAfterDelete(id);
+        setLastDeleted({ id, nextId: next?.id ?? null, nextType: next?.type ?? null });
         await apiDeleteDemo(id);
         setDocumentDemos(prev => prev.filter(d => d.id !== id));
         if (id === activeTableId) activateAfterDelete(id);
@@ -1551,6 +1609,8 @@ export default function App() {
     if (!id) return;
     setIdeaDeleteConfirm({ open: false, ideaId: null, refs: [], total: 0, loading: false });
     try {
+      const next = pickNextActiveAfterDelete(id);
+      setLastDeleted({ id, nextId: next?.id ?? null, nextType: next?.type ?? null });
       await apiDeleteIdea(id);
       setDocumentIdeas(prev => prev.filter(i => i.id !== id));
       if (id === activeTableId) activateAfterDelete(id);
@@ -2051,8 +2111,10 @@ export default function App() {
         onCreateFolder: handleCreateFolder,
         onCreateDesign: handleCreateDesign,
         onCreateIdea: handleCreateIdea,
+        onCreateDemo: handleCreateDemo,
         onMoveItem: handleMoveItem,
         onReorderItems: handleReorderItems,
+        lastDeleted,
       }}
     >
     <ArtifactViewProvider value={{ render: renderArtifactView }}>

@@ -109,15 +109,16 @@ router.post("/", asyncHandler(async (req: Request, res: Response) => {
     ? name.trim().slice(0, 100)
     : "Idea"; // default label; frontend passes localized default
 
-  // Compute next order across all sibling artifact types at this level.
+  // Compute next order (insert at end)
   const parentFilter = { workspaceId: wsId, parentId: parentId || null };
-  const [folderSibs, tableSibs, designSibs, ideaSibs] = await Promise.all([
+  const [folderSibs, tableSibs, designSibs, ideaSibs, demoSibs] = await Promise.all([
     prisma.folder.findMany({ where: parentFilter, select: { order: true } }),
     prisma.table.findMany({ where: parentFilter, select: { order: true } }),
     prisma.design.findMany({ where: parentFilter, select: { order: true } }),
     prisma.idea.findMany({ where: parentFilter, select: { order: true } }),
+    prisma.demo.findMany({ where: parentFilter, select: { order: true } }),
   ]);
-  const maxOrder = [...folderSibs, ...tableSibs, ...designSibs, ...ideaSibs]
+  const maxOrder = [...folderSibs, ...tableSibs, ...designSibs, ...ideaSibs, ...demoSibs]
     .reduce((max, x) => Math.max(max, x.order), -1);
 
   const uniqueName = await generateUniqueIdeaName(wsId, baseName);

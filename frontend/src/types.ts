@@ -166,11 +166,21 @@ export interface TableRecord {
   updatedAt: number;
 }
 
+export interface ViewSortRule {
+  fieldId: string;
+  order: "asc" | "desc";
+}
+
+export interface ViewSort {
+  rules: ViewSortRule[];
+}
+
 export interface View {
   id: string;
   tableId: string;
   name: string;
   filter: ViewFilter;
+  sort?: ViewSort;
   fieldOrder?: string[];
   hiddenFields?: string[];
 }

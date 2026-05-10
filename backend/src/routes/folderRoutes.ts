@@ -46,18 +46,16 @@ router.post("/", async (req: Request, res: Response) => {
   }
   const docId = workspaceId || DEFAULT_WORKSPACE_ID;
 
-  // New folder should appear at the bottom of the sidebar at its level, so
-  // compute the max order across all sibling items (folders + tables +
-  // designs) rather than only folder siblings. This matches user expectation
-  // that "new folder appears at the bottom just like new tables/designs".
+  // Compute next order (insert at end)
   const parentFilter = { workspaceId: docId, parentId: parentId || null };
-  const [folderSibs, tableSibs, designSibs, ideaSibs] = await Promise.all([
+  const [folderSibs, tableSibs, designSibs, ideaSibs, demoSibs] = await Promise.all([
     prisma.folder.findMany({ where: parentFilter, select: { order: true } }),
     prisma.table.findMany({ where: parentFilter, select: { order: true } }),
     prisma.design.findMany({ where: parentFilter, select: { order: true } }),
     prisma.idea.findMany({ where: parentFilter, select: { order: true } }),
+    prisma.demo.findMany({ where: parentFilter, select: { order: true } }),
   ]);
-  const maxOrder = [...folderSibs, ...tableSibs, ...designSibs, ...ideaSibs]
+  const maxOrder = [...folderSibs, ...tableSibs, ...designSibs, ...ideaSibs, ...demoSibs]
     .reduce((max, x) => Math.max(max, x.order), -1);
 
   const trimmed = name.trim().slice(0, 100);

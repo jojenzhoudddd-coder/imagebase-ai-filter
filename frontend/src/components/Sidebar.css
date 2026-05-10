@@ -49,10 +49,10 @@
 .sidebar-header-new-btn {
   /* same 26×26, transparent, hover surface-3, all inherited */
 }
-.sidebar-header-with-actions .sidebar-search-trigger {
+.sidebar-header-with-actions .sidebar-search-trigger,
+.sidebar-header-with-actions .sidebar-search-active {
   flex: 1;
-  /* 不要覆盖 .sidebar-search-trigger 自带的 margin-bottom: 8px —— 它就是
-     "search 下面的 4px gap"那段空间（与首个 tree-item margin-bottom:4 配合）。 */
+  min-width: 0;
 }
 /* Sidebar 收起按钮 —— 完全对齐 .topbar-icon-btn 的视觉规格：26×26 hover 热区,
    color #646A73,圆角 var(--radius-m),hover 背景 var(--surface-3)。 */
@@ -98,6 +98,68 @@
 .sidebar-search-icon {
   color: var(--color-text-muted);
   flex-shrink: 0;
+}
+
+/* Active search input — same size/style as .sidebar-search-trigger */
+.sidebar-search-active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--radius-m);
+  cursor: text;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-hover);
+  margin-bottom: 8px;
+}
+.sidebar-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  min-width: 0;
+}
+.sidebar-search-input::placeholder {
+  color: var(--color-text-muted);
+}
+.sidebar-search-clear {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+.sidebar-search-clear:hover {
+  color: var(--color-text-primary);
+  background: var(--surface-3);
+}
+.sidebar-search-empty {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* Idea (doc) icon in create menu — brighten for dark mode readability.
+   DropdownMenu is portaled to body, so use :root[data-theme] selector. */
+:root[data-theme="dark"] .sidebar-new-menu .dropdown-menu-item-icon svg path[fill="#35BD4B"] {
+  fill: #419E34;
+}
+
+/* Demo icon in create menu — soften orange for dark mode */
+:root[data-theme="dark"] .sidebar-new-menu .dropdown-menu-item-icon svg path[fill="#FF811A"] {
+  fill: #E0751A;
 }
 
 .sidebar-header-actions {

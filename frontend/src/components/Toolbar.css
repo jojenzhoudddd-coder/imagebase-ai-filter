@@ -30,7 +30,8 @@
   align-items: center;
   gap: 8px; /* sidebar icon ↔ artifact name 距离 */
   min-width: 0;
-  flex: 1;
+  flex-shrink: 0;
+  z-index: 1;
 }
 
 .table-topbar-name {
@@ -73,7 +74,18 @@
   align-items: center;
   /* V2.9 #10: 所有按钮 + icon 间距 8px,统一规范 */
   gap: 8px;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+/* Record count + add record: collapses when topbar left side needs space */
+.table-topbar-collapsible {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* V2.9 #5: record 计数 — 紧贴 Add Record 左侧 */
@@ -113,7 +125,45 @@
   transition: background 0.12s;
 }
 .table-topbar-add-record:hover { background: var(--primary-bg); }
+.table-topbar-add-record-wrap { position: relative; }
 .table-topbar-chevron { margin-left: 2px; opacity: 0.6; }
+
+/* Add Record dropdown menu */
+.add-record-menu {
+  z-index: 120;
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-m);
+  box-shadow:
+    0 4px 8px -8px rgba(31, 35, 41, 0.06),
+    0 6px 12px 0 rgba(31, 35, 41, 0.04),
+    0 8px 24px 8px rgba(31, 35, 41, 0.04);
+  padding: 4px;
+  min-width: 180px;
+  animation: fp-enter 0.15s ease-out;
+}
+
+.add-record-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-s);
+  font-size: 14px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.add-record-menu-item:hover {
+  background: var(--color-bg-hover);
+}
 
 /* V2.9.3 topbar 竖分隔条规则:
    - 1px 宽 × 16px 高,LM/DM 都用 var(--border-default)

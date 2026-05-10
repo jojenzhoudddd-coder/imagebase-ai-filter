@@ -57,11 +57,17 @@ router.post("/", async (req: Request, res: Response) => {
     ? name.trim().slice(0, 100)
     : (figmaUrl ? extractNameFromUrl(figmaUrl) : "Untitled Canvas");
 
-  // Compute next order
-  const siblings = await prisma.design.findMany({
-    where: { workspaceId: docId, parentId: parentId || null },
-  });
-  const maxOrder = siblings.reduce((max, d) => Math.max(max, d.order), -1);
+  // Compute next order (insert at end)
+  const siblingFilter = { workspaceId: docId, parentId: parentId || null };
+  const [folderSibs, tableSibs, designSibs, ideaSibs, demoSibs] = await Promise.all([
+    prisma.folder.findMany({ where: siblingFilter, select: { order: true } }),
+    prisma.table.findMany({ where: siblingFilter, select: { order: true } }),
+    prisma.design.findMany({ where: siblingFilter, select: { order: true } }),
+    prisma.idea.findMany({ where: siblingFilter, select: { order: true } }),
+    prisma.demo.findMany({ where: siblingFilter, select: { order: true } }),
+  ]);
+  const maxOrder = [...folderSibs, ...tableSibs, ...designSibs, ...ideaSibs, ...demoSibs]
+    .reduce((max, x) => Math.max(max, x.order), -1);
 
   const uniqueName = await generateUniqueDesignName(docId, finalName);
 

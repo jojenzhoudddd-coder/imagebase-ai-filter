@@ -7,6 +7,7 @@ export const en = {
   "sidebar.new": "New",
   "sidebar.design": "Design",
   "sidebar.album": "Album",
+  "sidebar.noResults": "No results",
 
   // TopBar
   "topbar.menu": "Menu",
@@ -113,25 +114,45 @@ export const en = {
 
   // Toolbar
   "toolbar.addRecord": "Add Record",
+  "toolbar.addARecord": "Add a record",
+  "toolbar.addByChat": "Add by chat",
+  "toolbar.addByChatPrompt.before": "I want to add records to ",
+  "toolbar.addByChatPrompt.after": ". You can ask me about the specific record requirements, or I'll tell you directly — the records should meet the following criteria: ",
   "toolbar.customizeField": "Fields",
   "toolbar.viewSettings": "View Settings",
   "toolbar.filter": "Filter",
   "toolbar.filterCount": "{{count}} Filter",
   "toolbar.groupBy": "Group By",
   "toolbar.sort": "Sort",
+  "toolbar.sortCount": "{{count}} Sort",
+  "sort.title": "Sort conditions",
+  "sort.addRule": "Add condition",
+  "sort.selectField": "Select field",
+  "sort.asc.text": "A → Z",
+  "sort.desc.text": "Z → A",
+  "sort.asc.number": "0 → 9",
+  "sort.desc.number": "9 → 0",
+  "sort.asc.select": "Option order",
+  "sort.desc.select": "Option reverse",
+  "sort.aiPlaceholder": "Tell AI how you want to sort...",
+  "sort.generatingBy": "Generating sort by ",
+  "sort.conditionsGenerated": "Sort conditions generated",
+  "sort.conditionsGeneratedEmpty": "No matching sort conditions generated",
+  "sort.failedToGenerate": "Failed to generate sort conditions",
   "toolbar.rowHeight": "Row Height",
   "toolbar.conditionalColoring": "Conditional Coloring",
   "toolbar.undo": "Undo",
 
   // ViewTabs
   "viewTabs.filterConfigured": "Filter configured",
+  "viewTabs.sortConfigured": "Sort configured",
   "viewTabs.clear": "Clear",
   "viewTabs.save": "Save",
   "viewTabs.addView": "Add View",
   "viewTabs.more": "More",
 
   // FilterPanel
-  "filter.title": "Set Filter Conditions",
+  "filter.title": "Filter conditions",
   "filter.helpHint": "Describe what you want in natural language — AI will generate filter conditions. You can also add conditions manually.",
   "filter.aiPlaceholder": "Tell AI what you want to see",
   "filter.generatingBy": "Generating filter by",
@@ -386,6 +407,8 @@ export const en = {
   // Delete table
   "app.deleteTable": "Delete Table",
   "app.deleteTableMsg": "Are you sure you want to delete table \"{{name}}\"? This cannot be undone.",
+  "app.deleteTaste": "Delete Taste",
+  "app.deleteTasteMsg": "Are you sure you want to delete taste \"{{name}}\"? This cannot be undone.",
 
   // Toast (rename)
   "toast.renameFailed": "Rename failed, changes reverted",
@@ -404,9 +427,11 @@ export const en = {
   "createMenu.folder": "Folder",
   "createMenu.design": "Taste",
   "createMenu.album": "Album",
+  "createMenu.demo": "Demo",
   "createMenu.import": "Import / Sync Data",
   "createMenu.appSection": "App",
   "createMenu.app": "App",
+  "createMenu.aiCreatePrompt": "I want to create a new artifact. Please help me build a table, idea doc, taste canvas, or demo based on my needs. What would you like to create?",
 
   // Toast (table creation)
   "toast.createTableFailed": "Failed to create table",

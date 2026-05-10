@@ -35,6 +35,7 @@ import { designNavTools } from "./designTools.js";
 import { tasteNavTools } from "./tasteTools.js";
 import { dictionaryTools } from "./dictionaryTools.js";
 import { demoNavTools } from "./demoTools.js";
+import { folderTools } from "./folderTools.js";
 import { subagentTools } from "./subagentTools.js";
 import { workflowTools } from "./workflowTools.js";
 import { webTools } from "./webTools.js";
@@ -98,6 +99,12 @@ const TIER1_NAMES = new Set([
   "execute_workflow_template",
   // V2.5 B4 自由编排
   "compose_workflow",
+  // Folder tools — always-on workspace hierarchy management
+  "list_folders",
+  "create_folder",
+  "rename_folder",
+  "delete_folder",
+  "move_item_to_folder",
   // Web tools — always-on info retrieval (knowledge cutoff bypass)
   "web_search",
   "web_fetch",
@@ -127,6 +134,7 @@ export const tier1Tools: ToolDefinition[] = [
   ...mentionTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...dictionaryTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...demoNavTools.filter((t) => TIER1_NAMES.has(t.name)),
+  ...folderTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...subagentTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...workflowTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...webTools.filter((t) => TIER1_NAMES.has(t.name)),
