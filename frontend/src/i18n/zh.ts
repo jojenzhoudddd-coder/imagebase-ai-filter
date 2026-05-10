@@ -893,6 +893,7 @@ export const zh: TranslationKeys = {
   "admin.table.email": "邮箱",
   "admin.table.related": "关联",
   "admin.table.models": "模型",
+  "admin.table.createdAt": "注册时间",
   "admin.table.lastLogin": "最后登录",
   "admin.table.agent": "Agent",
   "admin.table.lastMessage": "最后消息",

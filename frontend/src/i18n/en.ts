@@ -888,6 +888,7 @@ export const en = {
   "admin.table.email": "Email",
   "admin.table.related": "Related",
   "admin.table.models": "Models",
+  "admin.table.createdAt": "Registered",
   "admin.table.lastLogin": "Last Login",
   "admin.table.agent": "Agent",
   "admin.table.lastMessage": "Last Message",

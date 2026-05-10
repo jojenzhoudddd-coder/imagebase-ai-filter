@@ -21,18 +21,21 @@ function formatTokenCount(n: number): string {
   return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0).replace(/\.0$/, "")}M`;
 }
 
-/* ─── Sort logic ────────────────────────────────────────────────────── */
-type SortDir = "desc" | "asc" | null;
-type SortableKey = "related" | "lastLogin" | "lastMessage" | "conversations" | "activities" | "tokens" | "workspaces" | "artifacts" | "workends";
+/* ─── Sort logic (compound) ─────────────────────────────────────────── */
+type SortDir = "desc" | "asc";
+type SortableKey = "related" | "createdAt" | "lastLogin" | "lastMessage" | "conversations" | "activities" | "tokens" | "workspaces" | "artifacts" | "workends";
+
+interface SortEntry { key: SortableKey; dir: SortDir }
 
 const SORTABLE_KEYS = new Set<SortableKey>([
-  "related", "lastLogin", "lastMessage", "conversations", "activities",
+  "related", "createdAt", "lastLogin", "lastMessage", "conversations", "activities",
   "tokens", "workspaces", "artifacts", "workends",
 ]);
 
 function getSortValue(user: AdminUser, key: SortableKey): number | string {
   switch (key) {
     case "related": return user.related ? 1 : 0;
+    case "createdAt": return user.createdAt || "";
     case "lastLogin": return user.lastLoginAt || "";
     case "lastMessage": return user.lastMessageAt || "";
     case "conversations": return user.conversationCount;
@@ -44,13 +47,26 @@ function getSortValue(user: AdminUser, key: SortableKey): number | string {
   }
 }
 
-function SortIndicator({ dir }: { dir: SortDir }) {
+function compareSortValues(va: number | string, vb: number | string, dir: SortDir): number {
+  let cmp: number;
+  if (typeof va === "number" && typeof vb === "number") {
+    cmp = va - vb;
+  } else {
+    cmp = String(va).localeCompare(String(vb));
+  }
+  return dir === "asc" ? cmp : -cmp;
+}
+
+function SortIndicator({ dir, order }: { dir: SortDir | null; order: number | null }) {
   return (
     <span className={`adb-sort-btn${dir ? " active" : ""}`}>
       <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
         <path d="M5 1L8.5 5H1.5L5 1Z" fill="currentColor" opacity={dir === "asc" ? 1 : 0.3}/>
         <path d="M5 13L1.5 9H8.5L5 13Z" fill="currentColor" opacity={dir === "desc" ? 1 : 0.3}/>
       </svg>
+      {order !== null && order > 0 && (
+        <span className="adb-sort-order">{order + 1}</span>
+      )}
     </span>
   );
 }
@@ -59,37 +75,39 @@ export default function UserTable({ users, onUserUpdated }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
-  const [sortKey, setSortKey] = useState<SortableKey | null>(null);
-  const [sortDir, setSortDir] = useState<SortDir>(null);
+  const [sortStack, setSortStack] = useState<SortEntry[]>([]);
 
   const handleSort = (key: SortableKey) => {
-    if (sortKey !== key) {
-      // activate new field: start with desc
-      setSortKey(key);
-      setSortDir("desc");
-    } else if (sortDir === "desc") {
-      setSortDir("asc");
-    } else {
-      // asc → reset
-      setSortKey(null);
-      setSortDir(null);
-    }
+    setSortStack((prev) => {
+      const idx = prev.findIndex((s) => s.key === key);
+      if (idx === -1) {
+        // new field: add as desc
+        return [...prev, { key, dir: "desc" }];
+      }
+      const entry = prev[idx];
+      if (entry.dir === "desc") {
+        // desc → asc
+        const next = [...prev];
+        next[idx] = { key, dir: "asc" };
+        return next;
+      }
+      // asc → remove
+      return prev.filter((_, i) => i !== idx);
+    });
   };
 
   const sortedUsers = useMemo(() => {
-    if (!sortKey || !sortDir) return users;
+    if (sortStack.length === 0) return users;
     return [...users].sort((a, b) => {
-      const va = getSortValue(a, sortKey);
-      const vb = getSortValue(b, sortKey);
-      let cmp: number;
-      if (typeof va === "number" && typeof vb === "number") {
-        cmp = va - vb;
-      } else {
-        cmp = String(va).localeCompare(String(vb));
+      for (const { key, dir } of sortStack) {
+        const va = getSortValue(a, key);
+        const vb = getSortValue(b, key);
+        const cmp = compareSortValues(va, vb, dir);
+        if (cmp !== 0) return cmp;
       }
-      return sortDir === "asc" ? cmp : -cmp;
+      return 0;
     });
-  }, [users, sortKey, sortDir]);
+  }, [users, sortStack]);
 
   const handleToggleRelated = useCallback(async (user: AdminUser) => {
     const newValue = !user.related;
@@ -117,12 +135,14 @@ export default function UserTable({ users, onUserUpdated }: Props) {
     if (!key || !SORTABLE_KEYS.has(key)) {
       return <th>{label}</th>;
     }
-    const dir = sortKey === key ? sortDir : null;
+    const idx = sortStack.findIndex((s) => s.key === key);
+    const dir = idx >= 0 ? sortStack[idx].dir : null;
+    const order = sortStack.length > 1 ? idx : null;
     return (
       <th className="adb-th-sortable" onClick={() => handleSort(key)}>
         <span className="adb-th-inner">
           <span>{label}</span>
-          <SortIndicator dir={dir} />
+          <SortIndicator dir={dir} order={order} />
         </span>
       </th>
     );
@@ -137,6 +157,7 @@ export default function UserTable({ users, onUserUpdated }: Props) {
             {th(t("admin.table.email"))}
             {th(t("admin.table.related"), "related")}
             {th(t("admin.table.models"))}
+            {th(t("admin.table.createdAt"), "createdAt")}
             {th(t("admin.table.lastLogin"), "lastLogin")}
             {th(t("admin.table.agent"))}
             {th(t("admin.table.lastMessage"), "lastMessage")}
@@ -173,7 +194,6 @@ export default function UserTable({ users, onUserUpdated }: Props) {
                     onChange={() => handleToggleRelated(user)}
                   />
                   <span className="adb-toggle-track" />
-                  <span className="adb-toggle-thumb" />
                 </label>
               </td>
               <td>
@@ -181,6 +201,7 @@ export default function UserTable({ users, onUserUpdated }: Props) {
                   {user.related ? t("admin.models.all") : t("admin.models.default")}
                 </span>
               </td>
+              <td>{user.createdAt ? formatDateTime(user.createdAt) : "-"}</td>
               <td>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "-"}</td>
               <td>
                 <div className="adb-user-cell">
