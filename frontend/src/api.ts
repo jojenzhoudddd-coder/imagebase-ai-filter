@@ -2425,3 +2425,17 @@ export async function patchAdminUser(
   if (!res.ok) throw new Error(`patchAdminUser failed (${res.status})`);
   return res.json();
 }
+
+export interface DailySnapshot {
+  date: string;
+  userCount: number;
+  conversationCount: number;
+  activityCount: number;
+  totalTokens: number;
+}
+
+export async function fetchAdminStatsHistory(days = 30): Promise<{ history: DailySnapshot[] }> {
+  const res = await fetch(`${BASE}/admin/stats/history?days=${days}`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`fetchAdminStatsHistory failed (${res.status})`);
+  return res.json();
+}

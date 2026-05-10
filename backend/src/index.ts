@@ -62,6 +62,7 @@ import { evaluateCron } from "./services/cronScheduler.js";
 import { consumeFiredJobs, recoverOrphanedJobs } from "./services/inboxConsumer.js";
 import { startAnalystCleanup, stopAnalystCleanup } from "./services/analyst/cleanupCron.js";
 import { startWorktreeCleanupCron, stopWorktreeCleanupCron } from "./services/worktreeManager.js";
+import { recordSnapshot, startDailySnapshotCron } from "./services/dailySnapshotService.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -389,6 +390,10 @@ async function start() {
   if (process.env.RUNTIME_DISABLED !== "1") {
     startModelProbe();
   }
+
+  // Daily stats snapshot — record today on boot + hourly cron check
+  recordSnapshot().catch(err => console.warn("Daily snapshot (non-fatal):", err));
+  startDailySnapshotCron();
 
   // Analyst P1 — DuckDB session + snapshot cleanup cron.
   startAnalystCleanup();

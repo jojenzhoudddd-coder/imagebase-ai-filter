@@ -18,6 +18,7 @@ import express, { type Request, type Response } from "express";
 import { PrismaClient } from "../generated/prisma/client.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { getHistory } from "../services/dailySnapshotService.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -388,6 +389,17 @@ router.get("/stats", requireAdmin, async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error("[admin] stats error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+router.get("/stats/history", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const days = Math.min(Number(req.query.days) || 30, 90);
+    const history = await getHistory(days);
+    res.json({ history });
+  } catch (err: any) {
+    console.error("[admin] stats/history error:", err);
     res.status(500).json({ error: err.message ?? "internal error" });
   }
 });

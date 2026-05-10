@@ -9,8 +9,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useBlockShell } from "../../contexts/blockShellContext";
 import { useTranslation } from "../../i18n";
-import type { AdminStats, AdminUser } from "../../api";
-import { fetchAdminStats, fetchAdminUsers } from "../../api";
+import type { AdminStats, AdminUser, DailySnapshot } from "../../api";
+import { fetchAdminStats, fetchAdminUsers, fetchAdminStatsHistory } from "../../api";
 import MetricCards from "./MetricCards";
 import UserTable from "./UserTable";
 import "./AdminBlock.css";
@@ -26,6 +26,7 @@ export default function AdminBlock({ blockId: _blockId }: Props) {
 
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [history, setHistory] = useState<DailySnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const cancelRef = useRef<() => void>();
 
@@ -36,11 +37,12 @@ export default function AdminBlock({ blockId: _blockId }: Props) {
     cancelRef.current = () => { cancelled = true; };
     setLoading(true);
 
-    Promise.all([fetchAdminStats(), fetchAdminUsers()])
-      .then(([s, u]) => {
+    Promise.all([fetchAdminStats(), fetchAdminUsers(), fetchAdminStatsHistory()])
+      .then(([s, u, h]) => {
         if (cancelled) return;
         setStats(s);
         setUsers(u.users);
+        setHistory(h.history);
       })
       .catch((err) => {
         console.error("[AdminBlock] failed to load:", err);
@@ -91,7 +93,7 @@ export default function AdminBlock({ blockId: _blockId }: Props) {
       <div className="adb-body">
         {loading ? null : (
           <>
-            <MetricCards stats={stats} />
+            <MetricCards stats={stats} history={history} />
             <UserTable users={users} onUserUpdated={handleUserUpdated} />
           </>
         )}

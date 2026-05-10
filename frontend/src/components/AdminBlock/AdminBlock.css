@@ -84,6 +84,21 @@
   background: var(--surface-3);
   border-radius: 8px;
   padding: 16px 20px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.adb-metric-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.adb-sparkline {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  opacity: 0.4;
 }
 
 .adb-metric-title {

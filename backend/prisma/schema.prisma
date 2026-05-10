@@ -180,6 +180,20 @@ model TokenUsage {
   @@map("token_usage")
 }
 
+// ─── DailySnapshot（管理后台每日统计快照） ───
+
+model DailySnapshot {
+  id                String   @id @default(cuid())
+  date              String   @unique  // "2026-05-10" format, one row per day
+  userCount         Int
+  conversationCount Int
+  activityCount     Int
+  totalTokens       Int
+  createdAt         DateTime @default(now())
+
+  @@map("daily_snapshots")
+}
+
 // ─── 数据表（fields + views 作为 JSONB 存储） ───
 
 model Table {
