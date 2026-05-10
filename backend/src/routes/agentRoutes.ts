@@ -75,6 +75,7 @@ import {
   getModel,
   resolveModelForCall,
   DEFAULT_MODEL_ID,
+  FALLBACK_MODEL_ID,
 } from "../services/modelRegistry.js";
 
 const router = express.Router();
@@ -171,7 +172,7 @@ router.get("/models", async (req: Request, res: Response) => {
 
     res.json({
       models: [...visibleBuiltin, ...visibleCustom],
-      defaultModelId: DEFAULT_MODEL_ID,
+      defaultModelId: isRelated ? DEFAULT_MODEL_ID : FALLBACK_MODEL_ID,
     });
   } catch (err: any) {
     console.error("[agents] list models error:", err);
@@ -349,10 +350,19 @@ router.get("/:agentId/model", async (req: Request, res: Response) => {
       res.status(404).json({ error: "agent not found" });
       return;
     }
+    const isRelated = !!(req as any).user?.related;
     const selected = await getSelectedModel(agent.id);
-    const { resolved, requested, usedFallback } = resolveModelForCall(selected);
+    let { resolved, requested, usedFallback } = resolveModelForCall(selected);
+
+    // Non-related users: force volcano model
+    if (!isRelated && resolved.group !== "volcano") {
+      const fb = resolveModelForCall(FALLBACK_MODEL_ID);
+      resolved = fb.resolved;
+      usedFallback = true;
+    }
+
     res.json({
-      selected,
+      selected: isRelated ? selected : resolved.id,
       resolved: {
         id: resolved.id,
         displayName: resolved.displayName,
