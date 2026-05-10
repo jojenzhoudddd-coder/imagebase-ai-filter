@@ -438,7 +438,6 @@ export default function ChatSidebar({
   const [convList, setConvList] = useState<ChatConversation[]>([]);
   const [convListLoading, setConvListLoading] = useState(false);
   const convListBtnRef = useRef<HTMLButtonElement>(null);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const toast = useToast();
 
@@ -1618,7 +1617,6 @@ export default function ChatSidebar({
   // 最后一条不能删(用户改用"清空对话"重置内容)。
   const handleDeleteCurrentConversation = useCallback(async () => {
     const cur = activeConv?.id;
-    setDeleteConfirmOpen(false);
     if (!cur) return;
     try {
       // 拉最新 list 判断 sibling
@@ -1816,13 +1814,13 @@ export default function ChatSidebar({
               key: "delete",
               label: t("chat.menu.deleteCurrent"),
               icon: <TrashIcon size={16} />,
-              // V4.1: 不用 danger 红色,默认配色即可(还有二次确认弹窗兜底)
+              swipeDelete: true,
+              onSwipeDelete: () => void handleDeleteCurrentConversation(),
             },
           ]}
           onSelect={(key) => {
             setMenuOpen(false);
             if (key === "clear") setClearConfirmOpen(true);
-            else if (key === "delete") setDeleteConfirmOpen(true);
           }}
           onClose={() => setMenuOpen(false)}
           width={200}
@@ -1865,16 +1863,6 @@ export default function ChatSidebar({
           boundaryEl={sidebarRef.current}
         />
       )}
-      {/* Delete confirm — V4.1 不用 danger 红色按钮 */}
-      <ConfirmDialog
-        open={deleteConfirmOpen}
-        title={t("chat.delete.confirm.title")}
-        message={t("chat.delete.confirm.message")}
-        confirmLabel={t("chat.delete.confirm.ok")}
-        cancelLabel={t("chat.delete.confirm.cancel")}
-        onConfirm={() => void handleDeleteCurrentConversation()}
-        onCancel={() => setDeleteConfirmOpen(false)}
-      />
       {/* V3.0.3 Clear current chat confirm */}
       <ConfirmDialog
         open={clearConfirmOpen}

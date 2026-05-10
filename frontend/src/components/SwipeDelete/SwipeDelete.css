@@ -1,0 +1,74 @@
+.swipe-del-root {
+  position: relative;
+  width: 100%;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--surface-inset, #f5f5f5);
+  user-select: none;
+  touch-action: none;
+  overflow: hidden;
+  cursor: default;
+}
+
+.swipe-del-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 6px;
+  background: rgba(215, 58, 73, 0.12);
+  pointer-events: none;
+  transition: none;
+}
+
+.swipe-del-root.swipe-del-spring .swipe-del-fill {
+  transition: width 0.25s ease;
+}
+
+.swipe-del-label {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  pointer-events: none;
+}
+
+.swipe-del-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--surface-3, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  z-index: 1;
+  transition: none;
+  color: var(--text-secondary, #666);
+}
+
+.swipe-del-thumb:active {
+  cursor: grabbing;
+}
+
+.swipe-del-root.swipe-del-spring .swipe-del-thumb {
+  transition: left 0.25s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.swipe-del-thumb.swipe-del-done {
+  background: #28a745;
+  color: #fff;
+}
+
+.swipe-del-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}

@@ -3,7 +3,6 @@ import { useTranslation } from "../i18n/index";
 import InlineEdit from "./InlineEdit";
 import DropdownMenu from "./DropdownMenu";
 import type { MenuItem } from "./DropdownMenu";
-import ConfirmDialog from "./ConfirmDialog/index";
 import CreateTablePopover from "./CreateTablePopover";
 import type { CreateTablePopoverHandle } from "./CreateTablePopover";
 import TreeView from "./TreeView";
@@ -204,7 +203,6 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   const dragOverIdRef = useRef<string | null>(null);
   const dragOverPosRef = useRef<"above" | "below" | null>(null);
 
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // ── AI Create sub-menu state ──
   const [showAIPopover, setShowAIPopover] = useState(false);
@@ -218,7 +216,15 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
 
   const getContextMenuItems = (item: SidebarItem): MenuItem[] => [
     { key: "rename", label: t("contextMenu.rename"), icon: <RenameIcon /> },
-    ...(item.type === "table" ? [{ key: "delete", label: t("contextMenu.delete"), icon: <DeleteIcon /> }] : []),
+    ...(item.type === "table" ? [{
+      key: "delete",
+      label: t("contextMenu.delete"),
+      icon: <DeleteIcon />,
+      swipeDelete: true,
+      onSwipeDelete: () => {
+        onDeleteTable(item.id);
+      },
+    }] : []),
   ];
 
   // Hidden-by-default "+" menu entries. Code kept intact for easy re-enable:
@@ -404,7 +410,6 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             onSelect={(key) => {
               setMenuItemId(null);
               if (key === "rename") setEditingItemId(item.id);
-              if (key === "delete") setDeleteConfirmId(item.id);
             }}
             onClose={() => setMenuItemId(null)}
             width={180}
@@ -503,7 +508,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
                 onRenameItem={(id, _type, newName) => onRenameItem(id, newName)}
                 onDeleteItem={(id, type) => {
                   if (type === "table") {
-                    setDeleteConfirmId(id);
+                    onDeleteTable(id);
                   } else if (onDeleteItem) {
                     onDeleteItem(id, type);
                   }
@@ -580,19 +585,6 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
           onCreateBlank={onCreateBlank}
         />
       )}
-      <ConfirmDialog
-        open={!!deleteConfirmId}
-        title={t("app.deleteTable")}
-        message={t("app.deleteTableMsg", { name: items.find(i => i.id === deleteConfirmId)?.displayName ?? "" })}
-        confirmLabel={t("confirm.delete")}
-        cancelLabel={t("confirm.cancel")}
-        variant="danger"
-        onConfirm={() => {
-          if (deleteConfirmId) onDeleteTable(deleteConfirmId);
-          setDeleteConfirmId(null);
-        }}
-        onCancel={() => setDeleteConfirmId(null)}
-      />
     </aside>
   );
 }

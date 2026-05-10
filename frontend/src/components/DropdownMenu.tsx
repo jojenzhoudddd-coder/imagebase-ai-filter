@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, ReactNode } from "react";
 import { createPortal } from "react-dom";
+import SwipeDelete from "./SwipeDelete";
 import "./DropdownMenu.css";
 
 export interface MenuItem {
@@ -14,6 +15,10 @@ export interface MenuItem {
   danger?: boolean;
   /** V3.0 PR1: 当前选中态(如对话列表中高亮当前对话) */
   active?: boolean;
+  /** Swipe-to-delete: replaces the regular click handler with a drag interaction */
+  swipeDelete?: boolean;
+  /** Callback when swipe-delete completes (only used when swipeDelete=true) */
+  onSwipeDelete?: () => void;
 }
 
 interface Props {
@@ -181,6 +186,19 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
           {group.title && <div className="dropdown-menu-section">{group.title}</div>}
           <div className="dropdown-menu-items">
             {group.items.map((item) => (
+              item.swipeDelete ? (
+                <div key={item.key} className="dropdown-menu-item swipe-delete-wrapper">
+                  <SwipeDelete
+                    label={item.label}
+                    icon={item.icon}
+                    onDelete={() => {
+                      item.onSwipeDelete?.();
+                      onClose();
+                    }}
+                    disabled={item.disabled}
+                  />
+                </div>
+              ) : (
               <button
                 key={item.key}
                 ref={(el) => onItemRef?.(item.key, el)}
@@ -195,6 +213,7 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
                 <span className="dropdown-menu-item-label">{item.label}</span>
                 {item.suffix && <span className="dropdown-menu-item-suffix">{item.suffix}</span>}
               </button>
+              )
             ))}
           </div>
         </div>

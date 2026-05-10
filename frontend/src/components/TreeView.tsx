@@ -230,7 +230,16 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
       items.push({ key: "moveToRoot", label: t("contextMenu.moveToRoot"), icon: <MoveIcon /> });
     }
 
-    items.push({ key: "delete", label: t("contextMenu.delete"), icon: <DeleteIcon /> });
+    items.push({
+      key: "delete",
+      label: t("contextMenu.delete"),
+      icon: <DeleteIcon />,
+      swipeDelete: true,
+      onSwipeDelete: () => {
+        setMenuId(null);
+        onDeleteItem(node.id, node.type);
+      },
+    });
     return items;
   };
 
@@ -444,7 +453,6 @@ export default function TreeView({ nodes, activeItemId, onSelectItem, onRenameIt
               }}
               onSelect={(key) => {
                 if (key === "rename") { setMenuId(null); setEditingId(node.id); }
-                else if (key === "delete") { setMenuId(null); onDeleteItem(node.id, node.type); }
                 else if (key === "moveToRoot") { setMenuId(null); onMoveItem(node.id, node.type as "table" | "folder" | "design" | "idea" | "demo", null); }
                 else if (key === "moveTo") {
                   /* Keep main menu open; open the cascading sub-menu. The

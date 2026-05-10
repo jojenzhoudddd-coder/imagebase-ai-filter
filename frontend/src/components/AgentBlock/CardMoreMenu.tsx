@@ -5,13 +5,12 @@
 
 import { useRef, useState } from "react";
 import DropdownMenu, { type MenuItem } from "../DropdownMenu";
-import ConfirmDialog from "../ConfirmDialog/index";
 import { useTranslation } from "../../i18n";
 
 interface Props {
   onViewActivities: () => void;
   label: string;
-  /** If provided, shows a "Delete" option with confirmation */
+  /** If provided, shows a "Delete" option with swipe-to-delete */
   onDelete?: () => void;
   deleteLabel?: string;
 }
@@ -19,7 +18,6 @@ interface Props {
 export default function CardMoreMenu({ onViewActivities, label, onDelete, deleteLabel }: Props) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const items: MenuItem[] = [
@@ -43,6 +41,8 @@ export default function CardMoreMenu({ onViewActivities, label, onDelete, delete
           <path d="M3 4h8M5.5 4V3a1 1 0 011-1h1a1 1 0 011 1v1M4.5 4v7a1 1 0 001 1h3a1 1 0 001-1V4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       ),
+      swipeDelete: true,
+      onSwipeDelete: () => onDelete(),
     });
   }
 
@@ -67,21 +67,11 @@ export default function CardMoreMenu({ onViewActivities, label, onDelete, delete
           onSelect={(key) => {
             setOpen(false);
             if (key === "view-activities") onViewActivities();
-            if (key === "delete") setConfirmDelete(true);
           }}
           onClose={() => setOpen(false)}
           width={160}
         />
       )}
-      <ConfirmDialog
-        open={confirmDelete}
-        title={t("agent.card.deleteConfirmTitle")}
-        message={t("agent.card.deleteConfirmMessage")}
-        confirmLabel={t("agent.card.deleteConfirmOk")}
-        cancelLabel={t("agent.card.deleteConfirmCancel")}
-        onConfirm={() => { setConfirmDelete(false); onDelete?.(); }}
-        onCancel={() => setConfirmDelete(false)}
-      />
     </>
   );
 }
