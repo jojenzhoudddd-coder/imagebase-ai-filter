@@ -56,11 +56,11 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
     setTimeout(() => onDelete(), 300);
   }, [onDelete]);
 
-  const handleClick = useCallback(() => {
+  const advanceBy = useCallback((step: number) => {
     if (disabled || done || draggingRef.current) return;
     const max = getMaxOffset();
     if (max <= 0) return;
-    const next = offsetRef.current + CLICK_STEP;
+    const next = Math.max(0, offsetRef.current + step);
     if (next >= max * 0.9) {
       setAnimating(true);
       triggerDelete(max);
@@ -88,21 +88,8 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
       draggingRef.current = false;
 
       if (!movedRef.current) {
-        // Click on thumb — advance
-        const max = maxOffsetRef.current;
-        const next = offsetRef.current + CLICK_STEP;
-        if (next >= max * 0.9) {
-          setAnimating(true);
-          offsetRef.current = max;
-          setDone(true);
-          forceRender((n) => n + 1);
-          setTimeout(() => onDelete(), 300);
-        } else {
-          setAnimating(true);
-          offsetRef.current = next;
-          forceRender((n) => n + 1);
-          setTimeout(() => setAnimating(false), 250);
-        }
+        // Click on thumb — advance right
+        advanceBy(CLICK_STEP);
         return;
       }
 
@@ -123,7 +110,7 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
     };
-  }, [onDelete]);
+  }, [onDelete, advanceBy]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (disabled || done) return;
@@ -157,7 +144,11 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
-        handleClick();
+        if (!trackRef.current) return;
+        const trackRect = trackRef.current.getBoundingClientRect();
+        const clickX = e.clientX - trackRect.left;
+        const thumbCenter = offsetRef.current + THUMB_START + THUMB_WIDTH / 2;
+        advanceBy(clickX < thumbCenter ? -CLICK_STEP : CLICK_STEP);
       }}
     >
       <div
