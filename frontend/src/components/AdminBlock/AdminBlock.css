@@ -115,7 +115,8 @@
 
 .adb-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13px;
 }
 
@@ -130,20 +131,37 @@
   white-space: nowrap;
 }
 
+/* First column (Name) frozen */
+.adb-table th:first-child,
+.adb-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 140px;
+}
+.adb-table th:first-child {
+  background: var(--surface-3);
+}
+.adb-table td:first-child {
+  background: var(--surface-2);
+}
+.adb-table tr:hover td:first-child {
+  background: var(--surface-3);
+}
+
 .adb-th-sortable {
   cursor: pointer;
   user-select: none;
-}
-.adb-th-sortable > span {
-  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 .adb-th-sortable:hover {
   color: var(--text-primary);
 }
 
 .adb-sort-icon {
-  vertical-align: middle;
-  margin-left: 2px;
+  flex-shrink: 0;
 }
 .adb-sort-icon.idle {
   opacity: 0;
