@@ -524,7 +524,7 @@ export const en = {
   // V3.0 PR1
   "chat.menu.newChat": "New chat",
   "chat.menu.allConversations": "All conversations",
-  "chat.menu.deleteCurrent": "Delete current chat",
+  "chat.menu.deleteCurrent": "Delete",
   "chat.delete.confirm.title": "Delete this chat?",
   "chat.delete.confirm.message": "This chat will be permanently deleted. This action cannot be undone.",
   "chat.delete.confirm.ok": "Delete",
@@ -535,7 +535,7 @@ export const en = {
   "chat.list.empty": "No history yet",
   "chat.list.untitled": "Untitled chat",
   "chat.list.newChat": "New chat",
-  "chat.menu.clearCurrent": "Clear current chat",
+  "chat.menu.clearCurrent": "Clear conversation",
   // Chat agent meta button tooltip
   "chat.agent.menu.title": "Agent settings",
   // Chat agent meta dropdown — 7 placeholder menu items (visual style aligns

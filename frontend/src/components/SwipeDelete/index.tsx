@@ -31,10 +31,11 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
   const startXRef = useRef(0);
   const maxOffsetRef = useRef(0);
 
-  const THUMB_START = 5; // px from left edge, aligns icon with menu item icons
+  const THUMB_START = 1; // px from left edge
+  const THUMB_WIDTH = 36; // includes 4px padding each side
   const getMaxOffset = useCallback(() => {
     if (!trackRef.current) return 0;
-    return trackRef.current.clientWidth - 28 - THUMB_START - 5;
+    return trackRef.current.clientWidth - THUMB_WIDTH - THUMB_START - 1;
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {

@@ -526,7 +526,7 @@ export const zh: TranslationKeys = {
   // V3.0 PR1 多对话
   "chat.menu.newChat": "新对话",
   "chat.menu.allConversations": "全部对话",
-  "chat.menu.deleteCurrent": "删除当前对话",
+  "chat.menu.deleteCurrent": "删除",
   "chat.delete.confirm.title": "删除当前对话？",
   "chat.delete.confirm.message": "对话将被永久删除，此操作不可撤销。",
   "chat.delete.confirm.ok": "删除",
@@ -537,7 +537,7 @@ export const zh: TranslationKeys = {
   "chat.list.empty": "暂无历史对话",
   "chat.list.untitled": "未命名对话",
   "chat.list.newChat": "新建对话",
-  "chat.menu.clearCurrent": "清空当前对话",
+  "chat.menu.clearCurrent": "清空对话",
   // Chat agent meta button (chat header 左数第 3 个图标) tooltip
   "chat.agent.menu.title": "Agent 设置",
   // Chat agent meta dropdown —— 7 个占位菜单项,功能待接(visual style 对齐
