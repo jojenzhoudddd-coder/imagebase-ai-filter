@@ -3,8 +3,7 @@ import { useTranslation } from "../i18n/index";
 import InlineEdit from "./InlineEdit";
 import DropdownMenu from "./DropdownMenu";
 import type { MenuItem } from "./DropdownMenu";
-import CreateTablePopover from "./CreateTablePopover";
-import type { CreateTablePopoverHandle } from "./CreateTablePopover";
+import ConfirmDialog from "./ConfirmDialog/index";
 import TreeView from "./TreeView";
 import type { TreeNodeData } from "./TreeView";
 import type { GeneratedField } from "../api";
@@ -31,17 +30,20 @@ interface Props {
   tableCount: number;
   onCreateWithAI: (tableName: string, fields: GeneratedField[]) => Promise<string>;
   onResetToDefault: (tableId: string, tableName: string) => Promise<void>;
-  onCreateBlank: () => Promise<void>;
+  onCreateBlank: () => Promise<string>;
   folders?: Array<{ id: string; name: string }>;
   onCreateFolder?: () => void;
   onCreateDesign?: (name: string, figmaUrl?: string) => Promise<string>;
   onCreateIdea?: () => Promise<string>;
+  onCreateDemo?: () => Promise<string>;
   onDeleteItem?: (id: string, type: TreeItemType) => void;
   onMoveItem?: (itemId: string, itemType: "table" | "folder" | "design" | "idea" | "demo", newParentId: string | null) => void;
   /** When set, the TreeView scrolls the node with this id into view on the
    * next render. Used after creating a folder (which cannot become the active
    * item) so the user can see where the new node landed. */
   scrollToItemId?: string | null;
+  /** Clicking "Create by AI" opens a new chat block with a prefilled prompt */
+  onCreateByAI?: () => void;
   /** 点击 sidebar 内"收起"按钮（搜索右侧）触发。父级把 sidebar 整体隐藏。 */
   onCollapse?: () => void;
   /** 受控宽度 —— 由父级(magic canvas ArtifactBlock 的 blockState.sidebarWidth)
@@ -73,7 +75,7 @@ const ARROW_RIGHT = (
 
 const CM_ICONS = {
   aiCreate: (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 .335c.234 0 .427.183.456.418.074.585.21 1.15.401 1.688l.268.657c.781 1.698 2.136 3.07 3.813 3.861l.648.272.212.073c.497.166 1.016.282 1.552.345.177.02.315.17.315.35l-.007.067a.344.344 0 01-.309.284l-.083.01a7.98 7.98 0 00-1.681.418l-.648.272c-1.676.791-3.031 2.163-3.813 3.861l-.267.657a7.98 7.98 0 00-.401 1.688l-.018.085a.354.354 0 01-.438.333l-.085-.009a.344.344 0 01-.353-.173l-.018-.085a7.98 7.98 0 00-.401-1.688l-.268-.657c-.781-1.698-2.136-3.07-3.813-3.861l-.648-.272a7.98 7.98 0 00-1.535-.388l-.229-.03a.354.354 0 01-.315-.35c0-.181.138-.331.315-.351a7.98 7.98 0 001.552-.345l.212-.073.648-.272c1.676-.791 3.031-2.163 3.813-3.861l.267-.657A7.98 7.98 0 007.544.753C7.573.518 7.766.335 8 .335z" fill="url(#ai_g)"/><defs><linearGradient id="ai_g" x1=".335" y1="15.665" x2="15.665" y2="15.665" gradientUnits="userSpaceOnUse"><stop stopColor="#4752E6"/><stop offset="1" stopColor="#CF5ECF"/></linearGradient></defs></svg>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 .335c.234 0 .427.183.456.418.074.585.21 1.15.401 1.688l.268.657c.781 1.698 2.136 3.07 3.813 3.861l.648.272.212.073c.497.166 1.016.282 1.552.345.177.02.315.17.315.35l-.007.067a.344.344 0 01-.309.284l-.083.01a7.98 7.98 0 00-1.681.418l-.648.272c-1.676.791-3.031 2.163-3.813 3.861l-.267.657a7.98 7.98 0 00-.401 1.688l-.018.085a.354.354 0 01-.438.333l-.085-.009a.344.344 0 01-.353-.173l-.018-.085a7.98 7.98 0 00-.401-1.688l-.268-.657c-.781-1.698-2.136-3.07-3.813-3.861l-.648-.272a7.98 7.98 0 00-1.535-.388l-.229-.03a.354.354 0 01-.315-.35c0-.181.138-.331.315-.351a7.98 7.98 0 001.552-.345l.212-.073.648-.272c1.676-.791 3.031-2.163 3.813-3.861l.267-.657A7.98 7.98 0 007.544.753C7.573.518 7.766.335 8 .335z" fill="#336DF4"/></svg>
   ),
   template: (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M7.434 1.69c.128-.496.616-.791 1.091-.658l5.147 1.441c.475.133.757.643.63 1.14l-1.38 5.378a.874.874 0 01-.516.617l-1.696-3.071c-.428-.776-1.5-.776-1.929 0L7.703 8.493l-1.018-.285c-.475-.133-.757-.643-.63-1.14L7.434 1.69z" fill="#447CFD"/><path d="M9.554 7.003a.222.222 0 01.386 0l3.855 6.981a.222.222 0 01-.193.35H5.893a.222.222 0 01-.193-.35l3.854-6.981z" fill="#447CFD"/><path d="M5.66 5.012a3.946 3.946 0 00-.762-.078c-2.153 0-3.898 1.823-3.898 4.073 0 2.249 1.745 4.073 3.898 4.073.093 0 .186-.004.277-.01l2.066-3.742--.787-.22c-.95-.267-1.514-1.288-1.26-2.281l.466-1.815z" fill="#91BDFD"/></svg>
@@ -91,13 +93,13 @@ const CM_ICONS = {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.203 11h7.594c.167-.1.346-.18.536-.237V9.333a.667.667 0 00-.666-.667H4.333a.667.667 0 00-.666.667v1.43c.19.057.369.137.536.237zM2.333 10.763V9.333c0-.53.211-1.04.586-1.415A2 2 0 014.333 7.333h3V5.915A2 2 0 015.793 4.83a2 2 0 01-.438-1.833 2 2 0 01.882-1.665A2 2 0 018 .667c.649 0 1.276.237 1.763.665a2 2 0 01.883 1.665 2 2 0 01-.439 1.833A2 2 0 018.667 5.915v1.418h3a2 2 0 011.414.585c.375.375.586.886.586 1.415v1.43a2 2 0 011.26 1.92c-.044.533-.27 1.036-.64 1.422-.37.387-.861.634-1.393.702a2 2 0 01-1.524-.333 2 2 0 01-.974-1.218 2 2 0 01.011-1.56 2 2 0 01.99-1.128H4.203a2 2 0 01.99 1.128 2 2 0 01.012 1.56 2 2 0 01-.974 1.218 2 2 0 01-1.524.333 2 2 0 01-1.393-.702 2 2 0 01-.64-1.422 2 2 0 011.66-2.08zM8 4.666a1.333 1.333 0 100-2.667 1.333 1.333 0 000 2.667zM13 14a1 1 0 100-2 1 1 0 000 2zM3 14a1 1 0 100-2 1 1 0 000 2z" fill="#8D55ED"/></svg>
   ),
   doc: (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.667 2h8.396c.62 0 1.204.237 1.626.64.42.403.644.935.644 1.478V14H4.937a2.26 2.26 0 01-1.626-.64A2.098 2.098 0 012.667 11.882V2zM2 .667A.667.667 0 001.333 1.333v10.549c0 .915.38 1.793 1.056 2.44A3.594 3.594 0 004.937 15.333H14a.667.667 0 00.667-.666V4.118c0-.915-.38-1.793-1.056-2.44A3.594 3.594 0 0011.063.667H2z" fill="#336DF4"/><path d="M4.5 5.333a.667.667 0 01.667-.666h5.666a.667.667 0 010 1.333H5.167a.667.667 0 01-.667-.667z" fill="#336DF4"/><path d="M4.5 8a.667.667 0 01.667-.667h5.666a.667.667 0 010 1.334H5.167A.667.667 0 014.5 8z" fill="#336DF4"/><path d="M4.5 10.667a.667.667 0 01.667-.667h3a.667.667 0 010 1.333h-3a.667.667 0 01-.667-.666z" fill="#336DF4"/></svg>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.667 2h8.396c.62 0 1.204.237 1.626.64.42.403.644.935.644 1.478V14H4.937a2.26 2.26 0 01-1.626-.64A2.098 2.098 0 012.667 11.882V2zM2 .667A.667.667 0 001.333 1.333v10.549c0 .915.38 1.793 1.056 2.44A3.594 3.594 0 004.937 15.333H14a.667.667 0 00.667-.666V4.118c0-.915-.38-1.793-1.056-2.44A3.594 3.594 0 0011.063.667H2z" fill="#35BD4B"/><path d="M4.5 5.333a.667.667 0 01.667-.666h5.666a.667.667 0 010 1.333H5.167a.667.667 0 01-.667-.667z" fill="#35BD4B"/><path d="M4.5 8a.667.667 0 01.667-.667h5.666a.667.667 0 010 1.334H5.167A.667.667 0 014.5 8z" fill="#35BD4B"/><path d="M4.5 10.667a.667.667 0 01.667-.667h3a.667.667 0 010 1.333h-3a.667.667 0 01-.667-.666z" fill="#35BD4B"/></svg>
   ),
   folder: (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5.575 6.285L8 8.71l2.422-2.422a.494.494 0 01.813.715L8.202 10.124a.286.286 0 01-.404 0L4.767 7.093a.494.494 0 01.808-.808z" fill="#5B65F5"/><path d="M1.333 2.667C1.333 1.93 1.93 1.333 2.667 1.333h10.666C14.07 1.333 14.667 1.93 14.667 2.667v10.666c0 .737-.597 1.334-1.334 1.334H2.667c-.737 0-1.334-.597-1.334-1.334V2.667zm12 10.666V2.667H2.667v10.666h10.666z" fill="#5B65F5"/></svg>
   ),
   transfer: (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.333 2h8.397c.62 0 1.204.237 1.626.64.42.403.644.935.644 1.478V14H7.162l-1.334 1.333h8.839a.667.667 0 00.666-.666V4.118c0-.915-.38-1.793-1.056-2.44A3.594 3.594 0 0011.73.667H2.667A.667.667 0 002 1.333v6.894a1.18 1.18 0 01.252-.308c.306-.305.685-.491 1.081-.554V2z" fill="#2DBEAB"/><path d="M5.828 8.667l-.747-.748a1.037 1.037 0 00-.197-.173.667.667 0 01.616-.413h1a.667.667 0 010 1.334h-.672z" fill="#2DBEAB"/><path d="M4.833 5.333a.667.667 0 01.667-.666h1a.667.667 0 010 1.333h-1a.667.667 0 01-.667-.667z" fill="#2DBEAB"/><path d="M8.833 4.667a.667.667 0 000 1.333h3a.667.667 0 000-1.333h-3z" fill="#2DBEAB"/><path d="M8.167 8a.667.667 0 01.666-.667h3a.667.667 0 010 1.334h-3A.667.667 0 018.167 8z" fill="#2DBEAB"/><path d="M8.833 10a.667.667 0 100 1.333h3a.667.667 0 100-1.333h-3z" fill="#2DBEAB"/><path d="M6.805 11.529a.667.667 0 010 .942l-2.667 2.667a.667.667 0 01-.943-.943L4.724 12.667H1a.667.667 0 010-1.334h3.724L3.195 9.805a.667.667 0 01.943-.943l2.667 2.667z" fill="#2DBEAB"/></svg>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.333 2h8.397c.62 0 1.204.237 1.626.64.42.403.644.935.644 1.478V14H7.162l-1.334 1.333h8.839a.667.667 0 00.666-.666V4.118c0-.915-.38-1.793-1.056-2.44A3.594 3.594 0 0011.73.667H2.667A.667.667 0 002 1.333v6.894a1.18 1.18 0 01.252-.308c.306-.305.685-.491 1.081-.554V2z" fill="#35BD4B"/><path d="M5.828 8.667l-.747-.748a1.037 1.037 0 00-.197-.173.667.667 0 01.616-.413h1a.667.667 0 010 1.334h-.672z" fill="#35BD4B"/><path d="M4.833 5.333a.667.667 0 01.667-.666h1a.667.667 0 010 1.333h-1a.667.667 0 01-.667-.667z" fill="#35BD4B"/><path d="M8.833 4.667a.667.667 0 000 1.333h3a.667.667 0 000-1.333h-3z" fill="#35BD4B"/><path d="M8.167 8a.667.667 0 01.666-.667h3a.667.667 0 010 1.334h-3A.667.667 0 018.167 8z" fill="#35BD4B"/><path d="M8.833 10a.667.667 0 100 1.333h3a.667.667 0 100-1.333h-3z" fill="#35BD4B"/><path d="M6.805 11.529a.667.667 0 010 .942l-2.667 2.667a.667.667 0 01-.943-.943L4.724 12.667H1a.667.667 0 010-1.334h3.724L3.195 9.805a.667.667 0 01.943-.943l2.667 2.667z" fill="#35BD4B"/></svg>
   ),
   app: (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.954 10.027c.261.102.562.203.898.292l-.59 1.18a.534.534 0 01-.894-.298l.515-1.03c.113.05.236.104.37.155z" fill="#336DF4"/><path d="M7.702 3.937a.534.534 0 01.894.297l3.334 6.667a.534.534 0 01-.894.597L7.404 4.831a.534.534 0 01.298-.894z" fill="#336DF4"/><path d="M3.783 8.158a.534.534 0 01.926-.176s.003.002.005.003l.037.026a5.15 5.15 0 00.166.096c.11.06.259.136.444.216a5.96 5.96 0 00.197.082c.009.003.018.007.027.011a5.47 5.47 0 00.446.166c.19.058.396.113.618.159a5.97 5.97 0 001.352 0 6.45 6.45 0 00.939-.069l.623 1.246a7.36 7.36 0 01-1.562.156c-.822 0-1.549-.13-2.151-.298l-.11-.03a7.65 7.65 0 01-.139-.043 6.03 6.03 0 01-.151-.049 5.2 5.2 0 01-.115-.039 5.98 5.98 0 01-.236-.081 5.76 5.76 0 01-.822-.62 3.41 3.41 0 01-.227-.14 1.67 1.67 0 01-.063-.057l-.002-.002-.001-.001-.001 0a.534.534 0 01.204-.834z" fill="#336DF4"/><path d="M11.292 7.982a.534.534 0 01.925.176c.207.304.129.718-.176.926l-.001 0-.001.001-.002.002a1.67 1.67 0 01-.063.057 3.41 3.41 0 01-.227.14l-.147.086-.597-1.194c.031-.015.06-.028.085-.04a2.9 2.9 0 00.166-.096l.037-.026.002-.003z" fill="#336DF4"/><path d="M7.045 5.01l.73 1.462-.941 1.882a4.4 4.4 0 01-.62-.248 4.07 4.07 0 01-.19-.078l1.492-2.983.032.021c.005.01.009.02.014.03l-.002-.016-.515-.068z" fill="#336DF4"/><path d="M11.063.667c.957 0 1.873.364 2.549 1.011.676.647 1.055 1.525 1.055 2.44v10.549a.667.667 0 01-.667.666H4.937a3.594 3.594 0 01-2.548-1.011A3.432 3.432 0 011.333 11.882V1.333A.667.667 0 012 .667h9.063zM2.667 11.882c0 .542.224 1.075.644 1.477.422.404 1.006.641 1.626.641H13.333V4.118c0-.543-.224-1.075-.644-1.477A2.26 2.26 0 0011.063 2H2.667v9.882z" fill="#336DF4"/></svg>
@@ -110,6 +112,9 @@ const CM_ICONS = {
   album: (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.667 1.333A1.333 1.333 0 001.333 2.667v8A1.333 1.333 0 002.667 12h8a1.333 1.333 0 001.333-1.333v-8A1.333 1.333 0 0010.667 1.333h-8zm0 1.334h8v8h-8v-8z" fill="#8D55ED"/><path d="M13.333 4v9.333H4v1.334h9.333A1.333 1.333 0 0014.667 13.333V4h-1.334z" fill="#8D55ED"/></svg>
   ),
+  demo: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18.8086 14.8779C18.9189 14.878 19.0078 14.967 19.0137 15.0771C19.1142 17.0166 20.6689 18.5713 22.6084 18.6719C22.7187 18.6776 22.8086 18.7675 22.8086 18.8779C22.8083 18.9882 22.7185 19.0773 22.6084 19.083C20.6689 19.1836 19.1142 20.7383 19.0137 22.6777C19.0078 22.7879 18.9189 22.8779 18.8086 22.8779C18.6982 22.8779 18.6094 22.7879 18.6035 22.6777C18.503 20.7383 16.9481 19.1837 15.0088 19.083C14.8986 19.0773 14.8089 18.9882 14.8086 18.8779C14.8086 18.7675 14.8985 18.6776 15.0088 18.6719C16.9481 18.5711 18.503 17.0165 18.6035 15.0771C18.6094 14.967 18.6982 14.8779 18.8086 14.8779Z" fill="#FF811A"/><path d="M20 2C21.1046 2 22 2.89545 22 4V16.4111C20.768 15.745 20.0001 14.4572 20 13.0566V10H10V20H12.8848C14.2947 20 15.5933 20.7661 16.2754 22H4C2.89548 22 2.00001 21.1045 2 20V4C2 2.89544 2.89544 2.00001 4 2H20ZM4 20H8V10H4V20ZM4 8H8V4H4V8ZM10 8H20V4H10V8Z" fill="#FF811A"/></svg>
+  ),
 };
 
 const SIDEBAR_WIDTH_KEY = "sidebar_width";
@@ -117,11 +122,14 @@ const SIDEBAR_MIN_W = 120;
 const SIDEBAR_MAX_W = 400;
 const SIDEBAR_DEFAULT_W = 200;
 
-export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onCreateIdea, onDeleteItem, onMoveItem, scrollToItemId, onCollapse, width: widthProp, onWidthChange }: Props) {
+export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onCreateIdea, onCreateDemo, onDeleteItem, onMoveItem, scrollToItemId, onCreateByAI, onCollapse, width: widthProp, onWidthChange }: Props) {
   const { t } = useTranslation();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchActive, setSearchActive] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const moreRefs = useRef<Map<string, HTMLSpanElement>>(new Map());
   const newBtnRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -203,28 +211,16 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   const dragOverIdRef = useRef<string | null>(null);
   const dragOverPosRef = useRef<"above" | "below" | null>(null);
 
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: TreeItemType } | null>(null);
 
-  // ── AI Create sub-menu state ──
-  const [showAIPopover, setShowAIPopover] = useState(false);
-  const [menuEl, setMenuEl] = useState<HTMLDivElement | null>(null);
-  const [tableItemEl, setTableItemEl] = useState<HTMLButtonElement | null>(null);
-  const popoverContainerRef = useRef<HTMLDivElement | null>(null);
-  const popoverHandleRef = useRef<CreateTablePopoverHandle | null>(null);
+  // (AI Create popover removed — table creation is now direct)
 
   const tableItems = items.filter(i => i.type === "table");
   const staticItems = items.filter(i => i.type === "static");
 
   const getContextMenuItems = (item: SidebarItem): MenuItem[] => [
     { key: "rename", label: t("contextMenu.rename"), icon: <RenameIcon /> },
-    ...(item.type === "table" ? [{
-      key: "delete",
-      label: t("contextMenu.delete"),
-      icon: <DeleteIcon />,
-      swipeDelete: true,
-      onSwipeDelete: () => {
-        onDeleteTable(item.id);
-      },
-    }] : []),
+    ...(item.type === "table" ? [{ key: "delete", label: t("contextMenu.delete"), icon: <DeleteIcon /> }] : []),
   ];
 
   // Hidden-by-default "+" menu entries. Code kept intact for easy re-enable:
@@ -240,31 +236,22 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
     "app",
   ]);
   const createMenuItems: MenuItem[] = [
-    { key: "ai_create", label: t("createMenu.aiCreate"), section: t("createMenu.quickCreate"), icon: CM_ICONS.aiCreate, noop: true },
+    { key: "ai_create", label: t("createMenu.aiCreate"), section: t("createMenu.quickCreate"), icon: CM_ICONS.aiCreate },
     { key: "template", label: t("createMenu.template"), icon: CM_ICONS.template, suffix: ARROW_RIGHT, noop: true },
-    { key: "table", label: t("createMenu.table"), section: t("createMenu.new"), icon: CM_ICONS.table, suffix: ARROW_RIGHT },
+    { key: "table", label: t("createMenu.table"), section: t("createMenu.new"), icon: CM_ICONS.table },
+    { key: "idea", label: t("createMenu.doc"), icon: CM_ICONS.doc },
     { key: "design", label: t("createMenu.design"), icon: CM_ICONS.design || CM_ICONS.doc },
+    { key: "demo", label: t("createMenu.demo"), icon: CM_ICONS.demo },
     { key: "form", label: t("createMenu.form"), icon: CM_ICONS.form, suffix: ARROW_RIGHT, noop: true },
     { key: "cm_dashboard", label: t("createMenu.dashboard"), icon: CM_ICONS.dashboard, noop: true },
     { key: "cm_workflow", label: t("createMenu.workflow"), icon: CM_ICONS.workflow, noop: true },
-    { key: "idea", label: t("createMenu.doc"), icon: CM_ICONS.doc },
     { key: "folder", label: t("createMenu.folder"), section: t("createMenu.manage"), icon: CM_ICONS.folder },
     { key: "import", label: t("createMenu.import"), icon: CM_ICONS.transfer, suffix: ARROW_RIGHT, noop: true },
     { key: "app", label: t("createMenu.app"), section: t("createMenu.appSection"), icon: CM_ICONS.app, suffix: ARROW_RIGHT, noop: true },
   ].filter((it) => !HIDE_CREATE_MENU_KEYS.has(it.key));
 
-  // Close everything handler
   const handleCloseAll = useCallback(() => {
-    setShowAIPopover(false);
     setNewMenuOpen(false);
-  }, []);
-
-  // Stable callbacks for menu/item refs
-  const handleMenuRef = useCallback((el: HTMLDivElement | null) => {
-    if (el) setMenuEl(el);
-  }, []);
-  const handleItemRef = useCallback((key: string, el: HTMLButtonElement | null) => {
-    if (key === "table" && el) setTableItemEl(el);
   }, []);
 
   // ── Drag handlers (table items only) ──
@@ -410,6 +397,7 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             onSelect={(key) => {
               setMenuItemId(null);
               if (key === "rename") setEditingItemId(item.id);
+              if (key === "delete") setDeleteConfirm({ id: item.id, type: item.type as TreeItemType });
             }}
             onClose={() => setMenuItemId(null)}
             width={180}
@@ -419,33 +407,58 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
     );
   };
 
-  // Determine if popover is in a blocking state (generating/creating)
-  const isPopoverBlocking = showAIPopover && popoverHandleRef.current &&
-    ["generating", "creating"].includes(popoverHandleRef.current.getState());
-
   return (
     <aside ref={asideRef} className="sidebar" style={{ width: widthProp ?? sidebarWidth }}>
       <div className="sidebar-resize-handle" onMouseDown={handleResizeMouseDown} />
       <div className="sidebar-header sidebar-header-with-actions">
-        <div className="sidebar-search-trigger">
-          <svg className="sidebar-search-icon" width="14" height="14" viewBox="20 80 15 15" fill="none">
-            <path d="M30.982 91.9251C29.8941 92.8058 28.5086 93.3334 26.9998 93.3334C23.502 93.3334 20.6665 90.4979 20.6665 87.0001C20.6665 83.5023 23.502 80.6667 26.9998 80.6667C30.4976 80.6667 33.3332 83.5023 33.3332 87.0001C33.3332 88.5088 32.8056 89.8944 31.9249 90.9823L34.4399 93.4973C34.6987 93.7561 34.6938 94.1765 34.435 94.4353C34.1763 94.694 33.7559 94.6989 33.4971 94.4402L30.982 91.9251ZM31.9998 87.0001C31.9998 84.2387 29.7613 82.0001 26.9998 82.0001C24.2384 82.0001 21.9998 84.2387 21.9998 87.0001C21.9998 89.7615 24.2384 92.0001 26.9998 92.0001C29.7613 92.0001 31.9998 89.7615 31.9998 87.0001Z" fill="currentColor"/>
-          </svg>
-          <span>{t("sidebar.search")}</span>
-        </div>
+        {searchActive ? (
+          <div className="sidebar-search-active">
+            <svg className="sidebar-search-icon" width="14" height="14" viewBox="20 80 15 15" fill="none">
+              <path d="M30.982 91.9251C29.8941 92.8058 28.5086 93.3334 26.9998 93.3334C23.502 93.3334 20.6665 90.4979 20.6665 87.0001C20.6665 83.5023 23.502 80.6667 26.9998 80.6667C30.4976 80.6667 33.3332 83.5023 33.3332 87.0001C33.3332 88.5088 32.8056 89.8944 31.9249 90.9823L34.4399 93.4973C34.6987 93.7561 34.6938 94.1765 34.435 94.4353C34.1763 94.694 33.7559 94.6989 33.4971 94.4402L30.982 91.9251ZM31.9998 87.0001C31.9998 84.2387 29.7613 82.0001 26.9998 82.0001C24.2384 82.0001 21.9998 84.2387 21.9998 87.0001C21.9998 89.7615 24.2384 92.0001 26.9998 92.0001C29.7613 92.0001 31.9998 89.7615 31.9998 87.0001Z" fill="currentColor"/>
+            </svg>
+            <input
+              ref={searchInputRef}
+              className="sidebar-search-input"
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchQuery("");
+                  setSearchActive(false);
+                }
+              }}
+              onBlur={() => {
+                // Exit search mode when input loses focus and query is empty
+                if (!searchQuery) {
+                  setTimeout(() => setSearchActive(false), 150);
+                }
+              }}
+              placeholder={t("sidebar.search")}
+              autoFocus
+            />
+            {/* Always show close button to exit search mode */}
+            <button
+              className="sidebar-search-clear"
+              onClick={() => { setSearchQuery(""); setSearchActive(false); }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+            </button>
+          </div>
+        ) : (
+          <div className="sidebar-search-trigger" onClick={() => setSearchActive(true)}>
+            <svg className="sidebar-search-icon" width="14" height="14" viewBox="20 80 15 15" fill="none">
+              <path d="M30.982 91.9251C29.8941 92.8058 28.5086 93.3334 26.9998 93.3334C23.502 93.3334 20.6665 90.4979 20.6665 87.0001C20.6665 83.5023 23.502 80.6667 26.9998 80.6667C30.4976 80.6667 33.3332 83.5023 33.3332 87.0001C33.3332 88.5088 32.8056 89.8944 31.9249 90.9823L34.4399 93.4973C34.6987 93.7561 34.6938 94.1765 34.435 94.4353C34.1763 94.694 33.7559 94.6989 33.4971 94.4402L30.982 91.9251ZM31.9998 87.0001C31.9998 84.2387 29.7613 82.0001 26.9998 82.0001C24.2384 82.0001 21.9998 84.2387 21.9998 87.0001C21.9998 89.7615 24.2384 92.0001 26.9998 92.0001C29.7613 92.0001 31.9998 89.7615 31.9998 87.0001Z" fill="currentColor"/>
+            </svg>
+            <span>{t("sidebar.search")}</span>
+          </div>
+        )}
         {/* V2.9 #7: New 按钮移到 sidebar header,紧贴 collapse 左边。
             点击展开 createMenuItems(复用底部原有的菜单) */}
         <button
           ref={newBtnRef}
           className="sidebar-collapse-btn sidebar-header-new-btn"
-          onClick={() => {
-            if (newMenuOpen && !isPopoverBlocking) {
-              setNewMenuOpen(false);
-              setShowAIPopover(false);
-            } else if (!newMenuOpen) {
-              setNewMenuOpen(true);
-            }
-          }}
+          onClick={() => setNewMenuOpen(v => !v)}
           title={t("sidebar.new")}
           aria-label={t("sidebar.new")}
         >
@@ -499,16 +512,31 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
           };
           sortByOrder(treeNodes);
 
-          if (treeNodes.length > 0) {
+          // Filter tree nodes by search query (case-insensitive, keeps parents if child matches)
+          const q = searchQuery.trim().toLowerCase();
+          const filterNodes = (ns: TreeNodeData[]): TreeNodeData[] => {
+            if (!q) return ns;
+            return ns.reduce<TreeNodeData[]>((acc, n) => {
+              const childMatches = n.children?.length ? filterNodes(n.children) : [];
+              const selfMatches = n.name.toLowerCase().includes(q);
+              if (selfMatches || childMatches.length > 0) {
+                acc.push({ ...n, children: selfMatches ? n.children : childMatches });
+              }
+              return acc;
+            }, []);
+          };
+          const filteredNodes = filterNodes(treeNodes);
+
+          if (filteredNodes.length > 0) {
             return (
               <TreeView
-                nodes={treeNodes}
+                nodes={filteredNodes}
                 activeItemId={activeItemId}
                 onSelectItem={(id, type) => onSelectItem(id, type)}
                 onRenameItem={(id, _type, newName) => onRenameItem(id, newName)}
                 onDeleteItem={(id, type) => {
-                  if (type === "table") {
-                    onDeleteTable(id);
+                  if (type === "table" || type === "design") {
+                    setDeleteConfirm({ id, type });
                   } else if (onDeleteItem) {
                     onDeleteItem(id, type);
                   }
@@ -523,6 +551,10 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             );
           }
 
+          // Search active but no results
+          if (q) {
+            return <div className="sidebar-search-empty">{t("sidebar.noResults")}</div>;
+          }
           // Fallback: flat list for tables + statics
           return (
             <>
@@ -540,51 +572,57 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
           items={createMenuItems}
           anchorEl={newBtnRef.current}
           onSelect={(key) => {
-            if (key === "table") {
-              setShowAIPopover(true);
+            if (key === "ai_create") {
+              if (onCreateByAI) onCreateByAI();
+              handleCloseAll();
+            } else if (key === "table") {
+              onCreateBlank();
+              handleCloseAll();
             } else if (key === "design") {
               if (onCreateDesign) {
                 onCreateDesign(t("createMenu.design"));
               }
               handleCloseAll();
             } else if (key === "idea") {
-              if (onCreateIdea) {
-                onCreateIdea();
-              }
+              if (onCreateIdea) onCreateIdea();
+              handleCloseAll();
+            } else if (key === "demo") {
+              if (onCreateDemo) onCreateDemo();
               handleCloseAll();
             } else if (key === "folder") {
               if (onCreateFolder) onCreateFolder();
               handleCloseAll();
-            } else {
-              setShowAIPopover(false);
             }
           }}
-          onClose={() => {
-            if (!isPopoverBlocking) {
-              setNewMenuOpen(false);
-              setShowAIPopover(false);
-            }
-          }}
+          onClose={() => setNewMenuOpen(false)}
           position="below"
           width={240}
-          activeSubMenuKey={showAIPopover ? "table" : null}
           className="sidebar-new-menu"
-          onMenuRef={handleMenuRef}
-          onItemRef={handleItemRef}
-          extraContainers={[popoverContainerRef]}
         />
       )}
-      {showAIPopover && menuEl && tableItemEl && (
-        <CreateTablePopover
-          ref={(handle) => { popoverHandleRef.current = handle; }}
-          anchorItemEl={tableItemEl}
-          menuEl={menuEl}
-          onClose={() => setShowAIPopover(false)}
-          onCreateWithAI={onCreateWithAI}
-          onResetToDefault={onResetToDefault}
-          onCreateBlank={onCreateBlank}
-        />
-      )}
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        title={deleteConfirm?.type === "design" ? t("app.deleteTaste") : t("app.deleteTable")}
+        message={
+          deleteConfirm?.type === "design"
+            ? t("app.deleteTasteMsg", { name: items.find(i => i.id === deleteConfirm?.id)?.displayName ?? "" })
+            : t("app.deleteTableMsg", { name: items.find(i => i.id === deleteConfirm?.id)?.displayName ?? "" })
+        }
+        confirmLabel={t("confirm.delete")}
+        cancelLabel={t("confirm.cancel")}
+        variant="danger"
+        onConfirm={() => {
+          if (deleteConfirm) {
+            if (deleteConfirm.type === "table") {
+              onDeleteTable(deleteConfirm.id);
+            } else if (onDeleteItem) {
+              onDeleteItem(deleteConfirm.id, deleteConfirm.type);
+            }
+          }
+          setDeleteConfirm(null);
+        }}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </aside>
   );
 }
@@ -599,8 +637,8 @@ function RenameIcon() {
 
 function DeleteIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <path d="M8 4C8 2.89543 8.89543 2 10 2H14C15.1046 2 16 2.89543 16 4H21C21.5523 4 22 4.44772 22 5C22 5.55228 21.5523 6 21 6H20C20 10.6667 20 15.3333 20 20C20 21.1046 19.1046 22 18 22H6C4.89543 22 4 21.1046 4 20C4 15.3333 4 10.6667 4 6H3C2.44772 6 2 5.55228 2 5C2 4.44772 2.44772 4 3 4H8ZM6 6V20H18V6H6ZM10 9C10.5523 9 11 9.44772 11 10V16C11 16.5523 10.5523 17 10 17C9.44772 17 9 16.5523 9 16V10C9 9.44772 9.44772 9 10 9ZM14 9C14.5523 9 15 9.44772 15 10V16C15 16.5523 14.5523 17 14 17C13.4477 17 13 16.5523 13 16V10C13 9.44772 13.4477 9 14 9Z" fill="currentColor"/>
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <path d="M6 2a1 1 0 00-1 1h6a1 1 0 00-1-1H6zM4 4h8v9a1 1 0 01-1 1H5a1 1 0 01-1-1V4zM3 4h10V3H3v1zM6.5 6v5M9.5 6v5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
     </svg>
   );
 }

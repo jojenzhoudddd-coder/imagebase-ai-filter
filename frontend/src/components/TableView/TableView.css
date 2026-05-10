@@ -533,8 +533,10 @@
 /* ─── Add row / footer: Figma add-record h=36, footer h=36 ─── */
 .add-row td {
   border-bottom: none;
-  padding: 0 8px;
+  border-top: none;
+  padding: 8px 8px 0 8px;
   height: 36px;
+  vertical-align: top;
 }
 
 .add-record-btn {

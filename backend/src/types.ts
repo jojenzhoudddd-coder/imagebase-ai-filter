@@ -321,6 +321,12 @@ export interface FilterGenerateRequest {
   existingFilter?: ViewFilter;
 }
 
+export interface SortGenerateRequest {
+  tableId: string;
+  query: string;
+  existingSort?: ViewSort;
+}
+
 export interface GroupedRecords {
   groupField: string;
   groupValue: CellValue;

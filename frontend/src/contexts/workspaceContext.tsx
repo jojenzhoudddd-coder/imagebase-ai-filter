@@ -29,12 +29,13 @@ export interface WorkspaceContextValue {
   onRenameItem: (id: string, name: string) => void;
   onDeleteTable: (id: string) => void;
   onDeleteItem?: (id: string, type: TreeItemType) => void;
-  onCreateBlank: () => Promise<void>;
+  onCreateBlank: () => Promise<string>;
   onCreateWithAI: (name: string, fields: GeneratedField[]) => Promise<string>;
   onResetToDefault: (tableId: string, name: string) => Promise<void>;
   onCreateFolder?: () => void;
   onCreateDesign?: (name: string, figmaUrl?: string) => Promise<string>;
   onCreateIdea?: () => Promise<string>;
+  onCreateDemo?: () => Promise<string>;
   onMoveItem?: (
     id: string,
     type: "table" | "folder" | "design" | "idea" | "demo",
@@ -44,8 +45,8 @@ export interface WorkspaceContextValue {
     updates: Array<{ id: string; type: TreeItemType; order: number }>,
   ) => void;
 
-  /** 让 ArtifactBlock 内 sidebar 切换 active artifact 时调用,App.tsx 不直接管 */
-  // (active state 由每个 block 自己管,不在 context 里)
+  /** Info about the most recently deleted artifact — blocks watch this to navigate away */
+  lastDeleted?: { id: string; nextId: string | null; nextType: TreeItemType | null } | null;
 }
 
 const Ctx = createContext<WorkspaceContextValue | null>(null);

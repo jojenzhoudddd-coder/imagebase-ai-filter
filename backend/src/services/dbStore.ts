@@ -163,12 +163,22 @@ export async function createTable(dto: CreateTableDTO): Promise<Table & { order:
   const wsId = dto.workspaceId || DEFAULT_WORKSPACE_ID;
   const fieldName = dto.language === "en" ? "Text" : "文本";
 
-  // Compute next order
-  const maxOrder = await prisma.table.aggregate({
-    where: { workspaceId: wsId },
-    _max: { order: true },
-  });
-  const nextOrder = (maxOrder._max.order ?? -1) + 1;
+  // Compute next order across all sibling types (insert at end)
+  const sibFilter = { workspaceId: wsId, parentId: null };
+  const [tblMax, folderMax, designMax, ideaMax, demoMax] = await Promise.all([
+    prisma.table.aggregate({ where: sibFilter, _max: { order: true } }),
+    prisma.folder.aggregate({ where: sibFilter, _max: { order: true } }),
+    prisma.design.aggregate({ where: sibFilter, _max: { order: true } }),
+    prisma.idea.aggregate({ where: sibFilter, _max: { order: true } }),
+    prisma.demo.aggregate({ where: sibFilter, _max: { order: true } }),
+  ]);
+  const nextOrder = Math.max(
+    tblMax._max.order ?? -1,
+    folderMax._max.order ?? -1,
+    designMax._max.order ?? -1,
+    ideaMax._max.order ?? -1,
+    demoMax._max.order ?? -1,
+  ) + 1;
 
   // Default text field
   const defaultField: Field = {

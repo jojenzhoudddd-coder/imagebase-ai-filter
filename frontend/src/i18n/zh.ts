@@ -9,6 +9,7 @@ export const zh: TranslationKeys = {
   "sidebar.new": "新建",
   "sidebar.design": "设计稿",
   "sidebar.album": "相册",
+  "sidebar.noResults": "无搜索结果",
 
   // TopBar
   "topbar.menu": "菜单",
@@ -115,25 +116,45 @@ export const zh: TranslationKeys = {
 
   // Toolbar
   "toolbar.addRecord": "添加记录",
+  "toolbar.addARecord": "添加一条记录",
+  "toolbar.addByChat": "通过对话添加",
+  "toolbar.addByChatPrompt.before": "我需要在 ",
+  "toolbar.addByChatPrompt.after": " 中添加记录，你可以反问我具体的记录要求，或者我直接告诉你这些记录满足以下要求：",
   "toolbar.customizeField": "字段",
   "toolbar.viewSettings": "视图配置",
   "toolbar.filter": "筛选",
   "toolbar.filterCount": "{{count}} 筛选",
   "toolbar.groupBy": "分组",
   "toolbar.sort": "排序",
+  "toolbar.sortCount": "{{count}} 排序",
+  "sort.title": "排序条件",
+  "sort.addRule": "添加条件",
+  "sort.selectField": "选择条件",
+  "sort.asc.text": "A → Z",
+  "sort.desc.text": "Z → A",
+  "sort.asc.number": "0 → 9",
+  "sort.desc.number": "9 → 0",
+  "sort.asc.select": "选项顺序",
+  "sort.desc.select": "选项倒序",
+  "sort.aiPlaceholder": "告诉 AI 你想怎么排序...",
+  "sort.generatingBy": "正在按 ",
+  "sort.conditionsGenerated": "排序条件已生成",
+  "sort.conditionsGeneratedEmpty": "未生成匹配的排序条件",
+  "sort.failedToGenerate": "生成排序条件失败",
   "toolbar.rowHeight": "行高",
   "toolbar.conditionalColoring": "填色",
   "toolbar.undo": "撤销",
 
   // ViewTabs
   "viewTabs.filterConfigured": "已配置筛选",
+  "viewTabs.sortConfigured": "已配置排序",
   "viewTabs.clear": "清除",
   "viewTabs.save": "保存",
   "viewTabs.addView": "新建视图",
   "viewTabs.more": "更多",
 
   // FilterPanel
-  "filter.title": "设置筛选条件",
+  "filter.title": "筛选条件",
   "filter.helpHint": "用自然语言描述你想看到的数据,AI 会帮你生成筛选条件;也可以手动添加。",
   "filter.aiPlaceholder": "告诉 AI 你想看到什么",
   "filter.generatingBy": "正在生成筛选条件",
@@ -389,6 +410,8 @@ export const zh: TranslationKeys = {
   // Delete table
   "app.deleteTable": "删除数据表",
   "app.deleteTableMsg": "确定要删除数据表「{{name}}」吗？删除后不可恢复。",
+  "app.deleteTaste": "删除创意",
+  "app.deleteTasteMsg": "确定要删除创意「{{name}}」吗？删除后不可恢复。",
 
   // Toast (rename)
   "toast.renameFailed": "重命名失败，修改已回退",
@@ -407,9 +430,11 @@ export const zh: TranslationKeys = {
   "createMenu.folder": "文件夹",
   "createMenu.design": "创意",
   "createMenu.album": "相册",
+  "createMenu.demo": "Demo",
   "createMenu.import": "导入/同步数据",
   "createMenu.appSection": "应用",
   "createMenu.app": "应用",
+  "createMenu.aiCreatePrompt": "我想创建一个新的 artifact，请根据我的需求帮我创建数据表、灵感文档、创意画布或 Demo。你想创建什么？",
 
   // Toast (table creation)
   "toast.createTableFailed": "创建数据表失败",
