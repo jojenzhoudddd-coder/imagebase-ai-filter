@@ -56,7 +56,7 @@
 .adb-body {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: 20px;
 }
 
 /* ══════ Access denied ════════════════════════════════════════════════ */
@@ -73,7 +73,7 @@
 .adb-metrics {
   display: flex;
   gap: 12px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
 }
 
