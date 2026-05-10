@@ -110,8 +110,8 @@
   --color-bg-float:       var(--surface-2);
   --color-white:          var(--surface-2);
 
-  /* SwipeDelete thumb — distinct from menu hover (surface-3 #F0F1F3) */
-  --swipe-del-thumb-hover: #D9DBDF;
+  /* SwipeDelete thumb — clearly distinct from menu hover (surface-3 #F0F1F3) */
+  --swipe-del-thumb-hover: #C8CCD0;
 }
 
 [data-theme="dark"] {
@@ -191,8 +191,8 @@
   --artifact-idea:       #FFB84D;
   --artifact-demo:       #5BC076;
 
-  /* SwipeDelete thumb — distinct from menu hover (surface-3 #38383A) */
-  --swipe-del-thumb-hover: #4A4A4C;
+  /* SwipeDelete thumb — clearly distinct from menu hover (surface-3 #38383A) */
+  --swipe-del-thumb-hover: #58585A;
 }
 
 /* ── 全局 SVG fill/stroke fallback for dark mode ────────────────────
