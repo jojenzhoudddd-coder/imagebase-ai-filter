@@ -24,6 +24,12 @@ export async function disconnectDB(): Promise<void> {
   await prisma.$disconnect();
 }
 
+// ─── User helpers ───
+
+export async function getUserById(id: string) {
+  return prisma.user.findUnique({ where: { id }, select: { id: true, admin: true, related: true } });
+}
+
 // ─── Helpers ───
 
 function sanitizeName(name: string): string {

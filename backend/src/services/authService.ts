@@ -114,6 +114,8 @@ export async function attachUser(
         username: true,
         name: true,
         avatarUrl: true,
+        admin: true,
+        related: true,
       },
     });
     if (u) (req as any).user = u;

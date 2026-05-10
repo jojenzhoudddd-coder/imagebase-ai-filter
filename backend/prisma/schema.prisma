@@ -27,6 +27,10 @@ model User {
   /// Empty {} means "fall back to browser localStorage / system default".
   /// 详见 docs/per-user-preferences.md。
   preferences Json @default("{}")
+  /// System administrator flag.
+  admin     Boolean @default(false)
+  /// Internal user flag. Only related=true users can see/use non-doubao models (opus, gpt).
+  related   Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
