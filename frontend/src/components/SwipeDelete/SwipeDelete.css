@@ -56,7 +56,7 @@
 }
 
 .swipe-del-thumb:hover {
-  background: var(--color-bg-hover, var(--surface-3));
+  background: var(--swipe-del-thumb-hover);
 }
 
 .swipe-del-thumb:active {
@@ -73,7 +73,7 @@
 }
 
 .swipe-del-thumb.swipe-del-active {
-  background: var(--color-bg-hover, var(--surface-3));
+  background: var(--swipe-del-thumb-hover);
 }
 
 .swipe-del-disabled {
@@ -86,7 +86,4 @@
   padding: 0;
 }
 
-.swipe-delete-wrapper.dropdown-menu-item:hover {
-  background: transparent !important;
-}
 

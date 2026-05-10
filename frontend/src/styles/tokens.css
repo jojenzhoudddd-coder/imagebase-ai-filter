@@ -109,6 +109,9 @@
   --color-bg-hover:       var(--surface-3);
   --color-bg-float:       var(--surface-2);
   --color-white:          var(--surface-2);
+
+  /* SwipeDelete thumb hover — deeper than menu hover in LM */
+  --swipe-del-thumb-hover: #E4E5E8;
 }
 
 [data-theme="dark"] {
@@ -187,6 +190,9 @@
   --artifact-taste:      #9C7AE8;
   --artifact-idea:       #FFB84D;
   --artifact-demo:       #5BC076;
+
+  /* SwipeDelete thumb hover — lighter than menu hover in DM */
+  --swipe-del-thumb-hover: #48484A;
 }
 
 /* ── 全局 SVG fill/stroke fallback for dark mode ────────────────────
