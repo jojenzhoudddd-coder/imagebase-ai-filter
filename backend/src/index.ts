@@ -51,7 +51,7 @@ import { mockTable } from "./mockData.js";
 import { connectDB, loadTable, getTable, getWorkspace, updateWorkspace, listTablesForWorkspace, ensureDefaults } from "./services/dbStore.js";
 import { eventBus } from "./services/eventBus.js";
 import { startSuggestionScheduler } from "./services/suggestionService.js";
-import { ensureDefaultAgent, migrateAllHabitsDisabled } from "./services/agentService.js";
+import { ensureDefaultAgent } from "./services/agentService.js";
 import { startHeartbeat, stopHeartbeat } from "./services/runtimeService.js";
 import { startModelProbe, stopModelProbe } from "./services/modelRegistry.js";
 import { regenerateMissingSummaries } from "./services/workspaceSummaryService.js";
@@ -349,14 +349,6 @@ async function start() {
     console.log(`Default agent ready: ${agent.id} (${agent.name})`);
   } catch (err) {
     console.error("Failed to ensure default agent:", err);
-  }
-
-  // One-shot migration: disable all system habits for existing agents (save tokens).
-  try {
-    const migrated = await migrateAllHabitsDisabled();
-    if (migrated > 0) console.log(`Migrated ${migrated} agent(s): system habits disabled`);
-  } catch (err) {
-    console.warn("Failed to migrate habits (non-fatal):", err);
   }
 
   // One-shot seed: make sure `user_default` (the legacy seed user) is

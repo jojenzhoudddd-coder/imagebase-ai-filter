@@ -268,51 +268,6 @@ async function fileExists(p: string): Promise<boolean> {
  * Boot-time migration: scan ALL agent directories and force system habits to disabled.
  * Returns the number of agents that were actually modified.
  */
-/**
- * One-time boot migration: scan ALL agent directories and force system habits to disabled.
- * Uses a marker file to ensure it only runs once — subsequent restarts skip it,
- * so users who manually re-enable habits will have their preference preserved.
- */
-export async function migrateAllHabitsDisabled(): Promise<number> {
-  const root = agentHomeRoot();
-  const markerPath = path.join(root, ".migrated_habits_disabled");
-  try {
-    await fs.access(markerPath);
-    return 0; // already migrated
-  } catch {
-    // marker doesn't exist, proceed
-  }
-  let dirs: string[];
-  try {
-    dirs = await fs.readdir(root);
-  } catch {
-    return 0; // no agents dir yet
-  }
-  let migrated = 0;
-  for (const dir of dirs) {
-    const cronPath = path.join(root, dir, "state", "cron.json");
-    try {
-      const raw = await fs.readFile(cronPath, "utf8");
-      const cronFile = JSON.parse(raw) as { jobs: any[] };
-      let changed = false;
-      for (const job of cronFile.jobs) {
-        if (job.type === "system" && job.enabled === true) {
-          job.enabled = false;
-          changed = true;
-        }
-      }
-      if (changed) {
-        await fs.writeFile(cronPath, JSON.stringify(cronFile, null, 2), "utf8");
-        migrated++;
-      }
-    } catch {
-      // skip agents without valid cron.json
-    }
-  }
-  // Write marker so this migration never runs again
-  await fs.writeFile(markerPath, new Date().toISOString(), "utf8");
-  return migrated;
-}
 
 function assertSize(content: string, label: string) {
   const bytes = Buffer.byteLength(content, "utf8");
