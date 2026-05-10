@@ -266,6 +266,7 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
         related: true,
         createdAt: true,
         updatedAt: true,
+        lastLoginAt: true,
       },
       orderBy: { createdAt: "desc" },
     });
@@ -273,7 +274,7 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
     // Gather per-user stats in parallel
     const enriched = await Promise.all(
       users.map(async (u) => {
-        const [conversationCount, activityCount, tokenAgg] = await Promise.all([
+        const [conversationCount, activityCount, tokenAgg, lastMessage, workspaceCount, workspaces] = await Promise.all([
           prisma.conversation.count({
             where: { agent: { userId: u.id } },
           }),
@@ -287,12 +288,53 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
             where: { userId: u.id },
             _sum: { totalTokens: true },
           }),
+          // Last message sent by user (through agents → conversations → messages)
+          prisma.message.findFirst({
+            where: {
+              role: "user",
+              conversation: { agent: { userId: u.id } },
+            },
+            orderBy: { timestamp: "desc" },
+            select: { timestamp: true },
+          }),
+          // Workspace count
+          prisma.workspace.count({
+            where: { createdById: u.id },
+          }),
+          // Get workspace IDs for artifact counting
+          prisma.workspace.findMany({
+            where: { createdById: u.id },
+            select: { id: true },
+          }),
         ]);
+
+        const wsIds = workspaces.map((w) => w.id);
+
+        // Count artifacts and workends in user's workspaces
+        let artifactCount = 0;
+        let workendCount = 0;
+        if (wsIds.length > 0) {
+          const [tableCount, ideaCount, designCount, demoCount, publishedDemoCount] = await Promise.all([
+            prisma.table.count({ where: { workspaceId: { in: wsIds } } }),
+            prisma.idea.count({ where: { workspaceId: { in: wsIds } } }),
+            prisma.design.count({ where: { workspaceId: { in: wsIds } } }),
+            prisma.demo.count({ where: { workspaceId: { in: wsIds } } }),
+            prisma.demo.count({ where: { workspaceId: { in: wsIds }, publishSlug: { not: null } } }),
+          ]);
+          artifactCount = tableCount + ideaCount + designCount + demoCount;
+          workendCount = publishedDemoCount;
+        }
+
         return {
           ...u,
           conversationCount,
           activityCount,
           totalTokens: tokenAgg._sum.totalTokens ?? 0,
+          lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
+          lastMessageAt: lastMessage?.timestamp?.toISOString() ?? null,
+          workspaceCount,
+          artifactCount,
+          workendCount,
         };
       }),
     );

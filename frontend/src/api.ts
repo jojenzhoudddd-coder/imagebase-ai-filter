@@ -2392,6 +2392,11 @@ export interface AdminUser {
   conversationCount: number;
   activityCount: number;
   totalTokens: number;
+  lastLoginAt: string | null;
+  lastMessageAt: string | null;
+  workspaceCount: number;
+  artifactCount: number;
+  workendCount: number;
 }
 
 export async function fetchAdminStats(): Promise<AdminStats> {

@@ -15,6 +15,12 @@ function formatDateTime(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+function formatTokenCount(n: number): string {
+  if (n < 1000) return n.toLocaleString("en-US");
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10000 ? 1 : 0).replace(/\.0$/, "")}k`;
+  return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0).replace(/\.0$/, "")}M`;
+}
+
 export default function UserTable({ users, onUserUpdated }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -51,7 +57,12 @@ export default function UserTable({ users, onUserUpdated }: Props) {
             <th>{t("admin.table.email")}</th>
             <th>{t("admin.table.related")}</th>
             <th>{t("admin.table.models")}</th>
-            <th>{t("admin.table.lastActive")}</th>
+            <th>{t("admin.table.lastLogin")}</th>
+            <th>{t("admin.table.lastMessage")}</th>
+            <th>{t("admin.table.tokens")}</th>
+            <th>{t("admin.table.workspaces")}</th>
+            <th>{t("admin.table.artifacts")}</th>
+            <th>{t("admin.table.workends")}</th>
             <th>{t("admin.table.conversations")}</th>
             <th>{t("admin.table.activities")}</th>
           </tr>
@@ -89,7 +100,12 @@ export default function UserTable({ users, onUserUpdated }: Props) {
                   {user.related ? t("admin.models.all") : t("admin.models.default")}
                 </span>
               </td>
-              <td>{formatDateTime(user.updatedAt)}</td>
+              <td>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "-"}</td>
+              <td>{user.lastMessageAt ? formatDateTime(user.lastMessageAt) : "-"}</td>
+              <td>{formatTokenCount(user.totalTokens)}</td>
+              <td>{user.workspaceCount}</td>
+              <td>{user.artifactCount}</td>
+              <td>{user.workendCount}</td>
               <td>{user.conversationCount}</td>
               <td>{user.activityCount}</td>
             </tr>
