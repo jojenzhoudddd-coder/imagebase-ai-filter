@@ -72,6 +72,10 @@
   color: var(--text-secondary, #666);
 }
 
+.swipe-del-thumb.swipe-del-active {
+  background: var(--color-bg-hover, var(--surface-3));
+}
+
 .swipe-del-disabled {
   opacity: 0.5;
   pointer-events: none;
@@ -86,12 +90,3 @@
   background: transparent !important;
 }
 
-/* Nudge hint: quick jump right then back */
-@keyframes swipe-del-nudge {
-  0%   { transform: translateX(0); }
-  30%  { transform: translateX(20px); }
-  100% { transform: translateX(0); }
-}
-.swipe-del-thumb.swipe-del-nudge {
-  animation: swipe-del-nudge 0.35s ease;
-}
