@@ -39,6 +39,8 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
   const startOffsetRef = useRef(0);
   const maxOffsetRef = useRef(0);
   const movedRef = useRef(false);
+  const onDeleteRef = useRef(onDelete);
+  onDeleteRef.current = onDelete;
 
   const setOffset = (v: number) => {
     offsetRef.current = v;
@@ -71,15 +73,14 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
     }
   }, [disabled, done, getMaxOffset, triggerDelete]);
 
-  // Use document-level listeners for move/up to avoid pointer capture issues
+  // Document-level listeners — registered once, use refs for stability
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       if (!draggingRef.current) return;
       e.preventDefault();
       const dx = e.clientX - startXRef.current;
       if (Math.abs(dx) > 3) movedRef.current = true;
-      const clamped = Math.max(0, Math.min(startOffsetRef.current + dx, maxOffsetRef.current));
-      offsetRef.current = clamped;
+      offsetRef.current = Math.max(0, Math.min(startOffsetRef.current + dx, maxOffsetRef.current));
       forceRender((n) => n + 1);
     };
     const onUp = (e: PointerEvent) => {
@@ -88,18 +89,32 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
       draggingRef.current = false;
 
       if (!movedRef.current) {
-        // Click on thumb — advance right
-        advanceBy(CLICK_ADVANCE);
+        // Click on thumb — advance right (delegate to advanceBy via ref)
+        const max = maxOffsetRef.current;
+        const next = Math.max(0, offsetRef.current + CLICK_ADVANCE);
+        if (max > 0 && next >= max * 0.9) {
+          setAnimating(true);
+          offsetRef.current = max;
+          setDone(true);
+          forceRender((n) => n + 1);
+          setTimeout(() => onDeleteRef.current(), 300);
+        } else {
+          setAnimating(true);
+          offsetRef.current = next;
+          forceRender((n) => n + 1);
+          setTimeout(() => setAnimating(false), 250);
+        }
         return;
       }
 
+      // Drag release — stay at current position (no snap)
       const cur = offsetRef.current;
       if (cur >= maxOffsetRef.current * 0.9) {
         setAnimating(true);
         offsetRef.current = maxOffsetRef.current;
         setDone(true);
         forceRender((n) => n + 1);
-        setTimeout(() => onDelete(), 300);
+        setTimeout(() => onDeleteRef.current(), 300);
       } else {
         forceRender((n) => n + 1);
       }
@@ -110,7 +125,7 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
     };
-  }, [onDelete, advanceBy]);
+  }, []); // stable — never re-registers
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (disabled || done) return;

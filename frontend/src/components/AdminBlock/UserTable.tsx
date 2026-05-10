@@ -10,7 +10,14 @@ interface Props {
 }
 
 function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("sv-SE", { timeZone: "Asia/Shanghai" }).replace("T", " ");
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(iso));
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
 function formatTokenCount(n: number): string {

@@ -2336,7 +2336,7 @@ function WelcomeHero({ agentId }: { agentId: string }) {
   // 时父级传过来的 fallback,真发请求会被 requireArtifactAccess 中间件
   // 403(因为 agent_default 不属于当前用户)。
   useEffect(() => {
-    if (!agentId || agentId === "agent_default") return;
+    if (!agentId) return;
     let cancelled = false;
     getAgent(agentId)
       .then((a) => {
