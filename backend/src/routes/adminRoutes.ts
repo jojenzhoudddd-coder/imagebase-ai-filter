@@ -267,6 +267,7 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
         createdAt: true,
         updatedAt: true,
         lastLoginAt: true,
+        agents: { select: { id: true, name: true, avatarUrl: true }, take: 1 },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -325,8 +326,12 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
           workendCount = publishedDemoCount;
         }
 
+        const agent = u.agents[0] ?? null;
         return {
           ...u,
+          agents: undefined,
+          agentName: agent?.name ?? null,
+          agentAvatarUrl: agent?.avatarUrl ?? null,
           conversationCount,
           activityCount,
           totalTokens: tokenAgg._sum.totalTokens ?? 0,

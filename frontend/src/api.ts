@@ -2389,6 +2389,8 @@ export interface AdminUser {
   related: boolean;
   createdAt: string;
   updatedAt: string;
+  agentName: string | null;
+  agentAvatarUrl: string | null;
   conversationCount: number;
   activityCount: number;
   totalTokens: number;

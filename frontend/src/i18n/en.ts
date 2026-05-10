@@ -889,6 +889,7 @@ export const en = {
   "admin.table.related": "Related",
   "admin.table.models": "Models",
   "admin.table.lastLogin": "Last Login",
+  "admin.table.agent": "Agent",
   "admin.table.lastMessage": "Last Message",
   "admin.table.tokens": "Tokens",
   "admin.table.workspaces": "Workspaces",

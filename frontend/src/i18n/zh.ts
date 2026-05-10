@@ -894,6 +894,7 @@ export const zh: TranslationKeys = {
   "admin.table.related": "关联",
   "admin.table.models": "模型",
   "admin.table.lastLogin": "最后登录",
+  "admin.table.agent": "Agent",
   "admin.table.lastMessage": "最后消息",
   "admin.table.tokens": "Token 用量",
   "admin.table.workspaces": "工作空间",

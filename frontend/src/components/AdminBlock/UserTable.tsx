@@ -58,13 +58,14 @@ export default function UserTable({ users, onUserUpdated }: Props) {
             <th>{t("admin.table.related")}</th>
             <th>{t("admin.table.models")}</th>
             <th>{t("admin.table.lastLogin")}</th>
+            <th>{t("admin.table.agent")}</th>
             <th>{t("admin.table.lastMessage")}</th>
+            <th>{t("admin.table.conversations")}</th>
+            <th>{t("admin.table.activities")}</th>
             <th>{t("admin.table.tokens")}</th>
             <th>{t("admin.table.workspaces")}</th>
             <th>{t("admin.table.artifacts")}</th>
             <th>{t("admin.table.workends")}</th>
-            <th>{t("admin.table.conversations")}</th>
-            <th>{t("admin.table.activities")}</th>
           </tr>
         </thead>
         <tbody>
@@ -101,13 +102,25 @@ export default function UserTable({ users, onUserUpdated }: Props) {
                 </span>
               </td>
               <td>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "-"}</td>
+              <td>
+                <div className="adb-user-cell">
+                  {user.agentAvatarUrl ? (
+                    <img className="adb-avatar" src={user.agentAvatarUrl} alt="" />
+                  ) : (
+                    <span className="adb-avatar-fallback" style={{ background: "var(--text-secondary)", fontSize: 10 }}>
+                      {(user.agentName || "A").charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="adb-user-name">{user.agentName || "-"}</span>
+                </div>
+              </td>
               <td>{user.lastMessageAt ? formatDateTime(user.lastMessageAt) : "-"}</td>
+              <td>{user.conversationCount}</td>
+              <td>{user.activityCount}</td>
               <td>{formatTokenCount(user.totalTokens)}</td>
               <td>{user.workspaceCount}</td>
               <td>{user.artifactCount}</td>
               <td>{user.workendCount}</td>
-              <td>{user.conversationCount}</td>
-              <td>{user.activityCount}</td>
             </tr>
           ))}
         </tbody>
