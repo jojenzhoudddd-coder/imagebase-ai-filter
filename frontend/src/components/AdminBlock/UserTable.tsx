@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { useToast } from "../Toast/index";
+import { useAuth } from "../../auth/AuthContext";
 import type { AdminUser } from "../../api";
 import { patchAdminUser } from "../../api";
 
@@ -9,9 +10,9 @@ interface Props {
   onUserUpdated: (id: string, patch: Partial<AdminUser>) => void;
 }
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, timezone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
+    timeZone: timezone,
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit", second: "2-digit",
     hour12: false,
@@ -79,6 +80,8 @@ function SortIndicator({ dir, order }: { dir: SortDir | null; order: number | nu
 export default function UserTable({ users, onUserUpdated }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
+  const { preferences } = useAuth();
+  const timezone = preferences.timezone ?? "Asia/Shanghai";
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
   const [sortStack, setSortStack] = useState<SortEntry[]>(() => {
     try {
@@ -210,8 +213,8 @@ export default function UserTable({ users, onUserUpdated }: Props) {
                   {user.related ? t("admin.models.all") : t("admin.models.default")}
                 </span>
               </td>
-              <td>{user.createdAt ? formatDateTime(user.createdAt) : "-"}</td>
-              <td>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "-"}</td>
+              <td>{user.createdAt ? formatDateTime(user.createdAt, timezone) : "-"}</td>
+              <td>{user.lastLoginAt ? formatDateTime(user.lastLoginAt, timezone) : "-"}</td>
               <td>
                 <div className="adb-user-cell">
                   <img
@@ -223,7 +226,7 @@ export default function UserTable({ users, onUserUpdated }: Props) {
                   <span className="adb-user-name">{user.agentName || "-"}</span>
                 </div>
               </td>
-              <td>{user.lastMessageAt ? formatDateTime(user.lastMessageAt) : "-"}</td>
+              <td>{user.lastMessageAt ? formatDateTime(user.lastMessageAt, timezone) : "-"}</td>
               <td>{user.conversationCount}</td>
               <td>{user.activityCount}</td>
               <td>{formatTokenCount(user.totalTokens)}</td>

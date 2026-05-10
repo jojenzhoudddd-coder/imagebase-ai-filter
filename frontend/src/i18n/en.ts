@@ -57,6 +57,7 @@ export const en = {
   "topbar.themeLight": "Light",
   "topbar.themeDark": "Dark",
   "topbar.themeSystem": "System",
+  "topbar.timezone": "Timezone",
 
   // Auth pages (login / register)
   "auth.heroTitle": "Table · Taste · Idea · Demo",

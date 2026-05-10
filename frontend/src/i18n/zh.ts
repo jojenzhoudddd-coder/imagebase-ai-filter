@@ -59,6 +59,7 @@ export const zh: TranslationKeys = {
   "topbar.themeLight": "浅色",
   "topbar.themeDark": "深色",
   "topbar.themeSystem": "跟随系统",
+  "topbar.timezone": "时区",
 
   // Auth pages (login / register)
   "auth.heroTitle": "Table · Taste · Idea · Demo",

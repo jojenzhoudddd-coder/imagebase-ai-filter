@@ -21,6 +21,9 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { getHistory } from "../services/dailySnapshotService.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+pool.on('connect', (client) => {
+  client.query("SET timezone = 'UTC'");
+});
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
@@ -261,15 +264,13 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
       SELECT
         u.id, u.email, u.username, u.name, u."avatarUrl",
         u.admin, u.related,
-        to_char(u."createdAt", 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "createdAt",
-        to_char(u."updatedAt", 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "updatedAt",
-        to_char(u."lastLoginAt", 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "lastLoginAt",
+        u."createdAt", u."updatedAt", u."lastLoginAt",
         -- Agent (first per user)
         ag.name AS "agentName", ag."avatarUrl" AS "agentAvatarUrl",
         -- Conversations & activities (through agents → conversations → messages)
         COALESCE(conv_stats.conv_count, 0)::int AS "conversationCount",
         COALESCE(conv_stats.activity_count, 0)::int AS "activityCount",
-        to_char(conv_stats.last_message_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "lastMessageAt",
+        conv_stats.last_message_at AS "lastMessageAt",
         -- Tokens
         COALESCE(tk.total, 0)::int AS "totalTokens",
         -- Workspaces
@@ -315,7 +316,14 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
       ORDER BY u."createdAt" DESC
     `);
 
-    res.json({ users: rows });
+    const users = rows.map((r: any) => ({
+      ...r,
+      createdAt: r.createdAt?.toISOString?.() ?? r.createdAt ?? null,
+      updatedAt: r.updatedAt?.toISOString?.() ?? r.updatedAt ?? null,
+      lastLoginAt: r.lastLoginAt?.toISOString?.() ?? r.lastLoginAt ?? null,
+      lastMessageAt: r.lastMessageAt?.toISOString?.() ?? r.lastMessageAt ?? null,
+    }));
+    res.json({ users });
   } catch (err: any) {
     console.error("[admin] users list error:", err);
     res.status(500).json({ error: err.message ?? "internal error" });

@@ -43,6 +43,8 @@ export interface UserPreferences {
   canvasLayout?: unknown;
   /** 预留:Magic Canvas 布局预设(将来支持) */
   canvasPresets?: unknown;
+  /** IANA timezone identifier, e.g. "Asia/Shanghai", "America/New_York" */
+  timezone?: string;
 }
 
 interface MeResponse {

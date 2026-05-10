@@ -55,7 +55,7 @@ function formatTokenCount(n: number): string {
 
 export default function TopBar({ tableName, documentName, workspaceId, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount }: Props) {
   const { t, locale } = useTranslation();
-  const { user, patchUser, logout, patchPreferences } = useAuth();
+  const { user, patchUser, logout, patchPreferences, preferences } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const { preference: themePreference, setTheme } = useTheme();
@@ -231,12 +231,14 @@ export default function TopBar({ tableName, documentName, workspaceId, onRenameT
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [langSubOpen, setLangSubOpen] = useState(false);
   const [themeSubOpen, setThemeSubOpen] = useState(false);
+  const [tzSubOpen, setTzSubOpen] = useState(false);
   const avatarRef = useRef<HTMLImageElement>(null);
   const avatarMenuRef = useRef<HTMLDivElement>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const [avatarMenuPos, setAvatarMenuPos] = useState<{ top: number; left: number } | null>(null);
   const langSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const themeSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tzSubCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Close avatar menu on outside click
   useEffect(() => {
@@ -601,6 +603,66 @@ export default function TopBar({ tableName, documentName, workspaceId, onRenameT
                     </svg>
                   )}
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Timezone submenu */}
+          <div
+            className="topbar-menu-item has-submenu"
+            onMouseEnter={() => {
+              if (tzSubCloseTimer.current) { clearTimeout(tzSubCloseTimer.current); tzSubCloseTimer.current = null; }
+              setTzSubOpen(true);
+            }}
+            onMouseLeave={() => {
+              tzSubCloseTimer.current = setTimeout(() => setTzSubOpen(false), 300);
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon">
+              <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2" fill="none"/>
+              <path d="M8 3v5l3 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span className="topbar-menu-label">{t("topbar.timezone")}</span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="topbar-menu-arrow">
+              <path d="M4.5 2.5l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {tzSubOpen && (
+              <div
+                className="topbar-submenu"
+                onMouseEnter={() => { if (tzSubCloseTimer.current) { clearTimeout(tzSubCloseTimer.current); tzSubCloseTimer.current = null; } }}
+                onMouseLeave={() => { tzSubCloseTimer.current = setTimeout(() => setTzSubOpen(false), 300); }}
+              >
+                {([
+                  ["Asia/Shanghai", "UTC+8 Shanghai"],
+                  ["Asia/Tokyo", "UTC+9 Tokyo"],
+                  ["America/New_York", "UTC-5 New York"],
+                  ["America/Los_Angeles", "UTC-8 Los Angeles"],
+                  ["Europe/London", "UTC+0 London"],
+                  ["Europe/Berlin", "UTC+1 Berlin"],
+                  ["UTC", "UTC+0"],
+                ] as [string, string][]).map(([tz, label]) => {
+                  const currentTz = preferences.timezone ?? "Asia/Shanghai";
+                  return (
+                    <div
+                      key={tz}
+                      className={`topbar-menu-item${currentTz === tz ? " topbar-menu-item-active" : ""}`}
+                      onClick={() => {
+                        if (tz !== currentTz) {
+                          patchPreferences({ timezone: tz }).catch((err) => {
+                            console.warn("[topbar] persist timezone failed:", err);
+                          });
+                        }
+                      }}
+                    >
+                      <span className="topbar-menu-label">{label}</span>
+                      {currentTz === tz && (
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="topbar-menu-check">
+                          <path d="M3 7.5l3 3 5-6" stroke="#3370FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
