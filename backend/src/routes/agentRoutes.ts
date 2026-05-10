@@ -68,7 +68,12 @@ import {
 } from "../services/cronScheduler.js";
 import { listActivities } from "../services/conversationStore.js";
 import { listEpisodicMemories, readWorkingMemory } from "../services/agentService.js";
+import pg from "pg";
 import { allSkills } from "../../mcp-server/src/skills/index.js";
+
+// Pool for raw queries (skill last-used lookups)
+const _agentPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+pg.types.setTypeParser(1114, (str: string) => new Date(str + "Z"));
 import { listUserSkills, updateUserSkill } from "../services/userSkill/userSkillStore.js";
 import {
   listVisibleModels,
@@ -653,6 +658,30 @@ router.get("/:agentId/skills", async (req: Request, res: Response) => {
   try {
     const { agentId } = req.params;
 
+    // Query last-used time for builtin skills from message source field
+    // source stores "skill:table-skill,analyst-skill" etc.
+    const skillLastUsedMap = new Map<string, string>();
+    try {
+      const { rows: sourceRows } = await _agentPool.query(`
+        SELECT m.source, MAX(m.timestamp) AS last_ts
+        FROM messages m
+        JOIN conversations c ON m."conversationId" = c.id
+        WHERE c."agentId" = $1
+          AND m.source IS NOT NULL
+          AND m.source LIKE 'skill:%'
+          AND m.role = 'assistant'
+        GROUP BY m.source
+      `, [agentId]);
+      for (const row of sourceRows) {
+        const skills = (row.source as string).replace("skill:", "").split(",");
+        const ts = row.last_ts instanceof Date ? row.last_ts.toISOString() : String(row.last_ts);
+        for (const s of skills) {
+          const prev = skillLastUsedMap.get(s);
+          if (!prev || ts > prev) skillLastUsedMap.set(s, ts);
+        }
+      }
+    } catch { /* non-fatal */ }
+
     // Builtin skills
     const builtinSkills = allSkills.map((s) => ({
       id: s.name,
@@ -662,7 +691,7 @@ router.get("/:agentId/skills", async (req: Request, res: Response) => {
       triggers: s.triggers
         .map((t) => (typeof t === "string" ? t : t.source))
         .slice(0, 10),
-      lastUsed: null,
+      lastUsed: skillLastUsedMap.get(s.name) ?? null,
       type: "builtin" as const,
       enabled: true,
     }));
