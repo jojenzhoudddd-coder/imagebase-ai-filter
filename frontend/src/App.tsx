@@ -866,12 +866,8 @@ export default function App() {
   }, [fields, filter, savedFilter, viewHiddenFields, viewFieldOrder, toast, performUndo, pushUndo]);
 
   const handleDeleteFields = useCallback((fieldIds: string[]) => {
-    if (deleteProtection) {
-      setConfirmDialog({ open: true, type: "fields", recordIds: [], fieldIds, cellsToClear: [] });
-    } else {
-      executeDeleteFields(fieldIds);
-    }
-  }, [deleteProtection, executeDeleteFields]);
+    executeDeleteFields(fieldIds);
+  }, [executeDeleteFields]);
 
   // ── Batch hide fields ──
   const handleHideFields = useCallback((fieldIds: string[]) => {
@@ -890,12 +886,8 @@ export default function App() {
   }, [handleDeleteFields]);
 
   const handleDeleteRecords = useCallback((recordIds: string[]) => {
-    if (deleteProtection) {
-      setConfirmDialog({ open: true, type: "records", recordIds, fieldIds: [], cellsToClear: [] });
-    } else {
-      executeDelete(recordIds);
-    }
-  }, [deleteProtection, executeDelete]);
+    executeDelete(recordIds);
+  }, [executeDelete]);
 
   // ── Add a single empty record ──
   // position: "start" → 插到第一行（top toolbar 用）、"end" → 末行（table 底部 +）
@@ -978,14 +970,10 @@ export default function App() {
 
   // Row cell clearing (from checkbox selection + Delete key) goes through safety delete
   const handleClearRowCells = useCallback((cells: Array<{ recordId: string; fieldId: string }>) => {
-    if (deleteProtection) {
-      setConfirmDialog({ open: true, type: "rowCells", recordIds: [], fieldIds: [], cellsToClear: cells });
-    } else {
-      const rowCount = new Set(cells.map(c => c.recordId)).size;
-      executeClearCells(cells, t("toast.clearedRecords", { count: rowCount }));
-      tableViewRef.current?.clearRowSelection();
-    }
-  }, [deleteProtection, executeClearCells, t]);
+    const rowCount = new Set(cells.map(c => c.recordId)).size;
+    executeClearCells(cells, t("toast.clearedRecords", { count: rowCount }));
+    tableViewRef.current?.clearRowSelection();
+  }, [executeClearCells, t]);
 
   const handleConfirmDelete = useCallback(() => {
     const reset = { open: false, type: "records" as const, recordIds: [] as string[], fieldIds: [] as string[], cellsToClear: [] as Array<{ recordId: string; fieldId: string }> };
@@ -1561,42 +1549,31 @@ export default function App() {
       if (type === "folder") {
         await apiDeleteFolder(id);
         setDocumentFolders(prev => prev.filter(f => f.id !== id));
-        // Move children to root
         setDocumentTables(prev => prev.map(t => t));
         setDocumentDesigns(prev => prev.map(d => d.parentId === id ? { ...d, parentId: null } : d));
         setDocumentIdeas(prev => prev.map(i => i.parentId === id ? { ...i, parentId: null } : i));
+        toast.success(t("toast.deleted"));
       } else if (type === "design") {
         const next = pickNextActiveAfterDelete(id);
         setLastDeleted({ id, nextId: next?.id ?? null, nextType: next?.type ?? null });
         await apiDeleteDesign(id);
         setDocumentDesigns(prev => prev.filter(d => d.id !== id));
         if (id === activeTableId) activateAfterDelete(id);
+        toast.success(t("toast.deleted"));
       } else if (type === "demo") {
         const next = pickNextActiveAfterDelete(id);
         setLastDeleted({ id, nextId: next?.id ?? null, nextType: next?.type ?? null });
         await apiDeleteDemo(id);
         setDocumentDemos(prev => prev.filter(d => d.id !== id));
         if (id === activeTableId) activateAfterDelete(id);
+        toast.success(t("toast.deleted"));
       } else if (type === "idea") {
-        // Ideas can be targets of @mentions from other ideas. Delete is
-        // destructive (those mentions become dead links), so we open the
-        // confirmation dialog first and pre-fetch incoming refs so the user
-        // sees the blast radius before committing. Actual delete fires from
-        // `handleConfirmDeleteIdea` below.
-        setIdeaDeleteConfirm({ open: true, ideaId: id, refs: [], total: 0, loading: true });
-        try {
-          const { refs, total } = await fetchIncomingMentions(WORKSPACE_ID, "idea", id);
-          setIdeaDeleteConfirm(prev =>
-            prev.ideaId === id ? { ...prev, refs, total, loading: false } : prev
-          );
-        } catch {
-          // Reverse lookup failed — let the user proceed anyway (the list
-          // just shows empty). We deliberately don't toast here because the
-          // dialog itself is the feedback surface.
-          setIdeaDeleteConfirm(prev =>
-            prev.ideaId === id ? { ...prev, loading: false } : prev
-          );
-        }
+        const next = pickNextActiveAfterDelete(id);
+        setLastDeleted({ id, nextId: next?.id ?? null, nextType: next?.type ?? null });
+        await apiDeleteIdea(id);
+        setDocumentIdeas(prev => prev.filter(i => i.id !== id));
+        if (id === activeTableId) activateAfterDelete(id);
+        toast.success(t("toast.deleted"));
       }
     } catch {
       toast.error(t("toast.deleteFailed"));
@@ -2140,47 +2117,6 @@ export default function App() {
           // table block 切换 → 同步 global activeTableId(让 ArtifactView 的 render 拉新表)
           handleSelectItem(id, "table");
         }}
-      />
-      <ConfirmDialog
-        open={confirmDialog.open}
-        title={
-          confirmDialog.type === "fields" ? t("app.deleteFields")
-          : confirmDialog.type === "rowCells" ? t("app.clearRecords")
-          : confirmDialog.type === "cells" ? t("app.clearCells")
-          : t("app.deleteRecords")
-        }
-        message={
-          confirmDialog.type === "fields"
-            ? t("app.deleteFieldsMsg", { count: confirmDialog.fieldIds.length })
-            : confirmDialog.type === "rowCells"
-            ? (() => {
-                const rowCount = new Set(confirmDialog.cellsToClear.map(c => c.recordId)).size;
-                return t("app.clearRecordsMsg", { count: rowCount });
-              })()
-            : confirmDialog.type === "cells"
-            ? t("app.clearCellsMsg", { count: confirmDialog.cellsToClear.length })
-            : t("app.deleteRecordsMsg", { count: confirmDialog.recordIds.length })
-        }
-        confirmLabel={confirmDialog.type === "rowCells" || confirmDialog.type === "cells" ? t("confirm.clear") : t("confirm.delete")}
-        cancelLabel={t("confirm.cancel")}
-        variant="danger"
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setConfirmDialog({ open: false, type: "records", recordIds: [], fieldIds: [], cellsToClear: [] })}
-      />
-      <ConfirmDialog
-        open={ideaDeleteConfirm.open}
-        title={t("confirm.deleteIdeaTitle")}
-        message={t("confirm.deleteIdeaMsg")}
-        confirmLabel={t("confirm.delete")}
-        cancelLabel={t("confirm.cancel")}
-        variant="danger"
-        references={ideaDeleteConfirm.refs.map<ConfirmReference>(r => ({
-          sourceLabel: r.sourceLabel,
-          contextExcerpt: r.contextExcerpt,
-        }))}
-        referencesTotal={ideaDeleteConfirm.total}
-        onConfirm={handleConfirmDeleteIdea}
-        onCancel={() => setIdeaDeleteConfirm({ open: false, ideaId: null, refs: [], total: 0, loading: false })}
       />
     </div>
     </CanvasProvider>
