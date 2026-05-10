@@ -24,7 +24,7 @@ const DONE_ICON = (
 
 const THUMB_START = 1;
 const THUMB_WIDTH = 36;
-const CLICK_STEP = 20;
+const CLICK_ADVANCE = 20; // px per click (visual jump distance)
 
 export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDeleteProps) {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -89,7 +89,7 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
 
       if (!movedRef.current) {
         // Click on thumb — advance right
-        advanceBy(CLICK_STEP);
+        advanceBy(CLICK_ADVANCE);
         return;
       }
 
@@ -148,7 +148,7 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
         const trackRect = trackRef.current.getBoundingClientRect();
         const clickX = e.clientX - trackRect.left;
         const thumbCenter = offsetRef.current + THUMB_START + THUMB_WIDTH / 2;
-        advanceBy(clickX < thumbCenter ? -CLICK_STEP : CLICK_STEP);
+        advanceBy(clickX < thumbCenter ? -CLICK_ADVANCE : CLICK_ADVANCE);
       }}
     >
       <div
