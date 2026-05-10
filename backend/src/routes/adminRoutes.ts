@@ -20,10 +20,12 @@ import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { getHistory } from "../services/dailySnapshotService.js";
 
+// Override pg type parser for "timestamp without time zone" (OID 1114):
+// pg-types by default interprets it using Node's local TZ, but Prisma
+// stores UTC values. Append 'Z' so JS Date parses as UTC.
+pg.types.setTypeParser(1114, (str: string) => new Date(str + "Z"));
+
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-pool.on('connect', (client) => {
-  client.query("SET timezone = 'UTC'");
-});
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
