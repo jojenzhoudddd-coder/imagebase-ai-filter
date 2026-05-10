@@ -39,6 +39,7 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
   const startOffsetRef = useRef(0);
   const maxOffsetRef = useRef(0);
   const movedRef = useRef(false);
+  const justDraggedRef = useRef(false);
   const onDeleteRef = useRef(onDelete);
   onDeleteRef.current = onDelete;
 
@@ -108,6 +109,9 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
       }
 
       // Drag release — stay at current position (no snap)
+      // Set flag so the subsequent click event on the root div is ignored
+      justDraggedRef.current = true;
+      setTimeout(() => { justDraggedRef.current = false; }, 0);
       const cur = offsetRef.current;
       if (cur >= maxOffsetRef.current * 0.9) {
         setAnimating(true);
@@ -159,6 +163,7 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
+        if (justDraggedRef.current) return;
         if (!trackRef.current) return;
         const trackRect = trackRef.current.getBoundingClientRect();
         const clickX = e.clientX - trackRect.left;
