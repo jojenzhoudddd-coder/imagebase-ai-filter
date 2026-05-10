@@ -903,6 +903,22 @@ export const en = {
   "admin.noUsers": "No users found",
   "admin.models.all": "All models",
   "admin.models.default": "Default only",
+  "admin.toolbar.fields": "Fields",
+  "admin.toolbar.filter": "Filter",
+  "admin.toolbar.filterCount": "Filter ({count})",
+  "admin.filter.title": "Filters",
+  "admin.filter.addCondition": "Add condition",
+  "admin.filter.contains": "contains",
+  "admin.filter.eq": "is",
+  "admin.filter.neq": "is not",
+  "admin.filter.gt": ">",
+  "admin.filter.gte": ">=",
+  "admin.filter.lt": "<",
+  "admin.filter.lte": "<=",
+  "admin.filter.isEmpty": "is empty",
+  "admin.filter.isNotEmpty": "is not empty",
+  "admin.filter.isTrue": "is true",
+  "admin.filter.isFalse": "is false",
 };
 
 export type TranslationKeys = typeof en;
