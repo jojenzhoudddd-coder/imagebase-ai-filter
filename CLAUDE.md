@@ -38,7 +38,8 @@ backend/
     mockData.ts       - Mock table data (fields, records)
     routes/
       tableRoutes.ts  - CRUD APIs for tables/fields/records/views
-      aiRoutes.ts     - AI filter generation endpoint (SSE streaming)
+      aiRoutes.ts     - AI filter + AI sort generation endpoints (SSE streaming)
+      folderRoutes.ts - /api/folders CRUD (create/rename/delete/reorder) + PUT /move (reparent any artifact type). Delete promotes children to parent. Unique name generation per workspace.
       sseRoutes.ts    - Real-time sync SSE endpoints (table-level + document-level)
       chatRoutes.ts   - /api/chat/conversations + SSE message stream (Table Agent). SSE 事件支持 `tool_progress` / `tool_heartbeat`（Analyst P1 长任务协议，见 `services/longTaskService.ts`）。
       demoRoutes.ts   - /api/demos/* · Vibe Demo V1 owner-facing CRUD + file ops + build + publish。`POST /` 创建（id 走应用侧 `dm`+12位数字格式，见 services/idGenerator.ts）；`PUT /:id/file` 写文件到 ~/.imagebase/demos/<id>/files/；`PUT /:id/capabilities` 声明 dataTables/dataIdeas + capabilities JSON 白名单；`POST /:id/build` 跑 esbuild 打包 → dist/；`POST /:id/publish` 复制 dist → published/<N>/ + 生成 12 位 base62 slug；`GET /:id/preview/*` serve dist（供 iframe 预览，CSP 限制 connect-src 'self'）；`GET /:id/export` 流式打包 zip 供用户下载。
@@ -54,7 +55,7 @@ backend/
       mentionRoutes.ts - /api/mentions/search — workspace-scoped fuzzy search over tables/fields/records/tastes/ideas/idea-sections for @mention picker; each hit carries `mentionUri` + `markdown` so Agent can splice a chip link directly
       mentionReverseRoutes.ts - /api/mentions/reverse?workspaceId&targetType&targetId — powered by the `Mention` table. Used by idea-delete UI to pre-fetch the "will become dead links" list and by chatAgentService.fetchIncomingRefsForConfirm to inject into the confirm SSE event
     services/
-      aiService.ts          - Volcano ARK API integration, tool definitions, prompt
+      aiService.ts          - Volcano ARK API integration, tool definitions, prompt. Exports `generateFilter` (AI filter) + `generateSort` (AI sort) — both use multi-round tool loop with Responses API.
       chatAgentService.ts   - Chat Agent loop; three-layer System Prompt (Meta/Identity/Turn Context); resolves model once per turn via resolveModelForCall(), dispatches through resolveAdapter(model).stream()
       modelRegistry.ts      - Single source of truth for the 5-model whitelist (doubao-2.0, claude-opus-4.7/4.6, gpt-5.4, gpt-5.4-mini) + adapter dispatch + async availability probe (every 10 min). resolveModelForCall() falls back same-group → FALLBACK_MODEL_ID (doubao-2.0) without ever overwriting the user's saved preference — next turn auto-recovers when the preferred model comes back online. (`claude-sonnet-4.6` removed 2026-04-22 — unstable upstream whitelist; agents that saved it as their preference now resolve to an Opus sibling via same-group fallback.)
       providers/
@@ -82,6 +83,7 @@ backend/
       dataStore.ts          - In-memory data store, AI tool functions
       eventBus.ts           - Event bus for real-time sync (table-level + document-level)
       filterEngine.ts       - Client-side filter evaluation
+      sortEngine.ts         - Client-side multi-field sort (text/number/date/select types, nulls-last). Exports `sortRecords()` + `getSortLabelType()` for UI labels.
       embeddingService.ts   - ARK multimodal embedding API wrapper (`/api/v3/embeddings/multimodal`). Env: `ARK_EMBEDDING_MODEL`. Returns `number[][]` or `null` (graceful fallback to text search). Includes `cosineSimilarity()` for dev-mode vector search.
       knowledgeService.ts   - Agent knowledge base CRUD + semantic search. Chunking (800 char / 100 overlap), embedding via embeddingService, app-layer cosine similarity (dev mode; prod → pgvector). `addKnowledge` (per-agent serial queue via promise chain + 5min auto-merge window: concurrent calls from same agent turn are serialized and merged into one document) / `listKnowledge` / `getKnowledge` (reassembles all chunks into full document) / `searchKnowledge` / `deleteKnowledge`.
       providers/
@@ -103,6 +105,7 @@ backend/
       ideaTools.ts        - Idea tools split into `ideaNavTools` (Tier 1: list_ideas/get_idea) + `ideaWriteTools` (Tier 2: create_idea/rename_idea/delete_idea⚠️/append_to_idea/insert_into_idea/replace_idea_content⚠️) + `ideaStreamTools` (Tier 2: begin_idea_stream_write/end_idea_stream_write — V2 streaming write bracket). Write tools accept an `anchor` object (oneOf position / section+mode) so the Agent can splice into a specific `## Heading` section without rewriting the whole doc.
       dictionaryTools.ts  - Tier 1 analyst nav: `get_data_dictionary` (列字段 + type + description + options) / `list_snapshots` (哪些表快照可复用). Agent 每次分析前先查字典做字段消歧义。
       webTools.ts         - Tier 1 always-on info retrieval: `web_search` (Tavily basic search, 1000 free/月, count 1-10 + timeRange day/week/month/year/all) + `web_fetch` (fetch + Mozilla Readability 抽正文 + Turndown 转 Markdown). 后端 service 在 `backend/src/services/webSearch/` (provider 抽象 + tavilyAdapter，env `WEB_SEARCH_PROVIDER` 切换) 与 `backend/src/services/webFetchService.ts` (SSRF 防护：拒 file:// ftp://、localhost/.local/.internal、IPv4 10/8 / 172.16-31 / 192.168/16 / 127/8 / 169.254/16 / 0/8、IPv6 ::1 / fc-fd / fe8-feb，DNS 解析后再校验；10s 超时 + 5MB raw body cap + 50KB markdown cap，charset 头检测含 gb2312→gbk fallback). Agent 总能引用最新信息且不会被骗去访问 AWS metadata。
+      folderTools.ts      - Tier 1 folder management: list_folders / create_folder / rename_folder / delete_folder / move_item_to_folder (always-on workspace hierarchy ops)
       demoTools.ts        - Vibe Demo V1 工具：`demoNavTools` (Tier 1: list_demos / get_demo) + `demoWriteTools` (Tier 2: create_demo / rename_demo / delete_demo⚠️ / list_demo_files / read_demo_file / write_demo_file / delete_demo_file⚠️ / update_demo_capabilities / build_demo / publish_demo⚠️ / unpublish_demo). 所有 write/build/publish 操作通过 HTTP 代理到 /api/demos/* 主 backend。
       analystTools.ts     - analyst-skill 核心 11 工具 (Tier 2): `load_workspace_table` (snapshot 生成 + parquet 挂载 + handle 创建)、`describe_result` (纯聚合描述，带 top-K)、`preview_result`、`filter_result` (SQL WHERE)、`group_aggregate` (count/sum/avg/min/max/count_distinct/median/stddev)、`pivot_result` (DuckDB 原生 PIVOT)、`join_results` (inner/left/right/full)、`time_bucket` (day/week/month/quarter/year)、`top_n`、`run_sql` (兜底 AST 白名单)、`generate_chart` (vega-lite spec)、`propose_field_descriptions` (启发式字典推断)。所有返回 `{_resultHandle, meta, preview}` 三元组。
       analystWriteTools.ts - 物化出口: `write_analysis_to_idea` (高频：创建 / 追加 Idea，含分析叙述 + Markdown 表 + 可选 vega-lite 图表代码块 + 时点声明) / `write_analysis_to_table` (低频：转为 workspace 数据表，硬限 50000 行；超限建议走 idea). 
@@ -112,7 +115,7 @@ backend/
       tasteTools.ts       - `tasteNavTools` (Tier 1: list_tastes / get_taste with optional includeMeta + includeSvg) + `tasteWriteTools` (Tier 2 in taste-skill: create_taste_from_svg / rename_taste / update_taste / batch_update_tastes / delete_taste⚠️).
       modelTools.ts       - Tier 0 model management: `add_model` / `list_custom_models` / `remove_model` / `test_model` — Agent manages user's custom models via REST proxy to `/api/models/custom`.
       knowledgeTools.ts   - Knowledge base (RAG): `learn_from_url` / `learn_from_text` (Tier 0, store knowledge), `search_knowledge` / `list_knowledge` (Tier 1, always-on retrieval), `delete_knowledge`.
-      index.ts            - Tier partitioning: tier0Tools (meta + memory + skillRouter + cron + model + knowledge) / tier1Tools / resolveActiveTools(activeSkillNames). userSkillTools moved to skill-creator Tier 2 skill.
+      index.ts            - Tier partitioning: tier0Tools (meta + memory + skillRouter + cron + model + knowledge) / tier1Tools (includes folderTools) / resolveActiveTools(activeSkillNames). userSkillTools moved to skill-creator Tier 2 skill.
     src/skills/
       types.ts         - SkillDefinition (name / when / triggers / tools). Analyst P1 扩展：新增可选 `softDeps: string[]`（当此 skill 激活时，这些依赖 skill 的 `lastUsedTurn` 被自动续期，避免 10 轮 idle 驱逐；非传递）+ `promptFragment?: string`（激活时注入系统 prompt 的专属规则 / 术语段，供 analyst / 领域 skill 声明结果截断规则 / 字段消歧义 / 行业术语等）。
       tableSkill.ts    - Bundles field + record + view + table-write tools; triggers on 创建/删除/修改字段等
@@ -140,6 +143,7 @@ frontend/
       index.ts        - LanguageProvider, useTranslation hook, t() function
     components/
       FilterPanel/          - AI filter input + manual filter conditions UI
+      SortPanel/            - AI sort input + manual sort conditions UI (drag-to-reorder, field-type-aware labels). Mirrors FilterPanel layout: AI input section (SSE streaming) + conditions section. Sort rules stored in View.sort and persisted via updateView().
       TableView/            - Main table grid with drag-reorder, resize, edit
       MagicCanvas/          - Multi-block dashboard layout (chat + artifact + system blocks). LayoutNode binary tree (split + leaf), CSS-grid renderer w/ 6px dividers, drag-with-ghost + drop indicators (block sides + canvas edges), per-block sidebar collapse + resize, BlockShell handles corner-radius/border based on adjacency. Layout persisted via `user.preferences.canvasLayout` (PATCH /api/auth/preferences, 800ms debounce).
       TableArtifactSurface/ - Self-contained per-block table view (analogue of IdeaEditor / SvgCanvas / DemoPreviewPanel). Owns its own fields/records/views/filter/undo state + per-instance `instanceClientId` + own `useTableSync` subscription. N blocks can show same or different tableIds simultaneously and stay live-synced via SSE because each block's mutations carry its unique `X-Client-Id` and other blocks' filters don't match it.
@@ -161,6 +165,13 @@ frontend/
 - Frontend Vite dev server proxies `/api` requests to backend on port 3001.
 - TableView maintains column order in localStorage (`field_order_v1`), lifted to App.tsx via `onFieldOrderChange` callback so FilterPanel dropdown matches table column order.
 - AI filter uses PRD format (`["field", "operator", value]`) internally, converted to/from app's internal filter format.
+- AI sort uses PRD format (`["fieldName", "asc"|"desc"]`) internally, converted to `ViewSort { rules: ViewSortRule[] }`. Endpoint: `POST /api/ai/sort/generate` (SSE). Frontend `SortPanel` has AI input + manual sort rows with drag-to-reorder.
+- **Table sort**: `ViewSort` stored in `View.sort`, client-side via `sortEngine.ts`. Sort rules show field-type-aware labels (A→Z / 0→9 / Option order). Sort apply pill separate from filter with independent clear/save.
+- **Sidebar search**: Real-time text filter on tree items by display name (case-insensitive). Parent folders preserved when children match. Escape or × button exits search mode.
+- **Sidebar create menu**: Table (direct create) / Idea (green icon #35BD4B) / Taste / Demo / Folder + "Create by AI" (opens chat block with prefilled prompt). All new artifacts insert at end (order computed across all 5 types). Demo auto-dedup naming ("Demo 1", "Demo 2"...).
+- **Add Record dropdown**: "Add a record" (direct) + "Add by chat" (opens chat block with `@tableName` mention prefill and guided prompt).
+- **Delete navigation**: Prefers previous (upper) artifact in DFS order, then next, then empty state. Works in per-block MagicCanvas via `lastDeleted` workspace context. Taste (design) has delete confirmation dialog.
+- **Folder MCP tools**: 5 Tier 1 tools (always-on): `list_folders` / `create_folder` / `rename_folder` / `delete_folder` / `move_item_to_folder`.
 - AI service logs all API calls, tool calls, and timing to `backend/logs/` directory with GMT+8 timestamps.
 - **Chat Agent identity (Phase 1)**: every user owns at least one `Agent` row (default seeded as `agent_default` / name "Claw"). Identity files live on the filesystem at `~/.imagebase/agents/<agentId>/` (`soul.md`, `profile.md`, `config.json`, plus `memory/`, `skills/`, `mcp-servers/`, `plugins/`, `state/`). The DB only stores metadata. Override the root with `AGENT_HOME` env var for tests.
 - **Three-layer System Prompt**: chatAgentService composes `META` (hardcoded meta-behavior rules, immutable) → `Identity` (live soul.md + profile.md) → `Tier 1 Core MCP` (tool guidance) → `Turn Context` (workspace schema snapshot + auto-recalled memories). Agent self-edits via three Tier 0 meta-tools: `update_profile`, `update_soul`, `create_memory`.
@@ -283,6 +294,7 @@ ssh -i /path/to/key root@163.7.1.94 "cd /root/ai-filter-lark && git pull origin 
 | `routes/fieldRoutes.ts` | `mcp-server/src/tools/fieldTools.ts` | 同上 |
 | `routes/recordRoutes.ts` | `mcp-server/src/tools/recordTools.ts` | 同上 |
 | `routes/viewRoutes.ts` | `mcp-server/src/tools/viewTools.ts` | 同上 |
+| `routes/folderRoutes.ts` | `mcp-server/src/tools/folderTools.ts` | 同上 |
 
 ### 检查项（PR 提交前必过）
 - [ ] **新增 endpoint** → 同步新增 MCP 工具（参数 schema + 工具描述）
