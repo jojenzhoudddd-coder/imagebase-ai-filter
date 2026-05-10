@@ -256,96 +256,71 @@ function requireAdmin(req: any, res: any, next: any) {
 
 router.get("/users", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        name: true,
-        avatarUrl: true,
-        admin: true,
-        related: true,
-        createdAt: true,
-        updatedAt: true,
-        lastLoginAt: true,
-        agents: { select: { id: true, name: true, avatarUrl: true }, take: 1 },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    // Single raw SQL query replaces ~200 N+1 Prisma queries
+    const { rows } = await pool.query(`
+      SELECT
+        u.id, u.email, u.username, u.name, u."avatarUrl",
+        u.admin, u.related, u."createdAt", u."updatedAt", u."lastLoginAt",
+        -- Agent (first per user)
+        ag.name AS "agentName", ag."avatarUrl" AS "agentAvatarUrl",
+        -- Conversations & activities (through agents → conversations → messages)
+        COALESCE(conv_stats.conv_count, 0)::int AS "conversationCount",
+        COALESCE(conv_stats.activity_count, 0)::int AS "activityCount",
+        conv_stats.last_message_at AS "lastMessageAt",
+        -- Tokens
+        COALESCE(tk.total, 0)::int AS "totalTokens",
+        -- Workspaces
+        COALESCE(ws_stats.ws_count, 0)::int AS "workspaceCount",
+        -- Artifacts (tables + ideas + designs + demos)
+        COALESCE(ws_stats.artifact_count, 0)::int AS "artifactCount",
+        -- Workends (published demos)
+        COALESCE(ws_stats.workend_count, 0)::int AS "workendCount"
+      FROM users u
+      -- First agent per user
+      LEFT JOIN LATERAL (
+        SELECT a.name, a."avatarUrl" FROM agents a WHERE a."userId" = u.id LIMIT 1
+      ) ag ON true
+      -- Conversation + activity stats
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(DISTINCT c.id)::int AS conv_count,
+          COUNT(m.id) FILTER (WHERE m.role = 'user')::int AS activity_count,
+          MAX(m.timestamp) FILTER (WHERE m.role = 'user') AS last_message_at
+        FROM agents a2
+        JOIN conversations c ON c."agentId" = a2.id
+        LEFT JOIN messages m ON m."conversationId" = c.id
+        WHERE a2."userId" = u.id
+      ) conv_stats ON true
+      -- Token usage
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM("totalTokens"), 0)::int AS total
+        FROM token_usage WHERE "userId" = u.id
+      ) tk ON true
+      -- Workspace stats (count + artifacts + workends)
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(DISTINCT w.id)::int AS ws_count,
+          (
+            (SELECT COUNT(*) FROM tables t WHERE t."workspaceId" IN (SELECT w2.id FROM workspaces w2 WHERE w2."createdById" = u.id)) +
+            (SELECT COUNT(*) FROM ideas i WHERE i."workspaceId" IN (SELECT w2.id FROM workspaces w2 WHERE w2."createdById" = u.id)) +
+            (SELECT COUNT(*) FROM designs d WHERE d."workspaceId" IN (SELECT w2.id FROM workspaces w2 WHERE w2."createdById" = u.id)) +
+            (SELECT COUNT(*) FROM demos dm WHERE dm."workspaceId" IN (SELECT w2.id FROM workspaces w2 WHERE w2."createdById" = u.id))
+          )::int AS artifact_count,
+          (SELECT COUNT(*) FROM demos dm WHERE dm."workspaceId" IN (SELECT w2.id FROM workspaces w2 WHERE w2."createdById" = u.id) AND dm."publishSlug" IS NOT NULL)::int AS workend_count
+        FROM workspaces w WHERE w."createdById" = u.id
+      ) ws_stats ON true
+      ORDER BY u."createdAt" DESC
+    `);
 
-    // Gather per-user stats in parallel
-    const enriched = await Promise.all(
-      users.map(async (u) => {
-        const [conversationCount, activityCount, tokenAgg, lastMessage, workspaceCount, workspaces] = await Promise.all([
-          prisma.conversation.count({
-            where: { agent: { userId: u.id } },
-          }),
-          prisma.message.count({
-            where: {
-              role: "user",
-              conversation: { agent: { userId: u.id } },
-            },
-          }),
-          prisma.tokenUsage.aggregate({
-            where: { userId: u.id },
-            _sum: { totalTokens: true },
-          }),
-          // Last message sent by user (through agents → conversations → messages)
-          prisma.message.findFirst({
-            where: {
-              role: "user",
-              conversation: { agent: { userId: u.id } },
-            },
-            orderBy: { timestamp: "desc" },
-            select: { timestamp: true },
-          }),
-          // Workspace count
-          prisma.workspace.count({
-            where: { createdById: u.id },
-          }),
-          // Get workspace IDs for artifact counting
-          prisma.workspace.findMany({
-            where: { createdById: u.id },
-            select: { id: true },
-          }),
-        ]);
+    const users = rows.map((r: any) => ({
+      ...r,
+      createdAt: r.createdAt?.toISOString() ?? null,
+      updatedAt: r.updatedAt?.toISOString() ?? null,
+      lastLoginAt: r.lastLoginAt?.toISOString() ?? null,
+      lastMessageAt: r.lastMessageAt?.toISOString() ?? null,
+    }));
 
-        const wsIds = workspaces.map((w) => w.id);
-
-        // Count artifacts and workends in user's workspaces
-        let artifactCount = 0;
-        let workendCount = 0;
-        if (wsIds.length > 0) {
-          const [tableCount, ideaCount, designCount, demoCount, publishedDemoCount] = await Promise.all([
-            prisma.table.count({ where: { workspaceId: { in: wsIds } } }),
-            prisma.idea.count({ where: { workspaceId: { in: wsIds } } }),
-            prisma.design.count({ where: { workspaceId: { in: wsIds } } }),
-            prisma.demo.count({ where: { workspaceId: { in: wsIds } } }),
-            prisma.demo.count({ where: { workspaceId: { in: wsIds }, publishSlug: { not: null } } }),
-          ]);
-          artifactCount = tableCount + ideaCount + designCount + demoCount;
-          workendCount = publishedDemoCount;
-        }
-
-        const agent = u.agents[0] ?? null;
-        return {
-          ...u,
-          agents: undefined,
-          agentName: agent?.name ?? null,
-          agentAvatarUrl: agent?.avatarUrl ?? null,
-          conversationCount,
-          activityCount,
-          totalTokens: tokenAgg._sum.totalTokens ?? 0,
-          lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
-          lastMessageAt: lastMessage?.timestamp?.toISOString() ?? null,
-          workspaceCount,
-          artifactCount,
-          workendCount,
-        };
-      }),
-    );
-
-    res.json({ users: enriched });
+    res.json({ users });
   } catch (err: any) {
     console.error("[admin] users list error:", err);
     res.status(500).json({ error: err.message ?? "internal error" });
