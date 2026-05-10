@@ -4,7 +4,6 @@ import { useToast } from "../Toast/index";
 import InlineEdit from "../InlineEdit";
 import SidebarExpandButton from "../SidebarExpandButton";
 import BlockCloseButton from "../BlockCloseButton";
-import ConfirmDialog from "../ConfirmDialog/index";
 import {
   fetchTastes,
   uploadTastes,
@@ -625,8 +624,6 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
   // Context menu
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tasteId: string } | null>(null);
 
-  // Delete confirmation
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
 
   // Inline rename for taste items
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -1046,12 +1043,20 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
     } catch { /* silent */ }
   }, [renamingId, renameValue, designId]);
 
-  const handleCtxDelete = useCallback(() => {
+  const handleCtxDelete = useCallback(async () => {
     if (!ctxMenu) return;
     const taste = tastes.find((t) => t.id === ctxMenu.tasteId);
     setCtxMenu(null);
-    if (taste) setDeleteConfirm({ id: taste.id, name: taste.name });
-  }, [ctxMenu, tastes]);
+    if (!taste) return;
+    try {
+      await deleteTaste(designId, taste.id);
+      setTastes((prev) => prev.filter((t) => t.id !== taste.id));
+      if (selectedId === taste.id) setSelectedId(null);
+      toast.success(t("toast.deleted"));
+    } catch {
+      toast.error("Failed to delete");
+    }
+  }, [ctxMenu, tastes, designId, selectedId, toast, t]);
 
   // ─── Make Demo (right-click → POST /api/svg-to-demo/from-taste/:id) ───
   // Path B in docs/svg-to-demo-plan.md. Server runs the deterministic SVG
@@ -1092,18 +1097,6 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
     }
   }, [ctxMenu, tastes, toast, t, onNavigateToDemo]);
 
-  const handleConfirmDelete = useCallback(async () => {
-    if (!deleteConfirm) return;
-    const id = deleteConfirm.id;
-    setDeleteConfirm(null);
-    try {
-      await deleteTaste(designId, id);
-      setTastes((prev) => prev.filter((t) => t.id !== id));
-      if (selectedId === id) setSelectedId(null);
-    } catch {
-      toast.error("Failed to delete");
-    }
-  }, [deleteConfirm, designId, selectedId, toast]);
 
   // ─── Auto-layout ───
 
@@ -1498,15 +1491,6 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
 
       </div>
 
-      {/* Delete confirmation dialog */}
-      <ConfirmDialog
-        open={!!deleteConfirm}
-        title={t("design.deleteItem")}
-        message={deleteConfirm ? `Delete "${deleteConfirm.name}"?` : ""}
-        variant="danger"
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setDeleteConfirm(null)}
-      />
     </div>
   );
 }

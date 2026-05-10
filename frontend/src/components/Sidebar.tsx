@@ -3,7 +3,7 @@ import { useTranslation } from "../i18n/index";
 import InlineEdit from "./InlineEdit";
 import DropdownMenu from "./DropdownMenu";
 import type { MenuItem } from "./DropdownMenu";
-import ConfirmDialog from "./ConfirmDialog/index";
+import { useToast } from "./Toast/index";
 import TreeView from "./TreeView";
 import type { TreeNodeData } from "./TreeView";
 import type { GeneratedField } from "../api";
@@ -124,6 +124,7 @@ const SIDEBAR_DEFAULT_W = 200;
 
 export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onCreateIdea, onCreateDemo, onDeleteItem, onMoveItem, scrollToItemId, onCreateByAI, onCollapse, width: widthProp, onWidthChange }: Props) {
   const { t } = useTranslation();
+  const toast = useToast();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
@@ -211,7 +212,6 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
   const dragOverIdRef = useRef<string | null>(null);
   const dragOverPosRef = useRef<"above" | "below" | null>(null);
 
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: TreeItemType } | null>(null);
 
   // (AI Create popover removed — table creation is now direct)
 
@@ -397,7 +397,14 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             onSelect={(key) => {
               setMenuItemId(null);
               if (key === "rename") setEditingItemId(item.id);
-              if (key === "delete") setDeleteConfirm({ id: item.id, type: item.type as TreeItemType });
+              if (key === "delete") {
+                if (item.type === "table") {
+                  onDeleteTable(item.id);
+                } else if (onDeleteItem) {
+                  onDeleteItem(item.id, item.type as TreeItemType);
+                }
+                toast.success(t("toast.deleted"));
+              }
             }}
             onClose={() => setMenuItemId(null)}
             width={180}
@@ -535,11 +542,12 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
                 onSelectItem={(id, type) => onSelectItem(id, type)}
                 onRenameItem={(id, _type, newName) => onRenameItem(id, newName)}
                 onDeleteItem={(id, type) => {
-                  if (type === "table" || type === "design") {
-                    setDeleteConfirm({ id, type });
+                  if (type === "table") {
+                    onDeleteTable(id);
                   } else if (onDeleteItem) {
                     onDeleteItem(id, type);
                   }
+                  toast.success(t("toast.deleted"));
                 }}
                 onMoveItem={(itemId, itemType, newParentId) => {
                   if (onMoveItem) onMoveItem(itemId, itemType as "table" | "folder" | "design" | "idea" | "demo", newParentId);
@@ -600,29 +608,6 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
           className="sidebar-new-menu"
         />
       )}
-      <ConfirmDialog
-        open={!!deleteConfirm}
-        title={deleteConfirm?.type === "design" ? t("app.deleteTaste") : t("app.deleteTable")}
-        message={
-          deleteConfirm?.type === "design"
-            ? t("app.deleteTasteMsg", { name: items.find(i => i.id === deleteConfirm?.id)?.displayName ?? "" })
-            : t("app.deleteTableMsg", { name: items.find(i => i.id === deleteConfirm?.id)?.displayName ?? "" })
-        }
-        confirmLabel={t("confirm.delete")}
-        cancelLabel={t("confirm.cancel")}
-        variant="danger"
-        onConfirm={() => {
-          if (deleteConfirm) {
-            if (deleteConfirm.type === "table") {
-              onDeleteTable(deleteConfirm.id);
-            } else if (onDeleteItem) {
-              onDeleteItem(deleteConfirm.id, deleteConfirm.type);
-            }
-          }
-          setDeleteConfirm(null);
-        }}
-        onCancel={() => setDeleteConfirm(null)}
-      />
     </aside>
   );
 }
