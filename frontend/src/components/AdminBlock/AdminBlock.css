@@ -218,6 +218,7 @@
   border-bottom: 1px solid var(--border-light);
   white-space: nowrap;
   color: var(--text-primary);
+  vertical-align: middle;
 }
 
 .adb-table tbody tr:last-child td {
@@ -263,14 +264,16 @@
   max-width: 140px;
 }
 
-/* Toggle switch — matches TopBar safety-delete style (tb-switch) */
+/* Toggle switch — matches Brain block ab-switch (34x20) */
 .adb-toggle {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   width: 34px;
   height: 20px;
   flex-shrink: 0;
   cursor: pointer;
+  vertical-align: middle;
 }
 
 .adb-toggle input {
