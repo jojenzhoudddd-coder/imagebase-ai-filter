@@ -36,10 +36,10 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
   const startXRef = useRef(0);
   const maxOffsetRef = useRef(0);
 
+  const THUMB_START = 5; // px from left edge, aligns icon with menu item icons
   const getMaxOffset = useCallback(() => {
     if (!trackRef.current) return 0;
-    // max offset = track width - thumb width (28px) - 2px padding each side
-    return trackRef.current.clientWidth - 28 - 4;
+    return trackRef.current.clientWidth - 28 - THUMB_START - 5;
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -109,7 +109,7 @@ export default function SwipeDelete({ label, onDelete, icon, disabled }: SwipeDe
       {/* Draggable thumb */}
       <div
         className={`swipe-del-thumb${done ? " swipe-del-done" : ""}`}
-        style={{ left: offset + 2 }}
+        style={{ left: offset + THUMB_START }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
