@@ -1,4 +1,4 @@
-# AI Filter - MCP Tools 文档
+# Funature - MCP Tools 文档
 
 本项目的 AI 筛选功能通过 Volcano ARK Responses API 实现多轮工具调用。模型可调用以下 3 个工具获取数据表信息，辅助生成筛选条件。
 

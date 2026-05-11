@@ -369,7 +369,7 @@ async function start() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`AI Filter running on http://0.0.0.0:${PORT}`);
+    console.log(`Funature running on http://0.0.0.0:${PORT}`);
   });
 
   // Kick off the chat-sidebar prompt-suggestion scheduler. Runs an initial

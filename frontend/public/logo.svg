@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="40" viewBox="0 0 160 40" fill="none">
+  <defs>
+    <linearGradient id="icon-bg" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22C55E"/>
+      <stop offset="0.5" stop-color="#0EA5E9"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="text-grad" x1="40" y1="8" x2="160" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22C55E"/>
+      <stop offset="0.5" stop-color="#0EA5E9"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+  </defs>
+  <!-- Icon: rounded square with F + leaf -->
+  <rect x="2" y="2" width="36" height="36" rx="8" fill="url(#icon-bg)"/>
+  <path
+    d="M12 9h14a1.2 1.2 0 010 2.4H15v4.8h8a1.2 1.2 0 010 2.4h-8v12a1.2 1.2 0 01-2.4 0V11.4h-0.6a1.2 1.2 0 010-2.4z"
+    fill="rgba(255,255,255,0.95)"
+  />
+  <path
+    d="M26 7.5c0 0-3.6 1.2-4.8 4.8-1 2.9 0 4.8 0 4.8s3.6-1.2 4.8-4.8c1-2.9 0-4.8 0-4.8z"
+    fill="rgba(255,255,255,0.7)"
+  />
+  <!-- Wordmark -->
+  <text x="46" y="28" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="600" fill="url(#text-grad)" letter-spacing="-0.5">
+    Funature
+  </text>
+</svg>

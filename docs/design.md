@@ -1,4 +1,4 @@
-# AI Filter 系统设计文档
+# Funature 系统设计文档
 
 ## 1. 产品概述
 

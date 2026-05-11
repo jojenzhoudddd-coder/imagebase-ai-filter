@@ -47,7 +47,7 @@ export async function fetchAndExtract(rawUrl: string): Promise<WebFetchResult> {
       signal: ctrl.signal,
       redirect: "follow",
       headers: {
-        "User-Agent": "ImageBase-Agent/1.0 (+https://imagebase.cc)",
+        "User-Agent": "Funature-Agent/1.0 (+https://imagebase.cc)",
         "Accept": "text/html,application/xhtml+xml",
         "Accept-Language": "en,zh-CN;q=0.9,zh;q=0.8",
       },

@@ -1,7 +1,12 @@
-# AI Filter - Claude Code Project Guide
+# Funature — Claude Code Project Guide
 
 ## Project Overview
-Lark Base (飞书多维表格) clone with AI smart filtering. Users can type natural language queries to generate table filter conditions via Volcano ARK API.
+**Funature** (Future + Nature) — 面向未来的原生 AI 平台。愿景覆盖三大板块：
+- **Work**（已实现）— AI-native 多维表格 + 文档 + 画布 + Demo，通过自然语言对话完成数据管理与分析
+- **Home**（规划中）— AI-native 生活空间
+- **Muse**（规划中）— AI-native 创意工作室
+
+当前 Work 板块：Lark Base 风格的多维表格，支持 AI 智能筛选、排序、数据分析（DuckDB）、文档写作、SVG 画布、Vibe Demo 等。
 
 ## Tech Stack
 - **Frontend**: React + TypeScript + Vite (port 5173)
