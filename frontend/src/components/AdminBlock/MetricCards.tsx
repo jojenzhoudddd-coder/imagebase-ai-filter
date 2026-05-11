@@ -9,7 +9,7 @@ function formatTokenCount(n: number): string {
 
 function Sparkline({ data, width = 80, height = 50 }: { data: number[]; width?: number; height?: number }) {
   if (data.length < 2) return null;
-  const padBottom = 8;
+  const padBottom = 4;
   const drawW = width;
   const drawH = height - padBottom;
   const min = Math.min(...data);

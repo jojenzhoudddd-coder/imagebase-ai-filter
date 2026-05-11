@@ -17,7 +17,7 @@ const prisma = new PrismaClient({ adapter } as any);
 
 async function main() {
   const now = new Date();
-  const days = 7;
+  const days = 15;
 
   for (let i = days; i >= 0; i--) {
     const d = new Date(now);
