@@ -16,7 +16,7 @@
   left: 0;
   height: 100%;
   border-radius: 6px;
-  background: var(--swipe-del-fill);
+  background: var(--primary-light);
   pointer-events: none;
   transition: none;
 }
@@ -52,11 +52,11 @@
   cursor: grab;
   z-index: 2;
   transition: none;
-  color: var(--swipe-del-thumb-color, var(--primary));
+  color: var(--text-secondary, #666);
 }
 
 .swipe-del-thumb:hover {
-  background: var(--swipe-del-thumb-hover);
+  background: var(--primary-light);
 }
 
 .swipe-del-thumb:active {
@@ -69,11 +69,11 @@
 
 .swipe-del-thumb.swipe-del-done {
   background: transparent;
-  color: var(--swipe-del-thumb-color, var(--primary));
+  color: var(--text-secondary, #666);
 }
 
 .swipe-del-thumb.swipe-del-active {
-  background: var(--swipe-del-thumb-hover);
+  background: var(--primary-light);
 }
 
 .swipe-del-disabled {
