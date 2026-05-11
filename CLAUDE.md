@@ -326,6 +326,16 @@ MCP server 启动时会调用主 backend 的 `GET /api/_schemas` 端点，对比
 ### 参考文档
 完整技术方案见 `docs/chat-sidebar-plan.md` Phase 1.3 "MCP 工具与 REST API 的同步机制"。
 
+## Brand Assets
+- **Logo 概念**: 纸风车 (pinwheel) × 四芒星 (four-pointed star)。风车 = Nature（自然之力），四芒星 = Future（AI spark）。中文谐音"风车"(fēngchē) ≈ Funature。
+- **色彩系统**: 蓝色渐变四叶（深蓝 `#0E42D2` → 中蓝 `#4080FF` → 浅蓝 `#94BFFF` → 极浅蓝 `#E8F3FF`），中心四芒星与背景同色形成负空间。
+- **LM/DM 适配**: LM 背景 `#E5E6EB` + drop shadow；DM 背景 `#1E1E1E`，右上叶 `white/0.8`。
+- **文件位置**:
+  - `frontend/public/favicon.svg` — 32px favicon（内嵌 `prefers-color-scheme` 媒体查询自动切换 LM/DM）
+  - `frontend/public/brand/logo-dm.svg` — Dark Mode 应用图标 (56×56)
+  - `frontend/public/brand/logo-lm.svg` — Light Mode 应用图标 (56×56, 带阴影)
+  - `frontend/public/brand/pinwheel-mark.svg` — 独立风车标记 (150×145, 无背景框)
+
 ## Figma Design Assets (强制使用)
 每次涉及 UI 组件或图标的新增/修改时，**必须**：
 1. 先激活 UX & Frontend Design Skill (`.claude/skills/ux-frontend-design.md`)
