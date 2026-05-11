@@ -5,8 +5,7 @@
  */
 
 import type { ToolDefinition } from "./tableTools.js";
-
-const BASE_URL = `http://localhost:${process.env.PORT || 3001}`;
+import { apiRequest } from "../dataStoreClient.js";
 
 export const knowledgeTools: ToolDefinition[] = [
   {
@@ -24,24 +23,22 @@ export const knowledgeTools: ToolDefinition[] = [
       required: ["url", "title", "content"],
     },
     handler: async (args: Record<string, unknown>, ctx?: any) => {
-      const res = await fetch(`${BASE_URL}/api/knowledge`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: `auth_token=${ctx?.authToken ?? ""}` },
-        body: JSON.stringify({
-          agentId: ctx?.agentId ?? "agent_default",
-          title: args.title,
-          content: args.content,
-          sourceUrl: args.url,
-          sourceType: "web",
-          tags: args.tags ?? [],
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        return JSON.stringify({ ok: false, error: (err as any).error ?? `HTTP ${res.status}` });
+      try {
+        const data = await apiRequest("/api/knowledge", {
+          method: "POST",
+          body: {
+            agentId: ctx?.agentId ?? "agent_default",
+            title: args.title,
+            content: args.content,
+            sourceUrl: args.url,
+            sourceType: "web",
+            tags: args.tags ?? [],
+          },
+        });
+        return JSON.stringify({ ok: true, ...data as object });
+      } catch (err: any) {
+        return JSON.stringify({ ok: false, error: err.message ?? "Failed to learn from URL" });
       }
-      const data = await res.json();
-      return JSON.stringify({ ok: true, ...data });
     },
   },
   {
@@ -58,23 +55,21 @@ export const knowledgeTools: ToolDefinition[] = [
       required: ["title", "content"],
     },
     handler: async (args: Record<string, unknown>, ctx?: any) => {
-      const res = await fetch(`${BASE_URL}/api/knowledge`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: `auth_token=${ctx?.authToken ?? ""}` },
-        body: JSON.stringify({
-          agentId: ctx?.agentId ?? "agent_default",
-          title: args.title,
-          content: args.content,
-          sourceType: "chat",
-          tags: args.tags ?? [],
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        return JSON.stringify({ ok: false, error: (err as any).error ?? `HTTP ${res.status}` });
+      try {
+        const data = await apiRequest("/api/knowledge", {
+          method: "POST",
+          body: {
+            agentId: ctx?.agentId ?? "agent_default",
+            title: args.title,
+            content: args.content,
+            sourceType: "chat",
+            tags: args.tags ?? [],
+          },
+        });
+        return JSON.stringify({ ok: true, ...data as object });
+      } catch (err: any) {
+        return JSON.stringify({ ok: false, error: err.message ?? "Failed to learn from text" });
       }
-      const data = await res.json();
-      return JSON.stringify({ ok: true, ...data });
     },
   },
   {
@@ -91,13 +86,14 @@ export const knowledgeTools: ToolDefinition[] = [
     },
     handler: async (args: Record<string, unknown>, ctx?: any) => {
       const agentId = ctx?.agentId ?? "agent_default";
-      const res = await fetch(
-        `${BASE_URL}/api/knowledge/search?agentId=${encodeURIComponent(agentId)}&query=${encodeURIComponent(args.query as string)}&limit=${args.limit ?? 5}`,
-        { headers: { Cookie: `auth_token=${ctx?.authToken ?? ""}` } },
-      );
-      if (!res.ok) return JSON.stringify({ ok: false, error: `HTTP ${res.status}` });
-      const data = await res.json();
-      return JSON.stringify({ ok: true, results: data.results });
+      try {
+        const data = await apiRequest<{ results: unknown[] }>(
+          `/api/knowledge/search?agentId=${encodeURIComponent(agentId)}&query=${encodeURIComponent(args.query as string)}&limit=${args.limit ?? 5}`,
+        );
+        return JSON.stringify({ ok: true, results: data.results });
+      } catch (err: any) {
+        return JSON.stringify({ ok: false, error: err.message ?? "Search failed" });
+      }
     },
   },
   {
@@ -117,12 +113,12 @@ export const knowledgeTools: ToolDefinition[] = [
       if (args.limit) params.set("limit", String(args.limit));
       if (args.offset) params.set("offset", String(args.offset));
       if (args.tag) params.set("tag", args.tag as string);
-      const res = await fetch(`${BASE_URL}/api/knowledge?${params}`, {
-        headers: { Cookie: `auth_token=${ctx?.authToken ?? ""}` },
-      });
-      if (!res.ok) return JSON.stringify({ ok: false, error: `HTTP ${res.status}` });
-      const data = await res.json();
-      return JSON.stringify({ ok: true, ...data });
+      try {
+        const data = await apiRequest(`/api/knowledge?${params}`);
+        return JSON.stringify({ ok: true, ...data as object });
+      } catch (err: any) {
+        return JSON.stringify({ ok: false, error: err.message ?? "List failed" });
+      }
     },
   },
   {
@@ -144,25 +140,20 @@ export const knowledgeTools: ToolDefinition[] = [
     handler: async (args: Record<string, unknown>, ctx?: any) => {
       const agentId = ctx?.agentId ?? "agent_default";
       const body: Record<string, unknown> = { agentId };
-      // Only forward fields the caller actually passed — undefined means
-      // "keep existing", not "clear". sourceUrl: null IS forwarded so callers
-      // can explicitly clear the field.
       if (args.title !== undefined) body.title = args.title;
       if (args.content !== undefined) body.content = args.content;
       if (args.sourceUrl !== undefined) body.sourceUrl = args.sourceUrl;
       if (args.tags !== undefined) body.tags = args.tags;
       if (args.mode !== undefined) body.mode = args.mode;
-      const res = await fetch(`${BASE_URL}/api/knowledge/${args.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Cookie: `auth_token=${ctx?.authToken ?? ""}` },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        return JSON.stringify({ ok: false, error: (err as any).error ?? `HTTP ${res.status}` });
+      try {
+        const data = await apiRequest(`/api/knowledge/${args.id}`, {
+          method: "PUT",
+          body,
+        });
+        return JSON.stringify(data);
+      } catch (err: any) {
+        return JSON.stringify({ ok: false, error: err.message ?? "Update failed" });
       }
-      const data = await res.json();
-      return JSON.stringify(data);
     },
   },
   {
@@ -177,13 +168,14 @@ export const knowledgeTools: ToolDefinition[] = [
     },
     handler: async (args: Record<string, unknown>, ctx?: any) => {
       const agentId = ctx?.agentId ?? "agent_default";
-      const res = await fetch(`${BASE_URL}/api/knowledge/${args.id}?agentId=${encodeURIComponent(agentId)}`, {
-        method: "DELETE",
-        headers: { Cookie: `auth_token=${ctx?.authToken ?? ""}` },
-      });
-      if (res.status === 204) return JSON.stringify({ ok: true });
-      const err = await res.json().catch(() => ({}));
-      return JSON.stringify({ ok: false, error: (err as any).error ?? `HTTP ${res.status}` });
+      try {
+        await apiRequest(`/api/knowledge/${args.id}?agentId=${encodeURIComponent(agentId)}`, {
+          method: "DELETE",
+        });
+        return JSON.stringify({ ok: true });
+      } catch (err: any) {
+        return JSON.stringify({ ok: false, error: err.message ?? "Delete failed" });
+      }
     },
   },
 ];

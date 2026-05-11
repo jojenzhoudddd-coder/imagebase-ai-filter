@@ -6,8 +6,7 @@
  */
 
 import type { ToolDefinition } from "./tableTools.js";
-
-const BASE_URL = `http://localhost:${process.env.PORT || 3001}`;
+import { apiRequest } from "../dataStoreClient.js";
 
 export const modelTools: ToolDefinition[] = [
   {
@@ -36,33 +35,29 @@ export const modelTools: ToolDefinition[] = [
       },
       required: ["modelId", "displayName", "provider", "baseUrl", "apiKey", "providerModelId"],
     },
-    handler: async (args: Record<string, unknown>, ctx?: any) => {
-      const res = await fetch(`${BASE_URL}/api/models/custom`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: `auth_token=${ctx?.authToken ?? ""}` },
-        body: JSON.stringify(args),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        return JSON.stringify({ ok: false, error: (err as any).error ?? `HTTP ${res.status}` });
+    handler: async (args: Record<string, unknown>) => {
+      try {
+        const model = await apiRequest("/api/models/custom", {
+          method: "POST",
+          body: args,
+        });
+        return JSON.stringify({ ok: true, model });
+      } catch (err: any) {
+        return JSON.stringify({ ok: false, error: err.message ?? "Failed to add model" });
       }
-      const model = await res.json();
-      return JSON.stringify({ ok: true, model });
     },
   },
   {
     name: "list_custom_models",
     description: "List all custom models configured by the current user.",
     inputSchema: { type: "object", properties: {} },
-    handler: async (_args: Record<string, unknown>, ctx?: any) => {
-      const res = await fetch(`${BASE_URL}/api/models/custom`, {
-        headers: { Cookie: `auth_token=${ctx?.authToken ?? ""}` },
-      });
-      if (!res.ok) {
-        return JSON.stringify({ ok: false, error: `HTTP ${res.status}` });
+    handler: async () => {
+      try {
+        const data = await apiRequest<{ models: unknown[] }>("/api/models/custom");
+        return JSON.stringify({ ok: true, models: data.models ?? [] });
+      } catch (err: any) {
+        return JSON.stringify({ ok: false, error: err.message ?? "Failed to list models" });
       }
-      const data = await res.json();
-      return JSON.stringify({ ok: true, models: data.models ?? [] });
     },
   },
   {
@@ -75,14 +70,13 @@ export const modelTools: ToolDefinition[] = [
       },
       required: ["id"],
     },
-    handler: async (args: Record<string, unknown>, ctx?: any) => {
-      const res = await fetch(`${BASE_URL}/api/models/custom/${args.id}`, {
-        method: "DELETE",
-        headers: { Cookie: `auth_token=${ctx?.authToken ?? ""}` },
-      });
-      if (res.status === 204) return JSON.stringify({ ok: true });
-      const err = await res.json().catch(() => ({}));
-      return JSON.stringify({ ok: false, error: (err as any).error ?? `HTTP ${res.status}` });
+    handler: async (args: Record<string, unknown>) => {
+      try {
+        await apiRequest(`/api/models/custom/${args.id}`, { method: "DELETE" });
+        return JSON.stringify({ ok: true });
+      } catch (err: any) {
+        return JSON.stringify({ ok: false, error: err.message ?? "Failed to remove model" });
+      }
     },
   },
   {
