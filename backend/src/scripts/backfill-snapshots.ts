@@ -30,7 +30,7 @@ async function main() {
         prisma.user.count({ where: { createdAt: { lte: endOfDay } } }),
         prisma.conversation.count({ where: { createdAt: { lte: endOfDay } } }),
         prisma.message.count({
-          where: { role: "user", createdAt: { lte: endOfDay } },
+          where: { role: "user", timestamp: { lte: endOfDay } },
         }),
         prisma.tokenUsage.aggregate({
           _sum: { totalTokens: true },
