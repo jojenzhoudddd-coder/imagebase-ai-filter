@@ -79,6 +79,7 @@ import {
   listVisibleModels,
   getModel,
   resolveModelForCall,
+  resolveCustomModel,
   DEFAULT_MODEL_ID,
   FALLBACK_MODEL_ID,
 } from "../services/modelRegistry.js";
@@ -355,25 +356,36 @@ router.get("/:agentId/model", async (req: Request, res: Response) => {
       res.status(404).json({ error: "agent not found" });
       return;
     }
-    const isRelated = !!(req as any).user?.related;
+    const user = (req as any).user;
+    const isRelated = !!user?.related;
     const selected = await getSelectedModel(agent.id);
     let { resolved, requested, usedFallback } = resolveModelForCall(selected);
 
-    // Non-related users: force volcano model
-    if (!isRelated && resolved.group !== "volcano") {
+    // If builtin resolution fell back, try loading as a custom model
+    if (usedFallback && selected && user?.id) {
+      const custom = await resolveCustomModel(selected, user.id);
+      if (custom) {
+        resolved = custom;
+        usedFallback = false;
+      }
+    }
+
+    // Non-related users: force volcano model for builtin non-volcano models,
+    // but allow custom models (user provided their own API key)
+    if (!isRelated && resolved.group !== "volcano" && !resolved.customApiKey) {
       const fb = resolveModelForCall(FALLBACK_MODEL_ID);
       resolved = fb.resolved;
       usedFallback = true;
     }
 
     res.json({
-      selected: isRelated ? selected : resolved.id,
+      selected: (isRelated || resolved.customApiKey) ? selected : resolved.id,
       resolved: {
         id: resolved.id,
         displayName: resolved.displayName,
         provider: resolved.provider,
         group: resolved.group,
-        available: resolved.available,
+        available: resolved.available !== false,
       },
       requested: requested
         ? {
@@ -397,12 +409,19 @@ router.put("/:agentId/model", async (req: Request, res: Response) => {
       res.status(400).json({ error: "modelId is required" });
       return;
     }
-    const entry = getModel(modelId);
+    const user = (req as any).user;
+    // Check builtin registry first, then user's custom models
+    let entry = getModel(modelId);
+    let isCustom = false;
+    if (!entry && user?.id) {
+      const custom = await resolveCustomModel(modelId, user.id);
+      if (custom) { entry = custom; isCustom = true; }
+    }
     if (!entry) {
       res.status(400).json({ error: `unknown modelId: ${modelId}` });
       return;
     }
-    if (!entry.visible) {
+    if (!isCustom && !entry.visible) {
       res.status(400).json({ error: `modelId not selectable: ${modelId}` });
       return;
     }
@@ -412,19 +431,16 @@ router.put("/:agentId/model", async (req: Request, res: Response) => {
       return;
     }
     await setSelectedModel(agent.id, modelId);
-    // Return the resolved model so UI can surface "using X instead of Y" if
-    // the preference is currently unavailable.
-    const { resolved, usedFallback } = resolveModelForCall(modelId);
     res.json({
       selected: modelId,
       resolved: {
-        id: resolved.id,
-        displayName: resolved.displayName,
-        provider: resolved.provider,
-        group: resolved.group,
-        available: resolved.available,
+        id: entry.id,
+        displayName: entry.displayName,
+        provider: entry.provider,
+        group: entry.group,
+        available: entry.available !== false,
       },
-      usedFallback,
+      usedFallback: false,
     });
   } catch (err: any) {
     console.error("[agents] set model error:", err);

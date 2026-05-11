@@ -43,7 +43,7 @@ interface Props {
   onChange?: (next: AgentModelSelection) => void;
 }
 
-const GROUP_ORDER: Array<ModelSummary["group"]> = ["anthropic", "openai", "volcano"];
+const GROUP_ORDER: string[] = ["anthropic", "openai", "volcano", "custom"];
 
 export default function ChatModelPicker({ agentId, open, disabled, onChange }: Props) {
   const { t } = useTranslation();
@@ -121,7 +121,9 @@ export default function ChatModelPicker({ agentId, open, disabled, onChange }: P
   })();
 
   const items: MenuItem[] = (models ?? []).slice().sort((a, b) => {
-    const gi = GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group);
+    const ai = GROUP_ORDER.indexOf(a.group);
+    const bi = GROUP_ORDER.indexOf(b.group);
+    const gi = (ai === -1 ? GROUP_ORDER.length : ai) - (bi === -1 ? GROUP_ORDER.length : bi);
     if (gi !== 0) return gi;
     return a.displayName.localeCompare(b.displayName);
   }).map((m) => {

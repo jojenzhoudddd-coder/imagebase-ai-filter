@@ -33,13 +33,19 @@ interface ModelSummary {
 }
 
 function maskKey(provider: string): string {
-  if (provider === "ark") return "sk-****…" + "vwdh7";
-  return "sk-****…" + "nT4C";
+  if (provider === "ark") return "sk-****…vwdh7";
+  return "sk-****…nT4C";
 }
 
 function endpointUrl(provider: string): string {
   if (provider === "ark") return "https://ark.cn-beijing.volces.com/api/v3";
   return "https://oneapi.iline.work/v1";
+}
+
+function providerLabel(m: ModelSummary): string {
+  if (m.type === "custom") return m.provider;
+  if (m.provider === "ark") return "Volcano ARK";
+  return "OneAPI";
 }
 
 const ADD_MODEL_PROMPT = `我想添加一个新的 AI 模型到我的模型列表。请引导我完成配置，我需要提供：
@@ -135,6 +141,9 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
                     <span className="ab-card-state-dot" />
                     {m.available ? "Available" : "Offline"}
                   </span>
+                  <span className={`ab-card-state ${m.type === "custom" ? "ab-card-state-custom" : "ab-card-state-official"}`}>
+                    {m.type === "custom" ? "Custom" : "Official"}
+                  </span>
                 </div>
                 <Tooltip title={m.id}><p className="ab-card-desc">{m.id}</p></Tooltip>
               </div>
@@ -151,7 +160,7 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
             <dl className="ab-card-kv ab-card-kv-2col">
               <div className="ab-card-kv-row">
                 <dt>{t("agent.card.provider")}</dt>
-                <dd>{m.provider === "ark" ? "Volcano ARK" : "OneAPI"}</dd>
+                <dd>{providerLabel(m)}</dd>
               </div>
               <div className="ab-card-kv-row">
                 <dt>Endpoint</dt>

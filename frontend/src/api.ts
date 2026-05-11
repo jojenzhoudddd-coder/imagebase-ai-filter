@@ -1735,18 +1735,19 @@ export interface ModelCapabilities {
 export interface ModelSummary {
   id: string;
   displayName: string;
-  provider: "ark" | "oneapi";
-  group: "volcano" | "anthropic" | "openai";
+  provider: string;
+  group: string;
   available: boolean;
   capabilities: ModelCapabilities;
+  type?: "builtin" | "custom";
 }
 export interface AgentModelSelection {
   selected: string;
   resolved: {
     id: string;
     displayName: string;
-    provider: "ark" | "oneapi";
-    group: "volcano" | "anthropic" | "openai";
+    provider: string;
+    group: string;
     available: boolean;
   };
   requested: { id: string; displayName: string; available: boolean } | null;
