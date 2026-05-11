@@ -132,7 +132,7 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
                 <div className="ab-card-title-row">
                   <h4 className="ab-card-title">{m.displayName}</h4>
                   {m.id === currentModelId && (
-                    <span className="ab-card-state ab-card-state-primary">
+                    <span className="ab-card-state ab-card-state-current">
                       <span className="ab-card-state-dot" />
                       Current
                     </span>
