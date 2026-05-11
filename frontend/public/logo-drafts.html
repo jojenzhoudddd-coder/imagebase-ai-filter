@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Funature Logo — 纸风车 + 四芒星负空间</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; padding: 40px; background: #f0f0f0; }
+  h1 { font-size: 22px; margin-bottom: 6px; color: #111; }
+  h2 { font-size: 14px; margin-bottom: 32px; color: #888; font-weight: 400; }
+  h3 { font-size: 14px; color: #333; margin-bottom: 14px; }
+  .section { margin-bottom: 56px; }
+  .row { display: flex; gap: 36px; align-items: flex-end; flex-wrap: wrap; }
+  .item { text-align: center; }
+  .item span { display: block; margin-top: 8px; font-size: 11px; color: #999; }
+  .dark-section { background: #1a1a1a; border-radius: 16px; padding: 32px; }
+  .dark-section h3 { color: #eee; }
+  .dark-section span { color: #666; }
+  .grid-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 20px; }
+</style>
+</head>
+<body>
+
+<h1>Funature Logo — 纸风车 × 四芒星负空间</h1>
+<h2>四片叶片顺时针旋转，中间负空间自然形成四芒星</h2>
+
+<!--
+  构造逻辑：
+  4 片叶片以中心 (512,512) 为轴，每片是一个 "弯月" 形扇区。
+  叶片之间留出尖锐间隙，4 条间隙交汇形成四芒星。
+
+  每片叶片 = 从中心偏移处出发，走外弧到远端尖角，再内弧回来。
+  旋转 90° 复制 4 份。
+-->
+
+<!-- iOS squircle path (reusable) -->
+<!--
+  Apple continuous-curvature superellipse for 1024×1024.
+  Corner radius ≈ 223px (21.8%, measured from iOS 17 renders).
+-->
+
+<!-- ============================================================ -->
+<!-- LIGHT MODE -->
+<!-- ============================================================ -->
+<div class="section">
+  <h3>Light Mode</h3>
+  <div class="row">
+
+    <div class="item">
+      <svg width="240" height="240" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="sq"><path d="M276 0 H748 C837 0 882 0 918 18 C950 34 976 58 1000 96 C1024 140 1024 195 1024 276 V748 C1024 829 1024 884 1006 918 C990 950 966 976 928 1000 C884 1024 829 1024 748 1024 H276 C195 1024 140 1024 96 1006 C58 990 34 966 18 928 C0 884 0 829 0 748 V276 C0 195 0 140 18 96 C34 58 58 34 96 18 C140 0 195 0 276 0Z"/></clipPath>
+          <linearGradient id="l1" x1="512" y1="140" x2="380" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3B82F6"/><stop offset="1" stop-color="#6366F1"/></linearGradient>
+          <linearGradient id="l2" x1="884" y1="512" x2="512" y2="380" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#A855F7"/><stop offset="1" stop-color="#EC4899"/></linearGradient>
+          <linearGradient id="l3" x1="512" y1="884" x2="644" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F97316"/><stop offset="1" stop-color="#FBBF24"/></linearGradient>
+          <linearGradient id="l4" x1="140" y1="512" x2="512" y2="644" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#10B981"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
+        </defs>
+        <g clip-path="url(#sq)">
+          <rect width="1024" height="1024" fill="#FFFFFF"/>
+          <!--
+            纸风车：4 片叶片，每片从中心附近出发弧形延伸到边缘。
+            叶片之间的间隙在中心交汇成四芒星。
+
+            每片叶片的形状：
+            - 从中心旁的一个点出发
+            - 沿外弧走到远端（叶片尖端）
+            - 沿内弧回到中心旁的另一个点
+
+            间隙角度 ≈ 18°（每对叶片之间），产生尖锐的星芒。
+          -->
+          <!-- 上叶 (蓝紫): 从中心偏左上出发，到顶部，回中心偏右上 -->
+          <path d="
+            M492 480
+            C460 380, 410 260, 370 160
+            C400 148, 480 140, 512 140
+            C544 140, 580 144, 610 152
+            Q560 300, 532 480
+            C524 470, 508 468, 492 480
+          Z" fill="url(#l1)"/>
+          <!-- 右叶 (紫粉): -->
+          <path d="
+            M544 492
+            C644 460, 764 410, 864 370
+            C876 400, 884 480, 884 512
+            C884 544, 880 580, 872 610
+            Q724 560, 544 532
+            C554 524, 556 508, 544 492
+          Z" fill="url(#l2)"/>
+          <!-- 下叶 (橙黄): -->
+          <path d="
+            M532 544
+            C564 644, 614 764, 654 864
+            C624 876, 544 884, 512 884
+            C480 884, 444 880, 414 872
+            Q464 724, 492 544
+            C500 554, 516 556, 532 544
+          Z" fill="url(#l3)"/>
+          <!-- 左叶 (绿青): -->
+          <path d="
+            M480 532
+            C380 564, 260 614, 160 654
+            C148 624, 140 544, 140 512
+            C140 480, 144 444, 152 414
+            Q300 464, 480 492
+            C470 500, 468 516, 480 532
+          Z" fill="url(#l4)"/>
+        </g>
+      </svg>
+      <span>240px</span>
+    </div>
+
+    <div class="item">
+      <svg width="120" height="120" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="sq2"><path d="M276 0 H748 C837 0 882 0 918 18 C950 34 976 58 1000 96 C1024 140 1024 195 1024 276 V748 C1024 829 1024 884 1006 918 C990 950 966 976 928 1000 C884 1024 829 1024 748 1024 H276 C195 1024 140 1024 96 1006 C58 990 34 966 18 928 C0 884 0 829 0 748 V276 C0 195 0 140 18 96 C34 58 58 34 96 18 C140 0 195 0 276 0Z"/></clipPath>
+          <linearGradient id="l1b" x1="512" y1="140" x2="380" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3B82F6"/><stop offset="1" stop-color="#6366F1"/></linearGradient>
+          <linearGradient id="l2b" x1="884" y1="512" x2="512" y2="380" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#A855F7"/><stop offset="1" stop-color="#EC4899"/></linearGradient>
+          <linearGradient id="l3b" x1="512" y1="884" x2="644" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F97316"/><stop offset="1" stop-color="#FBBF24"/></linearGradient>
+          <linearGradient id="l4b" x1="140" y1="512" x2="512" y2="644" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#10B981"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
+        </defs>
+        <g clip-path="url(#sq2)">
+          <rect width="1024" height="1024" fill="#FFFFFF"/>
+          <path d="M492 480 C460 380, 410 260, 370 160 C400 148, 480 140, 512 140 C544 140, 580 144, 610 152 Q560 300, 532 480 C524 470, 508 468, 492 480Z" fill="url(#l1b)"/>
+          <path d="M544 492 C644 460, 764 410, 864 370 C876 400, 884 480, 884 512 C884 544, 880 580, 872 610 Q724 560, 544 532 C554 524, 556 508, 544 492Z" fill="url(#l2b)"/>
+          <path d="M532 544 C564 644, 614 764, 654 864 C624 876, 544 884, 512 884 C480 884, 444 880, 414 872 Q464 724, 492 544 C500 554, 516 556, 532 544Z" fill="url(#l3b)"/>
+          <path d="M480 532 C380 564, 260 614, 160 654 C148 624, 140 544, 140 512 C140 480, 144 444, 152 414 Q300 464, 480 492 C470 500, 468 516, 480 532Z" fill="url(#l4b)"/>
+        </g>
+      </svg>
+      <span>120px</span>
+    </div>
+
+    <div class="item">
+      <svg width="60" height="60" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="sq3"><path d="M276 0 H748 C837 0 882 0 918 18 C950 34 976 58 1000 96 C1024 140 1024 195 1024 276 V748 C1024 829 1024 884 1006 918 C990 950 966 976 928 1000 C884 1024 829 1024 748 1024 H276 C195 1024 140 1024 96 1006 C58 990 34 966 18 928 C0 884 0 829 0 748 V276 C0 195 0 140 18 96 C34 58 58 34 96 18 C140 0 195 0 276 0Z"/></clipPath>
+          <linearGradient id="l1c" x1="512" y1="140" x2="380" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3B82F6"/><stop offset="1" stop-color="#6366F1"/></linearGradient>
+          <linearGradient id="l2c" x1="884" y1="512" x2="512" y2="380" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#A855F7"/><stop offset="1" stop-color="#EC4899"/></linearGradient>
+          <linearGradient id="l3c" x1="512" y1="884" x2="644" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F97316"/><stop offset="1" stop-color="#FBBF24"/></linearGradient>
+          <linearGradient id="l4c" x1="140" y1="512" x2="512" y2="644" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#10B981"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
+        </defs>
+        <g clip-path="url(#sq3)">
+          <rect width="1024" height="1024" fill="#FFFFFF"/>
+          <path d="M492 480 C460 380, 410 260, 370 160 C400 148, 480 140, 512 140 C544 140, 580 144, 610 152 Q560 300, 532 480 C524 470, 508 468, 492 480Z" fill="url(#l1c)"/>
+          <path d="M544 492 C644 460, 764 410, 864 370 C876 400, 884 480, 884 512 C884 544, 880 580, 872 610 Q724 560, 544 532 C554 524, 556 508, 544 492Z" fill="url(#l2c)"/>
+          <path d="M532 544 C564 644, 614 764, 654 864 C624 876, 544 884, 512 884 C480 884, 444 880, 414 872 Q464 724, 492 544 C500 554, 516 556, 532 544Z" fill="url(#l3c)"/>
+          <path d="M480 532 C380 564, 260 614, 160 654 C148 624, 140 544, 140 512 C140 480, 144 444, 152 414 Q300 464, 480 492 C470 500, 468 516, 480 532Z" fill="url(#l4c)"/>
+        </g>
+      </svg>
+      <span>60px</span>
+    </div>
+
+    <div class="item">
+      <svg width="32" height="32" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="sq4"><path d="M276 0 H748 C837 0 882 0 918 18 C950 34 976 58 1000 96 C1024 140 1024 195 1024 276 V748 C1024 829 1024 884 1006 918 C990 950 966 976 928 1000 C884 1024 829 1024 748 1024 H276 C195 1024 140 1024 96 1006 C58 990 34 966 18 928 C0 884 0 829 0 748 V276 C0 195 0 140 18 96 C34 58 58 34 96 18 C140 0 195 0 276 0Z"/></clipPath>
+          <linearGradient id="l1d" x1="512" y1="140" x2="380" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3B82F6"/><stop offset="1" stop-color="#6366F1"/></linearGradient>
+          <linearGradient id="l2d" x1="884" y1="512" x2="512" y2="380" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#A855F7"/><stop offset="1" stop-color="#EC4899"/></linearGradient>
+          <linearGradient id="l3d" x1="512" y1="884" x2="644" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F97316"/><stop offset="1" stop-color="#FBBF24"/></linearGradient>
+          <linearGradient id="l4d" x1="140" y1="512" x2="512" y2="644" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#10B981"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
+        </defs>
+        <g clip-path="url(#sq4)">
+          <rect width="1024" height="1024" fill="#FFFFFF"/>
+          <path d="M492 480 C460 380, 410 260, 370 160 C400 148, 480 140, 512 140 C544 140, 580 144, 610 152 Q560 300, 532 480 C524 470, 508 468, 492 480Z" fill="url(#l1d)"/>
+          <path d="M544 492 C644 460, 764 410, 864 370 C876 400, 884 480, 884 512 C884 544, 880 580, 872 610 Q724 560, 544 532 C554 524, 556 508, 544 492Z" fill="url(#l2d)"/>
+          <path d="M532 544 C564 644, 614 764, 654 864 C624 876, 544 884, 512 884 C480 884, 444 880, 414 872 Q464 724, 492 544 C500 554, 516 556, 532 544Z" fill="url(#l3d)"/>
+          <path d="M480 532 C380 564, 260 614, 160 654 C148 624, 140 544, 140 512 C140 480, 144 444, 152 414 Q300 464, 480 492 C470 500, 468 516, 480 532Z" fill="url(#l4d)"/>
+        </g>
+      </svg>
+      <span>32px</span>
+    </div>
+
+    <div class="item">
+      <svg width="16" height="16" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="sq5"><path d="M276 0 H748 C837 0 882 0 918 18 C950 34 976 58 1000 96 C1024 140 1024 195 1024 276 V748 C1024 829 1024 884 1006 918 C990 950 966 976 928 1000 C884 1024 829 1024 748 1024 H276 C195 1024 140 1024 96 1006 C58 990 34 966 18 928 C0 884 0 829 0 748 V276 C0 195 0 140 18 96 C34 58 58 34 96 18 C140 0 195 0 276 0Z"/></clipPath>
+          <linearGradient id="l1e" x1="512" y1="140" x2="380" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3B82F6"/><stop offset="1" stop-color="#6366F1"/></linearGradient>
+          <linearGradient id="l2e" x1="884" y1="512" x2="512" y2="380" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#A855F7"/><stop offset="1" stop-color="#EC4899"/></linearGradient>
+          <linearGradient id="l3e" x1="512" y1="884" x2="644" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F97316"/><stop offset="1" stop-color="#FBBF24"/></linearGradient>
+          <linearGradient id="l4e" x1="140" y1="512" x2="512" y2="644" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#10B981"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
+        </defs>
+        <g clip-path="url(#sq5)">
+          <rect width="1024" height="1024" fill="#FFFFFF"/>
+          <path d="M492 480 C460 380, 410 260, 370 160 C400 148, 480 140, 512 140 C544 140, 580 144, 610 152 Q560 300, 532 480 C524 470, 508 468, 492 480Z" fill="url(#l1e)"/>
+          <path d="M544 492 C644 460, 764 410, 864 370 C876 400, 884 480, 884 512 C884 544, 880 580, 872 610 Q724 560, 544 532 C554 524, 556 508, 544 492Z" fill="url(#l2e)"/>
+          <path d="M532 544 C564 644, 614 764, 654 864 C624 876, 544 884, 512 884 C480 884, 444 880, 414 872 Q464 724, 492 544 C500 554, 516 556, 532 544Z" fill="url(#l3e)"/>
+          <path d="M480 532 C380 564, 260 614, 160 654 C148 624, 140 544, 140 512 C140 480, 144 444, 152 414 Q300 464, 480 492 C470 500, 468 516, 480 532Z" fill="url(#l4e)"/>
+        </g>
+      </svg>
+      <span>16px</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- DARK MODE -->
+<!-- ============================================================ -->
+<div class="section dark-section">
+  <h3>Dark Mode</h3>
+  <div class="row">
+
+    <div class="item">
+      <svg width="240" height="240" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="dsq"><path d="M276 0 H748 C837 0 882 0 918 18 C950 34 976 58 1000 96 C1024 140 1024 195 1024 276 V748 C1024 829 1024 884 1006 918 C990 950 966 976 928 1000 C884 1024 829 1024 748 1024 H276 C195 1024 140 1024 96 1006 C58 990 34 966 18 928 C0 884 0 829 0 748 V276 C0 195 0 140 18 96 C34 58 58 34 96 18 C140 0 195 0 276 0Z"/></clipPath>
+          <linearGradient id="d1" x1="512" y1="140" x2="380" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="#818CF8"/></linearGradient>
+          <linearGradient id="d2" x1="884" y1="512" x2="512" y2="380" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#C084FC"/><stop offset="1" stop-color="#F472B6"/></linearGradient>
+          <linearGradient id="d3" x1="512" y1="884" x2="644" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FB923C"/><stop offset="1" stop-color="#FDE047"/></linearGradient>
+          <linearGradient id="d4" x1="140" y1="512" x2="512" y2="644" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34D399"/><stop offset="1" stop-color="#67E8F9"/></linearGradient>
+        </defs>
+        <g clip-path="url(#dsq)">
+          <rect width="1024" height="1024" fill="#111111"/>
+          <path d="M492 480 C460 380, 410 260, 370 160 C400 148, 480 140, 512 140 C544 140, 580 144, 610 152 Q560 300, 532 480 C524 470, 508 468, 492 480Z" fill="url(#d1)"/>
+          <path d="M544 492 C644 460, 764 410, 864 370 C876 400, 884 480, 884 512 C884 544, 880 580, 872 610 Q724 560, 544 532 C554 524, 556 508, 544 492Z" fill="url(#d2)"/>
+          <path d="M532 544 C564 644, 614 764, 654 864 C624 876, 544 884, 512 884 C480 884, 444 880, 414 872 Q464 724, 492 544 C500 554, 516 556, 532 544Z" fill="url(#d3)"/>
+          <path d="M480 532 C380 564, 260 614, 160 654 C148 624, 140 544, 140 512 C140 480, 144 444, 152 414 Q300 464, 480 492 C470 500, 468 516, 480 532Z" fill="url(#d4)"/>
+        </g>
+      </svg>
+      <span>240px</span>
+    </div>
+
+    <div class="item">
+      <svg width="120" height="120" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="dsq2"><path d="M276 0 H748 C837 0 882 0 918 18 C950 34 976 58 1000 96 C1024 140 1024 195 1024 276 V748 C1024 829 1024 884 1006 918 C990 950 966 976 928 1000 C884 1024 829 1024 748 1024 H276 C195 1024 140 1024 96 1006 C58 990 34 966 18 928 C0 884 0 829 0 748 V276 C0 195 0 140 18 96 C34 58 58 34 96 18 C140 0 195 0 276 0Z"/></clipPath>
+          <linearGradient id="d1b" x1="512" y1="140" x2="380" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="#818CF8"/></linearGradient>
+          <linearGradient id="d2b" x1="884" y1="512" x2="512" y2="380" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#C084FC"/><stop offset="1" stop-color="#F472B6"/></linearGradient>
+          <linearGradient id="d3b" x1="512" y1="884" x2="644" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FB923C"/><stop offset="1" stop-color="#FDE047"/></linearGradient>
+          <linearGradient id="d4b" x1="140" y1="512" x2="512" y2="644" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34D399"/><stop offset="1" stop-color="#67E8F9"/></linearGradient>
+        </defs>
+        <g clip-path="url(#dsq2)">
+          <rect width="1024" height="1024" fill="#111111"/>
+          <path d="M492 480 C460 380, 410 260, 370 160 C400 148, 480 140, 512 140 C544 140, 580 144, 610 152 Q560 300, 532 480 C524 470, 508 468, 492 480Z" fill="url(#d1b)"/>
+          <path d="M544 492 C644 460, 764 410, 864 370 C876 400, 884 480, 884 512 C884 544, 880 580, 872 610 Q724 560, 544 532 C554 524, 556 508, 544 492Z" fill="url(#d2b)"/>
+          <path d="M532 544 C564 644, 614 764, 654 864 C624 876, 544 884, 512 884 C480 884, 444 880, 414 872 Q464 724, 492 544 C500 554, 516 556, 532 544Z" fill="url(#d3b)"/>
+          <path d="M480 532 C380 564, 260 614, 160 654 C148 624, 140 544, 140 512 C140 480, 144 444, 152 414 Q300 464, 480 492 C470 500, 468 516, 480 532Z" fill="url(#d4b)"/>
+        </g>
+      </svg>
+      <span>120px</span>
+    </div>
+
+    <div class="item">
+      <svg width="60" height="60" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="dsq3"><path d="M276 0 H748 C837 0 882 0 918 18 C950 34 976 58 1000 96 C1024 140 1024 195 1024 276 V748 C1024 829 1024 884 1006 918 C990 950 966 976 928 1000 C884 1024 829 1024 748 1024 H276 C195 1024 140 1024 96 1006 C58 990 34 966 18 928 C0 884 0 829 0 748 V276 C0 195 0 140 18 96 C34 58 58 34 96 18 C140 0 195 0 276 0Z"/></clipPath>
+          <linearGradient id="d1c" x1="512" y1="140" x2="380" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="#818CF8"/></linearGradient>
+          <linearGradient id="d2c" x1="884" y1="512" x2="512" y2="380" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#C084FC"/><stop offset="1" stop-color="#F472B6"/></linearGradient>
+          <linearGradient id="d3c" x1="512" y1="884" x2="644" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FB923C"/><stop offset="1" stop-color="#FDE047"/></linearGradient>
+          <linearGradient id="d4c" x1="140" y1="512" x2="512" y2="644" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34D399"/><stop offset="1" stop-color="#67E8F9"/></linearGradient>
+        </defs>
+        <g clip-path="url(#dsq3)">
+          <rect width="1024" height="1024" fill="#111111"/>
+          <path d="M492 480 C460 380, 410 260, 370 160 C400 148, 480 140, 512 140 C544 140, 580 144, 610 152 Q560 300, 532 480 C524 470, 508 468, 492 480Z" fill="url(#d1c)"/>
+          <path d="M544 492 C644 460, 764 410, 864 370 C876 400, 884 480, 884 512 C884 544, 880 580, 872 610 Q724 560, 544 532 C554 524, 556 508, 544 492Z" fill="url(#d2c)"/>
+          <path d="M532 544 C564 644, 614 764, 654 864 C624 876, 544 884, 512 884 C480 884, 444 880, 414 872 Q464 724, 492 544 C500 554, 516 556, 532 544Z" fill="url(#d3c)"/>
+          <path d="M480 532 C380 564, 260 614, 160 654 C148 624, 140 544, 140 512 C140 480, 144 444, 152 414 Q300 464, 480 492 C470 500, 468 516, 480 532Z" fill="url(#d4c)"/>
+        </g>
+      </svg>
+      <span>60px</span>
+    </div>
+
+    <div class="item">
+      <svg width="32" height="32" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="dsq4"><path d="M276 0 H748 C837 0 882 0 918 18 C950 34 976 58 1000 96 C1024 140 1024 195 1024 276 V748 C1024 829 1024 884 1006 918 C990 950 966 976 928 1000 C884 1024 829 1024 748 1024 H276 C195 1024 140 1024 96 1006 C58 990 34 966 18 928 C0 884 0 829 0 748 V276 C0 195 0 140 18 96 C34 58 58 34 96 18 C140 0 195 0 276 0Z"/></clipPath>
+          <linearGradient id="d1d" x1="512" y1="140" x2="380" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="#818CF8"/></linearGradient>
+          <linearGradient id="d2d" x1="884" y1="512" x2="512" y2="380" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#C084FC"/><stop offset="1" stop-color="#F472B6"/></linearGradient>
+          <linearGradient id="d3d" x1="512" y1="884" x2="644" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FB923C"/><stop offset="1" stop-color="#FDE047"/></linearGradient>
+          <linearGradient id="d4d" x1="140" y1="512" x2="512" y2="644" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34D399"/><stop offset="1" stop-color="#67E8F9"/></linearGradient>
+        </defs>
+        <g clip-path="url(#dsq4)">
+          <rect width="1024" height="1024" fill="#111111"/>
+          <path d="M492 480 C460 380, 410 260, 370 160 C400 148, 480 140, 512 140 C544 140, 580 144, 610 152 Q560 300, 532 480 C524 470, 508 468, 492 480Z" fill="url(#d1d)"/>
+          <path d="M544 492 C644 460, 764 410, 864 370 C876 400, 884 480, 884 512 C884 544, 880 580, 872 610 Q724 560, 544 532 C554 524, 556 508, 544 492Z" fill="url(#d2d)"/>
+          <path d="M532 544 C564 644, 614 764, 654 864 C624 876, 544 884, 512 884 C480 884, 444 880, 414 872 Q464 724, 492 544 C500 554, 516 556, 532 544Z" fill="url(#d3d)"/>
+          <path d="M480 532 C380 564, 260 614, 160 654 C148 624, 140 544, 140 512 C140 480, 144 444, 152 414 Q300 464, 480 492 C470 500, 468 516, 480 532Z" fill="url(#d4d)"/>
+        </g>
+      </svg>
+      <span>32px</span>
+    </div>
+
+  </div>
+</div>
+
+<br>
+
+<!-- ============================================================ -->
+<!-- LM vs DM 大图对比 -->
+<!-- ============================================================ -->
+<div class="section">
+  <h3>LM / DM 并排对比</h3>
+  <div class="grid-compare">
+    <div style="background:#fff; border-radius:20px; padding:48px; text-align:center; border:1px solid #e0e0e0;">
+      <svg width="280" height="280" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="csq1"><path d="M276 0 H748 C837 0 882 0 918 18 C950 34 976 58 1000 96 C1024 140 1024 195 1024 276 V748 C1024 829 1024 884 1006 918 C990 950 966 976 928 1000 C884 1024 829 1024 748 1024 H276 C195 1024 140 1024 96 1006 C58 990 34 966 18 928 C0 884 0 829 0 748 V276 C0 195 0 140 18 96 C34 58 58 34 96 18 C140 0 195 0 276 0Z"/></clipPath>
+          <linearGradient id="cl1" x1="512" y1="140" x2="380" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3B82F6"/><stop offset="1" stop-color="#6366F1"/></linearGradient>
+          <linearGradient id="cl2" x1="884" y1="512" x2="512" y2="380" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#A855F7"/><stop offset="1" stop-color="#EC4899"/></linearGradient>
+          <linearGradient id="cl3" x1="512" y1="884" x2="644" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F97316"/><stop offset="1" stop-color="#FBBF24"/></linearGradient>
+          <linearGradient id="cl4" x1="140" y1="512" x2="512" y2="644" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#10B981"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
+        </defs>
+        <g clip-path="url(#csq1)">
+          <rect width="1024" height="1024" fill="#FFFFFF"/>
+          <path d="M492 480 C460 380, 410 260, 370 160 C400 148, 480 140, 512 140 C544 140, 580 144, 610 152 Q560 300, 532 480 C524 470, 508 468, 492 480Z" fill="url(#cl1)"/>
+          <path d="M544 492 C644 460, 764 410, 864 370 C876 400, 884 480, 884 512 C884 544, 880 580, 872 610 Q724 560, 544 532 C554 524, 556 508, 544 492Z" fill="url(#cl2)"/>
+          <path d="M532 544 C564 644, 614 764, 654 864 C624 876, 544 884, 512 884 C480 884, 444 880, 414 872 Q464 724, 492 544 C500 554, 516 556, 532 544Z" fill="url(#cl3)"/>
+          <path d="M480 532 C380 564, 260 614, 160 654 C148 624, 140 544, 140 512 C140 480, 144 444, 152 414 Q300 464, 480 492 C470 500, 468 516, 480 532Z" fill="url(#cl4)"/>
+        </g>
+      </svg>
+      <div style="margin-top:16px; font-size:14px; color:#666;">Light Mode</div>
+    </div>
+    <div style="background:#111; border-radius:20px; padding:48px; text-align:center;">
+      <svg width="280" height="280" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="csq2"><path d="M276 0 H748 C837 0 882 0 918 18 C950 34 976 58 1000 96 C1024 140 1024 195 1024 276 V748 C1024 829 1024 884 1006 918 C990 950 966 976 928 1000 C884 1024 829 1024 748 1024 H276 C195 1024 140 1024 96 1006 C58 990 34 966 18 928 C0 884 0 829 0 748 V276 C0 195 0 140 18 96 C34 58 58 34 96 18 C140 0 195 0 276 0Z"/></clipPath>
+          <linearGradient id="cd1" x1="512" y1="140" x2="380" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="#818CF8"/></linearGradient>
+          <linearGradient id="cd2" x1="884" y1="512" x2="512" y2="380" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#C084FC"/><stop offset="1" stop-color="#F472B6"/></linearGradient>
+          <linearGradient id="cd3" x1="512" y1="884" x2="644" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FB923C"/><stop offset="1" stop-color="#FDE047"/></linearGradient>
+          <linearGradient id="cd4" x1="140" y1="512" x2="512" y2="644" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34D399"/><stop offset="1" stop-color="#67E8F9"/></linearGradient>
+        </defs>
+        <g clip-path="url(#csq2)">
+          <rect width="1024" height="1024" fill="#111111"/>
+          <path d="M492 480 C460 380, 410 260, 370 160 C400 148, 480 140, 512 140 C544 140, 580 144, 610 152 Q560 300, 532 480 C524 470, 508 468, 492 480Z" fill="url(#cd1)"/>
+          <path d="M544 492 C644 460, 764 410, 864 370 C876 400, 884 480, 884 512 C884 544, 880 580, 872 610 Q724 560, 544 532 C554 524, 556 508, 544 492Z" fill="url(#cd2)"/>
+          <path d="M532 544 C564 644, 614 764, 654 864 C624 876, 544 884, 512 884 C480 884, 444 880, 414 872 Q464 724, 492 544 C500 554, 516 556, 532 544Z" fill="url(#cd3)"/>
+          <path d="M480 532 C380 564, 260 614, 160 654 C148 624, 140 544, 140 512 C140 480, 144 444, 152 414 Q300 464, 480 492 C470 500, 468 516, 480 532Z" fill="url(#cd4)"/>
+        </g>
+      </svg>
+      <div style="margin-top:16px; font-size:14px; color:#999;">Dark Mode</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

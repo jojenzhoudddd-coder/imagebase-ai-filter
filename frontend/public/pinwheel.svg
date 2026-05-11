@@ -1,0 +1,65 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Paper pinwheel (纸风车)
+    8 blade sections: 4 dark green (base) + 4 light green (folded flaps)
+    Inner edges curve away from center → negative space forms a four-pointed star
+  -->
+
+  <!-- Dark green base blades -->
+  <!-- Top-right: from top-center → TR corner → right-center, curves near center -->
+  <path d="
+    M256 0 L512 0 L512 256
+    C400 256, 290 290, 272 256
+    C270 200, 260 80, 256 0
+  Z" fill="#4CAF50"/>
+
+  <!-- Right-bottom: from right-center → BR corner → bottom-center -->
+  <path d="
+    M512 256 L512 512 L256 512
+    C256 400, 290 290, 256 272
+    C312 270, 432 260, 512 256
+  Z" fill="#4CAF50"/>
+
+  <!-- Bottom-left: from bottom-center → BL corner → left-center -->
+  <path d="
+    M256 512 L0 512 L0 256
+    C112 256, 222 290, 240 256
+    C242 312, 252 432, 256 512
+  Z" fill="#4CAF50"/>
+
+  <!-- Left-top: from left-center → TL corner → top-center -->
+  <path d="
+    M0 256 L0 0 L256 0
+    C256 112, 222 222, 256 240
+    C200 242, 80 252, 0 256
+  Z" fill="#4CAF50"/>
+
+  <!-- Light (yellow-green) folded flaps — drawn on top -->
+  <!-- Upper-left: from TL corner → top-center, curves near center, back to left-center → TL -->
+  <path d="
+    M0 0 L256 0
+    C260 80, 270 200, 272 256
+    C222 222, 112 256, 0 256
+  Z" fill="#C0D631"/>
+
+  <!-- Upper-right: from TR corner → right-center, curves near center, back to top-center → TR -->
+  <path d="
+    M512 0 L512 256
+    C432 260, 312 270, 256 272
+    C290 222, 256 112, 256 0
+  Z" fill="#C0D631"/>
+
+  <!-- Lower-right: from BR corner → bottom-center, curves near center, back to right-center → BR -->
+  <path d="
+    M512 512 L256 512
+    C252 432, 242 312, 240 256
+    C290 290, 400 256, 512 256
+  Z" fill="#C0D631"/>
+
+  <!-- Lower-left: from BL corner → left-center, curves near center, back to bottom-center → BL -->
+  <path d="
+    M0 512 L0 256
+    C80 252, 200 242, 256 240
+    C222 290, 256 400, 256 512
+  Z" fill="#C0D631"/>
+</svg>

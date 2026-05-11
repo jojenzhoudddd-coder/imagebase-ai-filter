@@ -16,7 +16,7 @@ Use this skill when deploying code to production, configuring server infrastruct
 |------|-------|
 | Server IP | `163.7.1.94` |
 | OS | Rocky Linux |
-| Domain | `www.imagebase.cc` |
+| Domain | `www.funature.fun` |
 | SSL | Let's Encrypt (auto-renew via certbot-renew.timer) |
 | SSH Key | `~/Desktop/baseimage.pem` |
 | App Directory | `/root/ai-filter-lark` |
@@ -103,7 +103,7 @@ origin. Magic Canvas multi-block dashboards open one SSE per block
 (`useWorkspaceSync` + `useTableSync` × N + `useIdeaSync` × M + chat stream),
 which saturates the pool and starves regular API fetches (sidebar load,
 artifact switch). HTTP/2 multiplexes everything over one TCP connection — no
-6-cap, no starvation. Verify with `curl -I https://www.imagebase.cc/...` →
+6-cap, no starvation. Verify with `curl -I https://www.funature.fun/...` →
 expect `HTTP/2 200`. Re-added 2026-04-28 after the original certbot-managed
 config dropped the `http2` token during a renew.
 
@@ -209,7 +209,7 @@ curl -s http://localhost:3001/api/tables | head -c 100
 curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/
 
 # External access works
-curl -s -o /dev/null -w "%{http_code}" https://www.imagebase.cc/
+curl -s -o /dev/null -w "%{http_code}" https://www.funature.fun/
 ```
 
 ### SSE Connection Test
