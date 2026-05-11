@@ -113,6 +113,7 @@
   /* SwipeDelete — primary-tinted */
   --swipe-del-fill:        rgba(20, 86, 240, 0.10);
   --swipe-del-thumb-hover: rgba(20, 86, 240, 0.12);
+  --swipe-del-thumb-color: rgba(20, 86, 240, 0.80);
 }
 
 [data-theme="dark"] {
@@ -195,6 +196,7 @@
   /* SwipeDelete — primary-tinted */
   --swipe-del-fill:        rgba(74, 130, 255, 0.14);
   --swipe-del-thumb-hover: rgba(74, 130, 255, 0.18);
+  --swipe-del-thumb-color: rgba(74, 130, 255, 0.80);
 }
 
 /* ── 全局 SVG fill/stroke fallback for dark mode ────────────────────

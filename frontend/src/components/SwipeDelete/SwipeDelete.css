@@ -52,8 +52,7 @@
   cursor: grab;
   z-index: 2;
   transition: none;
-  color: var(--text-secondary, #666);
-  opacity: 0.8;
+  color: var(--swipe-del-thumb-color, var(--primary));
 }
 
 .swipe-del-thumb:hover {
@@ -70,7 +69,7 @@
 
 .swipe-del-thumb.swipe-del-done {
   background: transparent;
-  color: var(--text-secondary, #666);
+  color: var(--swipe-del-thumb-color, var(--primary));
 }
 
 .swipe-del-thumb.swipe-del-active {
