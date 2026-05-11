@@ -168,15 +168,15 @@ router.get("/models", async (req: Request, res: Response) => {
       } catch { /* non-fatal: just return builtins */ }
     }
 
-    // Non-internal users (related=false) can only see volcano (doubao) models
+    // Non-internal users (related=false) can only see volcano (doubao) builtin models,
+    // but custom models are always visible — the user added them themselves.
     const isRelated = !!(user as any)?.related;
     const visibleBuiltin = isRelated
       ? builtinModels
       : builtinModels.filter((m) => m.group === "volcano");
-    const visibleCustom = isRelated ? customModels : [];
 
     res.json({
-      models: [...visibleBuiltin, ...visibleCustom],
+      models: [...visibleBuiltin, ...customModels],
       defaultModelId: isRelated ? DEFAULT_MODEL_ID : FALLBACK_MODEL_ID,
     });
   } catch (err: any) {

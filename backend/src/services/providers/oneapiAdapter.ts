@@ -512,7 +512,8 @@ async function* streamAnthropic(
     };
   }
 
-  const url = `${ONEAPI_BASE_URL.replace(/\/v1$/, "")}/v1/messages`;
+  const baseUrl = (model.customBaseUrl ?? ONEAPI_BASE_URL).replace(/\/$/, "");
+  const url = `${baseUrl.replace(/\/v1$/, "")}/v1/messages`;
   // Retry the initial POST up to 3× on upstream overload (Anthropic's
   // `overloaded_error` / HTTP 503 / 429). Only the HEADERS/handshake phase
   // is retryable — once we have a body stream, errors mid-stream go to the
@@ -743,7 +744,10 @@ async function* streamOpenAI(
     body.tools = toOpenAITools(params.tools);
   }
 
-  const url = `${ONEAPI_BASE_URL}/chat/completions`;
+  const rawBase = (model.customBaseUrl ?? ONEAPI_BASE_URL).replace(/\/$/, "");
+  // Ensure the URL ends with /v1 for OpenAI-compatible endpoints.
+  const baseUrl = rawBase.endsWith("/v1") ? rawBase : `${rawBase}/v1`;
+  const url = `${baseUrl}/chat/completions`;
   const res = await withOverloadRetry(
     async () => {
       const r = await fetch(url, {
@@ -899,7 +903,8 @@ export const oneapiAdapter: ProviderAdapter = {
 
   async *stream(params: ProviderStreamParams): AsyncGenerator<ProviderStreamEvent> {
     const { model } = params;
-    const apiKey = process.env.ONEAPI_API_KEY;
+    // Custom models carry their own API key; builtin models use the shared env var.
+    const apiKey = model.customApiKey ?? process.env.ONEAPI_API_KEY;
     if (!apiKey) {
       throw new Error("ONEAPI_API_KEY not configured");
     }

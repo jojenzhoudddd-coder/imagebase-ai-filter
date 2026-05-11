@@ -37,6 +37,7 @@ import { readSoul, readProfile, getAgent } from "./agentService.js";
 import * as agentSvc from "./agentService.js";
 import {
   resolveModelForCall,
+  resolveCustomModel,
   resolveAdapter,
   pickOverloadFallback,
   recordModelFailure,
@@ -1852,8 +1853,19 @@ async function* runAgentImpl(
       const ownerUser = await store.getUserById(ownerUserId);
       if (ownerUser) {
         isOwnerAdmin = !!ownerUser.admin;
-        // Enforce model access: non-related users can only use volcano (doubao) models.
-        if (!ownerUser.related && initialModel.group !== "volcano") {
+        // If builtin resolution fell back (model not found in registry),
+        // try loading as a user's custom model from DB before giving up.
+        if (usedFallback && storedModelId) {
+          const custom = await resolveCustomModel(storedModelId, ownerUserId);
+          if (custom) {
+            initialModel = custom;
+            usedFallback = false;
+          }
+        }
+        // Enforce model access: non-related users can only use builtin
+        // non-volcano models. Custom models (with customApiKey) are always
+        // allowed — the user provided their own credentials.
+        if (!ownerUser.related && initialModel.group !== "volcano" && !initialModel.customApiKey) {
           const fallback = resolveModelForCall("doubao-2.0");
           initialModel = fallback.resolved;
         }

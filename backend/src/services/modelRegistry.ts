@@ -121,6 +121,12 @@ export interface ModelEntry {
   /** Hint for max parallel requests in a concurrent workflow。Optional;
    *  registry-default if omitted。 */
   parallelLimit?: number;
+
+  // ─── Custom model overrides (per-user models loaded from DB) ────────
+  /** Custom API base URL — used instead of ONEAPI_BASE_URL when set. */
+  customBaseUrl?: string;
+  /** Custom API key — used instead of ONEAPI_API_KEY when set. */
+  customApiKey?: string;
 }
 
 // ─── Registry ────────────────────────────────────────────────────────────
@@ -367,6 +373,58 @@ export function resolveModelForCall(requestedId: string | null | undefined): {
 /** User-visible models only. Used by UI to render the picker. */
 export function listVisibleModels(): ModelEntry[] {
   return MODELS.filter((m) => m.visible);
+}
+
+/**
+ * Load a custom model from the database and convert it to a ModelEntry.
+ * Returns `undefined` if no matching custom model exists for this user.
+ *
+ * Custom model provider mapping:
+ *   "anthropic"        → oneapi adapter, group "anthropic"
+ *   "openai-compatible" → oneapi adapter, group "openai"
+ *   "custom"           → oneapi adapter, group "custom" (OpenAI-compat wire format)
+ */
+export async function resolveCustomModel(
+  modelId: string,
+  userId: string,
+): Promise<ModelEntry | undefined> {
+  try {
+    const pg2 = await import("pg");
+    const { PrismaPg: PA } = await import("@prisma/adapter-pg");
+    const { PrismaClient: PC } = await import("../generated/prisma/client.js");
+    const p = new pg2.default.Pool({ connectionString: process.env.DATABASE_URL });
+    const prisma = new PC({ adapter: new PA(p) });
+    const row = await prisma.customModel.findFirst({
+      where: { userId, modelId, visible: true },
+    });
+    await p.end();
+    if (!row) return undefined;
+    const group: ModelGroup =
+      row.provider === "anthropic" ? "anthropic" : "openai";
+    return {
+      id: row.modelId,
+      displayName: row.displayName,
+      provider: "oneapi",
+      providerModelId: row.providerModelId,
+      capabilities: {
+        thinking: !!(row.capabilities as any)?.thinking,
+        toolUse: (row.capabilities as any)?.toolUse !== false,
+        contextWindow: (row.capabilities as any)?.contextWindow ?? 128000,
+      },
+      defaults: { temperature: 0.7, maxOutputTokens: 8192 },
+      group,
+      visible: true,
+      available: true,
+      specialty: (row.specialty as ModelSpecialty) ?? "general",
+      strengths: [],
+      modality: ["text"],
+      costHint: "mid",
+      customBaseUrl: row.baseUrl,
+      customApiKey: row.apiKey,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 /**
