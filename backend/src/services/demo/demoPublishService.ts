@@ -29,7 +29,7 @@ export interface PublishResult {
 const PUBLIC_URL_BASE =
   process.env.PUBLIC_URL_BASE ||
   (process.env.NODE_ENV === "production"
-    ? "https://www.imagebase.cc"
+    ? "https://www.funature.fun"
     : "http://localhost:5173"); // FE dev server proxies /share to backend
 
 export async function publishDemo({
