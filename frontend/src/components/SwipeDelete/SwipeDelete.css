@@ -16,7 +16,7 @@
   left: 0;
   height: 100%;
   border-radius: 6px;
-  background: rgba(215, 58, 73, 0.12);
+  background: var(--swipe-del-fill);
   pointer-events: none;
   transition: none;
 }
