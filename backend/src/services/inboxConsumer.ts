@@ -15,6 +15,7 @@ import { listUserWorkspaces } from "./authService.js";
 import { listCronJobs } from "./cronScheduler.js";
 import { runAgent, type AgentContext } from "./chatAgentService.js";
 import { generateForWorkspace } from "./workspaceSummaryService.js";
+import { refreshSuggestions, refreshGoalSuggestions } from "./suggestionService.js";
 import type { EvaluateCronResult } from "./cronScheduler.js";
 
 /**
@@ -159,6 +160,33 @@ async function consumeOne(
       console.log(`[inbox-consumer] slogan habit done — ${refreshed}/${workspaces.length} workspaces refreshed`);
     } catch (err) {
       console.error(`[inbox-consumer] slogan habit failed:`, err);
+    }
+    await ackInboxMessage(agentId, inboxMessage.id).catch(() => undefined);
+    return;
+  }
+
+  // Special case: suggest habit directly refreshes the suggestion + goal caches
+  // instead of going through the chat agent loop. Same rationale as slogan:
+  // the chat loop would produce conversation messages that never reach the
+  // in-memory cache the welcome page reads from.
+  if (jobId === "habit_system_suggest") {
+    console.log(`[inbox-consumer] executing suggest habit "${jobId}"`);
+    try {
+      const agent = await getAgent(agentId);
+      const workspaces = agent ? await listUserWorkspaces(agent.userId) : [];
+      let refreshed = 0;
+      for (const ws of workspaces) {
+        try {
+          await refreshSuggestions(ws.id);
+          await refreshGoalSuggestions(ws.id);
+          refreshed++;
+        } catch (err) {
+          console.warn(`[inbox-consumer] suggest ws=${ws.id} failed:`, err);
+        }
+      }
+      console.log(`[inbox-consumer] suggest habit done — ${refreshed}/${workspaces.length} workspaces refreshed`);
+    } catch (err) {
+      console.error(`[inbox-consumer] suggest habit failed:`, err);
     }
     await ackInboxMessage(agentId, inboxMessage.id).catch(() => undefined);
     return;

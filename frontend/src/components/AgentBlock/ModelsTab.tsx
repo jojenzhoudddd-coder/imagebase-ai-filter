@@ -170,28 +170,24 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
                 <dt>API Key</dt>
                 <dd><code className="ab-key-mask">{maskKey(m.provider)}</code></dd>
               </div>
-              {m.capabilities?.contextWindow && (
-                <div className="ab-card-kv-row">
-                  <dt>{t("agent.card.contextWindow")}</dt>
-                  <dd>{(m.capabilities.contextWindow / 1000).toFixed(0)}K tokens</dd>
-                </div>
-              )}
+              <div className="ab-card-kv-row">
+                <dt>{t("agent.card.contextWindow")}</dt>
+                <dd>{m.capabilities?.contextWindow ? `${(m.capabilities.contextWindow / 1000).toFixed(0)}K tokens` : "—"}</dd>
+              </div>
               <div className="ab-card-kv-row">
                 <dt>{t("agent.card.capabilities")}</dt>
                 <dd>{[m.capabilities?.thinking && "Thinking", m.capabilities?.toolUse && "Tool Use"].filter(Boolean).join(", ") || "—"}</dd>
               </div>
-              {m.specialty && (
-                <div className="ab-card-kv-row">
-                  <dt>{t("agent.card.specialty")}</dt>
-                  <dd>{m.specialty}</dd>
-                </div>
-              )}
-              {m.strengths && m.strengths.length > 0 && (
-                <div className="ab-card-kv-row">
-                  <dt>Strengths</dt>
-                  <Tooltip title={m.strengths.join(", ")}><dd>{m.strengths.join(", ")}</dd></Tooltip>
-                </div>
-              )}
+              <div className="ab-card-kv-row">
+                <dt>{t("agent.card.specialty")}</dt>
+                <dd>{m.specialty || "—"}</dd>
+              </div>
+              <div className="ab-card-kv-row">
+                <dt>Strengths</dt>
+                <dd>{m.strengths && m.strengths.length > 0 ? (
+                  <Tooltip title={m.strengths.join(", ")}><span>{m.strengths.join(", ")}</span></Tooltip>
+                ) : "—"}</dd>
+              </div>
             </dl>
           </div>
         ))}
