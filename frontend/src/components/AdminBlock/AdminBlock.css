@@ -97,8 +97,10 @@
 
 .adb-sparkline {
   flex-shrink: 0;
-  color: var(--text-secondary);
-  opacity: 0.4;
+  color: var(--primary);
+  opacity: 0.6;
+  padding-right: 4px;
+  padding-bottom: 4px;
 }
 
 .adb-metric-title {

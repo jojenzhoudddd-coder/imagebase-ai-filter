@@ -7,7 +7,7 @@ function formatTokenCount(n: number): string {
   return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0).replace(/\.0$/, "")}M`;
 }
 
-function Sparkline({ data, width = 80, height = 36 }: { data: number[]; width?: number; height?: number }) {
+function Sparkline({ data, width = 80, height = 50 }: { data: number[]; width?: number; height?: number }) {
   if (data.length < 2) return null;
   const min = Math.min(...data);
   const max = Math.max(...data);
