@@ -3,6 +3,7 @@ import {
   Field,
   FieldType,
   LookupConfig,
+  SelectOption,
 } from "../../types";
 import { createField, updateField, fetchTables, suggestFields, withClientId, TableBrief, ApiError, FieldSuggestion } from "../../api";
 import { LookupConfigPanel } from "./LookupConfigPanel";
@@ -198,6 +199,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const [lookupConfig, setLookupConfig] = useState<LookupConfig>(EMPTY_LOOKUP);
   const [dateFormat, setDateFormat] = useState(editingField?.config?.format ?? "yyyy-MM-dd");
   const [numberFormat, setNumberFormat] = useState(editingField?.config?.format ?? "decimal_1");
+  const [selectOptions, setSelectOptions] = useState<SelectOption[]>(editingField?.config?.options ?? []);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; path?: string } | null>(null);
   const [allTables, setAllTables] = useState<TableBrief[]>([]);
@@ -262,11 +264,15 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
         if (fieldType !== editingField.type) dto.type = fieldType;
         // Persist format config changes
         const isDateType = fieldType === "DateTime" || fieldType === "CreatedTime" || fieldType === "ModifiedTime";
+        const isSelectType = fieldType === "SingleSelect" || fieldType === "MultiSelect";
         if (isDateType && dateFormat !== (editingField.config?.format ?? "yyyy-MM-dd")) {
           dto.config = { format: dateFormat };
         }
         if (fieldType === "Number" && numberFormat !== (editingField.config?.format ?? "decimal_1")) {
           dto.config = { format: numberFormat };
+        }
+        if (isSelectType) {
+          dto.config = { ...dto.config, options: selectOptions };
         }
         const updated = clientId
           ? await withClientId(clientId, () => updateField(currentTableId, editingField.id, dto))
@@ -275,6 +281,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
       } else {
         // Create mode
         const isDateType = fieldType === "DateTime" || fieldType === "CreatedTime" || fieldType === "ModifiedTime";
+        const isSelectType = fieldType === "SingleSelect" || fieldType === "MultiSelect";
         const config =
           fieldType === "Lookup"
             ? { lookup: lookupConfig }
@@ -282,6 +289,8 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
             ? { format: dateFormat }
             : fieldType === "Number"
             ? { format: numberFormat }
+            : isSelectType
+            ? { options: selectOptions }
             : {};
         const dto = { name: title.trim(), type: fieldType, config };
         const newField = clientId
@@ -439,6 +448,49 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
                 ]}
                 onChange={setNumberFormat}
               />
+            </div>
+          )}
+
+          {(fieldType === "SingleSelect" || fieldType === "MultiSelect") && (
+            <div className="form-row">
+              <label>{t("addField.optionContent")}</label>
+              <div className="so-list">
+                {selectOptions.map((opt, idx) => (
+                  <div key={opt.id} className="so-item">
+                    <span className="so-dot" style={{ background: opt.color || "#4080FF" }} />
+                    <input
+                      className="so-input"
+                      value={opt.name}
+                      onChange={(e) => {
+                        const next = [...selectOptions];
+                        next[idx] = { ...opt, name: e.target.value };
+                        setSelectOptions(next);
+                      }}
+                      placeholder={t("addField.optionPlaceholder")}
+                    />
+                    <button
+                      type="button"
+                      className="so-remove"
+                      onClick={() => setSelectOptions(selectOptions.filter((_, i) => i !== idx))}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="so-add"
+                  onClick={() => {
+                    const colors = ["#4080FF", "#F54A45", "#FF7D00", "#00B365", "#7B61FF", "#F77234", "#14C0C0"];
+                    const color = colors[selectOptions.length % colors.length];
+                    setSelectOptions([...selectOptions, { id: `opt_${Date.now()}`, name: "", color }]);
+                  }}
+                >
+                  + {t("addField.addOption")}
+                </button>
+              </div>
             </div>
           )}
 

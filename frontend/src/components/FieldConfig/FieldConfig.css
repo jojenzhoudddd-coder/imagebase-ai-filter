@@ -126,6 +126,65 @@
   border-color: var(--color-border);
 }
 
+/* ── Select option editor ── */
+.so-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.so-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.so-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.so-input {
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-component);
+  border-radius: var(--radius-m);
+  background: var(--color-white);
+  font-size: var(--fs-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+  outline: none;
+}
+.so-input:hover { border-color: var(--color-primary); }
+.so-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(20,86,240,0.1); }
+.so-remove {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.so-remove:hover { background: var(--color-bg-hover); color: var(--text-primary); }
+.so-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--font-family);
+}
+.so-add:hover { text-decoration: underline; }
+
 /* ── Field type card ── */
 .field-type-card {
   background: var(--color-bg-secondary);
