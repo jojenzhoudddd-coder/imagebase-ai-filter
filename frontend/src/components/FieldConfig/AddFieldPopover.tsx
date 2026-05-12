@@ -102,6 +102,114 @@ const EMPTY_LOOKUP: LookupConfig = {
   lookupOutputFormat: "default",
 };
 
+// Palette keys that match the cell-display color system (OPTION_PALETTE_LM/DM in TableView)
+const OPTION_COLORS = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#8F959E"];
+// Dot colors for display in config editor (same order as palette keys)
+const OPTION_DOT_COLORS: Record<string, string> = {
+  "#D83931": "#F54A45", "#F77234": "#FF7D00", "#02312A": "#14C9C9",
+  "#002270": "#3370FF", "#3B1A02": "#FFB900", "#2B2F36": "#646A73", "#8F959E": "#8F959E",
+};
+
+function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
+  options: SelectOption[];
+  onChange: (opts: SelectOption[]) => void;
+  addLabel: string;
+  placeholder: string;
+}) {
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+  const [overPos, setOverPos] = useState<"above" | "below">("below");
+
+  const handleDragStart = (e: React.DragEvent, idx: number) => {
+    e.dataTransfer.effectAllowed = "move";
+    setDragIdx(idx);
+  };
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    setOverIdx(idx);
+    setOverPos(e.clientY < mid ? "above" : "below");
+  };
+  const handleDragLeave = () => { setOverIdx(null); };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (dragIdx === null || overIdx === null) return;
+    const next = [...options];
+    const [moved] = next.splice(dragIdx, 1);
+    const insertAt = overPos === "above" ? (overIdx > dragIdx ? overIdx - 1 : overIdx) : (overIdx < dragIdx ? overIdx + 1 : overIdx);
+    next.splice(insertAt, 0, moved);
+    onChange(next);
+    setDragIdx(null);
+    setOverIdx(null);
+  };
+  const handleDragEnd = () => { setDragIdx(null); setOverIdx(null); };
+
+  return (
+    <div className="form-row">
+      <label>选项内容</label>
+      <div className="so-list">
+        {options.map((opt, idx) => {
+          let cls = "so-item";
+          if (dragIdx === idx) cls += " is-dragging";
+          if (overIdx === idx && overPos === "above") cls += " drag-over-above";
+          if (overIdx === idx && overPos === "below") cls += " drag-over-below";
+          const dotColor = OPTION_DOT_COLORS[opt.color] || opt.color || "#4080FF";
+          return (
+            <div
+              key={opt.id}
+              className={cls}
+              draggable
+              onDragStart={(e) => handleDragStart(e, idx)}
+              onDragOver={(e) => handleDragOver(e, idx)}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onDragEnd={handleDragEnd}
+            >
+              <span className="so-drag">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
+                  <circle cx="3" cy="3" r="1.2" fill="currentColor"/><circle cx="7" cy="3" r="1.2" fill="currentColor"/>
+                  <circle cx="3" cy="7" r="1.2" fill="currentColor"/><circle cx="7" cy="7" r="1.2" fill="currentColor"/>
+                  <circle cx="3" cy="11" r="1.2" fill="currentColor"/><circle cx="7" cy="11" r="1.2" fill="currentColor"/>
+                </svg>
+              </span>
+              <span className="so-dot" style={{ background: dotColor }} />
+              <input
+                className="so-input"
+                value={opt.name}
+                onChange={(e) => {
+                  const next = [...options];
+                  next[idx] = { ...opt, name: e.target.value };
+                  onChange(next);
+                }}
+                placeholder={placeholder}
+              />
+              <button
+                type="button" className="so-remove"
+                onClick={() => onChange(options.filter((_, i) => i !== idx))}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          );
+        })}
+        <button
+          type="button" className="so-add"
+          onClick={() => {
+            const color = OPTION_COLORS[options.length % OPTION_COLORS.length];
+            onChange([...options, { id: `opt_${Date.now()}`, name: "", color }]);
+          }}
+        >
+          + {addLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const PAGE_SIZE = 8;
 
 // ─── AI Suggestions hook ───
@@ -452,68 +560,12 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
           )}
 
           {(fieldType === "SingleSelect" || fieldType === "MultiSelect") && (
-            <div className="form-row">
-              <label>{t("addField.optionContent")}</label>
-              <div className="so-list">
-                {selectOptions.map((opt, idx) => (
-                  <div
-                    key={opt.id}
-                    className="so-item"
-                    draggable
-                    onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(idx)); }}
-                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const from = parseInt(e.dataTransfer.getData("text/plain"));
-                      if (isNaN(from) || from === idx) return;
-                      const next = [...selectOptions];
-                      const [moved] = next.splice(from, 1);
-                      next.splice(idx, 0, moved);
-                      setSelectOptions(next);
-                    }}
-                  >
-                    <span className="so-drag" title="Drag to reorder">
-                      <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
-                        <circle cx="3" cy="3" r="1.2" fill="currentColor"/><circle cx="7" cy="3" r="1.2" fill="currentColor"/>
-                        <circle cx="3" cy="7" r="1.2" fill="currentColor"/><circle cx="7" cy="7" r="1.2" fill="currentColor"/>
-                        <circle cx="3" cy="11" r="1.2" fill="currentColor"/><circle cx="7" cy="11" r="1.2" fill="currentColor"/>
-                      </svg>
-                    </span>
-                    <span className="so-dot" style={{ background: opt.color || "#4080FF" }} />
-                    <input
-                      className="so-input"
-                      value={opt.name}
-                      onChange={(e) => {
-                        const next = [...selectOptions];
-                        next[idx] = { ...opt, name: e.target.value };
-                        setSelectOptions(next);
-                      }}
-                      placeholder={t("addField.optionPlaceholder")}
-                    />
-                    <button
-                      type="button"
-                      className="so-remove"
-                      onClick={() => setSelectOptions(selectOptions.filter((_, i) => i !== idx))}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="so-add"
-                  onClick={() => {
-                    const colors = ["#4080FF", "#F54A45", "#FF7D00", "#00B365", "#7B61FF", "#F77234", "#14C0C0"];
-                    const color = colors[selectOptions.length % colors.length];
-                    setSelectOptions([...selectOptions, { id: `opt_${Date.now()}`, name: "", color }]);
-                  }}
-                >
-                  + {t("addField.addOption")}
-                </button>
-              </div>
-            </div>
+            <SelectOptionEditor
+              options={selectOptions}
+              onChange={setSelectOptions}
+              addLabel={t("addField.addOption")}
+              placeholder={t("addField.optionPlaceholder")}
+            />
           )}
 
           {fieldType === "Lookup" && (

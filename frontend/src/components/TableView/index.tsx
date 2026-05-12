@@ -429,7 +429,7 @@ function SelectEditor({
         onCommit(existing.name);
       } else {
         // Create new option and select it
-        const colors = ["#4080FF", "#F54A45", "#FF7D00", "#00B365", "#7B61FF", "#F77234", "#14C0C0"];
+        const colors = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#8F959E"];
         const newOpt = { id: `opt_${Date.now()}`, name: query.trim(), color: colors[options.length % colors.length] };
         const newOptions = [...options, newOpt];
         const updatedField = { ...field, config: { ...field.config, options: newOptions } };
