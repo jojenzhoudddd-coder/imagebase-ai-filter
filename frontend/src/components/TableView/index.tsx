@@ -1411,7 +1411,8 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
         // Click (no drag) on an already-selected single cell → enter edit
         if (wasAlreadySelected) {
           const field = visibleFields[colIdx];
-          if (field && field.type !== "AutoNumber" && field.type !== "Checkbox") {
+          const readOnlyTypes = new Set(["AutoNumber", "Checkbox", "CreatedTime", "ModifiedTime", "Lookup"]);
+          if (field && !readOnlyTypes.has(field.type)) {
             startEdit(records[rowIdx]?.id, field.id);
           }
         }
