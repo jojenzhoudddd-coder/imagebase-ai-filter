@@ -564,8 +564,9 @@
 /* Positioned via JS (fixed) — defaults for fallback */
 .tp-dropdown {
   display: flex;
-  width: 214px;
-  height: 200px;
+  width: 238px;
+  height: 224px;
+  padding: 12px;
   background: var(--surface-2, #fff);
   border: 1px solid var(--border-default, #DEE0E3);
   border-radius: 8px;
