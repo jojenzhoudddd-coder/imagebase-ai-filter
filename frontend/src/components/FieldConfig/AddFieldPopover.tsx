@@ -7,6 +7,7 @@ import {
 import { createField, updateField, fetchTables, suggestFields, withClientId, TableBrief, ApiError, FieldSuggestion } from "../../api";
 import { LookupConfigPanel } from "./LookupConfigPanel";
 import { FieldIcon } from "./FieldIcons";
+import CustomSelect from "../FilterPanel/CustomSelect";
 import { useTranslation } from "../../i18n";
 import "./FieldConfig.css";
 
@@ -401,15 +402,15 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
           {(fieldType === "DateTime" || fieldType === "CreatedTime" || fieldType === "ModifiedTime") && (
             <div className="form-row">
               <label>{t("addField.dateFormat")}</label>
-              <select
-                className="fc-input fc-select"
+              <CustomSelect
                 value={dateFormat}
-                onChange={(e) => setDateFormat(e.target.value)}
-              >
-                <option value="yyyy-MM-dd">yyyy-MM-dd</option>
-                <option value="yyyy-MM-dd HH:mm">yyyy-MM-dd HH:mm</option>
-                <option value="yyyy-MM-dd HH:mm:ss">yyyy-MM-dd HH:mm:ss</option>
-              </select>
+                options={[
+                  { value: "yyyy-MM-dd", label: "yyyy-MM-dd" },
+                  { value: "yyyy-MM-dd HH:mm", label: "yyyy-MM-dd HH:mm" },
+                  { value: "yyyy-MM-dd HH:mm:ss", label: "yyyy-MM-dd HH:mm:ss" },
+                ]}
+                onChange={setDateFormat}
+              />
             </div>
           )}
 

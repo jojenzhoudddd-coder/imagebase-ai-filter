@@ -509,6 +509,44 @@ function UserEditor({
   );
 }
 
+// ─────────── Scrollable time column picker (matches TimePicker.svg design) ───────────
+function TimeColumn({ count, value, onChange }: { count: number; value: number; onChange: (v: number) => void }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = listRef.current?.children[value] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "nearest" });
+  }, []); // scroll on mount only
+  return (
+    <div className="tp-col" ref={listRef}>
+      {Array.from({ length: count }, (_, i) => (
+        <button
+          key={i}
+          className={`tp-cell${i === value ? " tp-cell-active" : ""}`}
+          onMouseDown={(e) => { e.preventDefault(); onChange(i); }}
+        >
+          {String(i).padStart(2, "0")}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TimeColumnPicker({
+  hour, minute, second, showSeconds,
+  onHourChange, onMinuteChange, onSecondChange,
+}: {
+  hour: number; minute: number; second: number; showSeconds: boolean;
+  onHourChange: (v: number) => void; onMinuteChange: (v: number) => void; onSecondChange: (v: number) => void;
+}) {
+  return (
+    <div className="tp-picker">
+      <TimeColumn count={24} value={hour} onChange={onHourChange} />
+      <TimeColumn count={60} value={minute} onChange={onMinuteChange} />
+      {showSeconds && <TimeColumn count={60} value={second} onChange={onSecondChange} />}
+    </div>
+  );
+}
+
 // ─────────── Date picker editor ───────────
 function DateEditor({
   value,
@@ -680,29 +718,11 @@ function DateEditor({
         })}
       </div>
       {showTime && (
-        <div className="date-picker-time">
-          <input
-            type="number" min={0} max={23} value={hour}
-            className="date-picker-time-input"
-            onChange={(e) => setHour(Math.max(0, Math.min(23, Number(e.target.value) || 0)))}
-          />
-          <span className="date-picker-time-sep">:</span>
-          <input
-            type="number" min={0} max={59} value={minute}
-            className="date-picker-time-input"
-            onChange={(e) => setMinute(Math.max(0, Math.min(59, Number(e.target.value) || 0)))}
-          />
-          {showSeconds && (
-            <>
-              <span className="date-picker-time-sep">:</span>
-              <input
-                type="number" min={0} max={59} value={second}
-                className="date-picker-time-input"
-                onChange={(e) => setSecond(Math.max(0, Math.min(59, Number(e.target.value) || 0)))}
-              />
-            </>
-          )}
-        </div>
+        <TimeColumnPicker
+          hour={hour} minute={minute} second={second}
+          showSeconds={showSeconds}
+          onHourChange={setHour} onMinuteChange={setMinute} onSecondChange={setSecond}
+        />
       )}
     </div>
   );
