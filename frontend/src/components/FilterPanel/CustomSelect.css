@@ -23,7 +23,7 @@
 }
 
 .cs-trigger:hover {
-  border-color: var(--text-muted);
+  border-color: var(--color-primary);
 }
 
 .cs-trigger:focus {

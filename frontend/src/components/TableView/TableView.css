@@ -487,7 +487,7 @@
   transition: border-color 0.15s;
 }
 .tp-input-wrap:hover {
-  border-color: var(--text-muted, #8F959E);
+  border-color: var(--color-primary, #1456F0);
 }
 .tp-input {
   width: 22px;

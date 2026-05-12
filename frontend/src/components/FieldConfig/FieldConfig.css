@@ -109,7 +109,7 @@
 
 .fc-input:hover,
 .fc-select:hover {
-  border-color: var(--text-muted);
+  border-color: var(--color-primary);
 }
 
 .fc-input:focus,
