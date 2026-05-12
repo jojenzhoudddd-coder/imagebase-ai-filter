@@ -567,6 +567,13 @@
   width: 238px;
   height: 324px;
   padding: 12px;
+  box-sizing: border-box;
+}
+.tp-dropdown-below {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 50;
   background: var(--surface-2, #fff);
   border: 1px solid var(--border-default, #DEE0E3);
   border-radius: 8px;

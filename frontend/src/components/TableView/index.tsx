@@ -878,9 +878,9 @@ function DateEditor({
         </div>
       )}
 
-      {/* Time column popover */}
+      {/* Time column popover — same position as date-picker (below cell) */}
       {activePopover === "time" && (
-        <div className="tp-dropdown" ref={timeDropRef} style={timeDropStyle}>
+        <div className="tp-dropdown tp-dropdown-below" ref={timeDropRef}>
           <TimeColumn count={24} value={hour} onChange={setHour} />
           <TimeColumn count={60} value={minute} onChange={setMinute} />
           {showSeconds && <TimeColumn count={60} value={second} onChange={setSecond} />}
