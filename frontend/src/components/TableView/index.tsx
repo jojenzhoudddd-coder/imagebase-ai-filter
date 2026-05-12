@@ -541,12 +541,12 @@ function TimeInputRow({
   onHourChange: (v: number) => void; onMinuteChange: (v: number) => void; onSecondChange: (v: number) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const rowRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const clamp = (v: number, max: number) => Math.max(0, Math.min(max, v));
 
   // Close dropdown when clicking outside the dropdown panel itself
-  // (clicking the datepicker area or anywhere else closes it)
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -559,11 +559,41 @@ function TimeInputRow({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  // Compute dropdown position — only shift when within 20px of block edge
+  const handleToggle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (open) { setOpen(false); return; }
+    // Measure where the dropdown would land
+    const inputWrap = rowRef.current?.querySelector('.tp-input-wrap') as HTMLElement | null;
+    if (inputWrap) {
+      const rect = inputWrap.getBoundingClientRect();
+      const dropW = 214;
+      const dropH = 200;
+      const margin = 20;
+      // Default: right of input, aligned top
+      let left = rect.right + 8;
+      let top = rect.top;
+      // Find the closest block container (mc-block or viewport)
+      const block = inputWrap.closest('.mc-block') as HTMLElement | null;
+      const bounds = block ? block.getBoundingClientRect() : { right: window.innerWidth, bottom: window.innerHeight, left: 0, top: 0 };
+      // Shift left if right edge too close
+      if (left + dropW > bounds.right - margin) {
+        left = rect.left - dropW - 8;
+      }
+      // Shift up if bottom edge too close
+      if (top + dropH > bounds.bottom - margin) {
+        top = bounds.bottom - margin - dropH;
+      }
+      setDropdownStyle({ position: 'fixed', left, top });
+    }
+    setOpen(true);
+  }, [open]);
+
   return (
     <div className="tp-row" ref={rowRef}>
       <div
         className={`tp-input-wrap${open ? " tp-input-wrap-active" : ""}`}
-        onMouseDown={(e) => { e.stopPropagation(); setOpen(!open); }}
+        onMouseDown={handleToggle}
       >
         <input
           className="tp-input" type="text" inputMode="numeric"
@@ -601,7 +631,7 @@ function TimeInputRow({
         </svg>
       </div>
       {open && (
-        <div className="tp-dropdown" ref={dropdownRef}>
+        <div className="tp-dropdown" ref={dropdownRef} style={dropdownStyle}>
           <TimeColumn count={24} value={hour} onChange={onHourChange} />
           <TimeColumn count={60} value={minute} onChange={onMinuteChange} />
           {showSeconds && <TimeColumn count={60} value={second} onChange={onSecondChange} />}

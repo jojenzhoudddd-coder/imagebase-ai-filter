@@ -470,7 +470,7 @@
 .tp-row {
   position: relative;
   margin: 0 -12px;          /* break out of .date-picker padding */
-  padding: 12px 12px 14px;  /* 12px top, 14px bottom (SVG: y347-335=12, y392-378=14) */
+  padding: 12px 12px 0;     /* no bottom padding — date-picker's own padding handles it */
   border-top: 1px solid rgba(31, 35, 41, 0.15);
 }
 .tp-input-wrap {
@@ -517,8 +517,7 @@
 .tp-input-wrap-active:hover {
   border-color: var(--color-primary, #1456F0);
 }
-/* date-picker needs overflow visible so dropdown can extend rightward */
-.date-picker { overflow: visible; }
+/* dropdown uses position:fixed, no overflow override needed */
 .tp-clock {
   margin-left: auto;
   flex-shrink: 0;
@@ -526,14 +525,11 @@
 }
 
 /* ─── Time column dropdown (TimePicker.svg: 214×262, 3 cols of 71px) ─── */
-/* Positioned to the RIGHT of the time input (Group 22.svg: x=193, gap ~11px from input right edge) */
+/* Positioned via JS (fixed) — defaults for fallback */
 .tp-dropdown {
-  position: absolute;
-  left: calc(143px + 8px);       /* input width + gap */
-  top: -2px;                     /* align vertically with input */
   display: flex;
   width: 214px;
-  height: 262px;
+  height: 200px;
   background: var(--surface-2, #fff);
   border: 1px solid var(--border-default, #DEE0E3);
   border-radius: 8px;
