@@ -464,43 +464,50 @@
   border: 1px solid var(--color-primary);
 }
 
-/* ─── Time column picker (scrollable columns like UD TimePicker) ─── */
-.tp-picker {
+/* ─── Time input row (DatePickerMenu.svg bottom section) ─── */
+.tp-row {
+  padding: 10px 12px;
+  border-top: 1px solid rgba(31, 35, 41, 0.15);
+}
+.tp-input-wrap {
   display: flex;
-  border-top: 1px solid var(--border-light, #DEE0E3);
-  height: 192px; /* 6 rows × 32px */
-}
-.tp-col {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 0;
-  scrollbar-width: none;
-}
-.tp-col::-webkit-scrollbar { display: none; }
-.tp-col + .tp-col {
-  border-left: 1px solid var(--border-light, #DEE0E3);
-}
-.tp-cell {
-  display: block;
-  width: 100%;
+  align-items: center;
   height: 32px;
-  line-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-primary, #1456F0);
+  border-radius: 6px;
+  background: var(--color-white, #fff);
+  gap: 0;
+  max-width: 160px;
+}
+.tp-input {
+  width: 24px;
+  height: 100%;
+  border: none;
+  background: transparent;
   text-align: center;
   font-size: 14px;
   color: var(--text-primary, #1F2329);
-  background: none;
-  border: none;
-  cursor: pointer;
+  outline: none;
   font-family: var(--font-family);
+  padding: 0;
+  -moz-appearance: textfield;
 }
-.tp-cell:hover {
-  background: var(--color-bg-hover, #F2F3F5);
+.tp-input::-webkit-inner-spin-button,
+.tp-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
-.tp-cell-active {
-  color: var(--color-primary, #1456F0);
-  font-weight: 500;
-  background: rgba(20, 86, 240, 0.06);
-  border-radius: 50%;
+.tp-sep {
+  font-size: 14px;
+  color: var(--text-primary, #1F2329);
+  line-height: 32px;
+  user-select: none;
+}
+.tp-clock {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: #646A73;
 }
 
 /* ─── Context menu for field headers ─── */

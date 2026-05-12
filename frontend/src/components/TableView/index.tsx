@@ -509,40 +509,50 @@ function UserEditor({
   );
 }
 
-// ─────────── Scrollable time column picker (matches TimePicker.svg design) ───────────
-function TimeColumn({ count, value, onChange }: { count: number; value: number; onChange: (v: number) => void }) {
-  const listRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = listRef.current?.children[value] as HTMLElement | undefined;
-    el?.scrollIntoView({ block: "nearest" });
-  }, []); // scroll on mount only
-  return (
-    <div className="tp-col" ref={listRef}>
-      {Array.from({ length: count }, (_, i) => (
-        <button
-          key={i}
-          className={`tp-cell${i === value ? " tp-cell-active" : ""}`}
-          onMouseDown={(e) => { e.preventDefault(); onChange(i); }}
-        >
-          {String(i).padStart(2, "0")}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function TimeColumnPicker({
+// ─────────── Compact time input row (matches DatePickerMenu.svg bottom section) ───
+function TimeInputRow({
   hour, minute, second, showSeconds,
   onHourChange, onMinuteChange, onSecondChange,
 }: {
   hour: number; minute: number; second: number; showSeconds: boolean;
   onHourChange: (v: number) => void; onMinuteChange: (v: number) => void; onSecondChange: (v: number) => void;
 }) {
+  const clamp = (v: number, max: number) => Math.max(0, Math.min(max, v));
   return (
-    <div className="tp-picker">
-      <TimeColumn count={24} value={hour} onChange={onHourChange} />
-      <TimeColumn count={60} value={minute} onChange={onMinuteChange} />
-      {showSeconds && <TimeColumn count={60} value={second} onChange={onSecondChange} />}
+    <div className="tp-row">
+      <div className="tp-input-wrap">
+        <input
+          className="tp-input" type="text" inputMode="numeric"
+          value={String(hour).padStart(2, "0")}
+          onChange={(e) => onHourChange(clamp(parseInt(e.target.value) || 0, 23))}
+          onFocus={(e) => e.target.select()}
+          onMouseDown={(e) => e.stopPropagation()}
+        />
+        <span className="tp-sep">:</span>
+        <input
+          className="tp-input" type="text" inputMode="numeric"
+          value={String(minute).padStart(2, "0")}
+          onChange={(e) => onMinuteChange(clamp(parseInt(e.target.value) || 0, 59))}
+          onFocus={(e) => e.target.select()}
+          onMouseDown={(e) => e.stopPropagation()}
+        />
+        {showSeconds && (
+          <>
+            <span className="tp-sep">:</span>
+            <input
+              className="tp-input" type="text" inputMode="numeric"
+              value={String(second).padStart(2, "0")}
+              onChange={(e) => onSecondChange(clamp(parseInt(e.target.value) || 0, 59))}
+              onFocus={(e) => e.target.select()}
+              onMouseDown={(e) => e.stopPropagation()}
+            />
+          </>
+        )}
+        <svg className="tp-clock" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="8" cy="8" r="6.5" stroke="#646A73" strokeWidth="1" />
+          <path d="M8 5v3.5h2.5" stroke="#646A73" strokeWidth="1" strokeLinecap="round" />
+        </svg>
+      </div>
     </div>
   );
 }
@@ -718,7 +728,7 @@ function DateEditor({
         })}
       </div>
       {showTime && (
-        <TimeColumnPicker
+        <TimeInputRow
           hour={hour} minute={minute} second={second}
           showSeconds={showSeconds}
           onHourChange={setHour} onMinuteChange={setMinute} onSecondChange={setSecond}
