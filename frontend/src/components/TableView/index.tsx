@@ -809,7 +809,7 @@ function DateEditor({
   const timeDropRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div ref={ref} className="de-root">
+    <div ref={ref} className="de-root" onMouseDown={(e) => e.stopPropagation()}>
       {/* Inline segmented display */}
       <span
         className={`de-zone${activePopover === "date" ? " de-zone-active" : ""}`}
