@@ -73,7 +73,7 @@ export default function ChatModelPicker({ agentId, open, disabled, onChange }: P
     return () => clearInterval(t);
   }, [open, refresh]);
 
-  // Listen for model changes from other blocks
+  // Listen for model selection changes from other blocks
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -84,6 +84,13 @@ export default function ChatModelPicker({ agentId, open, disabled, onChange }: P
     window.addEventListener("agent-model-changed", handler);
     return () => window.removeEventListener("agent-model-changed", handler);
   }, [agentId]);
+
+  // Listen for custom model CRUD (add/remove via chat) and refetch list
+  useEffect(() => {
+    const handler = () => void refresh();
+    window.addEventListener("custom-models-changed", handler);
+    return () => window.removeEventListener("custom-models-changed", handler);
+  }, [refresh]);
 
   const handleSelect = useCallback(
     async (modelId: string) => {

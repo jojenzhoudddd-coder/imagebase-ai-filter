@@ -79,7 +79,7 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
       .finally(() => setLoading(false));
   }, [agentId]);
 
-  // Listen for model changes from chat blocks
+  // Listen for model selection changes from chat blocks
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -90,6 +90,17 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
     window.addEventListener("agent-model-changed", handler);
     return () => window.removeEventListener("agent-model-changed", handler);
   }, [agentId]);
+
+  // Listen for custom model CRUD (add/remove via chat) and refetch list
+  useEffect(() => {
+    const handler = () => {
+      listModels()
+        .then((data) => setModels(data.models))
+        .catch(() => {});
+    };
+    window.addEventListener("custom-models-changed", handler);
+    return () => window.removeEventListener("custom-models-changed", handler);
+  }, []);
 
   const handleDeleteModel = useCallback(async (modelId: string) => {
     setModels((prev) => prev.filter((m) => m.id !== modelId));

@@ -949,6 +949,14 @@ export default function ChatSidebar({
                     if (!createdDemoId && success) {
                       createdDemoId = extractCreatedDemoId(tc.tool, result);
                     }
+                    // Broadcast custom model changes so all AgentBlock/ChatBlock
+                    // model pickers update in real time.
+                    if (
+                      success &&
+                      (tc.tool === "add_model" || tc.tool === "remove_model" || tc.tool === "update_model")
+                    ) {
+                      window.dispatchEvent(new CustomEvent("custom-models-changed"));
+                    }
                     return {
                       ...tc,
                       status: (success ? "success" : "error") as ChatToolCall["status"],

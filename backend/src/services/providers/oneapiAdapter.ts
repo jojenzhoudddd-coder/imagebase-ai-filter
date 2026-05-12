@@ -462,49 +462,51 @@ async function* streamAnthropic(
 ): AsyncGenerator<ProviderStreamEvent> {
   const { system, messages } = toAnthropicShape(params.input);
 
-  // ── OneAPI-Claude-Code-override workaround ───────────────────────────────
+  // ── System prompt strategy: OneAPI vs custom endpoint ─────────────────────
   //
-  // The oneapi.iline.work proxy runs Claude through the Claude Code SDK, not
-  // raw Anthropic. That SDK injects its own ~2000-token "You are Claude Code,
-  // Anthropic's official CLI…" system prompt BEFORE ours, and Claude then
-  // bonds to that persona and ignores whatever we put in the `system` field.
-  // Reproducible: POST /v1/messages with system="your name is Claw" → Claude
-  // still introduces itself as Claude Code.
+  // OneAPI (oneapi.iline.work) runs Claude through the Claude Code SDK which
+  // injects its own system prompt and overrides whatever we put in the
+  // `system` field. Workaround: prepend identity as user/assistant messages.
   //
-  // The fix is to stop using the `system` field entirely on this channel and
-  // instead bootstrap the identity as the first turn in `messages[]` — one
-  // user message carrying our composed prompt wrapped in sentinel tags, plus
-  // a one-line assistant acknowledgment. OneAPI doesn't touch message content,
-  // so this survives untouched. Costs us two extra turns per request in
-  // token accounting but that's cheap next to the value of actually honoring
-  // our identity. Direct curl confirmed this yields the correct persona.
+  // Custom Anthropic endpoints (direct API access) don't have this problem,
+  // so we use the standard `system` field there — this is cleaner and avoids
+  // the 2-turn token overhead.
+  const isCustomEndpoint = !!model.customBaseUrl;
   const finalMessages: AnthropicMessage[] = [];
-  if (system) {
-    finalMessages.push({
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: `<持久系统指令 priority="highest">\n${system}\n</持久系统指令>`,
-        },
-      ],
-    });
-    finalMessages.push({
-      role: "assistant",
-      content: [{ type: "text", text: "明白，我会严格遵循以上系统指令。" }],
-    });
-  }
-  finalMessages.push(...messages);
-
   const body: Record<string, unknown> = {
     model: model.providerModelId,
     max_tokens: model.defaults.maxOutputTokens,
     temperature: model.defaults.temperature,
     stream: true,
-    messages: finalMessages,
-    tools: toAnthropicTools(params.tools),
   };
-  // Intentionally NOT setting body.system — see workaround comment above.
+
+  if (isCustomEndpoint) {
+    // Custom endpoint: use standard `system` field
+    if (system) body.system = system;
+    finalMessages.push(...messages);
+  } else {
+    // OneAPI workaround: bootstrap identity as message pair
+    if (system) {
+      finalMessages.push({
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `<持久系统指令 priority="highest">\n${system}\n</持久系统指令>`,
+          },
+        ],
+      });
+      finalMessages.push({
+        role: "assistant",
+        content: [{ type: "text", text: "明白，我会严格遵循以上系统指令。" }],
+      });
+    }
+    finalMessages.push(...messages);
+  }
+
+  body.messages = finalMessages;
+  const toolsDef = toAnthropicTools(params.tools);
+  if (toolsDef.length > 0) body.tools = toolsDef;
   if (model.capabilities.thinking) {
     body.thinking = {
       type: "enabled",
@@ -514,6 +516,10 @@ async function* streamAnthropic(
 
   const baseUrl = (model.customBaseUrl ?? ONEAPI_BASE_URL).replace(/\/$/, "");
   const url = `${baseUrl.replace(/\/v1$/, "")}/v1/messages`;
+  // Use modern API version for custom endpoints (tool use GA requires
+  // >= 2024-04-04); keep older version for OneAPI where the proxy handles
+  // version negotiation internally.
+  const anthropicVersion = isCustomEndpoint ? "2024-04-04" : "2023-06-01";
   // Retry the initial POST up to 3× on upstream overload (Anthropic's
   // `overloaded_error` / HTTP 503 / 429). Only the HEADERS/handshake phase
   // is retryable — once we have a body stream, errors mid-stream go to the
@@ -525,7 +531,7 @@ async function* streamAnthropic(
         method: "POST",
         headers: {
           "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
+          "anthropic-version": anthropicVersion,
           "Content-Type": "application/json",
           Accept: "text/event-stream",
         },
@@ -734,12 +740,16 @@ async function* streamOpenAI(
     model: model.providerModelId,
     messages,
     stream: true,
-    // 让最终 chunk 带 usage —— OpenAI-spec 的 stream 默认不返回 usage，
-    // 加上这个 flag 才行。
-    stream_options: { include_usage: true },
     temperature: model.defaults.temperature,
     max_tokens: model.defaults.maxOutputTokens,
   };
+  // `stream_options: { include_usage: true }` is an OpenAI-specific extension
+  // that many third-party OpenAI-compatible APIs don't support (causes 400).
+  // Only include it for builtin models routed through our known-compatible
+  // OneAPI proxy; custom endpoints skip it to avoid breaking tool calls.
+  if (!model.customBaseUrl) {
+    body.stream_options = { include_usage: true };
+  }
   if (params.tools && params.tools.length) {
     body.tools = toOpenAITools(params.tools);
   }
