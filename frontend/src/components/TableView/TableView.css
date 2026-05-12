@@ -464,6 +464,40 @@
   border: 1px solid var(--color-primary);
 }
 
+.date-picker-time {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border-light, #E5E6EB);
+}
+.date-picker-time-input {
+  width: 36px;
+  height: 28px;
+  border: 1px solid var(--border-light, #E5E6EB);
+  border-radius: 4px;
+  text-align: center;
+  font-size: 13px;
+  background: var(--surface-inset, #F5F6F7);
+  color: var(--text-primary);
+  -moz-appearance: textfield;
+}
+.date-picker-time-input::-webkit-inner-spin-button,
+.date-picker-time-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.date-picker-time-input:focus {
+  outline: none;
+  border-color: var(--color-primary, #4080FF);
+}
+.date-picker-time-sep {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 28px;
+}
+
 /* ─── Context menu for field headers ─── */
 .field-context-menu {
   position: fixed;

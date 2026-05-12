@@ -113,13 +113,19 @@ function StatusTag({ name, optColor }: { name: string; optColor?: string }) {
   );
 }
 
-function formatDate(ts: number | string | null): string {
+function formatDate(ts: number | string | null, fmt?: string): string {
   if (!ts) return "";
   const d = new Date(typeof ts === "number" ? ts : String(ts));
   if (isNaN(d.getTime())) return "";
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  if (fmt === "yyyy-MM-dd HH:mm:ss") return `${y}-${m}-${day} ${hh}:${mm}:${ss}`;
+  if (fmt === "yyyy-MM-dd HH:mm") return `${y}-${m}-${day} ${hh}:${mm}`;
+  if (fmt === "yyyy-MM-dd") return `${y}-${m}-${day}`;
   return `${y}/${m}/${day}`;
 }
 
@@ -212,7 +218,7 @@ function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
       );
 
     case "DateTime":
-      return <span className="cell-text">{formatDate(value as number | string)}</span>;
+      return <span className="cell-text">{formatDate(value as number | string, field.config?.format)}</span>;
 
     case "User": {
       const users = field.config.users ?? [];
@@ -509,18 +515,25 @@ function DateEditor({
   onCommit,
   onCancel,
   onNavigate,
+  dateFormat,
 }: {
   value: CellValue;
   onCommit: (v: CellValue) => void;
   onCancel: () => void;
   onNavigate?: (dRow: number, dCol: number) => void;
+  dateFormat?: string;
 }) {
+  const showTime = dateFormat === "yyyy-MM-dd HH:mm" || dateFormat === "yyyy-MM-dd HH:mm:ss";
+  const showSeconds = dateFormat === "yyyy-MM-dd HH:mm:ss";
   const { t } = useTranslation();
   const parsed = value ? new Date(typeof value === "number" ? value : String(value)) : new Date();
   const validDate = isNaN(parsed.getTime()) ? new Date() : parsed;
 
   const [viewYear, setViewYear] = useState(validDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(validDate.getMonth());
+  const [hour, setHour] = useState(validDate.getHours());
+  const [minute, setMinute] = useState(validDate.getMinutes());
+  const [second, setSecond] = useState(validDate.getSeconds());
   const ref = useRef<HTMLDivElement>(null);
 
   const selectedYear = validDate.getFullYear();
@@ -610,7 +623,9 @@ function DateEditor({
   }
 
   const handleDayClick = (entry: { day: number; month: number; year: number }) => {
-    const picked = new Date(entry.year, entry.month, entry.day);
+    const picked = showTime
+      ? new Date(entry.year, entry.month, entry.day, hour, minute, second)
+      : new Date(entry.year, entry.month, entry.day);
     onCommit(picked.getTime());
   };
 
@@ -664,6 +679,31 @@ function DateEditor({
           );
         })}
       </div>
+      {showTime && (
+        <div className="date-picker-time">
+          <input
+            type="number" min={0} max={23} value={hour}
+            className="date-picker-time-input"
+            onChange={(e) => setHour(Math.max(0, Math.min(23, Number(e.target.value) || 0)))}
+          />
+          <span className="date-picker-time-sep">:</span>
+          <input
+            type="number" min={0} max={59} value={minute}
+            className="date-picker-time-input"
+            onChange={(e) => setMinute(Math.max(0, Math.min(59, Number(e.target.value) || 0)))}
+          />
+          {showSeconds && (
+            <>
+              <span className="date-picker-time-sep">:</span>
+              <input
+                type="number" min={0} max={59} value={second}
+                className="date-picker-time-input"
+                onChange={(e) => setSecond(Math.max(0, Math.min(59, Number(e.target.value) || 0)))}
+              />
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -731,7 +771,7 @@ function EditableCell({
         return (
           <div className="cell-editor-wrap">
             <CellDisplay field={field} value={value} />
-            <DateEditor value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />
+            <DateEditor value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} dateFormat={field.config?.format} />
           </div>
         );
       default:

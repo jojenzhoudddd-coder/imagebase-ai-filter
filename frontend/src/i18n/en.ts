@@ -296,6 +296,7 @@ export const en = {
   "addField.refresh": "Refresh",
   "addField.aiLoading": "Thinking...",
   "addField.fieldType": "Field type",
+  "addField.dateFormat": "Date format",
   "addField.exploreShortcuts": "Explore Field Shortcuts",
   "addField.cancel": "Cancel",
   "addField.confirm": "Confirm",

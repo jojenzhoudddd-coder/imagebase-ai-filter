@@ -195,6 +195,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const [fieldType, setFieldType] = useState<FieldType>(editingField?.type ?? "Text");
   const [typePickerAnchor, setTypePickerAnchor] = useState<{ card: DOMRect; popover: DOMRect } | null>(null);
   const [lookupConfig, setLookupConfig] = useState<LookupConfig>(EMPTY_LOOKUP);
+  const [dateFormat, setDateFormat] = useState(editingField?.config?.format ?? "yyyy-MM-dd");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; path?: string } | null>(null);
   const [allTables, setAllTables] = useState<TableBrief[]>([]);
@@ -257,17 +258,23 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
         const dto: Record<string, any> = {};
         if (title.trim() !== editingField.name) dto.name = title.trim();
         if (fieldType !== editingField.type) dto.type = fieldType;
+        // Persist date format config changes
+        const isDateType = fieldType === "DateTime" || fieldType === "CreatedTime" || fieldType === "ModifiedTime";
+        if (isDateType && dateFormat !== (editingField.config?.format ?? "yyyy-MM-dd")) {
+          dto.config = { format: dateFormat };
+        }
         const updated = clientId
           ? await withClientId(clientId, () => updateField(currentTableId, editingField.id, dto))
           : await updateField(currentTableId, editingField.id, dto);
         onConfirm(updated);
       } else {
         // Create mode
+        const isDateType = fieldType === "DateTime" || fieldType === "CreatedTime" || fieldType === "ModifiedTime";
         const config =
           fieldType === "Lookup"
             ? { lookup: lookupConfig }
-            : fieldType === "DateTime"
-            ? { format: "yyyy-MM-dd", includeTime: false }
+            : isDateType
+            ? { format: dateFormat }
             : {};
         const dto = { name: title.trim(), type: fieldType, config };
         const newField = clientId
@@ -390,6 +397,21 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
               </div>
             </div>
           </div>
+
+          {(fieldType === "DateTime" || fieldType === "CreatedTime" || fieldType === "ModifiedTime") && (
+            <div className="form-row">
+              <label>{t("addField.dateFormat")}</label>
+              <select
+                className="fc-input fc-select"
+                value={dateFormat}
+                onChange={(e) => setDateFormat(e.target.value)}
+              >
+                <option value="yyyy-MM-dd">yyyy-MM-dd</option>
+                <option value="yyyy-MM-dd HH:mm">yyyy-MM-dd HH:mm</option>
+                <option value="yyyy-MM-dd HH:mm:ss">yyyy-MM-dd HH:mm:ss</option>
+              </select>
+            </div>
+          )}
 
           {fieldType === "Lookup" && (
             <LookupConfigPanel

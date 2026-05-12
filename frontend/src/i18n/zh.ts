@@ -298,6 +298,7 @@ export const zh: TranslationKeys = {
   "addField.refresh": "换一批",
   "addField.aiLoading": "思考中...",
   "addField.fieldType": "字段类型",
+  "addField.dateFormat": "日期格式",
   "addField.exploreShortcuts": "探索字段捷径",
   "addField.cancel": "取消",
   "addField.confirm": "确认",
