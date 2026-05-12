@@ -144,9 +144,9 @@
 
   /* ── Border ─── 三档：light < default < strong；DM 下都对中性灰 #1C1C1E
    * 底可见，但 light 比 default 略弱用于单元格 / 内部分隔。 */
-  --border-default:      #444446;
-  --border-light:        #38383A;
-  --border-strong:       #5C5C5E;
+  --border-default:      #3A3A3C;
+  --border-light:        #2C2C2E;
+  --border-strong:       #48484A;
   --border-focus:        #6B9AFF;
 
   /* ── Brand（降饱和 + 提亮） ─── */
