@@ -668,6 +668,8 @@ function DateEditor({
   const [hour, setHour] = useState(validDate.getHours());
   const [minute, setMinute] = useState(validDate.getMinutes());
   const [second, setSecond] = useState(validDate.getSeconds());
+  // Which popover is visible: "date" | "time" | null
+  const [activePopover, setActivePopover] = useState<"date" | "time" | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   const selectedYear = validDate.getFullYear();
@@ -679,33 +681,44 @@ function DateEditor({
   const todayMonth = today.getMonth();
   const todayDay = today.getDate();
 
+  // Build current timestamp from state for commit
+  const buildTimestamp = useCallback(() => {
+    return new Date(selectedYear, selectedMonth, selectedDay, hour, minute, second).getTime();
+  }, [selectedYear, selectedMonth, selectedDay, hour, minute, second]);
+
+  // Click outside: commit if popover was open, otherwise cancel
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onCancel();
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        if (activePopover) {
+          onCommit(buildTimestamp());
+        } else {
+          onCancel();
+        }
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [onCancel]);
+  }, [onCancel, onCommit, activePopover, buildTimestamp]);
 
-  // V4.2 #2:Tab/Shift+Tab/Esc 全局处理(date picker 没有 input 接 keydown)。
-  // V4.2.1: stopImmediatePropagation 防同帧下一个 dropdown editor 的 listener
-  // 抓到同一个 Tab 二次触发跳字段。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Tab") {
         e.preventDefault();
         e.stopImmediatePropagation();
-        onCancel();
+        if (activePopover) onCommit(buildTimestamp());
+        else onCancel();
         onNavigate?.(0, e.shiftKey ? -1 : 1);
       } else if (e.key === "Escape") {
         e.preventDefault();
         e.stopImmediatePropagation();
+        setActivePopover(null);
         onCancel();
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onCancel, onNavigate]);
+  }, [onCancel, onCommit, onNavigate, activePopover, buildTimestamp]);
 
   const monthNames = t("table.months").split(",");
 
@@ -757,68 +770,121 @@ function DateEditor({
   }
 
   const handleDayClick = (entry: { day: number; month: number; year: number }) => {
-    const picked = showTime
-      ? new Date(entry.year, entry.month, entry.day, hour, minute, second)
-      : new Date(entry.year, entry.month, entry.day);
-    onCommit(picked.getTime());
+    if (showTime) {
+      // With time: commit date + current time, keep editor open for time adjustment
+      const picked = new Date(entry.year, entry.month, entry.day, hour, minute, second);
+      onCommit(picked.getTime());
+    } else {
+      // Date-only: commit and close immediately
+      const picked = new Date(entry.year, entry.month, entry.day);
+      onCommit(picked.getTime());
+    }
   };
 
+  // Inline display parts
+  const datePart = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-${String(selectedDay).padStart(2, "0")}`;
+  const timePart = showSeconds
+    ? `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}`
+    : `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+
+  // Time column picker position (fixed, right of cell)
+  const [timeDropStyle, setTimeDropStyle] = useState<React.CSSProperties>({});
+  const timeZoneRef = useRef<HTMLSpanElement>(null);
+  const handleTimeClick = useCallback(() => {
+    if (activePopover === "time") { setActivePopover(null); return; }
+    const el = timeZoneRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      const block = el.closest(".mc-block") as HTMLElement | null;
+      const bounds = block ? block.getBoundingClientRect() : { right: window.innerWidth, bottom: window.innerHeight };
+      let left = r.right + 4;
+      let top = r.top;
+      if (left + 214 > bounds.right - 20) left = r.left - 214 - 4;
+      if (top + 200 > bounds.bottom - 20) top = bounds.bottom - 20 - 200;
+      setTimeDropStyle({ position: "fixed", left, top });
+    }
+    setActivePopover("time");
+  }, [activePopover]);
+
+  const timeDropRef = useRef<HTMLDivElement>(null);
+
   return (
-    <div ref={ref} className="date-picker">
-      <div className="date-picker-header">
-        <button className="date-picker-nav" onMouseDown={(e) => { e.preventDefault(); prevMonth(); }}>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M8 2L4 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-        <span className="date-picker-title">{monthNames[viewMonth]} {viewYear}</span>
-        <button className="date-picker-nav" onMouseDown={(e) => { e.preventDefault(); nextMonth(); }}>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-      </div>
-      <div className="date-picker-weekdays">
-        {t("table.weekdayLetters").split(",").map((d, i) => (
-          <span key={i}>{d}</span>
-        ))}
-      </div>
-      <div className="date-picker-days">
-        {calendarDays.map((entry, i) => {
-          const isSelected =
-            !entry.otherMonth &&
-            entry.year === selectedYear &&
-            entry.month === selectedMonth &&
-            entry.day === selectedDay;
-          const isToday =
-            entry.year === todayYear &&
-            entry.month === todayMonth &&
-            entry.day === todayDay;
-          const classes = [
-            "date-picker-day",
-            entry.otherMonth ? "other-month" : "",
-            isSelected ? "selected" : "",
-            isToday && !isSelected ? "today" : "",
-          ]
-            .filter(Boolean)
-            .join(" ");
-          return (
-            <button
-              key={i}
-              className={classes}
-              onMouseDown={(e) => { e.preventDefault(); handleDayClick(entry); }}
-            >
-              {entry.day}
-            </button>
-          );
-        })}
-      </div>
+    <div ref={ref} className="de-root">
+      {/* Inline segmented display */}
+      <span
+        className={`de-zone${activePopover === "date" ? " de-zone-active" : ""}`}
+        onMouseDown={(e) => { e.preventDefault(); setActivePopover(activePopover === "date" ? null : "date"); }}
+      >
+        {datePart}
+      </span>
       {showTime && (
-        <TimeInputRow
-          hour={hour} minute={minute} second={second}
-          showSeconds={showSeconds}
-          onHourChange={setHour} onMinuteChange={setMinute} onSecondChange={setSecond}
-        />
+        <>
+          <span className="de-sep"> </span>
+          <span
+            ref={timeZoneRef}
+            className={`de-zone${activePopover === "time" ? " de-zone-active" : ""}`}
+            onMouseDown={(e) => { e.preventDefault(); handleTimeClick(); }}
+          >
+            {timePart}
+          </span>
+        </>
+      )}
+
+      {/* Calendar popover */}
+      {activePopover === "date" && (
+        <div className="date-picker">
+          <div className="date-picker-header">
+            <button className="date-picker-nav" onMouseDown={(e) => { e.preventDefault(); prevMonth(); }}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M8 2L4 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            <span className="date-picker-title">{monthNames[viewMonth]} {viewYear}</span>
+            <button className="date-picker-nav" onMouseDown={(e) => { e.preventDefault(); nextMonth(); }}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+          <div className="date-picker-weekdays">
+            {t("table.weekdayLetters").split(",").map((d, i) => (
+              <span key={i}>{d}</span>
+            ))}
+          </div>
+          <div className="date-picker-days">
+            {calendarDays.map((entry, i) => {
+              const isSelected =
+                !entry.otherMonth &&
+                entry.year === selectedYear &&
+                entry.month === selectedMonth &&
+                entry.day === selectedDay;
+              const isToday =
+                entry.year === todayYear &&
+                entry.month === todayMonth &&
+                entry.day === todayDay;
+              const classes = [
+                "date-picker-day",
+                entry.otherMonth ? "other-month" : "",
+                isSelected ? "selected" : "",
+                isToday && !isSelected ? "today" : "",
+              ].filter(Boolean).join(" ");
+              return (
+                <button key={i} className={classes} onMouseDown={(e) => { e.preventDefault(); handleDayClick(entry); }}>
+                  {entry.day}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Time column popover */}
+      {activePopover === "time" && (
+        <div className="tp-dropdown" ref={timeDropRef} style={timeDropStyle}>
+          <TimeColumn count={24} value={hour} onChange={setHour} />
+          <TimeColumn count={60} value={minute} onChange={setMinute} />
+          {showSeconds && <TimeColumn count={60} value={second} onChange={setSecond} />}
+        </div>
       )}
     </div>
   );
@@ -885,10 +951,7 @@ function EditableCell({
         );
       case "DateTime":
         return (
-          <div className="cell-editor-wrap">
-            <CellDisplay field={field} value={value} />
-            <DateEditor value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} dateFormat={field.config?.format} />
-          </div>
+          <DateEditor value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} dateFormat={field.config?.format} />
         );
       default:
         return <CellDisplay field={field} value={value} />;
