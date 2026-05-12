@@ -138,11 +138,14 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         dirtyRef.current = false;
         previewRef.current?.clearDirty();
         setSaveStatus("saved");
-        // Sync contentRef with what was actually saved (e.g. after an
-        // image drop in preview mode, the Tiptap markdown includes the
-        // new image but contentRef still had the old text). Without this,
-        // switching away loses the image because contentRef is stale.
+        // Sync BOTH contentRef and content state with what was actually
+        // saved. contentRef keeps the ref fresh for save callbacks;
+        // setContent keeps the React state (and TiptapPreview's `source`
+        // prop) in sync so that component remounts, layout changes, or
+        // SSE sync effects don't revert to stale content that's missing
+        // images dropped in preview mode.
         contentRef.current = text;
+        setContent(text);
       }
     } catch {
       setSaveStatus("offline");
@@ -232,7 +235,15 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   }, [scheduleSave]);
 
   // ── Preview mode dirty signal ──
+  // Eagerly sync contentRef with Tiptap's current markdown so that if the
+  // component unmounts before the autosave debounce fires, the cleanup
+  // effect uses the latest content (including dropped images) instead of
+  // stale contentRef that predates the edit.
   const handlePreviewDirty = useCallback(() => {
+    try {
+      const md = previewRef.current?.getMarkdown();
+      if (md) contentRef.current = md;
+    } catch { /* editor not ready */ }
     scheduleSave();
   }, [scheduleSave]);
 
