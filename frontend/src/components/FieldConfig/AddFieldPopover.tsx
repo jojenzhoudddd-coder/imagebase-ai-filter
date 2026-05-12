@@ -456,7 +456,29 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
               <label>{t("addField.optionContent")}</label>
               <div className="so-list">
                 {selectOptions.map((opt, idx) => (
-                  <div key={opt.id} className="so-item">
+                  <div
+                    key={opt.id}
+                    className="so-item"
+                    draggable
+                    onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(idx)); }}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const from = parseInt(e.dataTransfer.getData("text/plain"));
+                      if (isNaN(from) || from === idx) return;
+                      const next = [...selectOptions];
+                      const [moved] = next.splice(from, 1);
+                      next.splice(idx, 0, moved);
+                      setSelectOptions(next);
+                    }}
+                  >
+                    <span className="so-drag" title="Drag to reorder">
+                      <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
+                        <circle cx="3" cy="3" r="1.2" fill="currentColor"/><circle cx="7" cy="3" r="1.2" fill="currentColor"/>
+                        <circle cx="3" cy="7" r="1.2" fill="currentColor"/><circle cx="7" cy="7" r="1.2" fill="currentColor"/>
+                        <circle cx="3" cy="11" r="1.2" fill="currentColor"/><circle cx="7" cy="11" r="1.2" fill="currentColor"/>
+                      </svg>
+                    </span>
                     <span className="so-dot" style={{ background: opt.color || "#4080FF" }} />
                     <input
                       className="so-input"

@@ -29,6 +29,7 @@ interface Props {
   /** 创建一条空记录。position 决定插在表格顶部还是底部（topbar Add Record →
    *  "start"；表格底部的 + 行 → "end"）。返回新记录 id。 */
   onAddRecord?: (position?: "start" | "end") => Promise<string>;
+  onFieldConfigChange?: (field: Field) => void;
 }
 
 interface CellRange {
@@ -383,16 +384,22 @@ function SelectEditor({
   onCommit,
   onCancel,
   onNavigate,
+  onFieldUpdate,
 }: {
   field: Field;
   value: CellValue;
   onCommit: (v: CellValue) => void;
   onCancel: () => void;
   onNavigate?: (dRow: number, dCol: number) => void;
+  onFieldUpdate?: (f: Field) => void;
 }) {
   const options = field.config.options ?? [];
+  const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const theme = useResolvedTheme();
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -402,51 +409,82 @@ function SelectEditor({
     return () => document.removeEventListener("mousedown", handler);
   }, [onCancel]);
 
-  // V4.2 #2/#3: Tab/Shift+Tab navigation
-  // V4.2.1: stopImmediatePropagation 防 React 18 同步 flush 导致下一个 dropdown
-  // editor 在同一帧 mount + listener 立刻就绪 → 二次触发 → 跳过中间字段。
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Tab") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        onCancel();
-        onNavigate?.(0, e.shiftKey ? -1 : 1);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        onCancel();
+  const filtered = query.trim()
+    ? options.filter((o) => o.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : options;
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+      onNavigate?.(0, e.shiftKey ? -1 : 1);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onCancel();
+    } else if (e.key === "Enter" && query.trim()) {
+      e.preventDefault();
+      const existing = options.find((o) => o.name === query.trim());
+      if (existing) {
+        onCommit(existing.name);
+      } else {
+        // Create new option and select it
+        const colors = ["#4080FF", "#F54A45", "#FF7D00", "#00B365", "#7B61FF", "#F77234", "#14C0C0"];
+        const newOpt = { id: `opt_${Date.now()}`, name: query.trim(), color: colors[options.length % colors.length] };
+        const newOptions = [...options, newOpt];
+        const updatedField = { ...field, config: { ...field.config, options: newOptions } };
+        // Fire-and-forget field update
+        import("../../api").then(({ updateField }) => {
+          updateField(field.tableId, field.id, { config: { options: newOptions } }).catch(() => {});
+        });
+        onFieldUpdate?.(updatedField);
+        onCommit(newOpt.name);
       }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onCancel, onNavigate]);
+    }
+  };
 
   return (
     <div ref={ref} className="cell-dropdown">
-      {options.map((opt) => {
-        const optStyle = getOptionStyle(opt.color, theme === "dark");
-        const isSelected = String(value) === opt.name;
-        return (
-          <button
-            key={opt.id}
-            className={`cell-dropdown-item ${isSelected ? "selected" : ""}`}
-            onMouseDown={(e) => { e.preventDefault(); onCommit(opt.name); }}
-          >
-            <span className="option-dot-indicator">
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M5 9L1 1H9L5 9Z" fill={optStyle.dot} />
-              </svg>
-            </span>
-            <span className="option-label">{opt.name}</span>
-            {isSelected && (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="check-icon">
-                <path d="M2 6l3 3 5-5" stroke="#1456F0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            )}
-          </button>
-        );
-      })}
+      <div className="cell-dropdown-search">
+        <input
+          ref={inputRef}
+          className="cell-dropdown-search-input"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="查找或创建选项"
+        />
+      </div>
+      <div className="cell-dropdown-list">
+        {filtered.map((opt) => {
+          const optStyle = getOptionStyle(opt.color, theme === "dark");
+          const isSelected = field.type === "MultiSelect"
+            ? Array.isArray(value) && value.includes(opt.name)
+            : String(value) === opt.name;
+          return (
+            <button
+              key={opt.id}
+              className={`cell-dropdown-item${isSelected ? " selected" : ""}`}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                if (field.type === "MultiSelect") {
+                  const arr = Array.isArray(value) ? [...value] : [];
+                  if (arr.includes(opt.name)) {
+                    onCommit(arr.filter((v) => v !== opt.name));
+                  } else {
+                    onCommit([...arr, opt.name]);
+                  }
+                } else {
+                  onCommit(opt.name);
+                }
+              }}
+            >
+              <span className="option-dot" style={{ background: optStyle.dot }} />
+              <span className="option-label">{opt.name}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -916,6 +954,7 @@ function EditableCell({
   onCommit,
   onCancel,
   onNavigate,
+  onFieldUpdate,
 }: {
   field: Field;
   record: TableRecord;
@@ -924,6 +963,7 @@ function EditableCell({
   onCommit: (v: CellValue) => void;
   onCancel: () => void;
   onNavigate?: (dRow: number, dCol: number) => void;
+  onFieldUpdate?: (f: Field) => void;
 }) {
   const value = record.cells[field.id] ?? null;
   const isEditable = field.type !== "AutoNumber" && field.type !== "Lookup" && field.type !== "CreatedTime" && field.type !== "ModifiedTime";
@@ -949,14 +989,14 @@ function EditableCell({
         return (
           <div className="cell-editor-wrap">
             <CellDisplay field={field} value={value} />
-            <SelectEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />
+            <SelectEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} onFieldUpdate={onFieldUpdate} />
           </div>
         );
       case "MultiSelect":
         return (
           <div className="cell-editor-wrap">
             <CellDisplay field={field} value={value} />
-            <SelectEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />
+            <SelectEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} onFieldUpdate={onFieldUpdate} />
           </div>
         );
       case "User":
@@ -1032,7 +1072,7 @@ function loadColWidths(): Record<string, number> {
 
 const CELL_DRAG_THRESHOLD = 4;
 
-const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords, onClearCells, onClearRowCells, onAddField, onEditField, onAddRecord }, ref) {
+const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords, onClearCells, onClearRowCells, onAddField, onEditField, onAddRecord, onFieldConfigChange }, ref) {
   const { t } = useTranslation();
   const toast = useToast();
   const [editing, setEditing] = useState<EditingState | null>(null);
@@ -1905,6 +1945,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                           onCommit={(v) => commitEdit(record.id, f.id, v)}
                           onCancel={cancelEdit}
                           onNavigate={(dRow, dCol) => navigateEdit(idx, fIdx, dRow, dCol)}
+                          onFieldUpdate={onFieldConfigChange}
                         />
                       </td>
                     );

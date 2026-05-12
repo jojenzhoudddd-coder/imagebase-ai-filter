@@ -136,7 +136,17 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  cursor: grab;
 }
+.so-item:active { cursor: grabbing; }
+.so-drag {
+  display: flex;
+  align-items: center;
+  color: var(--text-placeholder);
+  cursor: grab;
+  flex-shrink: 0;
+}
+.so-drag:active { cursor: grabbing; }
 .so-dot {
   width: 14px;
   height: 14px;
@@ -175,15 +185,16 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 0;
+  height: 32px;
+  padding: 0;
   border: none;
   background: none;
   color: var(--color-primary);
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
   font-family: var(--font-family);
 }
-.so-add:hover { text-decoration: underline; }
+.so-add:hover { opacity: 0.8; }
 
 /* ── Field type card ── */
 .field-type-card {
