@@ -154,6 +154,7 @@
   height: 14px;
   border-radius: 3px;
   flex-shrink: 0;
+  margin-right: 4px; /* 8px gap + 4px margin = 12px between dot and input */
 }
 /* Drag indicator lines — same pattern as SortPanel */
 .so-item.drag-over-above::before,
@@ -200,19 +201,21 @@
 }
 .so-remove:hover { background: var(--color-bg-hover); color: var(--text-primary); }
 .so-add {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
-  height: 32px;
-  padding: 0;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
+  margin-top: 0; /* 8px gap from .so-list provides the spacing */
   border: none;
+  border-radius: var(--radius-s);
   background: none;
-  color: var(--color-primary);
+  color: var(--color-text-secondary);
   font-size: 14px;
   cursor: pointer;
   font-family: var(--font-family);
 }
-.so-add:hover { opacity: 0.8; }
+.so-add:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
 
 /* ── Field type card ── */
 .field-type-card {

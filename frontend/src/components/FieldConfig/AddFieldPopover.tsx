@@ -10,6 +10,7 @@ import { LookupConfigPanel } from "./LookupConfigPanel";
 import { FieldIcon } from "./FieldIcons";
 import CustomSelect from "../FilterPanel/CustomSelect";
 import { useTranslation } from "../../i18n";
+import { useResolvedTheme } from "../../theme";
 import "./FieldConfig.css";
 
 interface Props {
@@ -104,10 +105,14 @@ const EMPTY_LOOKUP: LookupConfig = {
 
 // Palette keys that match the cell-display color system (OPTION_PALETTE_LM/DM in TableView)
 const OPTION_COLORS = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#8F959E"];
-// Dot colors for display in config editor (same order as palette keys)
-const OPTION_DOT_COLORS: Record<string, string> = {
+// Dot colors for display in config editor — LM and DM variants
+const OPTION_DOT_COLORS_LM: Record<string, string> = {
   "#D83931": "#F54A45", "#F77234": "#FF7D00", "#02312A": "#14C9C9",
   "#002270": "#3370FF", "#3B1A02": "#FFB900", "#2B2F36": "#646A73", "#8F959E": "#8F959E",
+};
+const OPTION_DOT_COLORS_DM: Record<string, string> = {
+  "#D83931": "#FF6B66", "#F77234": "#FF9D4D", "#02312A": "#22D3D3",
+  "#002270": "#6B9AFF", "#3B1A02": "#FFB84D", "#2B2F36": "#B0B0B5", "#8F959E": "#8E8E93",
 };
 
 function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
@@ -116,6 +121,8 @@ function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
   addLabel: string;
   placeholder: string;
 }) {
+  const theme = useResolvedTheme();
+  const dotColors = theme === "dark" ? OPTION_DOT_COLORS_DM : OPTION_DOT_COLORS_LM;
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
   const [overPos, setOverPos] = useState<"above" | "below">("below");
@@ -155,7 +162,7 @@ function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
           if (dragIdx === idx) cls += " is-dragging";
           if (overIdx === idx && overPos === "above") cls += " drag-over-above";
           if (overIdx === idx && overPos === "below") cls += " drag-over-below";
-          const dotColor = OPTION_DOT_COLORS[opt.color] || opt.color || "#4080FF";
+          const dotColor = dotColors[opt.color] || opt.color || "#4080FF";
           return (
             <div
               key={opt.id}
