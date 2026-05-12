@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { type AgentSkillSummary, listAgentSkills, toggleAgentSkill, createConversation } from "../../api";
+import { type AgentSkillSummary, listAgentSkills, toggleAgentSkill, deleteUserSkill, createConversation } from "../../api";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
 import type { SystemBlockState } from "../../canvas/types";
@@ -89,9 +89,16 @@ export default function SkillsTab({ agentId, blockId }: Props) {
   }, [agentId, toast, t]);
 
   const handleDeleteSkill = useCallback(async (skillId: string) => {
-    setSkills((prev) => prev.filter((s) => s.id !== skillId));
-    // TODO: call backend delete API
-  }, []);
+    const prev = skills;
+    setSkills((s) => s.filter((x) => x.id !== skillId));
+    try {
+      await deleteUserSkill(agentId, skillId);
+      toast.success(t("agent.toast.skillDeleted"));
+    } catch {
+      setSkills(prev);
+      toast.error(t("agent.toast.deleteFailed"));
+    }
+  }, [agentId, skills, toast, t]);
 
   const handleAddSkill = async () => {
     if (!workspaceId) return;

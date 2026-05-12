@@ -14,13 +14,16 @@ import {
   listModels,
   getAgentModel,
   createConversation,
+  deleteCustomModel,
   type AgentModelSelection,
 } from "../../api";
 import { useTranslation } from "../../i18n";
+import { useToast } from "../Toast/index";
 import CardGrid from "./CardGrid";
 
 interface ModelSummary {
   id: string;
+  dbId?: string;
   displayName: string;
   provider: string;
   group: string;
@@ -62,6 +65,7 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
   const { t } = useTranslation();
   const { workspaceId, agentId } = useAuth();
   const { addBlock, patchBlockState } = useCanvas();
+  const toast = useToast();
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [selection, setSelection] = useState<AgentModelSelection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,10 +106,18 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
     return () => window.removeEventListener("custom-models-changed", handler);
   }, []);
 
-  const handleDeleteModel = useCallback(async (modelId: string) => {
-    setModels((prev) => prev.filter((m) => m.id !== modelId));
-    // TODO: call DELETE /api/models/custom/:id
-  }, []);
+  const handleDeleteModel = useCallback(async (modelId: string, dbId: string) => {
+    const prev = models;
+    setModels((m) => m.filter((x) => x.id !== modelId));
+    try {
+      await deleteCustomModel(dbId);
+      toast.success(t("agent.toast.modelDeleted"));
+      window.dispatchEvent(new CustomEvent("custom-models-changed"));
+    } catch {
+      setModels(prev);
+      toast.error(t("agent.toast.deleteFailed"));
+    }
+  }, [models, toast, t]);
 
   const handleAddModel = async () => {
     if (!workspaceId) return;
@@ -163,7 +175,7 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
                   <CardMoreMenu
                     onViewActivities={() => patchBlockState(blockId, { activeTab: "activities", activitiesSearch: m.id } as SystemBlockState)}
                     label={t("agent.activities.viewActivities")}
-                    onDelete={m.type === "custom" ? () => handleDeleteModel(m.id) : undefined}
+                    onDelete={m.type === "custom" && m.dbId ? () => handleDeleteModel(m.id, m.dbId!) : undefined}
                   />
                 )}
               </div>

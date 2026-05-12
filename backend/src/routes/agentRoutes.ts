@@ -74,7 +74,7 @@ import { allSkills } from "../../mcp-server/src/skills/index.js";
 // Pool for raw queries (skill last-used lookups)
 const _agentPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 pg.types.setTypeParser(1114, (str: string) => new Date(str + "Z"));
-import { listUserSkills, updateUserSkill } from "../services/userSkill/userSkillStore.js";
+import { listUserSkills, updateUserSkill, deleteUserSkill } from "../services/userSkill/userSkillStore.js";
 import {
   listVisibleModels,
   getModel,
@@ -153,6 +153,7 @@ router.get("/models", async (req: Request, res: Response) => {
         });
         customModels = rows.map((r: any) => ({
           id: r.modelId,
+          dbId: r.id,
           displayName: r.displayName,
           provider: r.provider,
           group: r.group,
@@ -753,6 +754,18 @@ router.put("/:agentId/skills/:skillId/toggle", async (req: Request, res: Respons
     res.json({ ok: true });
   } catch (err: any) {
     console.error("[agents] skill toggle error:", err);
+    res.status(err.statusCode ?? 500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+/** DELETE /api/agents/:agentId/skills/:skillId — delete a user skill */
+router.delete("/:agentId/skills/:skillId", async (req: Request, res: Response) => {
+  try {
+    const { agentId, skillId } = req.params;
+    await deleteUserSkill(skillId, { requireOwnerId: agentId });
+    res.status(204).end();
+  } catch (err: any) {
+    console.error("[agents] skill delete error:", err);
     res.status(err.statusCode ?? 500).json({ error: err.message ?? "internal error" });
   }
 });

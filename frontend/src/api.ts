@@ -1973,6 +1973,39 @@ export async function toggleHabit(
   }
 }
 
+/** DELETE custom model by DB id */
+export async function deleteCustomModel(id: string): Promise<void> {
+  const res = await mutationFetch(`${BASE}/models/custom/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+}
+
+/** DELETE a habit (cron job) */
+export async function deleteHabit(agentId: string, jobId: string): Promise<void> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/cron/${encodeURIComponent(jobId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok && res.status !== 204) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+}
+
+/** DELETE a user skill */
+export async function deleteUserSkill(agentId: string, skillId: string): Promise<void> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(skillId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok && res.status !== 204) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+}
+
 // ═══════════════ Chat Attachments ═══════════════
 
 export interface ChatAttachmentResponse {

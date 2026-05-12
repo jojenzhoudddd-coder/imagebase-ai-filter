@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
 import type { SystemBlockState } from "../../canvas/types";
-import { createConversation, listHabits, toggleHabit, type HabitSummary } from "../../api";
+import { createConversation, listHabits, toggleHabit, deleteHabit, type HabitSummary } from "../../api";
 import { useTranslation } from "../../i18n";
 import { useToast } from "../Toast/index";
 import Tooltip from "../Tooltip";
@@ -159,9 +159,16 @@ export default function HabitsTab({ agentId, blockId }: Props) {
   }, [agentId, toast, t]);
 
   const handleDeleteHabit = useCallback(async (jobId: string) => {
-    setHabits((prev) => prev.filter((h) => h.id !== jobId));
-    // TODO: call backend delete API (removeCronJob)
-  }, []);
+    const prev = habits;
+    setHabits((h) => h.filter((x) => x.id !== jobId));
+    try {
+      await deleteHabit(agentId, jobId);
+      toast.success(t("agent.toast.habitDeleted"));
+    } catch {
+      setHabits(prev);
+      toast.error(t("agent.toast.deleteFailed"));
+    }
+  }, [agentId, habits, toast, t]);
 
   const handleAddHabit = async () => {
     if (!workspaceId) return;
