@@ -542,13 +542,18 @@ function TimeInputRow({
 }) {
   const [open, setOpen] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const clamp = (v: number, max: number) => Math.max(0, Math.min(max, v));
 
-  // Close dropdown on outside click
+  // Close dropdown when clicking outside the dropdown panel itself
+  // (clicking the datepicker area or anywhere else closes it)
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (rowRef.current && !rowRef.current.contains(e.target as Node)) setOpen(false);
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
+          rowRef.current && !rowRef.current.querySelector('.tp-input-wrap')?.contains(e.target as Node)) {
+        setOpen(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -565,7 +570,7 @@ function TimeInputRow({
           value={String(hour).padStart(2, "0")}
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => onHourChange(clamp(parseInt(e.target.value) || 0, 23))}
-          onFocus={(e) => { e.target.select(); setOpen(true); }}
+          onFocus={(e) => e.target.select()}
           onMouseDown={(e) => e.stopPropagation()}
         />
         <span className="tp-sep">:</span>
@@ -574,7 +579,7 @@ function TimeInputRow({
           value={String(minute).padStart(2, "0")}
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => onMinuteChange(clamp(parseInt(e.target.value) || 0, 59))}
-          onFocus={(e) => { e.target.select(); setOpen(true); }}
+          onFocus={(e) => e.target.select()}
           onMouseDown={(e) => e.stopPropagation()}
         />
         {showSeconds && (
@@ -585,7 +590,7 @@ function TimeInputRow({
               value={String(second).padStart(2, "0")}
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => onSecondChange(clamp(parseInt(e.target.value) || 0, 59))}
-              onFocus={(e) => { e.target.select(); setOpen(true); }}
+              onFocus={(e) => e.target.select()}
               onMouseDown={(e) => e.stopPropagation()}
             />
           </>
@@ -596,7 +601,7 @@ function TimeInputRow({
         </svg>
       </div>
       {open && (
-        <div className="tp-dropdown">
+        <div className="tp-dropdown" ref={dropdownRef}>
           <TimeColumn count={24} value={hour} onChange={onHourChange} />
           <TimeColumn count={60} value={minute} onChange={onMinuteChange} />
           {showSeconds && <TimeColumn count={60} value={second} onChange={onSecondChange} />}
