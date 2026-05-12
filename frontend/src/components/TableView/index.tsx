@@ -218,6 +218,8 @@ function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
       );
 
     case "DateTime":
+    case "CreatedTime":
+    case "ModifiedTime":
       return <span className="cell-text">{formatDate(value as number | string, field.config?.format)}</span>;
 
     case "User": {
