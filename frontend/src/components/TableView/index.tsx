@@ -569,8 +569,8 @@ function TimeInputRow({
     const inputWrap = rowRef.current?.querySelector('.tp-input-wrap') as HTMLElement | null;
     if (inputWrap) {
       const rect = inputWrap.getBoundingClientRect();
-      const dropW = 214;
-      const dropH = 200;
+      const dropW = 238;
+      const dropH = 324;
       const margin = 20;
       // Default: right of input, aligned top
       let left = rect.right + 8;
@@ -799,8 +799,8 @@ function DateEditor({
       const bounds = block ? block.getBoundingClientRect() : { right: window.innerWidth, bottom: window.innerHeight };
       let left = r.right + 4;
       let top = r.top;
-      if (left + 214 > bounds.right - 20) left = r.left - 214 - 4;
-      if (top + 200 > bounds.bottom - 20) top = bounds.bottom - 20 - 200;
+      if (left + 238 > bounds.right - 20) left = r.left - 238 - 4;
+      if (top + 324 > bounds.bottom - 20) top = bounds.bottom - 20 - 324;
       setTimeDropStyle({ position: "fixed", left, top });
     }
     setActivePopover("time");

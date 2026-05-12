@@ -565,7 +565,7 @@
 .tp-dropdown {
   display: flex;
   width: 238px;
-  height: 224px;
+  height: 324px;
   padding: 12px;
   background: var(--surface-2, #fff);
   border: 1px solid var(--border-default, #DEE0E3);
