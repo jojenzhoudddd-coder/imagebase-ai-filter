@@ -136,7 +136,7 @@
 }
 
 .field-type-card:hover {
-  border-color: var(--text-muted);
+  border-color: var(--color-primary);
 }
 
 .field-type-row {
