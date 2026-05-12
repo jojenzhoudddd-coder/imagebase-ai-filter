@@ -197,6 +197,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const [typePickerAnchor, setTypePickerAnchor] = useState<{ card: DOMRect; popover: DOMRect } | null>(null);
   const [lookupConfig, setLookupConfig] = useState<LookupConfig>(EMPTY_LOOKUP);
   const [dateFormat, setDateFormat] = useState(editingField?.config?.format ?? "yyyy-MM-dd");
+  const [numberFormat, setNumberFormat] = useState(editingField?.config?.format ?? "decimal_1");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; path?: string } | null>(null);
   const [allTables, setAllTables] = useState<TableBrief[]>([]);
@@ -259,10 +260,13 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
         const dto: Record<string, any> = {};
         if (title.trim() !== editingField.name) dto.name = title.trim();
         if (fieldType !== editingField.type) dto.type = fieldType;
-        // Persist date format config changes
+        // Persist format config changes
         const isDateType = fieldType === "DateTime" || fieldType === "CreatedTime" || fieldType === "ModifiedTime";
         if (isDateType && dateFormat !== (editingField.config?.format ?? "yyyy-MM-dd")) {
           dto.config = { format: dateFormat };
+        }
+        if (fieldType === "Number" && numberFormat !== (editingField.config?.format ?? "decimal_1")) {
+          dto.config = { format: numberFormat };
         }
         const updated = clientId
           ? await withClientId(clientId, () => updateField(currentTableId, editingField.id, dto))
@@ -276,6 +280,8 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
             ? { lookup: lookupConfig }
             : isDateType
             ? { format: dateFormat }
+            : fieldType === "Number"
+            ? { format: numberFormat }
             : {};
         const dto = { name: title.trim(), type: fieldType, config };
         const newField = clientId
@@ -410,6 +416,28 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
                   { value: "yyyy-MM-dd HH:mm:ss", label: "yyyy-MM-dd HH:mm:ss" },
                 ]}
                 onChange={setDateFormat}
+              />
+            </div>
+          )}
+
+          {fieldType === "Number" && (
+            <div className="form-row">
+              <label>{t("addField.numberFormat")}</label>
+              <CustomSelect
+                value={numberFormat}
+                options={[
+                  { value: "integer", label: t("addField.numFmt.integer") },
+                  { value: "thousands", label: t("addField.numFmt.thousands") },
+                  { value: "thousands_decimal", label: t("addField.numFmt.thousandsDecimal") },
+                  { value: "percent", label: t("addField.numFmt.percent") },
+                  { value: "percent_decimal", label: t("addField.numFmt.percentDecimal") },
+                  { value: "decimal_1", label: t("addField.numFmt.decimal1") },
+                  { value: "decimal_2", label: t("addField.numFmt.decimal2") },
+                  { value: "decimal_3", label: t("addField.numFmt.decimal3") },
+                  { value: "decimal_4", label: t("addField.numFmt.decimal4") },
+                  { value: "decimal_5", label: t("addField.numFmt.decimal5") },
+                ]}
+                onChange={setNumberFormat}
               />
             </div>
           )}

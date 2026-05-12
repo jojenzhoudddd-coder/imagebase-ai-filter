@@ -168,6 +168,20 @@ function stringifyCellValue(v: CellValue): string {
 }
 
 // ─────────── Cell display (read-only) ───────────
+function formatNumber(val: number, fmt?: string): string {
+  if (!fmt || fmt === "integer") return Math.round(val).toLocaleString("en-US", { useGrouping: false });
+  if (fmt === "thousands") return Math.round(val).toLocaleString("en-US");
+  if (fmt === "thousands_decimal") return val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (fmt === "percent") return (val * 100).toFixed(0) + "%";
+  if (fmt === "percent_decimal") return (val * 100).toFixed(2) + "%";
+  const m = fmt.match(/^decimal_(\d+)$/);
+  if (m) {
+    const d = parseInt(m[1]);
+    return val.toFixed(d);
+  }
+  return String(val);
+}
+
 function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
   // Lookup sentinels first — error states surface as red labels
   if (field.type === "Lookup" && typeof value === "string" && (value === "#REF!" || value === "#CYCLE!")) {
@@ -242,6 +256,9 @@ function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
           )}
         </span>
       );
+
+    case "Number":
+      return <span className="cell-text">{typeof value === "number" ? formatNumber(value, field.config?.format) : String(value)}</span>;
 
     default:
       return <span className="cell-text">{String(value)}</span>;
