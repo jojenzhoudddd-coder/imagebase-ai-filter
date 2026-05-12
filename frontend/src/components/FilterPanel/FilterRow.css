@@ -35,7 +35,7 @@
 
 .fr-select:hover,
 .fr-input:hover {
-  border-color: var(--text-muted);
+  border-color: var(--color-primary);
 }
 
 /* Field selector: fixed width */
@@ -76,7 +76,7 @@
 }
 
 .fr-operator-trigger:hover {
-  border-color: var(--text-muted);
+  border-color: var(--color-primary);
 }
 
 .fr-operator-trigger:focus {
