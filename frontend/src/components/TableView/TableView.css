@@ -385,7 +385,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-top: 8px;
+  margin-bottom: 12px;
 }
 
 .date-picker-title {
@@ -467,6 +468,7 @@
 /* ─── Time input row — pixel-aligned to DatePickerMenu.svg ─── */
 /* Separator spans full panel width (breaks out of parent 12px padding) */
 .tp-row {
+  position: relative;
   margin: 0 -12px;          /* break out of .date-picker padding */
   padding: 12px 12px 14px;  /* 12px top, 14px bottom (SVG: y347-335=12, y392-378=14) */
   border-top: 1px solid rgba(31, 35, 41, 0.15);
@@ -506,24 +508,100 @@
   line-height: 31px;
   user-select: none;
 }
+.tp-input-wrap-active {
+  border-color: var(--color-primary, #1456F0);
+}
 .tp-clock {
   margin-left: auto;
   flex-shrink: 0;
-}
-.tp-clock path, .tp-clock circle {
-  stroke: var(--text-secondary, #646A73);
+  color: var(--text-secondary, #646A73);
 }
 
-/* ─── DM overrides for time input ─── */
+/* ─── Time column dropdown (TimePicker.svg: 214×262, 3 cols of 71px) ─── */
+.tp-dropdown {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);        /* 4px gap below date-picker */
+  display: flex;
+  width: 214px;
+  height: 262px;
+  background: var(--surface-2, #fff);
+  border: 1px solid var(--border-default, #DEE0E3);
+  border-radius: 8px;
+  box-shadow: var(--shadow-dropdown,
+    0 8px 24px rgba(31,35,41,0.04),
+    0 6px 12px rgba(31,35,41,0.04),
+    0 4px 8px -4px rgba(31,35,41,0.06));
+  overflow: hidden;
+  z-index: 60;
+}
+.tp-col {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+  /* Thin styled scrollbar matching SVG's 7px rounded indicator */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(31,35,41,0.3) transparent;
+}
+.tp-col::-webkit-scrollbar { width: 7px; }
+.tp-col::-webkit-scrollbar-track { background: transparent; }
+.tp-col::-webkit-scrollbar-thumb {
+  background: rgba(31,35,41,0.3);
+  border-radius: 4px;
+}
+.tp-col + .tp-col {
+  border-left: 1px solid var(--border-default, #DEE0E3);
+}
+.tp-cell {
+  display: block;
+  width: 100%;
+  height: 32px;
+  line-height: 32px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-primary, #1F2329);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-family);
+  padding: 0;
+}
+.tp-cell:hover {
+  background: var(--color-bg-hover, #F2F3F5);
+}
+.tp-cell-active {
+  color: var(--color-primary, #1456F0);
+  font-weight: 500;
+}
+
+/* ─── DM overrides ─── */
 [data-theme="dark"] .tp-input-wrap {
   background: var(--surface-2, #2C2C2E);
-  border-color: var(--color-primary, #4080FF);
 }
 [data-theme="dark"] .tp-input {
   color: var(--text-primary, #E8E8E8);
 }
 [data-theme="dark"] .tp-sep {
   color: var(--text-primary, #E8E8E8);
+}
+[data-theme="dark"] .tp-dropdown {
+  background: var(--surface-2, #2C2C2E);
+  border-color: var(--border-default, #3A3A3C);
+}
+[data-theme="dark"] .tp-cell {
+  color: var(--text-primary, #E8E8E8);
+}
+[data-theme="dark"] .tp-cell:hover {
+  background: var(--color-bg-hover, #3A3A3C);
+}
+[data-theme="dark"] .tp-cell-active {
+  color: var(--color-primary, #4080FF);
+}
+[data-theme="dark"] .tp-col {
+  scrollbar-color: rgba(255,255,255,0.2) transparent;
+}
+[data-theme="dark"] .tp-col::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.2);
 }
 
 /* ─── Context menu for field headers ─── */

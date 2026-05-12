@@ -509,7 +509,30 @@ function UserEditor({
   );
 }
 
-// ─────────── Compact time input row (matches DatePickerMenu.svg bottom section) ───
+// ─────────── Time picker: input row + scrollable column dropdown ───────────
+// Scrollable column (hours/minutes/seconds)
+function TimeColumn({ count, value, onChange }: { count: number; value: number; onChange: (v: number) => void }) {
+  const colRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = colRef.current?.children[value] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "center" });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="tp-col" ref={colRef}>
+      {Array.from({ length: count }, (_, i) => (
+        <button
+          key={i}
+          className={`tp-cell${i === value ? " tp-cell-active" : ""}`}
+          onMouseDown={(e) => { e.preventDefault(); onChange(i); }}
+        >
+          {String(i).padStart(2, "0")}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Combined: input row at bottom of date picker + dropdown column panel
 function TimeInputRow({
   hour, minute, second, showSeconds,
   onHourChange, onMinuteChange, onSecondChange,
@@ -517,23 +540,41 @@ function TimeInputRow({
   hour: number; minute: number; second: number; showSeconds: boolean;
   onHourChange: (v: number) => void; onMinuteChange: (v: number) => void; onSecondChange: (v: number) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
   const clamp = (v: number, max: number) => Math.max(0, Math.min(max, v));
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (rowRef.current && !rowRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
   return (
-    <div className="tp-row">
-      <div className="tp-input-wrap">
+    <div className="tp-row" ref={rowRef}>
+      <div
+        className={`tp-input-wrap${open ? " tp-input-wrap-active" : ""}`}
+        onMouseDown={(e) => { e.stopPropagation(); setOpen(!open); }}
+      >
         <input
           className="tp-input" type="text" inputMode="numeric"
           value={String(hour).padStart(2, "0")}
+          onClick={(e) => e.stopPropagation()}
           onChange={(e) => onHourChange(clamp(parseInt(e.target.value) || 0, 23))}
-          onFocus={(e) => e.target.select()}
+          onFocus={(e) => { e.target.select(); setOpen(true); }}
           onMouseDown={(e) => e.stopPropagation()}
         />
         <span className="tp-sep">:</span>
         <input
           className="tp-input" type="text" inputMode="numeric"
           value={String(minute).padStart(2, "0")}
+          onClick={(e) => e.stopPropagation()}
           onChange={(e) => onMinuteChange(clamp(parseInt(e.target.value) || 0, 59))}
-          onFocus={(e) => e.target.select()}
+          onFocus={(e) => { e.target.select(); setOpen(true); }}
           onMouseDown={(e) => e.stopPropagation()}
         />
         {showSeconds && (
@@ -542,17 +583,25 @@ function TimeInputRow({
             <input
               className="tp-input" type="text" inputMode="numeric"
               value={String(second).padStart(2, "0")}
+              onClick={(e) => e.stopPropagation()}
               onChange={(e) => onSecondChange(clamp(parseInt(e.target.value) || 0, 59))}
-              onFocus={(e) => e.target.select()}
+              onFocus={(e) => { e.target.select(); setOpen(true); }}
               onMouseDown={(e) => e.stopPropagation()}
             />
           </>
         )}
         <svg className="tp-clock" width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <circle cx="8" cy="8" r="6.5" stroke="#646A73" strokeWidth="1" />
-          <path d="M8 5v3.5h2.5" stroke="#646A73" strokeWidth="1" strokeLinecap="round" />
+          <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1" />
+          <path d="M8 5v3.5h2.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
         </svg>
       </div>
+      {open && (
+        <div className="tp-dropdown">
+          <TimeColumn count={24} value={hour} onChange={onHourChange} />
+          <TimeColumn count={60} value={minute} onChange={onMinuteChange} />
+          {showSeconds && <TimeColumn count={60} value={second} onChange={onSecondChange} />}
+        </div>
+      )}
     </div>
   );
 }
