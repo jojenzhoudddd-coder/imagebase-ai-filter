@@ -277,7 +277,12 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
         // plugin gets first shot at drop/paste events.
         ReadOnlyButDroppable,
       ],
-      content: preserveBlankLines(source),
+      content: (() => {
+        const md = preserveBlankLines(source);
+        // DEBUG: log what tiptap-markdown parser produces
+        console.warn("[TiptapPreview] source.length=%d, preserveBlankLines.length=%d", source.length, md.length);
+        return md;
+      })(),
       // Keep technically "editable" so ProseMirror plugins (image
       // drop/paste) still fire. ReadOnlyButDroppable blocks all text input.
       editable: true,
@@ -304,6 +309,16 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
       onCreate({ editor: ed }) {
         setTimeout(() => { suppressRef.current = false; }, 50);
         markSpacerParagraphs(ed);
+        // DEBUG: check codeBlock nodes after creation
+        ed.state.doc.descendants((node, pos) => {
+          if (node.type.name === "codeBlock") {
+            const lang = node.attrs?.language || "";
+            if (lang === "vega-lite" || lang === "vega") {
+              console.warn("[TiptapPreview:onCreate] codeBlock lang=%s childCount=%d textContent.length=%d",
+                lang, node.childCount, node.textContent.length);
+            }
+          }
+        });
       },
       onUpdate({ editor: ed }) {
         markSpacerParagraphs(ed);
