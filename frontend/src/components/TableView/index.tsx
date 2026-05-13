@@ -365,7 +365,7 @@ function TextEditor({
   // V2.9 #2: 退出编辑(blur 或导航)时只提交一次,避免 Enter→commit→onNavigate→
   // setEditing(null) 后 React 还在 unmount 路径中再触发 onBlur 导致 double-commit。
   const committedRef = useRef(false);
-  const isText = field.type === "Text";
+  const isText = field.type === "Text" || field.type === "Url";
 
   // Auto-resize textarea height
   const autoResize = useCallback(() => {
@@ -1156,8 +1156,9 @@ function EditableCell({
       case "Text":
         return <TextEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} colWidth={colWidth} />;
       case "Number":
-      case "Url":
         return <TextEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />;
+      case "Url":
+        return <TextEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} colWidth={colWidth} />;
       case "SingleSelect":
         return (
           <div className="cell-editor-wrap">
