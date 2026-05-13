@@ -154,18 +154,21 @@ router.get("/:tableId/fields", async (req: Request, res: Response) => {
   if (!table) { res.status(404).json({ error: "Table not found" }); return; }
   // Fire-and-forget: warm up AI field suggestions cache for this table
   warmupSuggestions(req.params.tableId);
-  // Hydrate User/CreatedUser/ModifiedUser fields with real DB users + agents
+  // Hydrate User/CreatedUser/ModifiedUser fields with current user + their agents
   const hasUserField = table.fields.some(f => f.type === "User" || f.type === "CreatedUser" || f.type === "ModifiedUser");
   if (hasUserField) {
-    const dbUsers = await store.listWorkspaceUsers();
+    const reqUserId = currentUser(req)?.id;
+    const currentMembers = reqUserId ? await store.listCurrentUserAndAgents(reqUserId) : [];
     for (const f of table.fields) {
       if (f.type === "User" || f.type === "CreatedUser" || f.type === "ModifiedUser") {
         const existing = f.config.users ?? [];
         const seen = new Set<string>();
         const merged: { id: string; name: string; avatar: string }[] = [];
-        for (const u of dbUsers) {
+        // Current user + agent first
+        for (const u of currentMembers) {
           if (!seen.has(u.id)) { seen.add(u.id); merged.push(u); }
         }
+        // Then any existing mock users (for display of old records)
         for (const u of existing) {
           if (!seen.has(u.id)) { seen.add(u.id); merged.push(u); }
         }

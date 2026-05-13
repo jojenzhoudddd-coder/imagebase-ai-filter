@@ -1107,16 +1107,16 @@ export async function backfillUserFields(): Promise<void> {
   console.log("[backfill] CreatedUser/ModifiedUser fields populated");
 }
 
-/** List all users + agents as {id, name, avatar} for hydrating system user fields. */
-export async function listWorkspaceUsers(): Promise<{ id: string; name: string; avatar: string }[]> {
-  const [users, agents] = await Promise.all([
-    prisma.user.findMany({ select: { id: true, name: true, avatarUrl: true } }),
-    prisma.agent.findMany({ select: { id: true, name: true, avatarUrl: true } }),
+/** List current user + their agents as {id, name, avatar} for hydrating user fields. */
+export async function listCurrentUserAndAgents(userId: string): Promise<{ id: string; name: string; avatar: string }[]> {
+  const [user, agents] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, avatarUrl: true } }),
+    prisma.agent.findMany({ where: { userId }, select: { id: true, name: true, avatarUrl: true } }),
   ]);
-  return [
-    ...users.map(u => ({ id: u.id, name: u.name, avatar: u.avatarUrl || `/avatars/${u.id}.png` })),
-    ...agents.map(a => ({ id: a.id, name: a.name, avatar: a.avatarUrl || `/avatars/agent.png` })),
-  ];
+  const result: { id: string; name: string; avatar: string }[] = [];
+  if (user) result.push({ id: user.id, name: user.name, avatar: user.avatarUrl || `/avatars/${user.id}.png` });
+  for (const a of agents) result.push({ id: a.id, name: a.name, avatar: a.avatarUrl || `/avatars/agent.png` });
+  return result;
 }
 
 // ─── AI Tool functions ───
