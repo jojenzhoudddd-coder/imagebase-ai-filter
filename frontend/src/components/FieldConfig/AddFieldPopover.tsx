@@ -186,21 +186,18 @@ function AutoNumberConfigPanel({ rules, onRulesChange }: {
                   <circle cx="3" cy="11" r="1.2" fill="currentColor"/><circle cx="7" cy="11" r="1.2" fill="currentColor"/>
                 </svg>
               </span>
-              <span className="so-input" style={{ flex: "0 0 auto", width: "auto", background: "none", border: "none", color: "var(--text-secondary)", fontSize: 13 }}>
-                {RULE_LABEL[rule.type]}
-              </span>
+              <span className="an-rule-name">{RULE_LABEL[rule.type]}</span>
               {rule.type === "increment" && (
-                <span style={{ fontSize: 12, color: "var(--text-placeholder)", marginLeft: "auto", marginRight: 4 }}>3 位</span>
+                <span className="an-rule-suffix">3 位</span>
               )}
               {rule.type === "date" && (
-                <div style={{ marginLeft: "auto", flex: "0 0 auto" }}>
+                <div className="an-rule-select">
                   <CustomSelect value={rule.format} options={DATE_FORMAT_OPTIONS} onChange={(v) => updateRule(idx, { type: "date", format: v as any })} />
                 </div>
               )}
               {rule.type === "fixed" && (
                 <input
-                  className="so-input"
-                  style={{ marginLeft: "auto", flex: "0 1 100px" }}
+                  className="so-input an-rule-fixed-input"
                   value={rule.value}
                   onChange={(e) => updateRule(idx, { type: "fixed", value: e.target.value })}
                   placeholder="请输入"

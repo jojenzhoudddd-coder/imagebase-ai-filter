@@ -646,4 +646,24 @@
   line-height: 20px;
 }
 
-/* AutoNumber reuses so-list/so-item/so-drag/so-remove from select options */
+/* ─── AutoNumber rule items (reuses so-list/so-item/so-drag/so-remove) ─── */
+.an-rule-name {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-right: 4px;
+}
+.an-rule-suffix {
+  font-size: 12px;
+  color: var(--text-placeholder);
+  margin-left: auto;
+  margin-right: 4px;
+}
+.an-rule-select {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.an-rule-fixed-input {
+  margin-left: auto;
+  flex: 0 1 100px;
+}
