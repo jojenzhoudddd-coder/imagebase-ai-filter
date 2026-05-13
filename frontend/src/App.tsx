@@ -1027,8 +1027,12 @@ export default function App() {
   }, []);
 
   const handleCreateFieldConfirm = useCallback(async (newField: Field) => {
-    setFields((prev) => [...prev, newField]);
-    const r = await fetchRecords(activeTableIdRef.current);
+    // Refetch fields to get hydrated config (e.g. User field gets config.users injected)
+    const [freshFields, r] = await Promise.all([
+      fetchFields(activeTableIdRef.current),
+      fetchRecords(activeTableIdRef.current),
+    ]);
+    setFields(freshFields);
     setAllRecords(r);
     setAddFieldAnchor(null);
   }, []);
