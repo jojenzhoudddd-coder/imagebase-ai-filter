@@ -624,12 +624,6 @@
  * Without this wrapper, all children would flatten into .chat-messages and
  * inherit the 28px outer gap — which is too loose for sibling cards of the
  * same turn. */
-/* When a tool-only assistant block follows another assistant block, collapse
- * the 28px inter-message gap down to 4px so consecutive tool cards look
- * continuous (e.g. after confirm-and-continue splits into two messages). */
-.chat-msg-assistant-block + .chat-msg-assistant-block.tool-only {
-  margin-top: -24px; /* 28px gap - 24px = 4px effective */
-}
 .chat-msg-assistant-block {
   display: flex;
   flex-direction: column;

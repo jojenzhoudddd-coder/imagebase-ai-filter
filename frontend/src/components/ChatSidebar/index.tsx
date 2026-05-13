@@ -1927,11 +1927,11 @@ export default function ChatSidebar({
 
             {/* 800px 居中:用一个 inner wrapper 限制宽度 */}
             <div className="chat-messages-inner">
-              {messages.map((m, idx) => (
+              {mergeToolOnlyMessages(messages).map((m, idx, arr) => (
                 <MessageBlock
                   key={m.id}
                   msg={m}
-                  confirmSlot={idx === messages.length - 1 && pendingConfirm ? (
+                  confirmSlot={idx === arr.length - 1 && pendingConfirm ? (
                     <ConfirmCard
                       pending={pendingConfirm}
                       onConfirm={() => handleConfirm(true)}
@@ -2186,12 +2186,8 @@ function MessageBlock({ msg, confirmSlot }: { msg: UiMessage; confirmSlot?: Reac
 
   // Wrap in a single block so the inner gap (text ↔ tool cards = 12px) is
   // tighter than the outer message gap (28px between successive messages).
-  // When a message has only tool cards (no text/thinking), mark it so CSS
-  // can collapse the 28px inter-message gap to match tool-card spacing.
-  const toolOnly = !hasAnswer && !hasThinking && hasAnyToolCall;
-
   const assistantBody = (
-    <div className={`chat-msg-assistant-block${toolOnly ? " tool-only" : ""}`}>
+    <div className="chat-msg-assistant-block">
       {thinkingCollapsed && (
         <ThinkingIndicator
           mode="collapsed"
@@ -2256,6 +2252,34 @@ function interleaveOrchestration(
   }
   list.sort((a, b) => a.ts - b.ts);
   return list;
+}
+
+/** Merge tool-only assistant messages into the preceding assistant message so
+ * they render inside the same block (no 28px inter-message gap). This happens
+ * after confirm-and-continue: the agent's post-confirmation tool calls land
+ * in a new message that has no text content, only tool cards. */
+function mergeToolOnlyMessages(messages: UiMessage[]): UiMessage[] {
+  const result: UiMessage[] = [];
+  for (const m of messages) {
+    const prev = result[result.length - 1];
+    const isToolOnly = m.role === "assistant" && !m.content && !m.thinking && m.toolCalls.length > 0;
+    if (isToolOnly && prev && prev.role === "assistant") {
+      // Merge tool calls into previous assistant message (shallow copy to avoid mutation)
+      const merged: UiMessage = {
+        ...prev,
+        toolCalls: [...prev.toolCalls, ...m.toolCalls],
+        subagentRuns: [...(prev.subagentRuns ?? []), ...(m.subagentRuns ?? [])],
+        workflowRuns: [...(prev.workflowRuns ?? []), ...(m.workflowRuns ?? [])],
+        streaming: m.streaming || prev.streaming,
+      };
+      // Keep turnMeta from the later message if it exists (more up-to-date)
+      if (m.turnMeta) merged.turnMeta = m.turnMeta;
+      result[result.length - 1] = merged;
+    } else {
+      result.push(m);
+    }
+  }
+  return result;
 }
 
 /** Run-length grouping by tool name — keeps ordering stable so the transcript
