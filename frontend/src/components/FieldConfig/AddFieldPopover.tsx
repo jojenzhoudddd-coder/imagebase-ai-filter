@@ -60,15 +60,7 @@ const FIELD_TYPE_GROUPS: FieldTypeGroup[] = [
       { type: "ModifiedTime", icon: "◵", labelKey: "fieldType.modifiedTime" },
     ],
   },
-  {
-    groupKey: "fieldType.groupExtended",
-    items: [
-      { type: "Formula",      icon: "ƒx", labelKey: "fieldType.formula" },
-      { type: "SingleLink",   icon: "↗", labelKey: "fieldType.singleLink" },
-      { type: "DuplexLink",   icon: "⇄", labelKey: "fieldType.duplexLink" },
-      { type: "Lookup",       icon: "▦", labelKey: "fieldType.lookup" },
-    ],
-  },
+  // Extended group (Formula, Link, Lookup) hidden — not yet ready for production
 ];
 
 const ALL_FIELD_ITEMS = FIELD_TYPE_GROUPS.flatMap(g => g.items);
