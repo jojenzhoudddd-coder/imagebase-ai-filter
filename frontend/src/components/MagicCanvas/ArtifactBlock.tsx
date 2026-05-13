@@ -216,7 +216,7 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
           designName={design.name}
           workspaceId={ws.workspaceId}
           onRename={(name) => ws.onRenameItem(active.id, name)}
-          onNavigateToDemo={(demoId) => handleSelectItem(demoId, "demo")}
+
         />
       );
     }

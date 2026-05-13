@@ -1924,7 +1924,7 @@ export default function App() {
           designName={d.name}
           workspaceId={WORKSPACE_ID}
           onRename={(name) => handleRenameSidebarItemExtended(activeTableId, name)}
-          onNavigateToDemo={(demoId) => { setActiveTableId(demoId); setActiveItemType("demo"); }}
+
         />
       );
     }
