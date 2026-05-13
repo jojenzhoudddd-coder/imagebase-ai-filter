@@ -1862,7 +1862,8 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       if (!resizeRef.current) return;
       const delta = ev.clientX - resizeRef.current.startX;
       const newWidth = Math.max(MIN_COL_WIDTH, resizeRef.current.startWidth + delta);
-      setColWidths((prev) => ({ ...prev, [resizeRef.current!.fieldId]: newWidth }));
+      const resizingFieldId = resizeRef.current.fieldId;
+      setColWidths((prev) => ({ ...prev, [resizingFieldId]: newWidth }));
       // Position resize line via DOM (no React re-render)
       const container = containerRef.current;
       if (container && line) {

@@ -1238,7 +1238,12 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
       onDrop={handleDrop}
     >
       {/* ─── Top Bar ─── */}
-      <div className="svg-canvas-topbar">
+      <div className="svg-canvas-topbar" onClick={(e) => {
+        const t = e.target as HTMLElement;
+        if (t.closest("button") || t.closest(".inline-edit") || t.closest("input")) return;
+        setSelectedId(null);
+        setCtxMenu(null);
+      }}>
         <SidebarExpandButton />
         <span className="svg-canvas-topbar-name">
           <InlineEdit

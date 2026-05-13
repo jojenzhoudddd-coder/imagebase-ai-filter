@@ -716,6 +716,13 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
     setEditFieldState(null);
   }, [fields, tableId]);
 
+  // Live-update records when AutoNumber config changes without closing popover
+  const handleLiveFieldUpdate = useCallback(async () => {
+    const [f, r] = await Promise.all([fetchFields(tableId), fetchRecords(tableId)]);
+    setFields(f);
+    setAllRecords(r);
+  }, [tableId]);
+
   // ── Remote handlers ──
   const handleRemoteRecordCreate = useCallback((record: TableRecord) => {
     setAllRecords((prev) => (prev.some((r) => r.id === record.id) ? prev : [...prev, record]));
@@ -744,8 +751,16 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
     fetchRecords(tableId).then(setAllRecords);
   }, [tableId]);
   const handleRemoteFieldUpdate = useCallback((fieldId: string, changes: { name?: string; config?: any }) => {
-    setFields((prev) => prev.map((f) => (f.id === fieldId ? { ...f, ...changes } : f)));
-  }, []);
+    setFields((prev) => {
+      const updated = prev.map((f) => (f.id === fieldId ? { ...f, ...changes } : f));
+      // If an AutoNumber field config changed, records were recalculated on the backend — refetch
+      const field = prev.find((f) => f.id === fieldId);
+      if (field?.type === "AutoNumber" && changes.config) {
+        fetchRecords(tableId).then(setAllRecords);
+      }
+      return updated;
+    });
+  }, [tableId]);
   const handleRemoteFieldDelete = useCallback((fieldId: string) => {
     setFields((prev) => prev.filter((f) => f.id !== fieldId));
     setFilter((prev) => ({ ...prev, conditions: prev.conditions.filter((c) => c.fieldId !== fieldId) }));
@@ -928,6 +943,7 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
             anchorRect={editFieldState.anchorRect}
             onCancel={() => setEditFieldState(null)}
             onConfirm={handleEditFieldConfirm}
+            onLiveUpdate={handleLiveFieldUpdate}
             fieldSuggestions={fieldSuggestions}
             editingField={fields.find((f) => f.id === editFieldState.fieldId)}
             clientId={instanceClientId}
