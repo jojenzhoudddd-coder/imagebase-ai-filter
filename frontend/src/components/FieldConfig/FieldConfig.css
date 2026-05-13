@@ -722,14 +722,8 @@
   background: none;
   color: var(--text-muted);
 }
-.an-add-wrap {
-  position: relative;
-  align-self: flex-start;
-}
 .an-add-menu {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 0;
+  position: fixed;
   min-width: 120px;
   padding: 4px;
   background: var(--surface-2);

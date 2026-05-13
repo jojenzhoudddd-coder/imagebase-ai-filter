@@ -124,29 +124,40 @@ function AddRuleMenu({ onAdd, dateLabel, fixedLabel, buttonLabel }: {
   buttonLabel: string;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (menuRef.current && !menuRef.current.contains(e.target as Node) &&
+          btnRef.current && !btnRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 2, left: rect.left });
+    }
+    setOpen(!open);
+  };
+
   return (
-    <div ref={ref} className="an-add-wrap">
-      <button type="button" className="so-add" onClick={() => setOpen(!open)}>
+    <>
+      <button ref={btnRef} type="button" className="so-add" onClick={handleOpen}>
         {buttonLabel}
       </button>
       {open && (
-        <div className="an-add-menu">
+        <div ref={menuRef} className="an-add-menu" style={{ top: menuPos.top, left: menuPos.left }}>
           <button type="button" className="an-add-menu-item" onClick={() => { onAdd("date"); setOpen(false); }}>{dateLabel}</button>
           <button type="button" className="an-add-menu-item" onClick={() => { onAdd("fixed"); setOpen(false); }}>{fixedLabel}</button>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
