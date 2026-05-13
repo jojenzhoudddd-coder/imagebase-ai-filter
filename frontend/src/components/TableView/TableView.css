@@ -125,10 +125,7 @@
   z-index: 3;
 }
 
-.col-resize-handle:hover {
-  background: var(--color-primary);
-  opacity: 0.3;
-}
+/* hover feedback is handled via full-height col-resize-line */
 
 /* Figma: first column 44px — width set via <col>, not here (table-layout:fixed ignores th width when col is set) */
 .col-index {

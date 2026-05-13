@@ -48,6 +48,7 @@
   flex: 1;
   overflow-y: auto;
   padding: 4px 4px;
+  position: relative;
 }
 
 /* Empty state when search has no results */
@@ -88,12 +89,17 @@
   z-index: 10;
 }
 
-.field-config-item.drag-over-above {
-  box-shadow: inset 0 2px 0 0 var(--primary);
-}
-
-.field-config-item.drag-over-below {
-  box-shadow: inset 0 -2px 0 0 var(--primary);
+/* Drop line — positioned between items */
+.field-config-drop-line {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  background: var(--primary);
+  border-radius: 1px;
+  z-index: 20;
+  pointer-events: none;
+  transform: translateY(-1px);
 }
 
 /* Drag handle */

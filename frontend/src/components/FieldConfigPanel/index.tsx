@@ -142,8 +142,9 @@ export default function FieldConfigPanel({
   }, [onClose, anchorRef]);
 
   // ── Drag to reorder ──
-  const handleDragStart = useCallback((e: React.MouseEvent, fieldId: string) => {
+  const listRef = useRef<HTMLDivElement>(null);
 
+  const handleDragStart = useCallback((e: React.MouseEvent, fieldId: string) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -165,16 +166,34 @@ export default function FieldConfigPanel({
       dragRef.current.currentY = ev.clientY;
       setDragState({ ...dragRef.current });
 
-      // Find hover target
+      // Find hover target — re-read live rects
+      const liveRects = new Map<string, DOMRect>();
+      itemRefs.current.forEach((el, id) => { liveRects.set(id, el.getBoundingClientRect()); });
+
+      const ff = filteredFields.filter(f => f.id !== fieldId);
       let overId: string | null = null;
       let overPos: "above" | "below" | null = null;
-      rects.forEach((r, id) => {
-        if (id === fieldId) return;
+      for (const f of ff) {
+        const r = liveRects.get(f.id);
+        if (!r) continue;
         if (ev.clientY >= r.top && ev.clientY <= r.bottom) {
-          overId = id;
+          overId = f.id;
           overPos = ev.clientY < r.top + r.height / 2 ? "above" : "below";
+          break;
         }
-      });
+      }
+      // Edge detection: before first / after last
+      if (!overId && ff.length > 0) {
+        const firstRect = liveRects.get(ff[0].id);
+        const lastRect = liveRects.get(ff[ff.length - 1].id);
+        if (firstRect && ev.clientY < firstRect.top + firstRect.height / 2) {
+          overId = ff[0].id;
+          overPos = "above";
+        } else if (lastRect && ev.clientY > lastRect.top + lastRect.height / 2) {
+          overId = ff[ff.length - 1].id;
+          overPos = "below";
+        }
+      }
       dragOverRef.current = { id: overId, pos: overPos };
       setDragOverId(overId);
       setDragOverPosition(overPos);
@@ -211,7 +230,7 @@ export default function FieldConfigPanel({
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [fields, onFieldOrderChange]);
+  }, [fields, filteredFields, onFieldOrderChange]);
 
   const getDragTransform = (fieldId: string): React.CSSProperties => {
     if (!dragState || dragState.fieldId !== fieldId) return {};
@@ -223,10 +242,20 @@ export default function FieldConfigPanel({
     };
   };
 
-  const getDragOverClass = (fieldId: string): string => {
-    if (!dragState || dragOverId !== fieldId || dragState.fieldId === fieldId) return "";
-    return dragOverPosition === "above" ? "drag-over-above" : "drag-over-below";
-  };
+  // Compute drop line Y position (relative to list container)
+  const dropLineY = (() => {
+    if (!dragState || !dragOverId || !dragOverPosition) return null;
+    const listEl = listRef.current;
+    const targetEl = itemRefs.current.get(dragOverId);
+    if (!listEl || !targetEl) return null;
+    const listRect = listEl.getBoundingClientRect();
+    const targetRect = targetEl.getBoundingClientRect();
+    if (dragOverPosition === "above") {
+      return targetRect.top - listRect.top + listEl.scrollTop;
+    } else {
+      return targetRect.bottom - listRect.top + listEl.scrollTop;
+    }
+  })();
 
   return (
     <div
@@ -245,7 +274,7 @@ export default function FieldConfigPanel({
           onKeyDown={handleSearchKeyDown}
         />
       </div>
-      <div className="field-config-list">
+      <div className="field-config-list" ref={listRef}>
         {filteredFields.length === 0 && isSearching ? (
           <div className="field-config-empty">{t("fieldConfig.noFields")}</div>
         ) : (
@@ -260,7 +289,7 @@ export default function FieldConfigPanel({
               <div
                 key={field.id}
                 ref={(el) => { if (el) itemRefs.current.set(field.id, el); else itemRefs.current.delete(field.id); }}
-                className={`field-config-item ${isDragging ? "is-dragging" : ""} ${getDragOverClass(field.id)} ${isHighlighted ? "is-highlighted" : ""}`}
+                className={`field-config-item ${isDragging ? "is-dragging" : ""} ${isHighlighted ? "is-highlighted" : ""}`}
                 style={getDragTransform(field.id)}
                 onMouseEnter={() => setHighlightedIndex(idx)}
               >
@@ -307,6 +336,7 @@ export default function FieldConfigPanel({
             );
           })
         )}
+        {dropLineY !== null && <div className="field-config-drop-line" style={{ top: dropLineY }} />}
       </div>
     </div>
   );
