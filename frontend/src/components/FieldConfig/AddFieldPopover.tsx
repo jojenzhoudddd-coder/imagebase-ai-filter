@@ -223,24 +223,26 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
                   placeholder={t("addField.fixedPlaceholder")}
                 />
               )}
-              {rule.type !== "increment" && (
-                <button type="button" className="so-remove" onClick={() => onRulesChange(rules.filter((_, i) => i !== idx))}>
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </button>
-              )}
+              <button type="button" className={`so-remove${rule.type === "increment" ? " disabled" : ""}`}
+                disabled={rule.type === "increment"}
+                onClick={() => { if (rule.type !== "increment") onRulesChange(rules.filter((_, i) => i !== idx)); }}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
             </div>
           );
         })}
-        <button type="button" className="so-add"
-          onClick={() => {
-            if (!rules.some(r => r.type === "date")) addRule("date");
-            else if (!rules.some(r => r.type === "fixed")) addRule("fixed");
-            else if (!hasIncrement) addRule("increment");
-            else addRule("date");
-          }}
-        >+ {t("addField.addRule")}</button>
+        <select
+          className="so-add an-add-select"
+          value=""
+          onChange={(e) => { if (e.target.value) { addRule(e.target.value as any); e.target.value = ""; } }}
+        >
+          <option value="" disabled>+ {t("addField.addRule")}</option>
+          <option value="date">{t("addField.ruleDate")}</option>
+          <option value="fixed">{t("addField.ruleFixed")}</option>
+        </select>
       </div>
     </div>
   );
