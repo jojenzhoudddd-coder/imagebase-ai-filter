@@ -76,7 +76,7 @@ const OPTION_PALETTE_LM: Record<string, { bg: string; text: string; dot: string 
   "#002270": { bg: "#E0E9FF", text: "#002270", dot: "#3370FF" },   // Blue
   "#3B1A02": { bg: "#FEF0E1", text: "#3B1A02", dot: "#FFB900" },   // Amber
   "#2B2F36": { bg: "#F0F1F3", text: "#2B2F36", dot: "#646A73" },   // Dark
-  "#8F959E": { bg: "#F0F1F3", text: "#8F959E", dot: "#8F959E" },   // Gray
+  "#FFFFFF": { bg: "#F7F8FA", text: "#646A73", dot: "#C9CDD4" },   // White
 };
 
 // DM 调色板：bg 用 dot 色 22% alpha（在 #1C1C1E 底上呈现染色色块），
@@ -88,7 +88,7 @@ const OPTION_PALETTE_DM: Record<string, { bg: string; text: string; dot: string 
   "#002270": { bg: "rgba(74, 130, 255, 0.22)", text: "#99B6FF", dot: "#6B9AFF" },   // Blue
   "#3B1A02": { bg: "rgba(255, 184, 77, 0.20)", text: "#FFD09C", dot: "#FFB84D" },   // Amber
   "#2B2F36": { bg: "rgba(176, 176, 181, 0.16)", text: "#D0D0D5", dot: "#B0B0B5" }, // Dark
-  "#8F959E": { bg: "rgba(176, 176, 181, 0.16)", text: "#B0B0B5", dot: "#8E8E93" }, // Gray
+  "#FFFFFF": { bg: "rgba(255, 255, 255, 0.08)", text: "#D0D0D5", dot: "#8E8E93" }, // White
 };
 
 const DEFAULT_OPTION_STYLE_LM = { bg: "#F0F1F3", text: "#646A73", dot: "#8F959E" };
@@ -546,7 +546,7 @@ function SelectEditor({
   }, [hlIdx]);
 
   const createAndCommit = async () => {
-    const colors = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#8F959E"];
+    const colors = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#FFFFFF"];
     const newOpt = { id: `opt_${Date.now()}`, name: trimmed, color: colors[options.length % colors.length] };
     const newOptions = [...options, newOpt];
     const updatedField = { ...field, config: { ...field.config, options: newOptions } };
