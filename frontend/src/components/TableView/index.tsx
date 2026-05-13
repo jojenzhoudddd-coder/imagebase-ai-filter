@@ -5,6 +5,7 @@ import { useToast } from "../Toast/index";
 import { useResolvedTheme } from "../../theme";
 import { FieldIcon as FieldIconSvg } from "../FieldConfig/FieldIcons";
 import SwipeDelete from "../SwipeDelete";
+import { pinyinMatch } from "../../utils/pinyinMatch";
 import "./TableView.css";
 
 type CellValue = string | number | boolean | string[] | null;
@@ -528,7 +529,7 @@ function SelectEditor({
 
   const trimmed = query.trim();
   const filtered = trimmed
-    ? options.filter((o) => o.name.toLowerCase().includes(trimmed.toLowerCase()))
+    ? options.filter((o) => pinyinMatch(o.name, trimmed))
     : options;
   const exactMatch = trimmed && filtered.some((o) => o.name === trimmed);
   const showCreate = trimmed && !exactMatch;
@@ -694,7 +695,7 @@ function UserEditor({
   }, [onCancel]);
 
   const filtered = query.trim()
-    ? users.filter((u) => u.name.toLowerCase().includes(query.trim().toLowerCase()))
+    ? users.filter((u) => pinyinMatch(u.name, query.trim()))
     : users;
 
   useEffect(() => { setHlIdx(0); }, [query]);
