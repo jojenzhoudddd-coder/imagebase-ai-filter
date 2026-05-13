@@ -108,6 +108,44 @@ const OPTION_TAG_COLORS_DM: Record<string, { bg: string; text: string; dot: stri
 const DEFAULT_TAG_LM = { bg: "#F0F1F3", text: "#646A73", dot: "#8F959E" };
 const DEFAULT_TAG_DM = { bg: "rgba(176, 176, 181, 0.16)", text: "#B0B0B5", dot: "#8E8E93" };
 
+function ColorPickerPopover({ currentColor, onPick, onClose }: {
+  currentColor: string;
+  onPick: (color: string) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const theme = useResolvedTheme();
+  const palette = theme === "dark" ? OPTION_TAG_COLORS_DM : OPTION_TAG_COLORS_LM;
+  const fallback = theme === "dark" ? DEFAULT_TAG_DM : DEFAULT_TAG_LM;
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  return (
+    <div ref={ref} className="so-color-picker" onMouseDown={(e) => e.stopPropagation()}>
+      {OPTION_COLORS.map((c) => {
+        const s = palette[c] || fallback;
+        const isActive = c === currentColor;
+        return (
+          <button
+            key={c}
+            className={`so-color-swatch${isActive ? " active" : ""}`}
+            style={{ background: s.bg }}
+            onClick={() => { onPick(c); onClose(); }}
+          >
+            <span className="so-color-swatch-dot" style={{ background: s.dot }} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
   options: SelectOption[];
   onChange: (opts: SelectOption[]) => void;
@@ -120,6 +158,7 @@ function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
   const [overPos, setOverPos] = useState<"above" | "below">("below");
+  const [colorPickerIdx, setColorPickerIdx] = useState<number | null>(null);
 
   const handleDragStart = (e: React.DragEvent, idx: number) => {
     e.dataTransfer.effectAllowed = "move";
@@ -175,8 +214,21 @@ function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
                   <circle cx="3" cy="11" r="1.2" fill="currentColor"/><circle cx="7" cy="11" r="1.2" fill="currentColor"/>
                 </svg>
               </span>
-              <span className="so-dot" style={{ background: tagStyle.bg }}>
-                <span className="so-dot-inner" style={{ background: tagStyle.dot }} />
+              <span className="so-dot-wrap">
+                <span className="so-dot" style={{ background: tagStyle.bg, cursor: "pointer" }} onClick={() => setColorPickerIdx(colorPickerIdx === idx ? null : idx)}>
+                  <span className="so-dot-inner" style={{ background: tagStyle.dot }} />
+                </span>
+                {colorPickerIdx === idx && (
+                  <ColorPickerPopover
+                    currentColor={opt.color}
+                    onPick={(c) => {
+                      const next = [...options];
+                      next[idx] = { ...opt, color: c };
+                      onChange(next);
+                    }}
+                    onClose={() => setColorPickerIdx(null)}
+                  />
+                )}
               </span>
               <input
                 className="so-input"
