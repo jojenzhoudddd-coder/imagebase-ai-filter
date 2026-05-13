@@ -46,7 +46,6 @@ const FIELD_TYPE_GROUPS: FieldTypeGroup[] = [
       { type: "MultiSelect",  icon: "☲", labelKey: "fieldType.multiSelect" },
       { type: "User",         icon: "☻", labelKey: "fieldType.user" },
       { type: "DateTime",     icon: "▥", labelKey: "fieldType.dateTime" },
-      { type: "Attachment",   icon: "📎", labelKey: "fieldType.attachment" },
       { type: "Checkbox",     icon: "☑", labelKey: "fieldType.checkbox" },
       { type: "Url",          icon: "🔗", labelKey: "fieldType.url" },
     ],
@@ -521,9 +520,11 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
     if (!isEdit || fieldType !== "AutoNumber") return;
     if (autoNumInitRef.current) { autoNumInitRef.current = false; return; }
     const config = { autoNumberMode: "custom" as const, autoNumberRules, autoNumberDigits };
+    const liveUpdate = onLiveUpdate;
     updateField(currentTableId, editingField!.id, { config }).then(() => {
-      onLiveUpdate?.();
-    }).catch(() => {});
+      console.log("[AutoNum] updateField done, calling liveUpdate", !!liveUpdate);
+      liveUpdate?.();
+    }).catch((err) => { console.error("[AutoNum] updateField failed", err); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoNumberRules, autoNumberDigits]);
 

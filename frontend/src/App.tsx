@@ -1051,10 +1051,12 @@ export default function App() {
 
   // Live-update fields + records when AutoNumber config changes without closing popover
   const handleLiveFieldUpdate = useCallback(async () => {
+    console.log("[LiveUpdate] fetching fields+records for", activeTableIdRef.current);
     const [f, r] = await Promise.all([
       fetchFields(activeTableIdRef.current),
       fetchRecords(activeTableIdRef.current),
     ]);
+    console.log("[LiveUpdate] got", f.length, "fields,", r.length, "records");
     setFields(f);
     setAllRecords(r);
   }, []);
