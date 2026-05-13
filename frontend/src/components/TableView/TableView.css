@@ -408,19 +408,18 @@
   font-weight: 500;
 }
 
-.option-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  flex-shrink: 0;
-}
-
-.option-label {
-  flex: 1;
-  min-width: 0;
+.option-tag-preview {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 11px;
+  font-size: 13px;
+  height: 22px;
+  line-height: 22px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 100%;
 }
 
 /* ─── Date picker calendar popup ─── */

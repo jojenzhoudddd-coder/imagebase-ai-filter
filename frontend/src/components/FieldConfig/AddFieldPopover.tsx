@@ -105,15 +105,27 @@ const EMPTY_LOOKUP: LookupConfig = {
 
 // Palette keys that match the cell-display color system (OPTION_PALETTE_LM/DM in TableView)
 const OPTION_COLORS = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#8F959E"];
-// Dot colors for display in config editor — LM and DM variants
-const OPTION_DOT_COLORS_LM: Record<string, string> = {
-  "#D83931": "#F54A45", "#F77234": "#FF7D00", "#02312A": "#14C9C9",
-  "#002270": "#3370FF", "#3B1A02": "#FFB900", "#2B2F36": "#646A73", "#8F959E": "#8F959E",
+// Tag-style colors (bg + text) matching cell display palette
+const OPTION_TAG_COLORS_LM: Record<string, { bg: string; text: string }> = {
+  "#D83931": { bg: "#FEE2E2", text: "#D83931" },
+  "#F77234": { bg: "#FEE7CD", text: "#F77234" },
+  "#02312A": { bg: "#CAEFFC", text: "#02312A" },
+  "#002270": { bg: "#E0E9FF", text: "#002270" },
+  "#3B1A02": { bg: "#FEF0E1", text: "#3B1A02" },
+  "#2B2F36": { bg: "#F0F1F3", text: "#2B2F36" },
+  "#8F959E": { bg: "#F0F1F3", text: "#8F959E" },
 };
-const OPTION_DOT_COLORS_DM: Record<string, string> = {
-  "#D83931": "#FF6B66", "#F77234": "#FF9D4D", "#02312A": "#22D3D3",
-  "#002270": "#6B9AFF", "#3B1A02": "#FFB84D", "#2B2F36": "#B0B0B5", "#8F959E": "#8E8E93",
+const OPTION_TAG_COLORS_DM: Record<string, { bg: string; text: string }> = {
+  "#D83931": { bg: "rgba(245, 74, 69, 0.22)", text: "#FF8B86" },
+  "#F77234": { bg: "rgba(255, 125, 0, 0.22)", text: "#FFAA66" },
+  "#02312A": { bg: "rgba(20, 201, 201, 0.20)", text: "#7FE0DA" },
+  "#002270": { bg: "rgba(74, 130, 255, 0.22)", text: "#99B6FF" },
+  "#3B1A02": { bg: "rgba(255, 184, 77, 0.20)", text: "#FFD09C" },
+  "#2B2F36": { bg: "rgba(176, 176, 181, 0.16)", text: "#D0D0D5" },
+  "#8F959E": { bg: "rgba(176, 176, 181, 0.16)", text: "#B0B0B5" },
 };
+const DEFAULT_TAG_LM = { bg: "#F0F1F3", text: "#646A73" };
+const DEFAULT_TAG_DM = { bg: "rgba(176, 176, 181, 0.16)", text: "#B0B0B5" };
 
 function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
   options: SelectOption[];
@@ -122,7 +134,8 @@ function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
   placeholder: string;
 }) {
   const theme = useResolvedTheme();
-  const dotColors = theme === "dark" ? OPTION_DOT_COLORS_DM : OPTION_DOT_COLORS_LM;
+  const tagPalette = theme === "dark" ? OPTION_TAG_COLORS_DM : OPTION_TAG_COLORS_LM;
+  const tagFallback = theme === "dark" ? DEFAULT_TAG_DM : DEFAULT_TAG_LM;
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
   const [overPos, setOverPos] = useState<"above" | "below">("below");
@@ -162,7 +175,7 @@ function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
           if (dragIdx === idx) cls += " is-dragging";
           if (overIdx === idx && overPos === "above") cls += " drag-over-above";
           if (overIdx === idx && overPos === "below") cls += " drag-over-below";
-          const dotColor = dotColors[opt.color] || opt.color || "#4080FF";
+          const tagStyle = tagPalette[opt.color] || tagFallback;
           return (
             <div
               key={opt.id}
@@ -181,7 +194,7 @@ function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
                   <circle cx="3" cy="11" r="1.2" fill="currentColor"/><circle cx="7" cy="11" r="1.2" fill="currentColor"/>
                 </svg>
               </span>
-              <span className="so-dot" style={{ background: dotColor }} />
+              <span className="so-dot" style={{ background: tagStyle.bg }} />
               <input
                 className="so-input"
                 value={opt.name}

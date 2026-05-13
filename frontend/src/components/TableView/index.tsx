@@ -576,8 +576,7 @@ function SelectEditor({
               }}
               onMouseEnter={() => setHlIdx(i)}
             >
-              <span className="option-dot" style={{ background: optStyle.dot }} />
-              <span className="option-label">{opt.name}</span>
+              <span className="option-tag-preview" style={{ background: optStyle.bg, color: optStyle.text }}>{opt.name}</span>
             </button>
           );
         })}
