@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
+import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef, useLayoutEffect } from "react";
 import { Field, TableRecord, UserOption } from "../../types";
 import { useTranslation } from "../../i18n/index";
 import { useToast } from "../Toast/index";
@@ -183,6 +183,68 @@ function formatNumber(val: number, fmt?: string): string {
   return String(val);
 }
 
+// ─────────── MultiSelect overflow display with +N ───────────
+function MultiSelectDisplay({ field, value }: { field: Field; value: CellValue }) {
+  const items = Array.isArray(value) ? value : [String(value)];
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [visibleCount, setVisibleCount] = useState(items.length);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const compute = () => {
+      // children = all tag spans (rendered but potentially hidden) + optional badge
+      const tags = Array.from(el.querySelectorAll(".status-tag")) as HTMLElement[];
+      const containerWidth = el.clientWidth;
+      if (!containerWidth || tags.length === 0) { setVisibleCount(items.length); return; }
+      const GAP = 4;
+      const BADGE_WIDTH = 28;
+      let used = 0;
+      let fits = 0;
+      for (let i = 0; i < tags.length; i++) {
+        // temporarily show for measurement
+        tags[i].style.position = "static";
+        tags[i].style.visibility = "visible";
+        const w = tags[i].offsetWidth;
+        const needed = fits > 0 ? GAP + w : w;
+        const remaining = tags.length - i - 1;
+        const reserveForBadge = remaining > 0 ? GAP + BADGE_WIDTH : 0;
+        if (used + needed + reserveForBadge <= containerWidth) {
+          used += needed;
+          fits++;
+        } else {
+          break;
+        }
+      }
+      setVisibleCount(Math.max(fits, 1));
+    };
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    compute();
+    return () => ro.disconnect();
+  }, [items.length]);
+
+  const overflow = items.length - visibleCount;
+  const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+  return (
+    <div ref={containerRef} className="cell-tags cell-tags-overflow">
+      {items.map((v, i) => {
+        const hidden = i >= visibleCount;
+        const os = getOptionStyle(findOptionColor(field, v), isDark);
+        return (
+          <span key={v} className="status-tag" style={{
+            background: os.bg, color: os.text,
+            ...(hidden ? { position: "absolute" as const, visibility: "hidden" as const } : {}),
+          }}>
+            {v}
+          </span>
+        );
+      })}
+      {overflow > 0 && <span className="cell-tags-badge">+{overflow}</span>}
+    </div>
+  );
+}
+
 function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
   // Lookup sentinels first — error states surface as red labels
   if (field.type === "Lookup" && typeof value === "string" && (value === "#REF!" || value === "#CYCLE!")) {
@@ -224,13 +286,7 @@ function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
       return <StatusTag name={String(value)} optColor={findOptionColor(field, String(value))} />;
 
     case "MultiSelect":
-      return (
-        <div className="cell-tags">
-          {(Array.isArray(value) ? value : [String(value)]).map((v) => (
-            <StatusTag key={v} name={v} optColor={findOptionColor(field, v)} />
-          ))}
-        </div>
-      );
+      return <MultiSelectDisplay field={field} value={value} />;
 
     case "DateTime":
     case "CreatedTime":

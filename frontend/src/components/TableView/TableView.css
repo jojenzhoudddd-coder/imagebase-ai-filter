@@ -228,6 +228,25 @@
   gap: 4px;
   flex-wrap: wrap;
 }
+.cell-tags-overflow {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  position: relative;
+}
+.cell-tags-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: var(--surface-3);
+  color: var(--text-secondary);
+}
 
 /* ─── User cells: Figma avatar 20x20 + gap 8px ─── */
 .cell-user {
