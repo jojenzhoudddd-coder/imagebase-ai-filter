@@ -535,9 +535,16 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const handleAutoNumberSave = useCallback((newRules: AutoNumberRule[], newDigits: number) => {
     if (!isEdit || !editingField) return;
     const config = { autoNumberMode: "custom" as const, autoNumberRules: newRules, autoNumberDigits: newDigits };
+    // eslint-disable-next-line no-console
+    console.log("[AN-SAVE] calling updateField", editingField.id, config);
     updateField(currentTableId, editingField.id, { config }).then(() => {
+      // eslint-disable-next-line no-console
+      console.log("[AN-SAVE] updateField success, calling onLiveUpdate");
       onLiveUpdate?.();
-    }).catch(() => {});
+    }).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error("[AN-SAVE] updateField FAILED", err);
+    });
   }, [isEdit, editingField, currentTableId, onLiveUpdate]);
 
   useEffect(() => {
