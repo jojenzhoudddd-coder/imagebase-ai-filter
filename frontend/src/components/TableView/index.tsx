@@ -1140,7 +1140,7 @@ function EditableCell({
   colWidth?: number;
 }) {
   const value = record.cells[field.id] ?? null;
-  const isEditable = field.type !== "AutoNumber" && field.type !== "Lookup" && field.type !== "CreatedTime" && field.type !== "ModifiedTime";
+  const isEditable = field.type !== "AutoNumber" && field.type !== "Lookup" && field.type !== "CreatedTime" && field.type !== "ModifiedTime" && field.type !== "CreatedUser" && field.type !== "ModifiedUser";
 
   const handleDoubleClick = () => {
     if (isEditable && !editing && field.type !== "Checkbox") onStartEdit();

@@ -342,7 +342,7 @@ router.post("/:tableId/records", async (req: Request, res: Response) => {
     }
   }
 
-  const userId = currentUser(req)?.id;
+  const userId = req.body.actorId || currentUser(req)?.id;
   const record = await store.createRecord(req.params.tableId, { cells }, userId);
   if (!record) { res.status(500).json({ error: "创建记录失败" }); return; }
   eventBus.emitChange({ type: "record:create", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { record } });
@@ -371,7 +371,7 @@ router.put("/:tableId/records/:recordId", async (req: Request, res: Response) =>
     }
   }
 
-  const updateUserId = currentUser(req)?.id;
+  const updateUserId = req.body.actorId || currentUser(req)?.id;
   const record = await store.updateRecord(req.params.tableId, req.params.recordId, { cells }, updateUserId);
   if (!record) { res.status(404).json({ error: "Record not found" }); return; }
   eventBus.emitChange({ type: "record:update", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { recordId: req.params.recordId, cells: record.cells, updatedAt: record.updatedAt } });
@@ -431,7 +431,7 @@ router.post("/:tableId/records/batch-create", async (req: Request, res: Response
   const created: any[] = [];
   for (const r of records) {
     const dto = { cells: (r?.cells ?? {}) as Record<string, any> };
-    const batchUserId = currentUser(req)?.id;
+    const batchUserId = req.body.actorId || currentUser(req)?.id;
     const rec = await store.createRecord(tableId, dto, batchUserId);
     if (rec) created.push(rec);
   }

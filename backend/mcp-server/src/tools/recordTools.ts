@@ -53,8 +53,8 @@ export const recordTools: ToolDefinition[] = [
       },
       required: ["tableId", "cells"],
     },
-    handler: async (args) => {
-      const body = { cells: args.cells || {} };
+    handler: async (args, ctx) => {
+      const body = { cells: args.cells || {}, actorId: ctx?.agentId };
       const rec = await apiRequest<any>(`/api/tables/${args.tableId}/records`, {
         method: "POST",
         body,
@@ -82,8 +82,8 @@ export const recordTools: ToolDefinition[] = [
       },
       required: ["tableId", "records"],
     },
-    handler: async (args) => {
-      const body = { records: args.records };
+    handler: async (args, ctx) => {
+      const body = { records: args.records, actorId: ctx?.agentId };
       const result = await apiRequest(`/api/tables/${args.tableId}/records/batch-create`, {
         method: "POST",
         body,
@@ -104,8 +104,8 @@ export const recordTools: ToolDefinition[] = [
       },
       required: ["tableId", "recordId", "cells"],
     },
-    handler: async (args) => {
-      const body = { cells: args.cells || {} };
+    handler: async (args, ctx) => {
+      const body = { cells: args.cells || {}, actorId: ctx?.agentId };
       const rec = await apiRequest<any>(
         `/api/tables/${args.tableId}/records/${args.recordId}`,
         { method: "PUT", body }
