@@ -645,3 +645,90 @@
   font-size: 12px;
   line-height: 20px;
 }
+
+/* ─── AutoNumber config panel ─── */
+.form-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+.an-preview {
+  padding: 6px 12px;
+  background: var(--surface-inset, #F5F6F7);
+  border-radius: var(--radius-s);
+  font-size: 14px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary);
+  word-break: break-all;
+}
+.an-rule-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+}
+.an-rule-drag {
+  color: var(--text-placeholder);
+  cursor: default;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.an-rule-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  min-width: 72px;
+}
+.an-rule-config {
+  flex: 1;
+  min-width: 0;
+}
+.an-rule-input {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-family);
+  outline: none;
+}
+.an-rule-input:focus {
+  border-color: var(--color-primary);
+}
+.an-rule-input::placeholder {
+  color: var(--text-placeholder);
+}
+.an-rule-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.an-rule-remove {
+  background: none;
+  border: none;
+  color: var(--text-placeholder);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.an-rule-remove:hover {
+  color: var(--danger, #D83931);
+}
+.an-add-rule {
+  padding: 4px 12px 8px;
+}
+.an-add-rule-select {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-family: var(--font-family);
+  cursor: pointer;
+  outline: none;
+}

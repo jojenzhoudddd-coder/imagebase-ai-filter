@@ -4,6 +4,7 @@ import {
   FieldType,
   LookupConfig,
   SelectOption,
+  AutoNumberRule,
 } from "../../types";
 import { createField, updateField, fetchTables, suggestFields, withClientId, TableBrief, ApiError, FieldSuggestion } from "../../api";
 import { LookupConfigPanel } from "./LookupConfigPanel";
@@ -107,6 +108,143 @@ const OPTION_TAG_COLORS_DM: Record<string, { bg: string; text: string; dot: stri
 };
 const DEFAULT_TAG_LM = { bg: "#F0F1F3", text: "#646A73", dot: "#8F959E" };
 const DEFAULT_TAG_DM = { bg: "rgba(176, 176, 181, 0.16)", text: "#B0B0B5", dot: "#8E8E93" };
+
+// ─────────── AutoNumber config panel ───────────
+const DATE_FORMAT_OPTIONS = [
+  { value: "yyyyMMdd", label: "yyyyMMdd" },
+  { value: "yyyyMM", label: "yyyyMM" },
+  { value: "yyMM", label: "yyMM" },
+  { value: "MMdd", label: "MMdd" },
+  { value: "MM", label: "MM" },
+  { value: "dd", label: "dd" },
+];
+
+function formatAutoNumberPreview(rules: AutoNumberRule[]): string {
+  const now = new Date();
+  const y = String(now.getFullYear());
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return rules.map((r) => {
+    switch (r.type) {
+      case "increment": return "001";
+      case "fixed": return r.value;
+      case "date": {
+        const fmtMap: Record<string, string> = {
+          yyyyMMdd: `${y}${m}${d}`, yyyyMM: `${y}${m}`, yyMM: `${y.slice(2)}${m}`,
+          MMdd: `${m}${d}`, MM: m, dd: d,
+        };
+        return fmtMap[r.format] ?? "";
+      }
+    }
+  }).join("");
+}
+
+function AutoNumberConfigPanel({ mode, rules, onModeChange, onRulesChange }: {
+  mode: "increment" | "custom";
+  rules: AutoNumberRule[];
+  onModeChange: (m: "increment" | "custom") => void;
+  onRulesChange: (r: AutoNumberRule[]) => void;
+}) {
+  const { t } = useTranslation();
+  const hasIncrement = rules.some((r) => r.type === "increment");
+
+  const addRule = (type: "increment" | "fixed" | "date") => {
+    if (type === "increment" && hasIncrement) return;
+    const newRule: AutoNumberRule =
+      type === "increment" ? { type: "increment" }
+      : type === "date" ? { type: "date", format: "yyyyMMdd" }
+      : { type: "fixed", value: "" };
+    onRulesChange([...rules, newRule]);
+  };
+
+  const removeRule = (idx: number) => {
+    const r = rules[idx];
+    if (r.type === "increment") return; // increment is required
+    onRulesChange(rules.filter((_, i) => i !== idx));
+  };
+
+  const updateRule = (idx: number, updated: AutoNumberRule) => {
+    const next = [...rules];
+    next[idx] = updated;
+    onRulesChange(next);
+  };
+
+  return (
+    <>
+      <div className="form-row">
+        <label>编号类型</label>
+        <CustomSelect
+          value={mode}
+          options={[
+            { value: "increment", label: "自增数字" },
+            { value: "custom", label: "自定义编号" },
+          ]}
+          onChange={(v) => onModeChange(v as "increment" | "custom")}
+        />
+        {mode === "custom" && (
+          <span className="form-hint">自定义格式与规则的文本编号</span>
+        )}
+      </div>
+
+      {mode === "custom" && (
+        <>
+          <div className="form-row">
+            <label>编号预览</label>
+            <div className="an-preview">{formatAutoNumberPreview(rules)}</div>
+          </div>
+
+          {rules.map((rule, idx) => (
+            <div key={idx} className="an-rule-row">
+              <span className="an-rule-drag">⁞⁞</span>
+              <span className="an-rule-label">
+                {rule.type === "increment" ? "自增数字 ⓘ" : rule.type === "date" ? "创建日期" : "固定字符"}
+              </span>
+              <div className="an-rule-config">
+                {rule.type === "increment" && (
+                  <span className="an-rule-hint">3 位</span>
+                )}
+                {rule.type === "date" && (
+                  <CustomSelect
+                    value={rule.format}
+                    options={DATE_FORMAT_OPTIONS}
+                    onChange={(v) => updateRule(idx, { type: "date", format: v as any })}
+                  />
+                )}
+                {rule.type === "fixed" && (
+                  <input
+                    className="an-rule-input"
+                    value={rule.value}
+                    onChange={(e) => updateRule(idx, { type: "fixed", value: e.target.value })}
+                    placeholder="请输入"
+                  />
+                )}
+              </div>
+              {rule.type !== "increment" && (
+                <button className="an-rule-remove" onClick={() => removeRule(idx)}>×</button>
+              )}
+            </div>
+          ))}
+
+          <div className="an-add-rule">
+            <select
+              className="an-add-rule-select"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) addRule(e.target.value as any);
+                e.target.value = "";
+              }}
+            >
+              <option value="" disabled>+ 编号规则</option>
+              {!hasIncrement && <option value="increment">自增数字</option>}
+              <option value="date">创建日期</option>
+              <option value="fixed">固定字符</option>
+            </select>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
 
 function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
   options: SelectOption[];
@@ -321,6 +459,8 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const [dateFormat, setDateFormat] = useState(editingField?.config?.format ?? "yyyy-MM-dd");
   const [numberFormat, setNumberFormat] = useState(editingField?.config?.format ?? "decimal_1");
   const [selectOptions, setSelectOptions] = useState<SelectOption[]>(editingField?.config?.options ?? []);
+  const [autoNumberMode, setAutoNumberMode] = useState<"increment" | "custom">(editingField?.config?.autoNumberMode ?? "increment");
+  const [autoNumberRules, setAutoNumberRules] = useState<AutoNumberRule[]>(editingField?.config?.autoNumberRules ?? [{ type: "increment" }]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; path?: string } | null>(null);
   const [allTables, setAllTables] = useState<TableBrief[]>([]);
@@ -395,6 +535,9 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
         if (isSelectType) {
           dto.config = { ...dto.config, options: selectOptions };
         }
+        if (fieldType === "AutoNumber") {
+          dto.config = { autoNumberMode, ...(autoNumberMode === "custom" ? { autoNumberRules } : {}) };
+        }
         const updated = clientId
           ? await withClientId(clientId, () => updateField(currentTableId, editingField.id, dto))
           : await updateField(currentTableId, editingField.id, dto);
@@ -412,6 +555,8 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
             ? { format: numberFormat }
             : isSelectType
             ? { options: selectOptions }
+            : fieldType === "AutoNumber"
+            ? { autoNumberMode, ...(autoNumberMode === "custom" ? { autoNumberRules } : {}) }
             : {};
         const dto = { name: title.trim(), type: fieldType, config };
         const newField = clientId
@@ -587,6 +732,21 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
               allTables={allTables}
               config={lookupConfig}
               onChange={setLookupConfig}
+            />
+          )}
+
+          {fieldType === "AutoNumber" && (
+            <AutoNumberConfigPanel
+              mode={autoNumberMode}
+              rules={autoNumberRules}
+              onModeChange={(m) => {
+                setAutoNumberMode(m);
+                if (m === "increment") setAutoNumberRules([{ type: "increment" }]);
+                else if (autoNumberRules.length === 0 || (autoNumberRules.length === 1 && autoNumberRules[0].type === "increment")) {
+                  setAutoNumberRules([{ type: "increment" }]);
+                }
+              }}
+              onRulesChange={setAutoNumberRules}
             />
           )}
         </div>

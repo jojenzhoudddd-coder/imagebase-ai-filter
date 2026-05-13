@@ -93,6 +93,11 @@ export interface LookupConfig {
   lookupOutputFormat: LookupOutputFormat;
 }
 
+export type AutoNumberRule =
+  | { type: "increment" }
+  | { type: "fixed"; value: string }
+  | { type: "date"; format: "yyyyMMdd" | "yyyyMM" | "yyMM" | "MMdd" | "MM" | "dd" };
+
 export interface FieldConfig {
   options?: SelectOption[];
   users?: UserOption[];
@@ -100,6 +105,9 @@ export interface FieldConfig {
   includeTime?: boolean;
   // Lookup
   lookup?: LookupConfig;
+  // AutoNumber
+  autoNumberMode?: "increment" | "custom";
+  autoNumberRules?: AutoNumberRule[];
 }
 
 export interface Field {
