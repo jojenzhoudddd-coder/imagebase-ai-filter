@@ -199,7 +199,7 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
                     value={digits}
                     onChange={(e) => onDigitsChange(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
                   />
-                  <span className="an-rule-suffix">{t("addField.digitSuffix")}</span>
+                  <span className="an-rule-digits-suffix">{t("addField.digitSuffix")}</span>
                 </div>
               )}
               {rule.type === "date" && (
