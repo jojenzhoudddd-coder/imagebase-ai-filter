@@ -515,18 +515,17 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const { suggestions, loading: sugLoading, refresh: sugRefresh, fetchSuggestions, hasFetched } = fieldSuggestions;
 
   // Auto-save AutoNumber config in edit mode — persist + refetch records on every change
-  const autoNumInitRef = useRef(true);
+  const autoNumOrigRef = useRef(JSON.stringify({ r: editingField?.config?.autoNumberRules, d: editingField?.config?.autoNumberDigits }));
   useEffect(() => {
     if (!isEdit || fieldType !== "AutoNumber") return;
-    if (autoNumInitRef.current) { autoNumInitRef.current = false; return; }
+    const current = JSON.stringify({ r: autoNumberRules, d: autoNumberDigits });
+    if (current === autoNumOrigRef.current) return; // skip if unchanged from initial
+    autoNumOrigRef.current = current; // update ref to avoid re-firing for same value
     const config = { autoNumberMode: "custom" as const, autoNumberRules, autoNumberDigits };
-    const liveUpdate = onLiveUpdate;
     updateField(currentTableId, editingField!.id, { config }).then(() => {
-      console.log("[AutoNum] updateField done, calling liveUpdate", !!liveUpdate);
-      liveUpdate?.();
-    }).catch((err) => { console.error("[AutoNum] updateField failed", err); });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoNumberRules, autoNumberDigits]);
+      onLiveUpdate?.();
+    }).catch(() => {});
+  }, [autoNumberRules, autoNumberDigits, isEdit, fieldType, currentTableId, editingField, onLiveUpdate]);
 
   useEffect(() => {
     fetchTables().then(setAllTables);
