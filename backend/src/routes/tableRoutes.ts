@@ -279,6 +279,23 @@ router.post("/:tableId/fields/batch-restore", async (req: Request, res: Response
 
 // ═══════ Record CRUD ═══════
 
+/** Inject system field values (CreatedUser/ModifiedUser/CreatedTime/ModifiedTime)
+ *  from the Record row columns into cells, so they display even when the field
+ *  was added after the record was created. */
+function hydrateSystemFields(records: any[], fields: Field[]): void {
+  const cuField = fields.find(f => f.type === "CreatedUser");
+  const muField = fields.find(f => f.type === "ModifiedUser");
+  const ctField = fields.find(f => f.type === "CreatedTime");
+  const mtField = fields.find(f => f.type === "ModifiedTime");
+  if (!cuField && !muField && !ctField && !mtField) return;
+  for (const r of records) {
+    if (cuField && !r.cells[cuField.id]) r.cells[cuField.id] = r.createdBy ?? null;
+    if (muField && !r.cells[muField.id]) r.cells[muField.id] = r.modifiedBy ?? null;
+    if (ctField && !r.cells[ctField.id]) r.cells[ctField.id] = r.createdAt;
+    if (mtField && !r.cells[mtField.id]) r.cells[mtField.id] = r.updatedAt;
+  }
+}
+
 // GET /api/tables/:tableId/records
 router.get("/:tableId/records", async (req: Request, res: Response) => {
   const table = await store.getTable(req.params.tableId);
@@ -288,9 +305,11 @@ router.get("/:tableId/records", async (req: Request, res: Response) => {
     const { materializeLookups } = await import("../services/lookupEngine.js");
     const allTables = await store.listTables();
     const { records } = materializeLookups(table, table.records, allTables);
+    hydrateSystemFields(records, table.fields);
     res.json(records);
     return;
   }
+  hydrateSystemFields(table.records, table.fields);
   res.json(table.records);
 });
 
