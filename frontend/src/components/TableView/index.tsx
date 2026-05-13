@@ -676,7 +676,14 @@ function UserEditor({
   onNavigate?: (dRow: number, dCol: number) => void;
 }) {
   const users = field.config.users ?? [];
+  const [query, setQuery] = useState("");
+  const [hlIdx, setHlIdx] = useState(-1);
+  const composingRef = useRef(false);
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -686,54 +693,85 @@ function UserEditor({
     return () => document.removeEventListener("mousedown", handler);
   }, [onCancel]);
 
-  // V4.2 #2/#3: Tab/Shift+Tab navigation
-  // V4.2.1: stopImmediatePropagation 防 React 18 同步 flush 导致下一个 dropdown
-  // editor 在同一帧 mount + listener 立刻就绪 → 二次触发 → 跳过中间字段。
+  const filtered = query.trim()
+    ? users.filter((u) => u.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : users;
+
+  useEffect(() => { setHlIdx(0); }, [query]);
+
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Tab") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        onCancel();
-        onNavigate?.(0, e.shiftKey ? -1 : 1);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        onCancel();
+    if (hlIdx < 0) return;
+    const el = listRef.current?.children[hlIdx] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "nearest" });
+  }, [hlIdx]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (composingRef.current) return;
+    if (e.key === "Tab") {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+      onNavigate?.(0, e.shiftKey ? -1 : 1);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onCancel();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHlIdx((i) => i < 0 ? 0 : (i + 1) % filtered.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHlIdx((i) => i < 0 ? filtered.length - 1 : (i - 1 + filtered.length) % filtered.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (hlIdx >= 0 && hlIdx < filtered.length) {
+        onCommit(filtered[hlIdx].id);
       }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onCancel, onNavigate]);
+    }
+  };
 
   return (
     <div ref={ref} className="cell-dropdown">
-      {users.map((user) => {
-        const isSelected = String(value) === user.id;
-        return (
-          <button
-            key={user.id}
-            className={`cell-dropdown-item ${isSelected ? "selected" : ""}`}
-            onMouseDown={(e) => { e.preventDefault(); onCommit(user.id); }}
-          >
-            <div className="cell-user">
-              <img className="user-avatar-img" src={user.avatar} alt={user.name}
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                  (e.currentTarget.nextElementSibling as HTMLElement | null)?.style.setProperty("display", "flex");
-                }}
-              />
-              <span className="user-avatar-fallback">{user.name.charAt(0)}</span>
-              <span className="user-name">{user.name}</span>
-            </div>
-            {isSelected && (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="check-icon">
-                <path d="M2 6l3 3 5-5" stroke="#1456F0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            )}
-          </button>
-        );
-      })}
+      <div className="cell-dropdown-search">
+        <input
+          ref={inputRef}
+          className="cell-dropdown-search-input"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onCompositionStart={() => { composingRef.current = true; }}
+          onCompositionEnd={() => { composingRef.current = false; }}
+          placeholder="搜索成员"
+        />
+      </div>
+      <div ref={listRef} className="cell-dropdown-list" onMouseLeave={() => setHlIdx(-1)}>
+        {filtered.map((user, i) => {
+          const isSelected = String(value) === user.id;
+          return (
+            <button
+              key={user.id}
+              className={`cell-dropdown-item${isSelected ? " selected" : ""}${i === hlIdx ? " highlighted" : ""}`}
+              onMouseDown={(e) => { e.preventDefault(); onCommit(user.id); }}
+              onMouseEnter={() => setHlIdx(i)}
+            >
+              <div className="cell-user">
+                <img className="user-avatar-img" src={user.avatar} alt={user.name}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = "none";
+                    (e.currentTarget.nextElementSibling as HTMLElement | null)?.style.setProperty("display", "flex");
+                  }}
+                />
+                <span className="user-avatar-fallback">{user.name.charAt(0)}</span>
+                <span className="user-name">{user.name}</span>
+              </div>
+              {isSelected && (
+                <svg className="cell-dropdown-check" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M3.5 8.5L6.5 11.5L12.5 4.5" stroke="#3370FF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
