@@ -19,6 +19,7 @@ interface DragState {
   fieldId: string;
   startY: number;
   currentY: number;
+  scrollDelta: number;
   itemRects: Map<string, DOMRect>;
 }
 
@@ -149,24 +150,21 @@ export default function FieldConfigPanel({
     e.stopPropagation();
 
     const rects = new Map<string, DOMRect>();
-    itemRefs.current.forEach((el, id) => {
-      rects.set(id, el.getBoundingClientRect());
-    });
+    itemRefs.current.forEach((el, id) => { rects.set(id, el.getBoundingClientRect()); });
+
+    const scrollEl = listRef.current;
+    const startScrollTop = scrollEl?.scrollTop ?? 0;
+    const getScrollDelta = () => (scrollEl?.scrollTop ?? 0) - startScrollTop;
 
     const startY = e.clientY;
-    const state: DragState = { fieldId, startY, currentY: startY, itemRects: rects };
+    const state: DragState = { fieldId, startY, currentY: startY, scrollDelta: 0, itemRects: rects };
     dragRef.current = state;
     setDragState(state);
 
     document.body.style.cursor = "grabbing";
     document.body.style.userSelect = "none";
 
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!dragRef.current) return;
-      dragRef.current.currentY = ev.clientY;
-      setDragState({ ...dragRef.current });
-
-      // Find hover target — re-read live rects
+    const updateOverTarget = (clientY: number) => {
       const liveRects = new Map<string, DOMRect>();
       itemRefs.current.forEach((el, id) => { liveRects.set(id, el.getBoundingClientRect()); });
 
@@ -176,27 +174,39 @@ export default function FieldConfigPanel({
       for (const f of ff) {
         const r = liveRects.get(f.id);
         if (!r) continue;
-        if (ev.clientY >= r.top && ev.clientY <= r.bottom) {
+        if (clientY >= r.top && clientY <= r.bottom) {
           overId = f.id;
-          overPos = ev.clientY < r.top + r.height / 2 ? "above" : "below";
+          overPos = clientY < r.top + r.height / 2 ? "above" : "below";
           break;
         }
       }
-      // Edge detection: before first / after last
       if (!overId && ff.length > 0) {
         const firstRect = liveRects.get(ff[0].id);
         const lastRect = liveRects.get(ff[ff.length - 1].id);
-        if (firstRect && ev.clientY < firstRect.top + firstRect.height / 2) {
-          overId = ff[0].id;
-          overPos = "above";
-        } else if (lastRect && ev.clientY > lastRect.top + lastRect.height / 2) {
-          overId = ff[ff.length - 1].id;
-          overPos = "below";
+        if (firstRect && clientY < firstRect.top + firstRect.height / 2) {
+          overId = ff[0].id; overPos = "above";
+        } else if (lastRect && clientY > lastRect.top + lastRect.height / 2) {
+          overId = ff[ff.length - 1].id; overPos = "below";
         }
       }
       dragOverRef.current = { id: overId, pos: overPos };
       setDragOverId(overId);
       setDragOverPosition(overPos);
+    };
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      dragRef.current.currentY = ev.clientY;
+      dragRef.current.scrollDelta = getScrollDelta();
+      setDragState({ ...dragRef.current });
+      updateOverTarget(ev.clientY);
+    };
+
+    const onScroll = () => {
+      if (!dragRef.current) return;
+      dragRef.current.scrollDelta = getScrollDelta();
+      setDragState({ ...dragRef.current });
+      updateOverTarget(dragRef.current.currentY);
     };
 
     const onMouseUp = () => {
@@ -226,15 +236,17 @@ export default function FieldConfigPanel({
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      scrollEl?.removeEventListener("scroll", onScroll);
     };
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
+    scrollEl?.addEventListener("scroll", onScroll);
   }, [fields, filteredFields, onFieldOrderChange]);
 
   const getDragTransform = (fieldId: string): React.CSSProperties => {
     if (!dragState || dragState.fieldId !== fieldId) return {};
-    const delta = dragState.currentY - dragState.startY;
+    const delta = dragState.currentY - dragState.startY + dragState.scrollDelta;
     return {
       transform: `translateY(${delta}px)`,
       position: "relative" as const,

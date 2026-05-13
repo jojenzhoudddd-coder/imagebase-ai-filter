@@ -1289,7 +1289,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = useState<string | null>(null);
   const [dropSide, setDropSide] = useState<"left" | "right">("left");
-  const [resizeLineX, setResizeLineX] = useState<number | null>(null);
+  const resizeLineRef = useRef<HTMLDivElement>(null);
 
   // Track container width for table width calculation
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1799,22 +1799,26 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
 
+    // Show resize line
+    const line = resizeLineRef.current;
+    if (line) { line.style.display = "block"; }
+
     const onMouseMove = (ev: MouseEvent) => {
       if (!resizeRef.current) return;
       const delta = ev.clientX - resizeRef.current.startX;
       const newWidth = Math.max(MIN_COL_WIDTH, resizeRef.current.startWidth + delta);
       setColWidths((prev) => ({ ...prev, [resizeRef.current!.fieldId]: newWidth }));
-      // Show full-height resize line
+      // Position resize line via DOM (no React re-render)
       const container = containerRef.current;
-      if (container) {
-        const containerRect = container.getBoundingClientRect();
-        setResizeLineX(ev.clientX - containerRect.left + container.scrollLeft);
+      if (container && line) {
+        const cRect = container.getBoundingClientRect();
+        line.style.left = `${ev.clientX - cRect.left + container.scrollLeft}px`;
       }
     };
 
     const onMouseUp = () => {
       resizeRef.current = null;
-      setResizeLineX(null);
+      if (line) { line.style.display = "none"; }
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMouseMove);
@@ -2112,17 +2116,21 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                     className="col-resize-handle"
                     onMouseDown={(e) => handleResizeStart(e, f.id)}
                     onMouseEnter={() => {
-                      if (resizeRef.current) return; // already resizing
+                      if (resizeRef.current) return;
                       const thEl = headerRefs.current.get(f.id);
                       const container = containerRef.current;
-                      if (thEl && container) {
+                      const line = resizeLineRef.current;
+                      if (thEl && container && line) {
                         const thRect = thEl.getBoundingClientRect();
                         const cRect = container.getBoundingClientRect();
-                        setResizeLineX(thRect.right - cRect.left + container.scrollLeft);
+                        line.style.left = `${thRect.right - cRect.left + container.scrollLeft}px`;
+                        line.style.display = "block";
                       }
                     }}
                     onMouseLeave={() => {
-                      if (!resizeRef.current) setResizeLineX(null);
+                      if (!resizeRef.current && resizeLineRef.current) {
+                        resizeLineRef.current.style.display = "none";
+                      }
                     }}
                   />
                 </th>
@@ -2226,7 +2234,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
           </tbody>
         </table>
         {dropLineX !== null && <div className="col-drop-line" style={{ left: dropLineX }} />}
-        {resizeLineX !== null && <div className="col-resize-line" style={{ left: resizeLineX }} />}
+        <div ref={resizeLineRef} className="col-resize-line" style={{ display: "none" }} />
       </div>
       {/* V2.9 #5: 底部 record 计数已经移到 Toolbar 右上角 (Add Record 左边),
           此处不再渲染 table-footer。 */}
