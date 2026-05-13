@@ -430,15 +430,17 @@ function SelectEditor({
     el?.scrollIntoView({ block: "nearest" });
   }, [hlIdx]);
 
-  const createAndCommit = () => {
+  const createAndCommit = async () => {
     const colors = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#8F959E"];
     const newOpt = { id: `opt_${Date.now()}`, name: trimmed, color: colors[options.length % colors.length] };
     const newOptions = [...options, newOpt];
     const updatedField = { ...field, config: { ...field.config, options: newOptions } };
-    import("../../api").then(({ updateField }) => {
-      updateField(field.tableId, field.id, { config: { options: newOptions } }).catch(() => {});
-    });
     onFieldUpdate?.(updatedField);
+    // Must await field update so backend knows the new option before record save
+    try {
+      const { updateField } = await import("../../api");
+      await updateField(field.tableId, field.id, { config: { options: newOptions } });
+    } catch { /* ignore */ }
     if (field.type === "MultiSelect") {
       const arr = Array.isArray(value) ? [...value] : [];
       onCommit([...arr, newOpt.name]);
