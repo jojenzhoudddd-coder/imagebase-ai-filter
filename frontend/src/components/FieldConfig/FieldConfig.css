@@ -149,12 +149,9 @@
   flex-shrink: 0;
 }
 .so-drag:active { cursor: grabbing; }
-.so-dot-wrap {
-  position: relative;
+.so-dot {
   flex-shrink: 0;
   margin-right: 4px;
-}
-.so-dot {
   width: 14px;
   height: 14px;
   border-radius: 3px;
@@ -171,44 +168,6 @@
   border-radius: 50%;
 }
 
-/* Color picker popover */
-.so-color-picker {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 4px;
-  padding: 6px 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-m, 8px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  z-index: 30;
-  white-space: nowrap;
-}
-.so-color-swatch {
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.1s;
-}
-.so-color-swatch:hover {
-  transform: scale(1.15);
-}
-.so-color-swatch.active {
-  box-shadow: 0 0 0 2px var(--color-primary);
-}
-.so-color-swatch-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
 /* Drag indicator lines — same pattern as SortPanel */
 .so-item.drag-over-above::before,
 .so-item.drag-over-below::after {
