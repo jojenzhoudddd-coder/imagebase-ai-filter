@@ -1528,6 +1528,7 @@
   border: none;                 /* framed look removed per spec */
   border-radius: 10px;
   padding: 0;
+  margin-top: -24px;  /* cancel parent gap (28px) down to tool-card spacing (4px) */
 }
 .chat-confirm-card-header {
   display: flex;
@@ -1558,7 +1559,7 @@
   line-height: 20px;
 }
 .chat-confirm-card-body {
-  padding: 0 14px 10px 46px; /* align body text under the title (icon width + gap) */
+  padding: 0 14px 0 46px; /* align body text under the title (icon width + gap) */
   color: var(--text-secondary);
   font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   font-size: 12px;
