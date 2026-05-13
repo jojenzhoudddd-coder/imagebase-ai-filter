@@ -108,6 +108,7 @@ export interface FieldConfig {
   // AutoNumber
   autoNumberMode?: "increment" | "custom";
   autoNumberRules?: AutoNumberRule[];
+  autoNumberDigits?: number;
 }
 
 export interface Field {

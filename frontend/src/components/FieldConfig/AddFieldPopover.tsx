@@ -119,12 +119,14 @@ const DATE_FORMAT_OPTIONS = [
   { value: "dd", label: "dd" },
 ];
 
-const RULE_LABEL: Record<string, string> = { increment: "自增数字", date: "创建日期", fixed: "固定字符" };
-
-function AutoNumberConfigPanel({ rules, onRulesChange }: {
+function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }: {
   rules: AutoNumberRule[];
   onRulesChange: (r: AutoNumberRule[]) => void;
+  digits: number;
+  onDigitsChange: (d: number) => void;
 }) {
+  const { t } = useTranslation();
+  const ruleLabel = (type: string) => t(`addField.rule${type.charAt(0).toUpperCase() + type.slice(1)}` as any);
   const hasIncrement = rules.some((r) => r.type === "increment");
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
@@ -164,7 +166,7 @@ function AutoNumberConfigPanel({ rules, onRulesChange }: {
 
   return (
     <div className="form-row">
-      <label>编号规则</label>
+      <label>{t("addField.autoNumberRules")}</label>
       <div className="so-list">
         {rules.map((rule, idx) => {
           let cls = "so-item";
@@ -186,9 +188,19 @@ function AutoNumberConfigPanel({ rules, onRulesChange }: {
                   <circle cx="3" cy="11" r="1.2" fill="currentColor"/><circle cx="7" cy="11" r="1.2" fill="currentColor"/>
                 </svg>
               </span>
-              <span className="an-rule-name">{RULE_LABEL[rule.type]}</span>
+              <span className="an-rule-name">{ruleLabel(rule.type)}</span>
               {rule.type === "increment" && (
-                <span className="an-rule-suffix">3 位</span>
+                <div className="an-rule-digits">
+                  <input
+                    type="number"
+                    className="an-rule-digits-input"
+                    min={1}
+                    max={10}
+                    value={digits}
+                    onChange={(e) => onDigitsChange(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+                  />
+                  <span className="an-rule-suffix">{t("addField.digitSuffix")}</span>
+                </div>
               )}
               {rule.type === "date" && (
                 <div className="an-rule-select">
@@ -200,7 +212,7 @@ function AutoNumberConfigPanel({ rules, onRulesChange }: {
                   className="so-input an-rule-fixed-input"
                   value={rule.value}
                   onChange={(e) => updateRule(idx, { type: "fixed", value: e.target.value })}
-                  placeholder="请输入"
+                  placeholder={t("addField.fixedPlaceholder")}
                 />
               )}
               {rule.type !== "increment" && (
@@ -213,15 +225,14 @@ function AutoNumberConfigPanel({ rules, onRulesChange }: {
             </div>
           );
         })}
-        <button type="button" className="so-add-btn" style={{ width: "fit-content" }}
+        <button type="button" className="so-add"
           onClick={() => {
-            // Cycle: date → fixed → increment (if missing)
             if (!rules.some(r => r.type === "date")) addRule("date");
             else if (!rules.some(r => r.type === "fixed")) addRule("fixed");
             else if (!hasIncrement) addRule("increment");
-            else addRule("date"); // allow multiple dates
+            else addRule("date");
           }}
-        >+ 编号规则</button>
+        >+ {t("addField.addRule")}</button>
       </div>
     </div>
   );
@@ -233,6 +244,7 @@ function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
   addLabel: string;
   placeholder: string;
 }) {
+  const { t } = useTranslation();
   const theme = useResolvedTheme();
   const tagPalette = theme === "dark" ? OPTION_TAG_COLORS_DM : OPTION_TAG_COLORS_LM;
   const tagFallback = theme === "dark" ? DEFAULT_TAG_DM : DEFAULT_TAG_LM;
@@ -268,7 +280,7 @@ function SelectOptionEditor({ options, onChange, addLabel, placeholder }: {
 
   return (
     <div className="form-row">
-      <label>选项内容</label>
+      <label>{t("addField.optionContent")}</label>
       <div className="so-list">
         {options.map((opt, idx) => {
           let cls = "so-item";
@@ -441,6 +453,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const [numberFormat, setNumberFormat] = useState(editingField?.config?.format ?? "decimal_1");
   const [selectOptions, setSelectOptions] = useState<SelectOption[]>(editingField?.config?.options ?? []);
   const [autoNumberRules, setAutoNumberRules] = useState<AutoNumberRule[]>(editingField?.config?.autoNumberRules ?? [{ type: "increment" }]);
+  const [autoNumberDigits, setAutoNumberDigits] = useState(editingField?.config?.autoNumberDigits ?? 3);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; path?: string } | null>(null);
   const [allTables, setAllTables] = useState<TableBrief[]>([]);
@@ -536,7 +549,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
             : isSelectType
             ? { options: selectOptions }
             : fieldType === "AutoNumber"
-            ? { autoNumberMode: "custom" as const, autoNumberRules }
+            ? { autoNumberMode: "custom" as const, autoNumberRules, autoNumberDigits }
             : {};
         const dto = { name: title.trim(), type: fieldType, config };
         const newField = clientId
@@ -562,8 +575,8 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   };
 
   const currentTableDesc = useMemo(
-    () => ({ id: currentTableId, name: "当前表", fields: currentFields }),
-    [currentTableId, currentFields]
+    () => ({ id: currentTableId, name: t("addField.currentTable"), fields: currentFields }),
+    [currentTableId, currentFields, t]
   );
 
   return (
@@ -719,6 +732,8 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
             <AutoNumberConfigPanel
               rules={autoNumberRules}
               onRulesChange={setAutoNumberRules}
+              digits={autoNumberDigits}
+              onDigitsChange={setAutoNumberDigits}
             />
           )}
         </div>

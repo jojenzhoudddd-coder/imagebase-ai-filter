@@ -210,6 +210,7 @@ export interface FieldConfig {
   // AutoNumber
   autoNumberMode?: "increment" | "custom";
   autoNumberRules?: AutoNumberRule[];
+  autoNumberDigits?: number;
 
   // Progress
   progressFormat?: ProgressFormat;

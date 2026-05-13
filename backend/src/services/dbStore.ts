@@ -40,12 +40,12 @@ function isReadOnly(type: FieldType): boolean {
   return ["AutoNumber", "CreatedUser", "ModifiedUser", "CreatedTime", "ModifiedTime", "Formula", "Lookup"].includes(type);
 }
 
-function formatAutoNumber(counter: number, rules: AutoNumberRule[]): string {
+function formatAutoNumber(counter: number, rules: AutoNumberRule[], digits: number = 3): string {
   const now = new Date();
   return rules.map(rule => {
     switch (rule.type) {
       case "increment":
-        return String(counter);
+        return String(counter).padStart(digits, "0");
       case "fixed":
         return rule.value;
       case "date": {
@@ -72,7 +72,7 @@ function getDefaultCellValue(
       const counter = (counters[field.id] ?? 0) + 1;
       counters[field.id] = counter;
       if (field.config.autoNumberMode === "custom" && field.config.autoNumberRules) {
-        return formatAutoNumber(counter, field.config.autoNumberRules);
+        return formatAutoNumber(counter, field.config.autoNumberRules, field.config.autoNumberDigits ?? 3);
       }
       return counter;
     }
