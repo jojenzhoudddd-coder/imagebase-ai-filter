@@ -2186,8 +2186,12 @@ function MessageBlock({ msg, confirmSlot }: { msg: UiMessage; confirmSlot?: Reac
 
   // Wrap in a single block so the inner gap (text ↔ tool cards = 12px) is
   // tighter than the outer message gap (28px between successive messages).
+  // When a message has only tool cards (no text/thinking), mark it so CSS
+  // can collapse the 28px inter-message gap to match tool-card spacing.
+  const toolOnly = !hasAnswer && !hasThinking && hasAnyToolCall;
+
   const assistantBody = (
-    <div className="chat-msg-assistant-block">
+    <div className={`chat-msg-assistant-block${toolOnly ? " tool-only" : ""}`}>
       {thinkingCollapsed && (
         <ThinkingIndicator
           mode="collapsed"
