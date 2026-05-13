@@ -423,7 +423,18 @@ router.post("/:tableId/records/query", async (req: Request, res: Response) => {
 router.get("/:tableId/views", async (req: Request, res: Response) => {
   const table = await store.getTable(req.params.tableId);
   if (!table) { res.status(404).json({ error: "Table not found" }); return; }
-  res.json(table.views);
+  let views = (table.views ?? []) as any[];
+  // Auto-create a default view if none exist
+  if (views.length === 0) {
+    const fields = (table.fields ?? []) as any[];
+    const view = await store.createView(req.params.tableId, {
+      name: "Grid",
+      type: "grid" as any,
+      fieldOrder: fields.map((f: any) => f.id),
+    });
+    if (view) views = [view];
+  }
+  res.json(views);
 });
 
 // POST /api/tables/:tableId/views — create view
