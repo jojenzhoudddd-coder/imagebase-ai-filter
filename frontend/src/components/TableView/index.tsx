@@ -1335,6 +1335,12 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   const dragRef = useRef<DragState | null>(null);
   const justDraggedRef = useRef(false);
 
+  // Keep latest props in refs so drag handlers don't capture stale closures
+  const fieldOrderRef = useRef(fieldOrder);
+  fieldOrderRef.current = fieldOrder;
+  const onFieldOrderChangeRef = useRef(onFieldOrderChange);
+  onFieldOrderChangeRef.current = onFieldOrderChange;
+
   // Forward ref to addRecordClickHandlerRef so the imperative handle can call
   // the current closure (which captures latest visibleFields/onAddRecord).
   const addRecordClickRef = useRef<(position?: "start" | "end") => Promise<void>>(async () => {});
@@ -1946,8 +1952,9 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       const finalCurrentX = dragRef.current?.currentX ?? startX;
       const finalRects = readRects();
 
-      if (finalOverId && finalOverId !== fieldId && fieldOrder) {
-        const arr = [...fieldOrder];
+      const curFieldOrder = fieldOrderRef.current;
+      if (finalOverId && finalOverId !== fieldId && curFieldOrder) {
+        const arr = [...curFieldOrder];
         const fromIdx = arr.indexOf(fieldId);
         if (fromIdx !== -1) {
           arr.splice(fromIdx, 1);
@@ -1958,7 +1965,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
               toIdx += 1;
             }
             arr.splice(toIdx, 0, fieldId);
-            onFieldOrderChange?.(arr);
+            onFieldOrderChangeRef.current?.(arr);
           }
         }
       }
