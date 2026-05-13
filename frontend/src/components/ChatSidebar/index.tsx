@@ -1927,18 +1927,20 @@ export default function ChatSidebar({
 
             {/* 800px 居中:用一个 inner wrapper 限制宽度 */}
             <div className="chat-messages-inner">
-              {messages.map((m) => (
-                <MessageBlock key={m.id} msg={m} />
-              ))}
-
-              {pendingConfirm && (
-                <ConfirmCard
-                  pending={pendingConfirm}
-                  onConfirm={() => handleConfirm(true)}
-                  onCancel={() => handleConfirm(false)}
-                  disabled={streaming}
+              {messages.map((m, idx) => (
+                <MessageBlock
+                  key={m.id}
+                  msg={m}
+                  confirmSlot={idx === messages.length - 1 && pendingConfirm ? (
+                    <ConfirmCard
+                      pending={pendingConfirm}
+                      onConfirm={() => handleConfirm(true)}
+                      onCancel={() => handleConfirm(false)}
+                      disabled={streaming}
+                    />
+                  ) : undefined}
                 />
-              )}
+              ))}
 
               {error && <div className="chat-error-card">{error}</div>}
             </div>
@@ -2156,7 +2158,7 @@ function normalizeServerNodeEvent(e: any): UiWorkflowRun["nodeEvents"][number] |
  *   - Tool-call cards render after the answer text, in the order they
  *     arrived from the stream.
  */
-function MessageBlock({ msg }: { msg: UiMessage }) {
+function MessageBlock({ msg, confirmSlot }: { msg: UiMessage; confirmSlot?: React.ReactNode }) {
   const { t } = useTranslation();
   if (msg.role === "user") return <UserBubble content={msg.content} />;
 
@@ -2225,6 +2227,7 @@ function MessageBlock({ msg }: { msg: UiMessage }) {
           ? <WorkflowBlock key={`wf-${entry.run.runId}`} run={entry.run} />
           : <SubagentBlock key={`sa-${entry.run.runId}`} run={entry.run} />
       )}
+      {confirmSlot}
     </div>
   );
 

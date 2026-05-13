@@ -1528,7 +1528,6 @@
   border: none;                 /* framed look removed per spec */
   border-radius: 10px;
   padding: 0;
-  margin-top: -24px;  /* cancel parent gap (28px) down to tool-card spacing (4px) */
 }
 .chat-confirm-card-header {
   display: flex;
