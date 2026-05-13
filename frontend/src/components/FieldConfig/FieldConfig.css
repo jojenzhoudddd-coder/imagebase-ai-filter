@@ -33,7 +33,7 @@
 }
 
 .field-popover-footer {
-  padding: 10px 12px 12px;
+  padding: 0 12px 12px;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
