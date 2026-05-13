@@ -329,6 +329,7 @@ function TextEditor({
   onCommit,
   onCancel,
   onNavigate,
+  colWidth,
 }: {
   field: Field;
   value: CellValue;
@@ -337,16 +338,39 @@ function TextEditor({
   /** V2.9 #3/#4: 提交后跳到 (dRow, dCol) 偏移的单元格继续编辑。
    *  父级调用 setEditing 切换到目标 cell。 */
   onNavigate?: (dRow: number, dCol: number) => void;
+  colWidth?: number;
 }) {
   const [draft, setDraft] = useState(value === null ? "" : String(value));
   const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   // V2.9 #2: 退出编辑(blur 或导航)时只提交一次,避免 Enter→commit→onNavigate→
   // setEditing(null) 后 React 还在 unmount 路径中再触发 onBlur 导致 double-commit。
   const committedRef = useRef(false);
+  const isText = field.type === "Text";
+
+  // Auto-resize textarea height
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "32px";
+    el.style.height = Math.max(32, el.scrollHeight) + "px";
+  }, []);
+
+  // Compute max height: artifact block height - 40px
+  const [maxH, setMaxH] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (!isText) return;
+    const el = textareaRef.current;
+    if (!el) return;
+    const block = el.closest(".artifact-block, .mc-block, .table-artifact-surface, .table-view-outer") as HTMLElement | null;
+    if (block) {
+      setMaxH(block.clientHeight - 40);
+    }
+  }, [isText]);
 
   // Focus without selecting all — preserve click position for cursor placement
   useEffect(() => {
-    const el = inputRef.current;
+    const el = isText ? textareaRef.current : inputRef.current;
     if (!el) return;
     el.focus();
     // setSelectionRange is not allowed on <input type="number">
@@ -354,18 +378,13 @@ function TextEditor({
       const len = el.value.length;
       el.setSelectionRange(len, len);
     }
-  }, [field.type]);
+    if (isText) autoResize();
+  }, [field.type, isText, autoResize]);
 
   const commit = () => {
     if (committedRef.current) return;
     committedRef.current = true;
-    // Source of truth: prefer the DOM <input>.value over `draft` state.
-    // Reasoning: under Chinese IME composition or when blur fires in the
-    // same tick as a final keystroke, React state may not have flushed the
-    // last onChange event yet — but the DOM value always reflects what
-    // the user actually sees. Falling back to draft if the ref is gone
-    // (already-unmounted edge case).
-    const raw = inputRef.current?.value ?? draft;
+    const raw = (isText ? textareaRef.current?.value : inputRef.current?.value) ?? draft;
     const v = raw.trim();
     if (field.type === "Number") {
       onCommit(v === "" ? null : Number(v));
@@ -373,6 +392,63 @@ function TextEditor({
       onCommit(v === "" ? null : v);
     }
   };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    if (e.key === "Enter") {
+      if (isText && e.shiftKey) return; // Shift+Enter = newline in textarea
+      e.preventDefault();
+      e.nativeEvent.stopImmediatePropagation();
+      commit();
+      if (!e.shiftKey) onNavigate?.(1, 0);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.nativeEvent.stopImmediatePropagation();
+      onCancel();
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      e.nativeEvent.stopImmediatePropagation();
+      commit();
+      onNavigate?.(0, e.shiftKey ? -1 : 1);
+    } else if (!isText && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      e.nativeEvent.stopImmediatePropagation();
+      commit();
+      onNavigate?.(e.key === "ArrowUp" ? -1 : 1, 0);
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      const el = e.currentTarget as HTMLInputElement | HTMLTextAreaElement;
+      const isAtStart = el.selectionStart === 0 && el.selectionEnd === 0;
+      const isAtEnd = el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
+      if (e.key === "ArrowLeft" && isAtStart) {
+        e.preventDefault();
+        e.nativeEvent.stopImmediatePropagation();
+        commit();
+        onNavigate?.(0, -1);
+      } else if (e.key === "ArrowRight" && isAtEnd) {
+        e.preventDefault();
+        e.nativeEvent.stopImmediatePropagation();
+        commit();
+        onNavigate?.(0, 1);
+      }
+    }
+  };
+
+  if (isText) {
+    return (
+      <textarea
+        ref={textareaRef}
+        className="cell-input cell-textarea"
+        value={draft}
+        onChange={(e) => { setDraft(e.target.value); autoResize(); }}
+        onBlur={commit}
+        onKeyDown={handleKeyDown}
+        style={{
+          width: colWidth ? colWidth - 1 : undefined,
+          maxHeight: maxH ?? undefined,
+        }}
+      />
+    );
+  }
 
   return (
     <input
@@ -382,53 +458,7 @@ function TextEditor({
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
-      onKeyDown={(e) => {
-        // Skip during IME composition (Chinese pinyin candidate confirm)
-        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-        if (e.key === "Enter") {
-          e.preventDefault();
-          e.nativeEvent.stopImmediatePropagation();
-          commit();
-          // V2.9 #4: Enter → 下一行同列;Shift+Enter 不导航(允许将来支持多行)
-          if (!e.shiftKey) onNavigate?.(1, 0);
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          e.nativeEvent.stopImmediatePropagation();
-          onCancel();
-        } else if (e.key === "Tab") {
-          // V2.9 #4: Tab → 下一列;Shift+Tab → 上一列
-          // V4.2.1 修复"Tab 跳过 SingleSelect":React 18 在事件处理里同步
-          // flush state,SelectEditor 立刻 mount + 它的 document keydown listener
-          // 抓到同一个 Tab event 二次 navigate。stopImmediatePropagation 阻止
-          // 事件冒泡到 document,新 listener 不会再触发。
-          e.preventDefault();
-          e.nativeEvent.stopImmediatePropagation();
-          commit();
-          onNavigate?.(0, e.shiftKey ? -1 : 1);
-        } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-          // V2.9 #3: 上下箭头 → 上下行同列
-          e.preventDefault();
-          e.nativeEvent.stopImmediatePropagation();
-          commit();
-          onNavigate?.(e.key === "ArrowUp" ? -1 : 1, 0);
-        } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-          // V2.9 #3: 仅在 caret 已经在行首/行尾才切换列;否则保留默认 caret 移动行为
-          const el = e.currentTarget as HTMLInputElement;
-          const isAtStart = el.selectionStart === 0 && el.selectionEnd === 0;
-          const isAtEnd = el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
-          if (e.key === "ArrowLeft" && isAtStart) {
-            e.preventDefault();
-            e.nativeEvent.stopImmediatePropagation();
-            commit();
-            onNavigate?.(0, -1);
-          } else if (e.key === "ArrowRight" && isAtEnd) {
-            e.preventDefault();
-            e.nativeEvent.stopImmediatePropagation();
-            commit();
-            onNavigate?.(0, 1);
-          }
-        }
-      }}
+      onKeyDown={handleKeyDown}
     />
   );
 }
@@ -1069,6 +1099,7 @@ function EditableCell({
   onCancel,
   onNavigate,
   onFieldUpdate,
+  colWidth,
 }: {
   field: Field;
   record: TableRecord;
@@ -1078,6 +1109,7 @@ function EditableCell({
   onCancel: () => void;
   onNavigate?: (dRow: number, dCol: number) => void;
   onFieldUpdate?: (f: Field) => void;
+  colWidth?: number;
 }) {
   const value = record.cells[field.id] ?? null;
   const isEditable = field.type !== "AutoNumber" && field.type !== "Lookup" && field.type !== "CreatedTime" && field.type !== "ModifiedTime";
@@ -1096,7 +1128,7 @@ function EditableCell({
   const renderEditor = () => {
     switch (field.type) {
       case "Text":
-        return <TextEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />;
+        return <TextEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} colWidth={colWidth} />;
       case "Number":
         return <TextEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />;
       case "SingleSelect":
@@ -2060,6 +2092,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                           onCancel={cancelEdit}
                           onNavigate={(dRow, dCol) => navigateEdit(idx, fIdx, dRow, dCol)}
                           onFieldUpdate={onFieldConfigChange}
+                          colWidth={colWidths[f.id] ?? getDefaultColWidth(f)}
                         />
                       </td>
                     );

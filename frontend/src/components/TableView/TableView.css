@@ -317,6 +317,23 @@
   font-family: var(--font-family);
 }
 
+.cell-textarea {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  min-height: 32px;
+  height: auto;
+  resize: none;
+  overflow-y: auto;
+  line-height: 1.5;
+  padding: 5px 8px;
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius-s);
+  background: var(--color-bg-body);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
 /* ─── Select / User dropdown editor ─── */
 .cell-editor-wrap {
   position: relative;
