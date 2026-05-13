@@ -518,6 +518,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   useEffect(() => {
     if (!isEdit || fieldType !== "AutoNumber") return;
     if (autoNumInitRef.current) { autoNumInitRef.current = false; return; }
+    console.log("[AutoNum] auto-saving config", { rules: autoNumberRules, digits: autoNumberDigits });
     const config = { autoNumberMode: "custom" as const, autoNumberRules, autoNumberDigits };
     updateField(currentTableId, editingField!.id, { config }).then(async (f) => {
       if (!f) return;

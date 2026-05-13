@@ -70,7 +70,7 @@ const OPERATORS_BY_TYPE: Record<string, { value: FilterOperator; label: string }
   ],
 };
 // Field type aliases: map types that share the same operators
-OPERATORS_BY_TYPE.AutoNumber = OPERATORS_BY_TYPE.Number;
+OPERATORS_BY_TYPE.AutoNumber = OPERATORS_BY_TYPE.Text;
 OPERATORS_BY_TYPE.CreatedUser = OPERATORS_BY_TYPE.User;
 OPERATORS_BY_TYPE.ModifiedUser = OPERATORS_BY_TYPE.User;
 OPERATORS_BY_TYPE.CreatedTime = OPERATORS_BY_TYPE.DateTime;
@@ -333,7 +333,7 @@ function ValueInput({ field, operator, value, onChange }: ValueInputProps) {
     );
   }
 
-  if (type === "Number" || type === "AutoNumber") {
+  if (type === "Number") {
     return (
       <input
         type="number"
