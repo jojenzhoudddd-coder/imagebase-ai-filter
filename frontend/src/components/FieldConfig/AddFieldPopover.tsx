@@ -117,10 +117,12 @@ const DATE_FORMAT_OPTIONS = [
   { value: "MMdd", label: "MMdd" },
 ];
 
-function AddRuleMenu({ onAdd, dateLabel, fixedLabel, buttonLabel }: {
-  onAdd: (type: "date" | "fixed") => void;
+function AddRuleMenu({ onAdd, dateLabel, fixedLabel, incrementLabel, showIncrement, buttonLabel }: {
+  onAdd: (type: "date" | "fixed" | "increment") => void;
   dateLabel: string;
   fixedLabel: string;
+  incrementLabel: string;
+  showIncrement: boolean;
   buttonLabel: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -153,6 +155,7 @@ function AddRuleMenu({ onAdd, dateLabel, fixedLabel, buttonLabel }: {
       </button>
       {open && (
         <div ref={menuRef} className="an-add-menu" style={{ top: menuPos.top, left: menuPos.left }}>
+          {showIncrement && <button type="button" className="an-add-menu-item" onClick={() => { onAdd("increment"); setOpen(false); }}>{incrementLabel}</button>}
           <button type="button" className="an-add-menu-item" onClick={() => { onAdd("date"); setOpen(false); }}>{dateLabel}</button>
           <button type="button" className="an-add-menu-item" onClick={() => { onAdd("fixed"); setOpen(false); }}>{fixedLabel}</button>
         </div>
@@ -265,9 +268,8 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
                   placeholder={t("addField.fixedPlaceholder")}
                 />
               )}
-              <button type="button" className={`so-remove${rule.type === "increment" ? " disabled" : ""}`}
-                disabled={rule.type === "increment"}
-                onClick={() => { if (rule.type !== "increment") onRulesChange(rules.filter((_, i) => i !== idx)); }}
+              <button type="button" className="so-remove"
+                onClick={() => onRulesChange(rules.filter((_, i) => i !== idx))}
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -280,6 +282,8 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
           onAdd={addRule}
           dateLabel={t("addField.ruleDate")}
           fixedLabel={t("addField.ruleFixed")}
+          incrementLabel={t("addField.ruleIncrement")}
+          showIncrement={!hasIncrement}
           buttonLabel={`+ ${t("addField.addRule")}`}
         />
       </div>
@@ -501,7 +505,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const [dateFormat, setDateFormat] = useState(editingField?.config?.format ?? "yyyy-MM-dd");
   const [numberFormat, setNumberFormat] = useState(editingField?.config?.format ?? "decimal_1");
   const [selectOptions, setSelectOptions] = useState<SelectOption[]>(editingField?.config?.options ?? []);
-  const [autoNumberRules, setAutoNumberRules] = useState<AutoNumberRule[]>(editingField?.config?.autoNumberRules ?? [{ type: "increment" }]);
+  const [autoNumberRules, setAutoNumberRules] = useState<AutoNumberRule[]>(editingField?.config?.autoNumberRules ?? []);
   const [autoNumberDigits, setAutoNumberDigits] = useState(editingField?.config?.autoNumberDigits ?? 3);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; path?: string } | null>(null);

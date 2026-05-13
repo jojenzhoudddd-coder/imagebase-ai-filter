@@ -714,14 +714,6 @@
   width: 140px;
   flex: 0 0 140px;
 }
-.so-remove.disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-.so-remove.disabled:hover {
-  background: none;
-  color: var(--text-muted);
-}
 .an-add-menu {
   position: fixed;
   width: 140px;

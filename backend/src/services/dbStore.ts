@@ -44,8 +44,12 @@ function formatAutoNumber(counter: number, rules: AutoNumberRule[], digits: numb
   const now = new Date();
   return rules.map(rule => {
     switch (rule.type) {
-      case "increment":
-        return String(counter).padStart(digits, "0");
+      case "increment": {
+        // Cycle within digit limit: 3 digits → 0-999 → wraps
+        const max = Math.pow(10, digits);
+        const v = ((counter - 1) % max) + 1; // 1-based cycling
+        return String(v).padStart(digits, "0");
+      }
       case "fixed":
         return rule.value;
       case "date": {
@@ -484,7 +488,27 @@ export async function updateField(tableId: string, fieldId: string, dto: UpdateF
   if (!field) return null;
 
   if (dto.name !== undefined) field.name = dto.name.slice(0, 100);
+  const autoNumberConfigChanged = field.type === "AutoNumber" && dto.config !== undefined;
   if (dto.config !== undefined) field.config = { ...field.config, ...dto.config };
+
+  // Re-compute AutoNumber cells when config changes
+  if (autoNumberConfigChanged) {
+    const records = await prisma.record.findMany({ where: { tableId }, orderBy: { createdAt: "asc" } });
+    const counters = (row.autoNumberCounters ?? {}) as Record<string, number>;
+    counters[fieldId] = 0; // reset counter
+    for (const rec of records) {
+      const cells = (rec.cells ?? {}) as Record<string, any>;
+      const counter = (counters[fieldId] ?? 0) + 1;
+      counters[fieldId] = counter;
+      if (field.config.autoNumberMode === "custom" && field.config.autoNumberRules && field.config.autoNumberRules.length > 0) {
+        cells[fieldId] = formatAutoNumber(counter, field.config.autoNumberRules, field.config.autoNumberDigits ?? 3);
+      } else {
+        cells[fieldId] = counter;
+      }
+      await prisma.record.update({ where: { id: rec.id }, data: { cells: cells as any } });
+    }
+    await prisma.table.update({ where: { id: tableId }, data: { autoNumberCounters: counters as any } });
+  }
 
   if (dto.type !== undefined && dto.type !== field.type) {
     const oldType = field.type;
