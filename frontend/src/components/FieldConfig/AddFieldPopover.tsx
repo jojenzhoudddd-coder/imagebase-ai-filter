@@ -85,7 +85,7 @@ const EMPTY_LOOKUP: LookupConfig = {
 };
 
 // Palette keys that match the cell-display color system (OPTION_PALETTE_LM/DM in TableView)
-const OPTION_COLORS = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#FFFFFF"];
+const OPTION_COLORS = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#9E339E"];
 // Tag-style colors (bg + text + dot) matching cell display palette
 const OPTION_TAG_COLORS_LM: Record<string, { bg: string; text: string; dot: string }> = {
   "#D83931": { bg: "#FEE2E2", text: "#D83931", dot: "#F54A45" },
@@ -94,7 +94,7 @@ const OPTION_TAG_COLORS_LM: Record<string, { bg: string; text: string; dot: stri
   "#002270": { bg: "#E0E9FF", text: "#002270", dot: "#3370FF" },
   "#3B1A02": { bg: "#FEF0E1", text: "#3B1A02", dot: "#FFB900" },
   "#2B2F36": { bg: "#F0F1F3", text: "#2B2F36", dot: "#646A73" },
-  "#FFFFFF": { bg: "#F7F8FA", text: "#646A73", dot: "#C9CDD4" },
+  "#9E339E": { bg: "#FAE0FA", text: "#9E339E", dot: "#D946D9" },
 };
 const OPTION_TAG_COLORS_DM: Record<string, { bg: string; text: string; dot: string }> = {
   "#D83931": { bg: "rgba(245, 74, 69, 0.22)", text: "#FF8B86", dot: "#FF6B66" },
@@ -103,7 +103,7 @@ const OPTION_TAG_COLORS_DM: Record<string, { bg: string; text: string; dot: stri
   "#002270": { bg: "rgba(74, 130, 255, 0.22)", text: "#99B6FF", dot: "#6B9AFF" },
   "#3B1A02": { bg: "rgba(255, 184, 77, 0.20)", text: "#FFD09C", dot: "#FFB84D" },
   "#2B2F36": { bg: "rgba(176, 176, 181, 0.16)", text: "#D0D0D5", dot: "#B0B0B5" },
-  "#FFFFFF": { bg: "rgba(255, 255, 255, 0.08)", text: "#D0D0D5", dot: "#8E8E93" },
+  "#9E339E": { bg: "rgba(217, 70, 217, 0.22)", text: "#F0A0F0", dot: "#D946D9" },
 };
 const DEFAULT_TAG_LM = { bg: "#F0F1F3", text: "#646A73", dot: "#8F959E" };
 const DEFAULT_TAG_DM = { bg: "rgba(176, 176, 181, 0.16)", text: "#B0B0B5", dot: "#8E8E93" };
