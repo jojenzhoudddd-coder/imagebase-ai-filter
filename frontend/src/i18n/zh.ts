@@ -315,7 +315,7 @@ export const zh: TranslationKeys = {
   "addField.numFmt.decimal5": "保留 5 位小数",
   "addField.autoNumberRules": "编号规则",
   "addField.addRule": "编号规则",
-  "addField.ruleIncrement": "自增数字",
+  "addField.ruleIncrement": "自增",
   "addField.ruleDate": "创建日期",
   "addField.ruleFixed": "固定字符",
   "addField.digitSuffix": "位",

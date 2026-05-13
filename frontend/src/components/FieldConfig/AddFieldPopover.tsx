@@ -115,8 +115,6 @@ const DATE_FORMAT_OPTIONS = [
   { value: "yyyyMM", label: "yyyyMM" },
   { value: "yyMM", label: "yyMM" },
   { value: "MMdd", label: "MMdd" },
-  { value: "MM", label: "MM" },
-  { value: "dd", label: "dd" },
 ];
 
 function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }: {
@@ -235,7 +233,7 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
           );
         })}
         <select
-          className="so-add an-add-select"
+          className="an-add-select"
           value=""
           onChange={(e) => { if (e.target.value) { addRule(e.target.value as any); e.target.value = ""; } }}
         >

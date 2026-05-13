@@ -313,7 +313,7 @@ export const en = {
   "addField.numFmt.decimal5": "5 decimal places",
   "addField.autoNumberRules": "Number Rules",
   "addField.addRule": "Number Rule",
-  "addField.ruleIncrement": "Auto Increment",
+  "addField.ruleIncrement": "Increment",
   "addField.ruleDate": "Created Date",
   "addField.ruleFixed": "Fixed Text",
   "addField.digitSuffix": "digits",
