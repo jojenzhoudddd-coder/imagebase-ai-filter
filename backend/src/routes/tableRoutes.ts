@@ -343,7 +343,7 @@ router.put("/:tableId/records/:recordId", async (req: Request, res: Response) =>
   const updateUserId = currentUser(req)?.id;
   const record = await store.updateRecord(req.params.tableId, req.params.recordId, { cells }, updateUserId);
   if (!record) { res.status(404).json({ error: "Record not found" }); return; }
-  eventBus.emitChange({ type: "record:update", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { recordId: req.params.recordId, cells: req.body.cells, updatedAt: record.updatedAt } });
+  eventBus.emitChange({ type: "record:update", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { recordId: req.params.recordId, cells: record.cells, updatedAt: record.updatedAt } });
   res.json(record);
 });
 

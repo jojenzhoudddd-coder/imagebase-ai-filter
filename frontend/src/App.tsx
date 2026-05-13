@@ -606,6 +606,16 @@ export default function App() {
     );
     // Persist to backend
     updateRecord(activeTableIdRef.current, recordId, { [fieldId]: value })
+      .then((savedRecord) => {
+        // Merge server-computed cells (ModifiedUser, ModifiedTime, etc.)
+        if (savedRecord?.cells) {
+          setAllRecords(prev =>
+            prev.map(r =>
+              r.id === recordId ? { ...r, cells: { ...r.cells, ...savedRecord.cells }, updatedAt: savedRecord.updatedAt } : r
+            )
+          );
+        }
+      })
       .catch(() => {
         // Rollback optimistic update
         setAllRecords(prev =>

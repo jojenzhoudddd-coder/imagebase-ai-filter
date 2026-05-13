@@ -48,7 +48,7 @@ import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { mockTable } from "./mockData.js";
-import { connectDB, loadTable, getTable, getWorkspace, updateWorkspace, listTablesForWorkspace, ensureDefaults } from "./services/dbStore.js";
+import { connectDB, loadTable, getTable, getWorkspace, updateWorkspace, listTablesForWorkspace, ensureDefaults, backfillUserFields } from "./services/dbStore.js";
 import { eventBus } from "./services/eventBus.js";
 import { startSuggestionScheduler } from "./services/suggestionService.js";
 import { ensureDefaultAgent } from "./services/agentService.js";
@@ -346,6 +346,7 @@ async function start() {
   // ensureDefaults() seeds the default user/org/workspace the agent depends on.
   try {
     await ensureDefaults();
+    await backfillUserFields();
     const agent = await ensureDefaultAgent();
     console.log(`Default agent ready: ${agent.id} (${agent.name})`);
   } catch (err) {

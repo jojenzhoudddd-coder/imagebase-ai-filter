@@ -1067,6 +1067,46 @@ export async function ensureDefaults(): Promise<void> {
   defaultsEnsured = true;
 }
 
+/**
+ * One-time backfill: populate CreatedUser/ModifiedUser cells on existing records
+ * that have createdBy/modifiedBy set on the row but missing in the cells JSON.
+ * Also back-fill createdBy from the default user for truly old records.
+ */
+export async function backfillUserFields(): Promise<void> {
+  const tables = await prisma.table.findMany();
+  for (const t of tables) {
+    const fields = (t.fields ?? []) as Field[];
+    const createdUserField = fields.find(f => f.type === "CreatedUser");
+    const modifiedUserField = fields.find(f => f.type === "ModifiedUser");
+    if (!createdUserField && !modifiedUserField) continue;
+
+    const records = await prisma.record.findMany({ where: { tableId: t.id } });
+    for (const rec of records) {
+      const cells = (rec.cells ?? {}) as Record<string, CellValue>;
+      let dirty = false;
+
+      // Back-fill createdBy column if null
+      const createdBy = rec.createdBy || DEFAULT_USER_ID;
+      if (!rec.createdBy) {
+        await prisma.record.update({ where: { id: rec.id }, data: { createdBy, modifiedBy: rec.modifiedBy || createdBy } });
+      }
+
+      if (createdUserField && !cells[createdUserField.id]) {
+        cells[createdUserField.id] = createdBy;
+        dirty = true;
+      }
+      if (modifiedUserField && !cells[modifiedUserField.id]) {
+        cells[modifiedUserField.id] = rec.modifiedBy || createdBy;
+        dirty = true;
+      }
+      if (dirty) {
+        await prisma.record.update({ where: { id: rec.id }, data: { cells: cells as any } });
+      }
+    }
+  }
+  console.log("[backfill] CreatedUser/ModifiedUser fields populated");
+}
+
 // ─── AI Tool functions ───
 
 export interface TableBriefInfo {
