@@ -30,6 +30,7 @@ import {
   buildAttachmentKey,
 } from "../services/ideaAttachmentService.js";
 import { getBlobStorage } from "../services/storage/index.js";
+import { DEFAULT_WORKSPACE_ID } from "../services/dbStore.js";
 import { PrismaClient } from "../generated/prisma/client.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -132,12 +133,18 @@ ideaAttachmentTopRouter.delete("/:id", async (req: Request, res: Response) => {
 ideaAttachmentTopRouter.get(
   "/:wsId/:filename",
   async (req: Request, res: Response) => {
-    const { wsId, filename } = req.params;
+    const { wsId: rawWsId, filename } = req.params;
     if (!/^[0-9a-f]+\.[a-z0-9]{1,8}$/.test(filename)) {
       res.status(400).json({ error: "invalid filename" });
       return;
     }
-    const row = await findByPath(wsId, filename);
+    // Legacy URLs embedded in idea content may reference "doc_default" while
+    // DB rows may have been migrated to ws-format, or vice versa. Try both.
+    let row = await findByPath(rawWsId, filename);
+    if (!row) {
+      const altWsId = rawWsId === "doc_default" ? DEFAULT_WORKSPACE_ID : "doc_default";
+      row = await findByPath(altWsId, filename);
+    }
     if (!row) {
       res.status(404).json({ error: "attachment not found" });
       return;
