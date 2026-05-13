@@ -61,6 +61,7 @@ interface DragState {
   startX: number;
   currentX: number;
   headerRects: Map<string, DOMRect>;
+  scrollDelta: number; // accumulated scroll offset change since drag start
 }
 
 // Lark option color palette: maps option.color → { bg, text, dot }.
@@ -1895,16 +1896,21 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       return rects;
     };
 
+    // Find the scrollable container
+    const scrollContainer = th?.closest(".table-container") as HTMLElement | null;
+    const startScrollLeft = scrollContainer?.scrollLeft ?? 0;
+
     const rects = readRects();
     const startX = e.clientX;
-    dragRef.current = { fieldId, startX, currentX: startX, headerRects: rects };
+    dragRef.current = { fieldId, startX, currentX: startX, headerRects: rects, scrollDelta: 0 };
     justDraggedRef.current = false;
-    setDragState({ fieldId, startX, currentX: startX, headerRects: rects });
+    setDragState({ fieldId, startX, currentX: startX, headerRects: rects, scrollDelta: 0 });
     document.body.style.cursor = "grabbing";
     document.body.style.userSelect = "none";
 
+    const getScrollDelta = () => (scrollContainer?.scrollLeft ?? 0) - startScrollLeft;
+
     const updateOverTarget = (clientX: number) => {
-      // Re-read live rects each time to handle scroll changes
       const liveRects = readRects();
       if (dragRef.current) {
         dragRef.current.headerRects = liveRects;
@@ -1923,22 +1929,17 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     const onMouseMove = (ev: MouseEvent) => {
       if (!dragRef.current) return;
       dragRef.current.currentX = ev.clientX;
+      dragRef.current.scrollDelta = getScrollDelta();
       setDragState({ ...dragRef.current });
       updateOverTarget(ev.clientX);
     };
 
-    // Keep drag alive during scroll (shift+wheel or trackpad)
     const onScroll = () => {
       if (!dragRef.current) return;
-      // Refresh rects and re-evaluate drop target at current mouse position
-      const liveRects = readRects();
-      dragRef.current.headerRects = liveRects;
+      dragRef.current.scrollDelta = getScrollDelta();
       setDragState({ ...dragRef.current });
       updateOverTarget(dragRef.current.currentX);
     };
-
-    // Find the scrollable container
-    const scrollContainer = th?.closest(".table-container") as HTMLElement | null;
 
     const onMouseUp = () => {
       const finalOverId = dragOverRef.current;
@@ -1983,7 +1984,9 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   // Compute drag offset for the dragged column header
   const getDragTransform = (fieldId: string): React.CSSProperties => {
     if (!dragState || dragState.fieldId !== fieldId) return {};
-    const delta = dragState.currentX - dragState.startX;
+    // Mouse delta + scroll delta: the column header already moved with scroll,
+    // so we add scrollDelta to compensate and keep it under the cursor.
+    const delta = dragState.currentX - dragState.startX + dragState.scrollDelta;
     return {
       transform: `translateX(${delta}px)`,
       zIndex: 10,
