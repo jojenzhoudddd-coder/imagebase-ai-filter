@@ -659,38 +659,32 @@
   display: flex;
   align-items: center;
   margin-left: auto;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-s);
-  background: var(--surface-2);
+  width: 140px;
+  border: 1px solid var(--color-border-component);
+  border-radius: var(--radius-m);
+  background: var(--color-white);
   overflow: hidden;
-  height: 28px;
+  height: 32px;
 }
-.an-stepper:focus-within {
-  border-color: var(--color-primary);
-}
+.an-stepper:hover { border-color: var(--color-primary); }
+.an-stepper:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(20,86,240,0.1); }
 .an-stepper-input {
-  width: 32px;
+  flex: 1;
+  min-width: 0;
   height: 100%;
-  padding: 0 0 0 8px;
+  padding: 0 8px;
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-family: var(--font-family);
   outline: none;
   text-align: center;
 }
-.an-stepper-suffix {
-  font-size: 12px;
-  color: var(--text-placeholder);
-  padding-right: 4px;
-  pointer-events: none;
-  flex-shrink: 0;
-}
 .an-stepper-btns {
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--border-default);
+  border-left: 1px solid var(--color-border-component);
   height: 100%;
   flex-shrink: 0;
 }
@@ -699,22 +693,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
+  width: 24px;
   height: 50%;
   border: none;
-  background: var(--surface-2);
+  background: var(--color-white);
   color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
 }
-.an-stepper-up { border-bottom: 1px solid var(--border-default); }
+.an-stepper-up { border-bottom: 1px solid var(--color-border-component); }
 .an-stepper-up:hover { background: var(--primary-bg, #E0E9FF); color: var(--color-primary); }
 .an-stepper-down:hover { background: var(--color-bg-hover); }
 .an-rule-select {
   margin-left: auto;
-  flex: 0 0 auto;
+  width: 140px;
+  flex: 0 0 140px;
 }
 .an-rule-fixed-input {
-  flex: 1;
-  min-width: 0;
+  margin-left: auto;
+  width: 140px;
+  flex: 0 0 140px;
 }
