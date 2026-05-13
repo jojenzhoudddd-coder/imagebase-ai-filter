@@ -233,6 +233,16 @@
   overflow: hidden;
   position: relative;
 }
+.cell-tags-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  display: flex;
+  gap: 4px;
+  white-space: nowrap;
+  height: 0;
+  overflow: hidden;
+}
 .cell-tags-badge {
   display: inline-flex;
   align-items: center;

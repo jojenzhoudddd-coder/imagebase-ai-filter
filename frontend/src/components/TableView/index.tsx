@@ -187,58 +187,60 @@ function formatNumber(val: number, fmt?: string): string {
 function MultiSelectDisplay({ field, value }: { field: Field; value: CellValue }) {
   const items = Array.isArray(value) ? value : [String(value)];
   const containerRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState(items.length);
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    const container = containerRef.current;
+    const measure = measureRef.current;
+    if (!container || !measure) return;
+    let rafId = 0;
     const compute = () => {
-      // children = all tag spans (rendered but potentially hidden) + optional badge
-      const tags = Array.from(el.querySelectorAll(".status-tag")) as HTMLElement[];
-      const containerWidth = el.clientWidth;
-      if (!containerWidth || tags.length === 0) { setVisibleCount(items.length); return; }
-      const GAP = 4;
-      const BADGE_WIDTH = 28;
-      let used = 0;
-      let fits = 0;
-      for (let i = 0; i < tags.length; i++) {
-        // temporarily show for measurement
-        tags[i].style.position = "static";
-        tags[i].style.visibility = "visible";
-        const w = tags[i].offsetWidth;
-        const needed = fits > 0 ? GAP + w : w;
-        const remaining = tags.length - i - 1;
-        const reserveForBadge = remaining > 0 ? GAP + BADGE_WIDTH : 0;
-        if (used + needed + reserveForBadge <= containerWidth) {
-          used += needed;
-          fits++;
-        } else {
-          break;
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const containerWidth = container.clientWidth;
+        const tags = Array.from(measure.children) as HTMLElement[];
+        if (!containerWidth || tags.length === 0) { setVisibleCount(items.length); return; }
+        const GAP = 4;
+        const BADGE_WIDTH = 28;
+        let used = 0;
+        let fits = 0;
+        for (let i = 0; i < tags.length; i++) {
+          const w = tags[i].offsetWidth;
+          const needed = fits > 0 ? GAP + w : w;
+          const remaining = tags.length - i - 1;
+          const reserveForBadge = remaining > 0 ? GAP + BADGE_WIDTH : 0;
+          if (used + needed + reserveForBadge <= containerWidth) {
+            used += needed;
+            fits++;
+          } else {
+            break;
+          }
         }
-      }
-      setVisibleCount(Math.max(fits, 1));
+        setVisibleCount(Math.max(fits, 1));
+      });
     };
     const ro = new ResizeObserver(compute);
-    ro.observe(el);
+    ro.observe(container);
     compute();
-    return () => ro.disconnect();
+    return () => { ro.disconnect(); cancelAnimationFrame(rafId); };
   }, [items.length]);
 
   const overflow = items.length - visibleCount;
   const isDark = document.documentElement.getAttribute("data-theme") === "dark";
   return (
     <div ref={containerRef} className="cell-tags cell-tags-overflow">
-      {items.map((v, i) => {
-        const hidden = i >= visibleCount;
+      {/* Hidden measurement container — always renders all tags at natural size */}
+      <div ref={measureRef} className="cell-tags-measure">
+        {items.map((v) => {
+          const os = getOptionStyle(findOptionColor(field, v), isDark);
+          return <span key={v} className="status-tag" style={{ background: os.bg, color: os.text }}>{v}</span>;
+        })}
+      </div>
+      {/* Visible tags */}
+      {items.slice(0, visibleCount).map((v) => {
         const os = getOptionStyle(findOptionColor(field, v), isDark);
-        return (
-          <span key={v} className="status-tag" style={{
-            background: os.bg, color: os.text,
-            ...(hidden ? { position: "absolute" as const, visibility: "hidden" as const } : {}),
-          }}>
-            {v}
-          </span>
-        );
+        return <span key={v} className="status-tag" style={{ background: os.bg, color: os.text }}>{v}</span>;
       })}
       {overflow > 0 && <span className="cell-tags-badge">+{overflow}</span>}
     </div>
