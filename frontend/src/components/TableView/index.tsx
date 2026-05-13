@@ -482,6 +482,7 @@ function SelectEditor({
 
   // scroll highlighted item into view
   useEffect(() => {
+    if (hlIdx < 0) return;
     const el = listRef.current?.children[hlIdx] as HTMLElement | undefined;
     el?.scrollIntoView({ block: "nearest" });
   }, [hlIdx]);
@@ -530,13 +531,13 @@ function SelectEditor({
       onCancel();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      setHlIdx((i) => (i + 1) % totalItems);
+      setHlIdx((i) => i < 0 ? 0 : (i + 1) % totalItems);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setHlIdx((i) => (i - 1 + totalItems) % totalItems);
+      setHlIdx((i) => i < 0 ? totalItems - 1 : (i - 1 + totalItems) % totalItems);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (totalItems === 0) return;
+      if (totalItems === 0 || hlIdx < 0) return;
       if (hlIdx < filtered.length) {
         selectOption(filtered[hlIdx]);
       } else {
@@ -559,7 +560,7 @@ function SelectEditor({
           placeholder="查找或创建选项"
         />
       </div>
-      <div ref={listRef} className="cell-dropdown-list">
+      <div ref={listRef} className="cell-dropdown-list" onMouseLeave={() => setHlIdx(-1)}>
         {filtered.map((opt, i) => {
           const optStyle = getOptionStyle(opt.color, theme === "dark");
           const isSelected = field.type === "MultiSelect"
