@@ -307,8 +307,8 @@ function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
               <path d="M3 7l3 3 5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           ) : (
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="0.5" y="0.5" width="13" height="13" rx="2.5" stroke="#DEE0E3"/>
+            <svg className="cell-checkbox-unchecked" width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <rect x="0.5" y="0.5" width="13" height="13" rx="2.5" stroke="currentColor"/>
             </svg>
           )}
         </span>
