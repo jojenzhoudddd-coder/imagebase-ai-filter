@@ -143,9 +143,6 @@ export default function FieldConfigPanel({
 
   // ── Drag to reorder ──
   const handleDragStart = useCallback((e: React.MouseEvent, fieldId: string) => {
-    // Don't allow dragging primary field
-    const field = fields.find(f => f.id === fieldId);
-    if (field?.isPrimary) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -256,7 +253,7 @@ export default function FieldConfigPanel({
             const isHidden = hiddenSet.has(field.id);
             const isPrimary = field.isPrimary;
             const isDragging = dragState?.fieldId === field.id;
-            const dragDisabled = isPrimary || isSearching;
+            const dragDisabled = isSearching;
             const isHighlighted = idx === highlightedIndex;
 
             return (

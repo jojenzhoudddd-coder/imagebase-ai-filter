@@ -125,10 +125,9 @@
   z-index: 3;
 }
 
-.col-resize-handle:hover,
-.col-resize-handle:active {
+.col-resize-handle:hover {
   background: var(--color-primary);
-  opacity: 0.4;
+  opacity: 0.3;
 }
 
 /* Figma: first column 44px — width set via <col>, not here (table-layout:fixed ignores th width when col is set) */
@@ -832,12 +831,12 @@
 .col-resize-line {
   position: absolute;
   top: 0;
-  width: 1px;
+  width: 2px;
   height: 100%;
   background: var(--color-primary);
-  opacity: 0.5;
   z-index: 20;
   pointer-events: none;
+  transform: translateX(-1px);
 }
 
 .data-table th[style*="translateX"] {
