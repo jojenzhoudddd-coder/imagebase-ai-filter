@@ -722,19 +722,36 @@
   background: none;
   color: var(--text-muted);
 }
-.an-add-select {
-  display: inline-flex;
-  align-items: center;
+.an-add-wrap {
+  position: relative;
   align-self: flex-start;
-  height: 28px;
+}
+.an-add-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 120px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-m);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  z-index: 10;
+}
+.an-add-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 32px;
   padding: 0 10px;
   border: none;
   border-radius: var(--radius-s);
-  background: transparent;
-  color: var(--primary);
+  background: none;
+  color: var(--text-primary);
   font-size: 14px;
-  cursor: pointer;
   font-family: var(--font-family);
-  transition: background 0.12s;
+  cursor: pointer;
 }
-.an-add-select:hover { background: var(--primary-bg); }
+.an-add-menu-item:hover {
+  background: var(--color-bg-hover);
+}

@@ -117,6 +117,39 @@ const DATE_FORMAT_OPTIONS = [
   { value: "MMdd", label: "MMdd" },
 ];
 
+function AddRuleMenu({ onAdd, dateLabel, fixedLabel, buttonLabel }: {
+  onAdd: (type: "date" | "fixed") => void;
+  dateLabel: string;
+  fixedLabel: string;
+  buttonLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="an-add-wrap">
+      <button type="button" className="so-add" onClick={() => setOpen(!open)}>
+        {buttonLabel}
+      </button>
+      {open && (
+        <div className="an-add-menu">
+          <button type="button" className="an-add-menu-item" onClick={() => { onAdd("date"); setOpen(false); }}>{dateLabel}</button>
+          <button type="button" className="an-add-menu-item" onClick={() => { onAdd("fixed"); setOpen(false); }}>{fixedLabel}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }: {
   rules: AutoNumberRule[];
   onRulesChange: (r: AutoNumberRule[]) => void;
@@ -232,15 +265,12 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
             </div>
           );
         })}
-        <select
-          className="an-add-select"
-          value=""
-          onChange={(e) => { if (e.target.value) { addRule(e.target.value as any); e.target.value = ""; } }}
-        >
-          <option value="" disabled>+ {t("addField.addRule")}</option>
-          <option value="date">{t("addField.ruleDate")}</option>
-          <option value="fixed">{t("addField.ruleFixed")}</option>
-        </select>
+        <AddRuleMenu
+          onAdd={addRule}
+          dateLabel={t("addField.ruleDate")}
+          fixedLabel={t("addField.ruleFixed")}
+          buttonLabel={`+ ${t("addField.addRule")}`}
+        />
       </div>
     </div>
   );
