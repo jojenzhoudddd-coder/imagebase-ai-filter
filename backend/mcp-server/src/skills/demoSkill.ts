@@ -214,13 +214,15 @@ const label = (fid: string, v: any) => {
 ### 场景 C — 用户没贴具体设计稿，只说"做个 XX 系统"
 不做 1:1 还原，走常规设计流程（Vibe Design skill 如果激活，先提 3-4 个视觉方向让用户选）。
 
-## 分步实现（防止输出截断）
+## 分步实现（防止输出截断 + 并发加速）
 
-复杂 Demo 先 plan 再分文件写，不要一次 write_demo_file 塞几千行：
-- 拆成多文件：components/Dashboard.tsx、components/BugList.tsx 等
+复杂 Demo（≥3 个独立模块）先 plan，再用 \`compose_workflow\` 并发写组件文件，最后 host 串 app.tsx + build。
+- 每个逻辑模块一个文件：\`components/Dashboard.tsx\`、\`components/BugList.tsx\` 等
 - app.tsx 只做 import + 路由，不堆业务逻辑
-- 每次 write_demo_file 写一个文件
-- 修改已有 Demo 时先 read_demo_file 看结构，增量改，不要整个重写
+- 并发分支的 subagent prompt 要自包含（demoId + 字段 schema + 数据契约），不要让 subagent 再查
+- ≤2 个文件直接串行写，不值得起 workflow
+- 修改已有 Demo 时先 read_demo_file 看结构，增量改而非整体重写
+- 详见 vibe-coding-skill 的"分步实现策略"
 
 ## 硬规则
 

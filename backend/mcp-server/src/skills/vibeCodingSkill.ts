@@ -122,26 +122,65 @@ function App() {
 }
 \`\`\`
 
-### 分步实现策略（防止输出截断）
+### 分步实现策略（防止输出截断 + 并发加速）
 
-复杂 Demo（多模块 / 多页面 / 大量代码）**必须先 plan 再分步写**，不要试图一个 write_demo_file 塞几千行代码：
+复杂 Demo（≥3 个模块/页面）**必须先 plan，再用 subagent 并发写文件**。
 
-1. **Plan 阶段**（自然语言，不调工具）：
-   - 列出要改/加的文件清单 + 每个文件的职责
-   - 如果改已有文件，先 \`read_demo_file\` 看现有代码结构
-   - 确定写文件的顺序（依赖关系：类型/工具 → 组件 → 主入口）
+#### 阶段 1：Plan（host 自己做，不调工具）
 
-2. **分文件 / 分段写**：
-   - 每个逻辑模块拆成独立文件（如 \`components/Dashboard.tsx\`、\`components/BugList.tsx\`）
-   - 主入口 \`app.tsx\` 只做 import + 路由/布局，不堆业务逻辑
-   - 每次 \`write_demo_file\` 写一个文件，不要合并多个组件到一个巨型文件
+1. 如果改已有 Demo → \`read_demo_file\` 看现有代码结构
+2. 列出要写/改的文件清单 + 每个文件的职责 + 依赖关系
+3. 把文件分为：**可并行写的组件文件** vs **需要等组件完成后再写的入口文件**
 
-3. **增量修改已有 Demo**：
-   - \`read_demo_file\` 读现有代码 → 理解结构
-   - 新模块写新文件，修改 app.tsx 加 import + 路由
-   - **不要整个重写 app.tsx**（除非架构不兼容），只改需要改的部分
+#### 阶段 2：并发写组件文件（spawn_subagent）
 
-这样每次 write 的代码量可控，不会撞 output token 上限。
+互相无依赖的组件文件通过 \`spawn_subagent\` **并发写**。每个 subagent 负责写一个文件：
+
+\`\`\`
+Host 用 compose_workflow 一次起并行分支，各写一个文件：
+  compose_workflow({
+    userMessage: "并发写 Dashboard + BugList + Settings 三个组件",
+    doc: {
+      nodes: {
+        "start": { kind: "trigger", type: "on_invoke", next: "parallel_write" },
+        "parallel_write": {
+          kind: "logic", type: "parallel",
+          branches: ["write_dashboard", "write_buglist", "write_settings"],
+          joinStrategy: "all",
+          next: null
+        },
+        "write_dashboard": {
+          kind: "action", type: "subagent",
+          subagentModel: "claude-opus-4.7",
+          prompt: "为 Demo dm_xxx 写 components/Dashboard.tsx。[贴入字段 schema + 契约 + 需求]。用 write_demo_file 写入。",
+          allowedTools: ["write_demo_file","read_demo_file","get_table"],
+          maxRounds: 8, next: null
+        },
+        "write_buglist": { /* 同上，换文件 */ },
+        "write_settings": { /* 同上 */ }
+      }
+    }
+  })
+\`\`\`
+
+**关键**：每个 subagent 的 prompt 必须**自包含**，不要让 subagent 再调 describe_table：
+- demoId + 文件路径
+- 字段 schema 摘要（host 在 plan 阶段已经查过，直接贴进 prompt）
+- ID 类字段的 label map 规则 + SDK 数据契约
+- 组件的 props 接口（跟其他组件的约定）
+
+#### 阶段 3：Host 写入口文件 + build
+
+workflow 完成后所有组件已写好，host 自己写 \`app.tsx\`（只做 import + 路由 + 布局）：
+1. \`write_demo_file(demoId, "app.tsx", ...)\` — 引入各组件，组装路由
+2. \`build_demo(demoId)\`
+3. 构建后自检（见 demo-skill 的"构建后自检"节）
+
+#### 什么时候不用并发
+
+- ≤2 个文件 → 直接串行 \`write_demo_file\`，不值得起 workflow
+- 文件有强依赖链（B import A 的类型定义）→ 串行写
+- 只改已有文件的一小段 → host 直接改
 
 ### 硬规则
 
