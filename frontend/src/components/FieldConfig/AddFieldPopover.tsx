@@ -531,24 +531,15 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
 
   const { suggestions, loading: sugLoading, refresh: sugRefresh, fetchSuggestions, hasFetched } = fieldSuggestions;
 
-  // Live-save AutoNumber config on every mutation (called directly from AutoNumberConfigPanel)
-  const onLiveUpdateRef = useRef(onLiveUpdate);
-  onLiveUpdateRef.current = onLiveUpdate;
-  const editingFieldIdRef = useRef(editingField?.id);
-  editingFieldIdRef.current = editingField?.id;
-  const handleAutoNumberSave = useCallback((newRules: AutoNumberRule[], newDigits: number) => {
-    const fid = editingFieldIdRef.current;
-    if (!fid) return;
-    const config = { autoNumberMode: "custom", autoNumberRules: newRules, autoNumberDigits: newDigits };
-    // Fire-and-forget: raw fetch to avoid any mutationFetch / promise chain issues
-    fetch(`/api/tables/${currentTableId}/fields/${fid}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ config }),
-    }).then(r => r.json()).then(() => {
-      onLiveUpdateRef.current?.();
-    }).catch(() => {});
-  }, [currentTableId]);
+  // Live-save AutoNumber config on every mutation
+  const handleAutoNumberSave = useCallback(async (newRules: AutoNumberRule[], newDigits: number) => {
+    if (!editingField) return;
+    try {
+      const config = { autoNumberMode: "custom" as const, autoNumberRules: newRules, autoNumberDigits: newDigits };
+      await updateField(currentTableId, editingField.id, { config });
+      await onLiveUpdate?.();
+    } catch { /* ignore */ }
+  }, [editingField, currentTableId, onLiveUpdate]);
 
   useEffect(() => {
     fetchTables().then(setAllTables);

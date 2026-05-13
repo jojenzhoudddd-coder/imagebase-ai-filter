@@ -1640,33 +1640,46 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       const startRow = Math.min(range.startRowIdx, range.endRowIdx);
       const startCol = Math.min(range.startColIdx, range.endColIdx);
       const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime", "CreatedUser", "ModifiedUser", "Lookup"]);
+      const endRow = Math.max(range.startRowIdx, range.endRowIdx);
+      const endCol = Math.max(range.startColIdx, range.endColIdx);
+      const isSingleValue = rows.length === 1 && !rows[0].includes("\t");
+      const isMultiCellSelected = startRow !== endRow || startCol !== endCol;
       let pasted = 0;
-      for (let r = 0; r < rows.length; r++) {
-        const targetRowIdx = startRow + r;
-        if (targetRowIdx >= records.length) break;
-        const cols = rows[r].split("\t");
-        for (let c = 0; c < cols.length; c++) {
-          const targetColIdx = startCol + c;
-          if (targetColIdx >= visibleFields.length) break;
-          const field = visibleFields[targetColIdx];
-          if (readOnlyTypes.has(field.type)) continue;
-          const rec = records[targetRowIdx];
-          if (!rec) continue;
-          // 简单 coercion:Number/Boolean 尝试转,其他直接当字符串
-          const raw = cols[c];
-          let v: any = raw;
-          if (field.type === "Number") {
-            const n = Number(raw);
-            v = Number.isFinite(n) ? n : null;
-          } else if (field.type === "Checkbox") {
-            v = raw === "true" || raw === "1" || raw === "✓";
-          } else if (field.type === "MultiSelect") {
-            v = raw ? raw.split(",").map(s => s.trim()).filter(Boolean) : [];
-          } else if (raw === "") {
-            v = null;
+
+      const coerce = (raw: string, field: Field): any => {
+        if (field.type === "Number") { const n = Number(raw); return Number.isFinite(n) ? n : null; }
+        if (field.type === "Checkbox") return raw === "true" || raw === "1" || raw === "✓";
+        if (field.type === "MultiSelect") return raw ? raw.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+        return raw === "" ? null : raw;
+      };
+
+      if (isSingleValue && isMultiCellSelected) {
+        // Fill all selected cells with the single clipboard value
+        for (let r = startRow; r <= endRow; r++) {
+          for (let c = startCol; c <= endCol; c++) {
+            if (r >= records.length || c >= visibleFields.length) continue;
+            const field = visibleFields[c];
+            if (readOnlyTypes.has(field.type)) continue;
+            onCellChange(records[r].id, field.id, coerce(rows[0], field));
+            pasted++;
           }
-          onCellChange(rec.id, field.id, v);
-          pasted++;
+        }
+      } else {
+        // Standard grid paste from top-left corner
+        for (let r = 0; r < rows.length; r++) {
+          const targetRowIdx = startRow + r;
+          if (targetRowIdx >= records.length) break;
+          const cols = rows[r].split("\t");
+          for (let c = 0; c < cols.length; c++) {
+            const targetColIdx = startCol + c;
+            if (targetColIdx >= visibleFields.length) break;
+            const field = visibleFields[targetColIdx];
+            if (readOnlyTypes.has(field.type)) continue;
+            const rec = records[targetRowIdx];
+            if (!rec) continue;
+            onCellChange(rec.id, field.id, coerce(cols[c], field));
+            pasted++;
+          }
         }
       }
       if (pasted > 0) {
