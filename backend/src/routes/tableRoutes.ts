@@ -154,12 +154,24 @@ router.get("/:tableId/fields", async (req: Request, res: Response) => {
   if (!table) { res.status(404).json({ error: "Table not found" }); return; }
   // Fire-and-forget: warm up AI field suggestions cache for this table
   warmupSuggestions(req.params.tableId);
-  // Hydrate CreatedUser/ModifiedUser with the same users list as User fields
-  const userList = table.fields.find(f => f.type === "User")?.config.users;
-  if (userList) {
+  // Hydrate CreatedUser/ModifiedUser with real workspace users
+  const hasSystemUserField = table.fields.some(f => f.type === "CreatedUser" || f.type === "ModifiedUser");
+  if (hasSystemUserField) {
+    // Pull all real users from DB as the users list for system user fields
+    const dbUsers = await store.listWorkspaceUsers();
+    const fieldUserList = table.fields.find(f => f.type === "User")?.config.users ?? [];
+    // Merge: real DB users + field mock users, dedup by id
+    const seen = new Set<string>();
+    const merged: { id: string; name: string; avatar: string }[] = [];
+    for (const u of dbUsers) {
+      if (!seen.has(u.id)) { seen.add(u.id); merged.push(u); }
+    }
+    for (const u of fieldUserList) {
+      if (!seen.has(u.id)) { seen.add(u.id); merged.push(u); }
+    }
     for (const f of table.fields) {
-      if ((f.type === "CreatedUser" || f.type === "ModifiedUser") && !f.config.users) {
-        f.config.users = userList;
+      if (f.type === "CreatedUser" || f.type === "ModifiedUser") {
+        f.config.users = merged;
       }
     }
   }
