@@ -2167,6 +2167,23 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                   <div
                     className="col-resize-handle"
                     onMouseDown={(e) => handleResizeStart(e, f.id)}
+                    onMouseEnter={() => {
+                      if (resizeRef.current) return;
+                      const line = resizeLineRef.current;
+                      const thEl = headerRefs.current.get(f.id);
+                      const container = containerRef.current;
+                      if (line && thEl && container) {
+                        const thRect = thEl.getBoundingClientRect();
+                        const cRect = container.getBoundingClientRect();
+                        line.style.left = `${thRect.right - cRect.left + container.scrollLeft}px`;
+                        line.style.display = "block";
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      if (!resizeRef.current && resizeLineRef.current) {
+                        resizeLineRef.current.style.display = "none";
+                      }
+                    }}
                   />
                 </th>
               ))}
