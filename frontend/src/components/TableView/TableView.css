@@ -314,18 +314,29 @@
   color: rgba(255, 255, 255, 0.2);
 }
 
+.cell-url-wrap {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 0;
+}
 .cell-url {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   color: var(--color-primary, #1456F0);
   text-decoration: none;
   cursor: pointer;
 }
 .cell-url:hover {
   text-decoration: underline;
+}
+.cell-url-edit-zone {
+  flex-shrink: 0;
+  width: 20px;
+  height: 100%;
 }
 
 .cell-empty {

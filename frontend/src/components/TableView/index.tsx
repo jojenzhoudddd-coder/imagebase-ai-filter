@@ -322,14 +322,18 @@ function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
 
     case "Url":
       return (
-        <a
-          className="cell-url"
-          href={String(value)}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {String(value)}
-        </a>
+        <div className="cell-url-wrap">
+          <a
+            className="cell-url"
+            href={String(value)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {String(value)}
+          </a>
+          <span className="cell-url-edit-zone" />
+        </div>
       );
 
     default:
@@ -1323,8 +1327,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   // Track last-clicked row for Shift+Click range selection
   const lastClickedRowRef = useRef<string | null>(null);
 
-  // Header checkbox ref for indeterminate state
-  const headerCheckRef = useRef<HTMLInputElement>(null);
+  // (header checkbox now uses SVG, no ref needed)
 
   // Resize state
   const resizeRef = useRef<{
@@ -1369,9 +1372,6 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   // Header checkbox: indeterminate state
   const allSelected = records.length > 0 && selectedRowIds.size === records.length;
   const someSelected = selectedRowIds.size > 0 && !allSelected;
-  useEffect(() => {
-    if (headerCheckRef.current) headerCheckRef.current.indeterminate = someSelected;
-  }, [someSelected]);
 
   const handleHeaderCheckChange = useCallback(() => {
     setCellRange(null);
@@ -2074,13 +2074,23 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
           <thead>
             <tr>
               <th className="col-index">
-                <input
-                  type="checkbox"
-                  className="row-checkbox"
-                  ref={headerCheckRef}
-                  checked={allSelected}
-                  onChange={handleHeaderCheckChange}
-                />
+                <span className="cell-checkbox" style={{ cursor: "pointer" }} onClick={() => handleHeaderCheckChange()}>
+                  {allSelected ? (
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <rect x="0.5" y="0.5" width="15" height="15" rx="3" fill="#1456F0" stroke="#1456F0"/>
+                      <path d="M3.5 8l3 3 5.5-5.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : someSelected ? (
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <rect x="0.5" y="0.5" width="15" height="15" rx="3" fill="#1456F0" stroke="#1456F0"/>
+                      <path d="M4 8h8" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  ) : (
+                    <svg className="cell-checkbox-unchecked" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <rect x="0.5" y="0.5" width="15" height="15" rx="3" stroke="currentColor"/>
+                    </svg>
+                  )}
+                </span>
               </th>
               {visibleFields.map((f) => (
                 <th
@@ -2174,12 +2184,18 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                 >
                   <td className="col-index">
                     {showCheckbox ? (
-                      <input
-                        type="checkbox"
-                        className="row-checkbox"
-                        checked={isRowSelected}
-                        onChange={(e) => handleRowCheckChange(record.id, (e.nativeEvent as MouseEvent).shiftKey)}
-                      />
+                      <span className="cell-checkbox" style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); handleRowCheckChange(record.id, e.shiftKey); }}>
+                        {isRowSelected ? (
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <rect x="0.5" y="0.5" width="15" height="15" rx="3" fill="#1456F0" stroke="#1456F0"/>
+                            <path d="M3.5 8l3 3 5.5-5.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        ) : (
+                          <svg className="cell-checkbox-unchecked" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <rect x="0.5" y="0.5" width="15" height="15" rx="3" stroke="currentColor"/>
+                          </svg>
+                        )}
+                      </span>
                     ) : (
                       <span
                         className="row-number"
