@@ -190,16 +190,25 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
               </span>
               <span className="an-rule-name">{ruleLabel(rule.type)}</span>
               {rule.type === "increment" && (
-                <div className="an-rule-digits">
+                <div className="an-stepper">
                   <input
-                    type="number"
-                    className="an-rule-digits-input"
-                    min={1}
-                    max={10}
+                    type="text"
+                    className="an-stepper-input"
                     value={digits}
-                    onChange={(e) => onDigitsChange(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!isNaN(v)) onDigitsChange(Math.max(1, Math.min(10, v)));
+                    }}
                   />
-                  <span className="an-rule-digits-suffix">{t("addField.digitSuffix")}</span>
+                  <span className="an-stepper-suffix">{t("addField.digitSuffix")}</span>
+                  <div className="an-stepper-btns">
+                    <button type="button" className="an-stepper-up" onClick={() => onDigitsChange(Math.min(10, digits + 1))}>
+                      <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1.5 4.5L5 1.5L8.5 4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </button>
+                    <button type="button" className="an-stepper-down" onClick={() => onDigitsChange(Math.max(1, digits - 1))}>
+                      <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1.5 1.5L5 4.5L8.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </button>
+                  </div>
                 </div>
               )}
               {rule.type === "date" && (

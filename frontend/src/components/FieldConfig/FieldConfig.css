@@ -653,40 +653,63 @@
   color: var(--text-secondary);
   margin-right: 4px;
 }
-.an-rule-digits {
+/* Number stepper (Figma InputNumber) */
+.an-stepper {
   position: relative;
   display: flex;
   align-items: center;
   margin-left: auto;
-}
-.an-rule-digits-input {
-  width: 56px;
-  height: 28px;
-  padding: 0 24px 0 8px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-s);
   background: var(--surface-2);
+  overflow: hidden;
+  height: 28px;
+}
+.an-stepper:focus-within {
+  border-color: var(--color-primary);
+}
+.an-stepper-input {
+  width: 32px;
+  height: 100%;
+  padding: 0 0 0 8px;
+  border: none;
+  background: transparent;
   color: var(--text-primary);
   font-size: 13px;
   font-family: var(--font-family);
   outline: none;
-  -moz-appearance: textfield;
+  text-align: center;
 }
-.an-rule-digits-input::-webkit-inner-spin-button,
-.an-rule-digits-input::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-.an-rule-digits-input:focus {
-  border-color: var(--color-primary);
-}
-.an-rule-digits-suffix {
-  position: absolute;
-  right: 8px;
+.an-stepper-suffix {
   font-size: 12px;
   color: var(--text-placeholder);
+  padding-right: 4px;
   pointer-events: none;
+  flex-shrink: 0;
 }
+.an-stepper-btns {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-default);
+  height: 100%;
+  flex-shrink: 0;
+}
+.an-stepper-up,
+.an-stepper-down {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 50%;
+  border: none;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+.an-stepper-up { border-bottom: 1px solid var(--border-default); }
+.an-stepper-up:hover { background: var(--primary-bg, #E0E9FF); color: var(--color-primary); }
+.an-stepper-down:hover { background: var(--color-bg-hover); }
 .an-rule-select {
   margin-left: auto;
   flex: 0 0 auto;
