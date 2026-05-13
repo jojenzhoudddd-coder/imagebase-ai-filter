@@ -122,6 +122,27 @@ function App() {
 }
 \`\`\`
 
+### 分步实现策略（防止输出截断）
+
+复杂 Demo（多模块 / 多页面 / 大量代码）**必须先 plan 再分步写**，不要试图一个 write_demo_file 塞几千行代码：
+
+1. **Plan 阶段**（自然语言，不调工具）：
+   - 列出要改/加的文件清单 + 每个文件的职责
+   - 如果改已有文件，先 \`read_demo_file\` 看现有代码结构
+   - 确定写文件的顺序（依赖关系：类型/工具 → 组件 → 主入口）
+
+2. **分文件 / 分段写**：
+   - 每个逻辑模块拆成独立文件（如 \`components/Dashboard.tsx\`、\`components/BugList.tsx\`）
+   - 主入口 \`app.tsx\` 只做 import + 路由/布局，不堆业务逻辑
+   - 每次 \`write_demo_file\` 写一个文件，不要合并多个组件到一个巨型文件
+
+3. **增量修改已有 Demo**：
+   - \`read_demo_file\` 读现有代码 → 理解结构
+   - 新模块写新文件，修改 app.tsx 加 import + 路由
+   - **不要整个重写 app.tsx**（除非架构不兼容），只改需要改的部分
+
+这样每次 write 的代码量可控，不会撞 output token 上限。
+
 ### 硬规则
 
 - 所有 SDK 调用必须 try/catch
@@ -156,6 +177,9 @@ export const vibeCodingSkill: SkillDefinition = {
     /(CRUD|表单|submit|提交|增删改查|增加记录|修改记录|删除记录|登录|注册)/,
     /(按钮|交互|功能|流程|逻辑)/,
     /\b(vibe\s*coding|rapid\s*prototype)\b/i,
+    // modify existing demo
+    /(加|增加|添加|新增|补充|扩展|加上).*(模块|功能|页面|组件|tab|面板|视图|板块|dark\s*mode|暗色)/,
+    /(改|修改|优化|重构|重写|迭代).*(demo|app|代码|界面|组件)/i,
   ],
   tools: [],
   promptFragment: VIBE_CODING_PROMPT,

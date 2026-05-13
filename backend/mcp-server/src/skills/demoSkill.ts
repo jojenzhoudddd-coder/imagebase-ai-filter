@@ -214,6 +214,14 @@ const label = (fid: string, v: any) => {
 ### 场景 C — 用户没贴具体设计稿，只说"做个 XX 系统"
 不做 1:1 还原，走常规设计流程（Vibe Design skill 如果激活，先提 3-4 个视觉方向让用户选）。
 
+## 分步实现（防止输出截断）
+
+复杂 Demo 先 plan 再分文件写，不要一次 write_demo_file 塞几千行：
+- 拆成多文件：components/Dashboard.tsx、components/BugList.tsx 等
+- app.tsx 只做 import + 路由，不堆业务逻辑
+- 每次 write_demo_file 写一个文件
+- 修改已有 Demo 时先 read_demo_file 看结构，增量改，不要整个重写
+
 ## 硬规则
 
 - 生成 Demo 前调 get_data_dictionary / describe_table / readIdea 了解字段和内容
@@ -265,6 +273,9 @@ export const demoSkill: SkillDefinition = {
     // design intent (will also trigger vibe-design-skill)
     /(漂亮|好看|视觉|美观|设计感|有质感|惊艳|高级感|精致)/,
     /(落地页|hero|banner|海报|封面|mockup|展示页|推广页)/i,
+    // modify existing demo (add module / feature / page)
+    /(加|增加|添加|新增|补充|扩展|加上).*(模块|功能|页面|组件|tab|面板|视图|板块|dark\s*mode|暗色)/,
+    /(改|修改|改进|优化|重构|重写|升级|迭代).*(demo|页面|前端|app|组件|代码|界面)/i,
   ],
   tools: demoWriteTools,
   promptFragment: DEMO_SKILL_PROMPT,
