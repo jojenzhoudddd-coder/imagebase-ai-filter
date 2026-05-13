@@ -17,6 +17,7 @@ export function validateCellValue(field: Field, value: CellValue): ValidationRes
     case "Location":
     case "Barcode":
       if (typeof value !== "string") return { valid: false, error: `${field.name} 必须是文本` };
+      if (value.length > 10000) return { valid: false, error: `${field.name} 最多 10000 个字符` };
       return { valid: true };
 
     case "Number": {

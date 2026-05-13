@@ -381,14 +381,21 @@ function TextEditor({
     if (isText) autoResize();
   }, [field.type, isText, autoResize]);
 
+  const TEXT_MAX_LEN = 10000;
+  const toast = useToast();
+
   const commit = () => {
     if (committedRef.current) return;
     committedRef.current = true;
     const raw = (isText ? textareaRef.current?.value : inputRef.current?.value) ?? draft;
-    const v = raw.trim();
+    let v = raw.trim();
     if (field.type === "Number") {
       onCommit(v === "" ? null : Number(v));
     } else {
+      if (v.length > TEXT_MAX_LEN) {
+        v = v.slice(0, TEXT_MAX_LEN);
+        toast.error(`文本已截断至 ${TEXT_MAX_LEN} 字符`);
+      }
       onCommit(v === "" ? null : v);
     }
   };
