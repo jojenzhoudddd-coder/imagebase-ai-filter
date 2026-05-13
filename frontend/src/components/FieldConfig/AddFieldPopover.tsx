@@ -45,16 +45,13 @@ const FIELD_TYPE_GROUPS: FieldTypeGroup[] = [
       { type: "DateTime",     icon: "▥", labelKey: "fieldType.dateTime" },
       { type: "Attachment",   icon: "📎", labelKey: "fieldType.attachment" },
       { type: "Checkbox",     icon: "☑", labelKey: "fieldType.checkbox" },
-      { type: "AutoNumber",   icon: "⊕", labelKey: "fieldType.autoNumber" },
       { type: "Url",          icon: "🔗", labelKey: "fieldType.url" },
-      { type: "Progress",     icon: "▰", labelKey: "fieldType.progress" },
-      { type: "Currency",     icon: "¤", labelKey: "fieldType.currency" },
-      { type: "Rating",       icon: "★", labelKey: "fieldType.rating" },
     ],
   },
   {
     groupKey: "fieldType.groupSystem",
     items: [
+      { type: "AutoNumber",   icon: "⊕", labelKey: "fieldType.autoNumber" },
       { type: "CreatedUser",  icon: "◈", labelKey: "fieldType.createdUser" },
       { type: "ModifiedUser", icon: "◇", labelKey: "fieldType.modifiedUser" },
       { type: "CreatedTime",  icon: "◴", labelKey: "fieldType.createdTime" },
