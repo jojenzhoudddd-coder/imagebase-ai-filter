@@ -1107,10 +1107,16 @@ export async function backfillUserFields(): Promise<void> {
   console.log("[backfill] CreatedUser/ModifiedUser fields populated");
 }
 
-/** List all users as {id, name, avatar} for hydrating system user fields. */
+/** List all users + agents as {id, name, avatar} for hydrating system user fields. */
 export async function listWorkspaceUsers(): Promise<{ id: string; name: string; avatar: string }[]> {
-  const users = await prisma.user.findMany({ select: { id: true, name: true, avatarUrl: true } });
-  return users.map(u => ({ id: u.id, name: u.name, avatar: u.avatarUrl || `/avatars/${u.id}.png` }));
+  const [users, agents] = await Promise.all([
+    prisma.user.findMany({ select: { id: true, name: true, avatarUrl: true } }),
+    prisma.agent.findMany({ select: { id: true, name: true, avatarUrl: true } }),
+  ]);
+  return [
+    ...users.map(u => ({ id: u.id, name: u.name, avatar: u.avatarUrl || `/avatars/${u.id}.png` })),
+    ...agents.map(a => ({ id: a.id, name: a.name, avatar: a.avatarUrl || `/avatars/agent.png` })),
+  ];
 }
 
 // ─── AI Tool functions ───
