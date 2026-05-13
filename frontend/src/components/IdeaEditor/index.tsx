@@ -224,6 +224,13 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       setStreaming(false);
       dirtyRef.current = false;
       setSaveStatus("saved");
+      // Force TiptapPreview to apply the final content even if the editor
+      // is focused. Without this, the useEffect sync in TiptapPreview skips
+      // the update when editor.isFocused is true, leaving stale/partial
+      // content (e.g. truncated vega-lite JSON from mid-stream).
+      requestAnimationFrame(() => {
+        previewRef.current?.reload();
+      });
     }, []),
   });
 

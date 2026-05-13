@@ -45,15 +45,30 @@ function ChartView(props: NodeViewProps) {
     );
   }
 
-  // Vega-lite path: try to JSON.parse; on failure show the raw text so the
-  // user sees their broken spec instead of a blank card.
+  // Vega-lite path: try to JSON.parse; on failure show a loading placeholder
+  // if the code looks incomplete (likely mid-stream), or the raw text if
+  // the JSON is genuinely malformed so the user can debug the spec.
   let spec: Record<string, unknown> | null = null;
   let parseErr: string | null = null;
-  try {
-    spec = JSON.parse(code) as Record<string, unknown>;
-  } catch (err) {
-    parseErr = err instanceof Error ? err.message : String(err);
+  const trimmed = code.trim();
+  if (trimmed) {
+    try {
+      spec = JSON.parse(trimmed) as Record<string, unknown>;
+    } catch (err) {
+      parseErr = err instanceof Error ? err.message : String(err);
+    }
   }
+
+  // During streaming writes the code block receives partial JSON that grows
+  // token by token. Detect this: the JSON starts with `{` but doesn't end
+  // with `}`, or parse error is "Unexpected end of JSON input" — treat as
+  // in-progress and show a loading indicator instead of an error.
+  const looksIncomplete =
+    !spec &&
+    trimmed.length > 0 &&
+    (parseErr?.includes("end of JSON input") ||
+      parseErr?.includes("Unexpected end") ||
+      (trimmed.startsWith("{") && !trimmed.endsWith("}")));
 
   return (
     <NodeViewWrapper className="idea-preview-chart" contentEditable={false}>
@@ -61,6 +76,8 @@ function ChartView(props: NodeViewProps) {
         <Suspense fallback={<div className="chat-chart-loading">加载图表中…</div>}>
           <ChatChartBlock spec={spec} />
         </Suspense>
+      ) : looksIncomplete || !trimmed ? (
+        <div className="chat-chart-loading">加载图表中…</div>
       ) : (
         <div className="chat-chart-block chat-chart-block-error">
           <div className="chat-chart-block-header">图表 JSON 解析失败:{parseErr}</div>
