@@ -2324,13 +2324,10 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
             {contextMenu.fieldIds.length > 1 ? t("table.hideFields", { count: contextMenu.fieldIds.length }) : t("table.hideField")}
           </button>
           <div className="field-context-menu-divider" />
-          <button className="field-context-menu-item" onClick={handleDeleteFieldClick}>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <path d="M4.5 3V2.5C4.5 1.67 5.17 1 6 1h4c.83 0 1.5.67 1.5 1.5V3M2 3.5h12M3.5 3.5v10c0 .83.67 1.5 1.5 1.5h6c.83 0 1.5-.67 1.5-1.5v-10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M6.5 6.5v4.5M9.5 6.5v4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            </svg>
-            {contextMenu.fieldIds.length > 1 ? t("table.deleteFields", { count: contextMenu.fieldIds.length }) : t("table.deleteField")}
-          </button>
+          <SwipeDelete
+            label={contextMenu.fieldIds.length > 1 ? t("table.deleteFields", { count: contextMenu.fieldIds.length }) : t("table.deleteField")}
+            onDelete={handleDeleteFieldClick}
+          />
           </>}
         </div>
       )}
