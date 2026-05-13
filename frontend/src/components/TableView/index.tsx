@@ -317,6 +317,18 @@ function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
     case "Number":
       return <span className="cell-text">{typeof value === "number" ? formatNumber(value, field.config?.format) : String(value)}</span>;
 
+    case "Url":
+      return (
+        <a
+          className="cell-url"
+          href={String(value)}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {String(value)}
+        </a>
+      );
+
     default:
       return <span className="cell-text">{String(value)}</span>;
   }
@@ -1137,6 +1149,7 @@ function EditableCell({
       case "Text":
         return <TextEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} colWidth={colWidth} />;
       case "Number":
+      case "Url":
         return <TextEditor field={field} value={value} onCommit={onCommit} onCancel={onCancel} onNavigate={onNavigate} />;
       case "SingleSelect":
         return (
