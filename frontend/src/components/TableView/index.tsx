@@ -1600,7 +1600,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       if (rows.length === 0) return;
       const startRow = Math.min(range.startRowIdx, range.endRowIdx);
       const startCol = Math.min(range.startColIdx, range.endColIdx);
-      const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime", "Lookup"]);
+      const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime", "CreatedUser", "ModifiedUser", "Lookup"]);
       let pasted = 0;
       for (let r = 0; r < rows.length; r++) {
         const targetRowIdx = startRow + r;
@@ -1713,7 +1713,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
         // Click (no drag) on an already-selected single cell → enter edit
         if (wasAlreadySelected) {
           const field = visibleFields[colIdx];
-          const readOnlyTypes = new Set(["AutoNumber", "Checkbox", "CreatedTime", "ModifiedTime", "Lookup"]);
+          const readOnlyTypes = new Set(["AutoNumber", "Checkbox", "CreatedTime", "ModifiedTime", "CreatedUser", "ModifiedUser", "Lookup"]);
           if (field && !readOnlyTypes.has(field.type)) {
             startEdit(records[rowIdx]?.id, field.id);
           }
@@ -1748,7 +1748,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
         if (currentSelectedRowIds.size > 0) {
           e.preventDefault();
           const cells: Array<{ recordId: string; fieldId: string }> = [];
-          const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime"]);
+          const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime", "CreatedUser", "ModifiedUser"]);
           for (let r = 0; r < records.length; r++) {
             if (!currentSelectedRowIds.has(records[r].id)) continue;
             for (let c = 0; c < visibleFields.length; c++) {
@@ -1769,7 +1769,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
           const maxCol = Math.max(currentCellRange.startColIdx, currentCellRange.endColIdx);
 
           const cells: Array<{ recordId: string; fieldId: string }> = [];
-          const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime"]);
+          const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime", "CreatedUser", "ModifiedUser"]);
           for (let r = minRow; r <= maxRow; r++) {
             for (let c = minCol; c <= maxCol; c++) {
               if (r < records.length && c < visibleFields.length) {
