@@ -9,6 +9,7 @@
 .table-container {
   flex: 1;
   overflow: auto;
+  position: relative;
 }
 
 .data-table {
@@ -815,9 +816,28 @@
   margin: 4px 8px;
 }
 
-/* ─── Column drag-to-reorder ─── */
-.col-drag-over {
-  box-shadow: inset 2px 0 0 0 var(--color-primary) !important;
+/* ─── Column drag-to-reorder drop line ─── */
+.col-drop-line {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--color-primary);
+  z-index: 20;
+  pointer-events: none;
+  transform: translateX(-1px);
+}
+
+/* ─── Column resize line ─── */
+.col-resize-line {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--color-primary);
+  opacity: 0.5;
+  z-index: 20;
+  pointer-events: none;
 }
 
 .data-table th[style*="translateX"] {

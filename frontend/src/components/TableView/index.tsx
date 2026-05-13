@@ -1288,6 +1288,8 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = useState<string | null>(null);
+  const [dropSide, setDropSide] = useState<"left" | "right">("left");
+  const [resizeLineX, setResizeLineX] = useState<number | null>(null);
 
   // Track container width for table width calculation
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1340,6 +1342,8 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   fieldOrderRef.current = fieldOrder;
   const onFieldOrderChangeRef = useRef(onFieldOrderChange);
   onFieldOrderChangeRef.current = onFieldOrderChange;
+  const dropSideRef = useRef(dropSide);
+  dropSideRef.current = dropSide;
 
   // Forward ref to addRecordClickHandlerRef so the imperative handle can call
   // the current closure (which captures latest visibleFields/onAddRecord).
@@ -1800,10 +1804,17 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       const delta = ev.clientX - resizeRef.current.startX;
       const newWidth = Math.max(MIN_COL_WIDTH, resizeRef.current.startWidth + delta);
       setColWidths((prev) => ({ ...prev, [resizeRef.current!.fieldId]: newWidth }));
+      // Show full-height resize line
+      const container = containerRef.current;
+      if (container) {
+        const containerRect = container.getBoundingClientRect();
+        setResizeLineX(ev.clientX - containerRect.left + container.scrollLeft);
+      }
     };
 
     const onMouseUp = () => {
       resizeRef.current = null;
+      setResizeLineX(null);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMouseMove);
@@ -1922,14 +1933,33 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
         dragRef.current.headerRects = liveRects;
       }
       let overId: string | null = null;
-      liveRects.forEach((r, id) => {
-        if (id === fieldId) return;
+      let side: "left" | "right" = "left";
+      // Check each visible field (excluding the dragged one)
+      const vf = visibleFields.filter(f => f.id !== fieldId);
+      for (const f of vf) {
+        const r = liveRects.get(f.id);
+        if (!r) continue;
         if (clientX >= r.left && clientX <= r.right) {
-          overId = id;
+          overId = f.id;
+          side = clientX < r.left + r.width / 2 ? "left" : "right";
+          break;
         }
-      });
+      }
+      // Edge: before first or after last visible field
+      if (!overId && vf.length > 0) {
+        const firstRect = liveRects.get(vf[0].id);
+        const lastRect = liveRects.get(vf[vf.length - 1].id);
+        if (firstRect && clientX < firstRect.left + firstRect.width / 2) {
+          overId = vf[0].id;
+          side = "left";
+        } else if (lastRect && clientX > lastRect.left + lastRect.width / 2) {
+          overId = vf[vf.length - 1].id;
+          side = "right";
+        }
+      }
       dragOverRef.current = overId;
       setDragOverFieldId(overId);
+      setDropSide(side);
     };
 
     const onMouseMove = (ev: MouseEvent) => {
@@ -1949,8 +1979,6 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
 
     const onMouseUp = () => {
       const finalOverId = dragOverRef.current;
-      const finalCurrentX = dragRef.current?.currentX ?? startX;
-      const finalRects = readRects();
 
       const curFieldOrder = fieldOrderRef.current;
       if (finalOverId && finalOverId !== fieldId && curFieldOrder) {
@@ -1960,8 +1988,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
           arr.splice(fromIdx, 1);
           let toIdx = arr.indexOf(finalOverId);
           if (toIdx !== -1) {
-            const targetRect = finalRects.get(finalOverId);
-            if (targetRect && finalCurrentX > targetRect.left + targetRect.width / 2) {
+            if (dropSideRef.current === "right") {
               toIdx += 1;
             }
             arr.splice(toIdx, 0, fieldId);
@@ -2003,11 +2030,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     };
   };
 
-  // Visual indicator styles for the drop target
-  const getDropIndicatorStyle = (fieldId: string): string => {
-    if (!dragState || !dragOverFieldId || dragOverFieldId !== fieldId || dragState.fieldId === fieldId) return "";
-    return "col-drag-over";
-  };
+  // (drop indicator is now rendered as a full-height line element, not a per-cell class)
 
   // Compute exact table width so table-layout:fixed allocates columns precisely.
   // The "add field" col has no explicit width — it absorbs any extra space when container is wider.
@@ -2016,6 +2039,22 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   const fieldWidthSum = visibleFields.reduce((sum, f) => sum + (colWidths[f.id] ?? getDefaultColWidth(f)), 0);
   const colSum = INDEX_COL + fieldWidthSum + ADD_FIELD_COL;
   const tableWidth = Math.max(colSum, containerWidth);
+
+  // Compute drop line position (relative to table-container's scroll area)
+  const dropLineX = (() => {
+    if (!dragState || !dragOverFieldId) return null;
+    const thEl = headerRefs.current.get(dragOverFieldId);
+    const container = containerRef.current;
+    if (!thEl || !container) return null;
+    const thRect = thEl.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const scrollLeft = container.scrollLeft;
+    if (dropSide === "left") {
+      return thRect.left - containerRect.left + scrollLeft;
+    } else {
+      return thRect.right - containerRect.left + scrollLeft;
+    }
+  })();
 
   return (
     <div className="table-wrap" ref={tableRef}>
@@ -2044,7 +2083,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                   key={f.id}
                   ref={(el) => { if (el) headerRefs.current.set(f.id, el); else headerRefs.current.delete(f.id); }}
                   data-field-id={f.id}
-                  className={`col-${f.id} ${selectedColIds.has(f.id) ? "col-selected" : ""} ${getDropIndicatorStyle(f.id)}`}
+                  className={`col-${f.id} ${selectedColIds.has(f.id) ? "col-selected" : ""}`}
                   style={{
                     ...(getDragTransform(f.id)),
                     cursor: selectedColIds.has(f.id) && selectedColIds.size === 1 && !resizeRef.current ? "grab" : undefined,
@@ -2173,6 +2212,8 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
             </tr>
           </tbody>
         </table>
+        {dropLineX !== null && <div className="col-drop-line" style={{ left: dropLineX }} />}
+        {resizeLineX !== null && <div className="col-resize-line" style={{ left: resizeLineX }} />}
       </div>
       {/* V2.9 #5: 底部 record 计数已经移到 Toolbar 右上角 (Add Record 左边),
           此处不再渲染 table-footer。 */}
