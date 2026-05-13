@@ -17,6 +17,7 @@ export interface SuggestFieldsRequest {
   title?: string;           // user's typed title (optional)
   excludeNames?: string[];  // already shown suggestions to exclude
   forceRefresh?: boolean;   // invalidate cache and call LLM again
+  allowedTypes?: string[];  // only recommend these field types (from frontend picker config)
 }
 
 export interface SuggestFieldsResponse {
@@ -45,38 +46,27 @@ function isCacheValid(entry: CacheEntry | undefined): entry is CacheEntry {
 
 // ─── System Prompt ───
 
-const FIELD_SUGGEST_SYSTEM_PROMPT = `# 角色
+// All known field types — the full catalog for the LLM prompt
+const ALL_FIELD_TYPE_LABELS: Record<string, string> = {
+  Text: "多行文本", SingleSelect: "单选", MultiSelect: "多选", User: "人员",
+  Group: "群组", DateTime: "日期", Attachment: "附件", Number: "数字",
+  Checkbox: "复选框", Url: "超链接", AutoNumber: "自动编号", Phone: "电话号码",
+  Email: "邮箱", Location: "地理位置", Barcode: "条码", Progress: "进度",
+  Currency: "货币", Rating: "评分", Formula: "公式", SingleLink: "单向关联",
+  DuplexLink: "双向关联", Lookup: "查找引用", CreatedUser: "创建人", ModifiedUser: "修改人",
+  CreatedTime: "创建时间", ModifiedTime: "修改时间",
+  ai_summary: "AI 摘要", ai_transition: "AI 翻译", ai_extract: "AI 信息提取",
+  ai_classify: "AI 分类", ai_tag: "AI 标签", ai_custom: "AI 自定义",
+};
+
+function buildSystemPrompt(allowedTypes?: string[]): string {
+  const types = allowedTypes && allowedTypes.length > 0 ? allowedTypes : Object.keys(ALL_FIELD_TYPE_LABELS);
+  const typeList = types.map(t => `- ${t}（${ALL_FIELD_TYPE_LABELS[t] ?? t}）`).join("\n");
+  return `# 角色
 你是飞书多维表格（Lark Base）的字段推荐助手。你的任务是根据数据表的名称和已有字段，推荐合适的新字段。
 
-# 支持的字段类型
-- Text（多行文本）
-- SingleSelect（单选）
-- MultiSelect（多选）
-- User（人员）
-- Group（群组）
-- DateTime（日期）
-- Attachment（附件）
-- Number（数字）
-- Checkbox（复选框）
-- Url（超链接）
-- AutoNumber（自动编号）
-- Phone（电话号码）
-- Email（邮箱）
-- Location（地理位置）
-- Barcode（条码）
-- Progress（进度）
-- Currency（货币）
-- Rating（评分）
-- Formula（公式）
-- SingleLink（单向关联）
-- DuplexLink（双向关联）
-- Lookup（查找引用）
-- ai_summary（AI 摘要）
-- ai_transition（AI 翻译）
-- ai_extract（AI 信息提取）
-- ai_classify（AI 分类）
-- ai_tag（AI 标签）
-- ai_custom（AI 自定义）
+# 支持的字段类型（仅限以下类型，不要推荐不在列表中的类型）
+${typeList}
 
 # 规则
 1. 不要推荐与已有字段同名的字段。
@@ -91,12 +81,14 @@ const FIELD_SUGGEST_SYSTEM_PROMPT = `# 角色
 
 示例输出：
 [{"name":"负责人","type":"User"},{"name":"状态","type":"SingleSelect"},{"name":"截止日期","type":"DateTime"}]`;
+}
 
 // ─── Core LLM call (no cache) ───
 
 async function callLLM(
   tableId: string,
   recordContext?: { userId: string | null; workspaceId?: string | null },
+  allowedTypes?: string[],
 ): Promise<FieldSuggestion[]> {
   const apiKey = process.env.ARK_API_KEY;
   if (!apiKey) return [];
@@ -121,7 +113,7 @@ async function callLLM(
       body: JSON.stringify({
         model: ARK_MODEL,
         input: [
-          { role: "system", content: FIELD_SUGGEST_SYSTEM_PROMPT },
+          { role: "system", content: buildSystemPrompt(allowedTypes) },
           { role: "user", content: userMessage },
         ],
         max_output_tokens: 2048,
@@ -185,10 +177,11 @@ async function callLLM(
 
     if (!Array.isArray(parsed)) return [];
 
-    // Filter out existing fields
+    // Filter out existing fields + disallowed types
     const existingSet = new Set(existingFieldNames);
+    const allowedSet = allowedTypes && allowedTypes.length > 0 ? new Set(allowedTypes) : null;
     return parsed
-      .filter((s) => s && s.name && s.type && !existingSet.has(s.name))
+      .filter((s) => s && s.name && s.type && !existingSet.has(s.name) && (!allowedSet || allowedSet.has(s.type)))
       .map((s) => ({ name: s.name, type: s.type }));
   } catch (err) {
     console.error("[fieldSuggest] Error:", err);
@@ -237,7 +230,7 @@ export async function suggestFields(
   if (isCacheValid(entry)) {
     suggestions = entry.suggestions;
   } else {
-    suggestions = await callLLM(req.tableId, recordContext);
+    suggestions = await callLLM(req.tableId, recordContext, req.allowedTypes);
     cache.set(req.tableId, { suggestions, timestamp: Date.now(), generating: false });
   }
 
@@ -245,6 +238,12 @@ export async function suggestFields(
   if (req.excludeNames && req.excludeNames.length > 0) {
     const excludeSet = new Set(req.excludeNames);
     suggestions = suggestions.filter((s) => !excludeSet.has(s.name));
+  }
+
+  // Filter out disallowed types (in case served from cache with different allowedTypes)
+  if (req.allowedTypes && req.allowedTypes.length > 0) {
+    const allowedSet = new Set(req.allowedTypes);
+    suggestions = suggestions.filter((s) => allowedSet.has(s.type));
   }
 
   return { suggestions, hasMore: true };

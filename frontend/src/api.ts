@@ -678,13 +678,13 @@ export interface SuggestFieldsResponse {
 
 export async function suggestFields(
   tableId: string,
-  opts?: { title?: string; excludeNames?: string[]; forceRefresh?: boolean },
+  opts?: { title?: string; excludeNames?: string[]; forceRefresh?: boolean; allowedTypes?: string[] },
   signal?: AbortSignal,
 ): Promise<SuggestFieldsResponse> {
   const res = await fetch(`${BASE}/ai/fields/suggest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tableId, title: opts?.title, excludeNames: opts?.excludeNames, forceRefresh: opts?.forceRefresh }),
+    body: JSON.stringify({ tableId, title: opts?.title, excludeNames: opts?.excludeNames, forceRefresh: opts?.forceRefresh, allowedTypes: opts?.allowedTypes }),
     signal,
   });
   if (!res.ok) return { suggestions: [], hasMore: false };

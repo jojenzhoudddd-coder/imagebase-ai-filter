@@ -88,7 +88,7 @@ router.post("/sort/generate", async (req: Request, res: Response) => {
 
 // POST /api/ai/fields/suggest  — AI field recommendations
 router.post("/fields/suggest", async (req: Request, res: Response) => {
-  const { tableId, title, excludeNames, forceRefresh } = req.body;
+  const { tableId, title, excludeNames, forceRefresh, allowedTypes } = req.body;
 
   if (!tableId) {
     res.status(400).json({ error: "tableId is required" });
@@ -104,7 +104,7 @@ router.post("/fields/suggest", async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id ?? null;
     const result = await suggestFields(
-      { tableId, title, excludeNames, forceRefresh },
+      { tableId, title, excludeNames, forceRefresh, allowedTypes },
       { userId, workspaceId: (table as any).workspaceId ?? null },
     );
     res.json(result);

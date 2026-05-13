@@ -65,6 +65,9 @@ const FIELD_TYPE_GROUPS: FieldTypeGroup[] = [
 
 const ALL_FIELD_ITEMS = FIELD_TYPE_GROUPS.flatMap(g => g.items);
 
+/** Set of field types currently visible in the picker — used to filter AI suggestions */
+export const ALLOWED_FIELD_TYPES: Set<string> = new Set(ALL_FIELD_ITEMS.map(i => i.type));
+
 function findTypeLabelKey(ft: FieldType): string {
   return ALL_FIELD_ITEMS.find(i => i.type === ft)?.labelKey ?? ft;
 }
@@ -436,13 +439,16 @@ export function useFieldSuggestions(tableId: string, opts?: { autoFetch?: boolea
         {
           excludeNames: innerOpts?.excludeNames ?? [...shownNamesRef.current],
           forceRefresh: innerOpts?.forceRefresh,
+          allowedTypes: [...ALLOWED_FIELD_TYPES],
         },
         ac.signal,
       );
       if (!ac.signal.aborted) {
-        setCache(res.suggestions);
+        // Filter out field types hidden from the picker
+        const filtered = res.suggestions.filter(s => ALLOWED_FIELD_TYPES.has(s.type));
+        setCache(filtered);
         setPageIndex(0);
-        res.suggestions.forEach(s => shownNamesRef.current.add(s.name));
+        filtered.forEach(s => shownNamesRef.current.add(s.name));
       }
     } catch {
       // aborted or network error — ignore
