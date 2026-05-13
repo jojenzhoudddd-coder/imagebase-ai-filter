@@ -1886,12 +1886,16 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     e.preventDefault();
     e.stopPropagation();
 
-    // Gather all header rects at drag start
-    const rects = new Map<string, DOMRect>();
-    headerRefs.current.forEach((el, id) => {
-      rects.set(id, el.getBoundingClientRect());
-    });
+    // Read live header rects (accounts for scroll position changes)
+    const readRects = () => {
+      const rects = new Map<string, DOMRect>();
+      headerRefs.current.forEach((el, id) => {
+        rects.set(id, el.getBoundingClientRect());
+      });
+      return rects;
+    };
 
+    const rects = readRects();
     const startX = e.clientX;
     dragRef.current = { fieldId, startX, currentX: startX, headerRects: rects };
     justDraggedRef.current = false;
@@ -1899,16 +1903,16 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     document.body.style.cursor = "grabbing";
     document.body.style.userSelect = "none";
 
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!dragRef.current) return;
-      dragRef.current.currentX = ev.clientX;
-      setDragState({ ...dragRef.current });
-
-      // Find which column we're hovering over
+    const updateOverTarget = (clientX: number) => {
+      // Re-read live rects each time to handle scroll changes
+      const liveRects = readRects();
+      if (dragRef.current) {
+        dragRef.current.headerRects = liveRects;
+      }
       let overId: string | null = null;
-      rects.forEach((r, id) => {
+      liveRects.forEach((r, id) => {
         if (id === fieldId) return;
-        if (ev.clientX >= r.left && ev.clientX <= r.right) {
+        if (clientX >= r.left && clientX <= r.right) {
           overId = id;
         }
       });
@@ -1916,20 +1920,39 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       setDragOverFieldId(overId);
     };
 
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      dragRef.current.currentX = ev.clientX;
+      setDragState({ ...dragRef.current });
+      updateOverTarget(ev.clientX);
+    };
+
+    // Keep drag alive during scroll (shift+wheel or trackpad)
+    const onScroll = () => {
+      if (!dragRef.current) return;
+      // Refresh rects and re-evaluate drop target at current mouse position
+      const liveRects = readRects();
+      dragRef.current.headerRects = liveRects;
+      setDragState({ ...dragRef.current });
+      updateOverTarget(dragRef.current.currentX);
+    };
+
+    // Find the scrollable container
+    const scrollContainer = th?.closest(".table-container") as HTMLElement | null;
+
     const onMouseUp = () => {
       const finalOverId = dragOverRef.current;
       const finalCurrentX = dragRef.current?.currentX ?? startX;
+      const finalRects = readRects();
 
       if (finalOverId && finalOverId !== fieldId && fieldOrder) {
-        // Reorder using the full fieldOrder (including hidden fields)
         const arr = [...fieldOrder];
         const fromIdx = arr.indexOf(fieldId);
         if (fromIdx !== -1) {
           arr.splice(fromIdx, 1);
           let toIdx = arr.indexOf(finalOverId);
           if (toIdx !== -1) {
-            // If dragging past the target's center, insert after
-            const targetRect = rects.get(finalOverId);
+            const targetRect = finalRects.get(finalOverId);
             if (targetRect && finalCurrentX > targetRect.left + targetRect.width / 2) {
               toIdx += 1;
             }
@@ -1942,7 +1965,6 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       dragRef.current = null;
       dragOverRef.current = null;
       justDraggedRef.current = true;
-      // Clear the flag after a tick so subsequent clicks work
       requestAnimationFrame(() => { justDraggedRef.current = false; });
       setDragState(null);
       setDragOverFieldId(null);
@@ -1950,10 +1972,12 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      scrollContainer?.removeEventListener("scroll", onScroll);
     };
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
+    scrollContainer?.addEventListener("scroll", onScroll);
   }, [selectedColIds]);
 
   // Compute drag offset for the dragged column header
