@@ -278,6 +278,8 @@ export function updateView(viewId: string, dto: UpdateViewDTO): View | null {
     view.group = dto.group;
   }
   if (dto.kanbanFieldId !== undefined) view.kanbanFieldId = dto.kanbanFieldId;
+  if (dto.fieldOrder !== undefined) view.fieldOrder = dto.fieldOrder;
+  if (dto.hiddenFields !== undefined) view.hiddenFields = dto.hiddenFields;
 
   return view;
 }
