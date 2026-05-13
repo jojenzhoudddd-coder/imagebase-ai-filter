@@ -1049,15 +1049,14 @@ export default function App() {
     setEditFieldState(null);
   }, [fields]);
 
-  // Listen for real-time AutoNumber config updates (from edit popover without closing)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { fields: f, records: r } = (e as CustomEvent).detail;
-      if (f) setFields(f);
-      if (r) setAllRecords(r);
-    };
-    window.addEventListener("autonumber-config-updated", handler);
-    return () => window.removeEventListener("autonumber-config-updated", handler);
+  // Live-update fields + records when AutoNumber config changes without closing popover
+  const handleLiveFieldUpdate = useCallback(async () => {
+    const [f, r] = await Promise.all([
+      fetchFields(activeTableIdRef.current),
+      fetchRecords(activeTableIdRef.current),
+    ]);
+    setFields(f);
+    setAllRecords(r);
   }, []);
 
   const isFiltered = filter.conditions.length > 0;
@@ -2030,6 +2029,7 @@ export default function App() {
               anchorRect={editFieldState.anchorRect}
               onCancel={() => setEditFieldState(null)}
               onConfirm={handleEditFieldConfirm}
+              onLiveUpdate={handleLiveFieldUpdate}
               fieldSuggestions={fieldSuggestions}
               editingField={fields.find((f) => f.id === editFieldState.fieldId)}
             />

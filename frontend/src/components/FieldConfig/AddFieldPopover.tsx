@@ -20,6 +20,8 @@ interface Props {
   anchorRect: DOMRect | null;
   onCancel: () => void;
   onConfirm: (newField: Field) => void;
+  /** Called on live config changes (e.g. AutoNumber) without closing the popover */
+  onLiveUpdate?: () => void;
   fieldSuggestions: FieldSuggestionsState;
   editingField?: Field;
   /**
@@ -492,7 +494,7 @@ export interface FieldSuggestionsState {
 
 // ─── Main component ───
 
-export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onCancel, onConfirm, fieldSuggestions, editingField, clientId }: Props) {
+export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onCancel, onConfirm, onLiveUpdate, fieldSuggestions, editingField, clientId }: Props) {
   const isEdit = !!editingField;
   const { t } = useTranslation();
   const [title, setTitle] = useState(editingField?.name ?? "");
@@ -518,20 +520,9 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   useEffect(() => {
     if (!isEdit || fieldType !== "AutoNumber") return;
     if (autoNumInitRef.current) { autoNumInitRef.current = false; return; }
-    console.log("[AutoNum] auto-saving config", { rules: autoNumberRules, digits: autoNumberDigits });
     const config = { autoNumberMode: "custom" as const, autoNumberRules, autoNumberDigits };
-    updateField(currentTableId, editingField!.id, { config }).then(async (f) => {
-      if (!f) return;
-      // Update field in parent without closing popover
-      const { fetchRecords, fetchFields } = await import("../../api");
-      const [freshFields, freshRecords] = await Promise.all([
-        fetchFields(currentTableId),
-        fetchRecords(currentTableId),
-      ]);
-      // Dispatch custom event so App.tsx can update state
-      window.dispatchEvent(new CustomEvent("autonumber-config-updated", {
-        detail: { fields: freshFields, records: freshRecords },
-      }));
+    updateField(currentTableId, editingField!.id, { config }).then(() => {
+      onLiveUpdate?.();
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoNumberRules, autoNumberDigits]);
