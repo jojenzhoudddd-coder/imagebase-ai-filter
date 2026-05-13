@@ -296,7 +296,9 @@ function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
     case "ModifiedTime":
       return <span className="cell-text">{formatDate(value as number | string, field.config?.format)}</span>;
 
-    case "User": {
+    case "User":
+    case "CreatedUser":
+    case "ModifiedUser": {
       const users = field.config.users ?? [];
       return <UserAvatar userId={String(value)} users={users} />;
     }

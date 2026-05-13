@@ -8,6 +8,7 @@ import { validateCellValue } from "../services/fieldValidator.js";
 import { validateLookupConfig } from "../services/lookupValidator.js";
 import { Field, ViewFilter, ViewSort, LookupConfig, GeneratedField } from "../types.js";
 import { eventBus } from "../services/eventBus.js";
+import { currentUser } from "../services/authService.js";
 import { warmupSuggestions, invalidateSuggestionCache } from "../services/fieldSuggestService.js";
 
 function getClientId(req: Request): string {
@@ -153,6 +154,15 @@ router.get("/:tableId/fields", async (req: Request, res: Response) => {
   if (!table) { res.status(404).json({ error: "Table not found" }); return; }
   // Fire-and-forget: warm up AI field suggestions cache for this table
   warmupSuggestions(req.params.tableId);
+  // Hydrate CreatedUser/ModifiedUser with the same users list as User fields
+  const userList = table.fields.find(f => f.type === "User")?.config.users;
+  if (userList) {
+    for (const f of table.fields) {
+      if ((f.type === "CreatedUser" || f.type === "ModifiedUser") && !f.config.users) {
+        f.config.users = userList;
+      }
+    }
+  }
   res.json(table.fields);
 });
 
@@ -301,7 +311,8 @@ router.post("/:tableId/records", async (req: Request, res: Response) => {
     }
   }
 
-  const record = await store.createRecord(req.params.tableId, { cells });
+  const userId = currentUser(req)?.id;
+  const record = await store.createRecord(req.params.tableId, { cells }, userId);
   if (!record) { res.status(500).json({ error: "创建记录失败" }); return; }
   eventBus.emitChange({ type: "record:create", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { record } });
   res.status(201).json(record);
@@ -329,7 +340,8 @@ router.put("/:tableId/records/:recordId", async (req: Request, res: Response) =>
     }
   }
 
-  const record = await store.updateRecord(req.params.tableId, req.params.recordId, { cells });
+  const updateUserId = currentUser(req)?.id;
+  const record = await store.updateRecord(req.params.tableId, req.params.recordId, { cells }, updateUserId);
   if (!record) { res.status(404).json({ error: "Record not found" }); return; }
   eventBus.emitChange({ type: "record:update", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { recordId: req.params.recordId, cells: req.body.cells, updatedAt: record.updatedAt } });
   res.json(record);
@@ -388,7 +400,8 @@ router.post("/:tableId/records/batch-create", async (req: Request, res: Response
   const created: any[] = [];
   for (const r of records) {
     const dto = { cells: (r?.cells ?? {}) as Record<string, any> };
-    const rec = await store.createRecord(tableId, dto);
+    const batchUserId = currentUser(req)?.id;
+    const rec = await store.createRecord(tableId, dto, batchUserId);
     if (rec) created.push(rec);
   }
   eventBus.emitChange({ type: "record:batch-create", tableId, clientId, timestamp: Date.now(), payload: { records: created } });
