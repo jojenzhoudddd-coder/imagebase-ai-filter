@@ -117,12 +117,10 @@ const DATE_FORMAT_OPTIONS = [
   { value: "MMdd", label: "MMdd" },
 ];
 
-function AddRuleMenu({ onAdd, dateLabel, fixedLabel, incrementLabel, showIncrement, buttonLabel }: {
-  onAdd: (type: "date" | "fixed" | "increment") => void;
+function AddRuleMenu({ onAdd, dateLabel, fixedLabel, buttonLabel }: {
+  onAdd: (type: "date" | "fixed") => void;
   dateLabel: string;
   fixedLabel: string;
-  incrementLabel: string;
-  showIncrement: boolean;
   buttonLabel: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -155,7 +153,6 @@ function AddRuleMenu({ onAdd, dateLabel, fixedLabel, incrementLabel, showIncreme
       </button>
       {open && (
         <div ref={menuRef} className="an-add-menu" style={{ top: menuPos.top, left: menuPos.left }}>
-          {showIncrement && <button type="button" className="an-add-menu-item" onClick={() => { onAdd("increment"); setOpen(false); }}>{incrementLabel}</button>}
           <button type="button" className="an-add-menu-item" onClick={() => { onAdd("date"); setOpen(false); }}>{dateLabel}</button>
           <button type="button" className="an-add-menu-item" onClick={() => { onAdd("fixed"); setOpen(false); }}>{fixedLabel}</button>
         </div>
@@ -268,8 +265,10 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
                   placeholder={t("addField.fixedPlaceholder")}
                 />
               )}
-              <button type="button" className="so-remove"
-                onClick={() => onRulesChange(rules.filter((_, i) => i !== idx))}
+              <button type="button"
+                className={`so-remove${rule.type === "increment" ? " disabled" : ""}`}
+                disabled={rule.type === "increment"}
+                onClick={() => { if (rule.type !== "increment") onRulesChange(rules.filter((_, i) => i !== idx)); }}
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -282,8 +281,6 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
           onAdd={addRule}
           dateLabel={t("addField.ruleDate")}
           fixedLabel={t("addField.ruleFixed")}
-          incrementLabel={t("addField.ruleIncrement")}
-          showIncrement={!hasIncrement}
           buttonLabel={`+ ${t("addField.addRule")}`}
         />
       </div>
@@ -505,7 +502,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const [dateFormat, setDateFormat] = useState(editingField?.config?.format ?? "yyyy-MM-dd");
   const [numberFormat, setNumberFormat] = useState(editingField?.config?.format ?? "decimal_1");
   const [selectOptions, setSelectOptions] = useState<SelectOption[]>(editingField?.config?.options ?? []);
-  const [autoNumberRules, setAutoNumberRules] = useState<AutoNumberRule[]>(editingField?.config?.autoNumberRules ?? []);
+  const [autoNumberRules, setAutoNumberRules] = useState<AutoNumberRule[]>(editingField?.config?.autoNumberRules ?? [{ type: "increment" }]);
   const [autoNumberDigits, setAutoNumberDigits] = useState(editingField?.config?.autoNumberDigits ?? 3);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; path?: string } | null>(null);
@@ -515,6 +512,28 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { suggestions, loading: sugLoading, refresh: sugRefresh, fetchSuggestions, hasFetched } = fieldSuggestions;
+
+  // Auto-save AutoNumber config in edit mode — persist + refetch records on every change
+  const autoNumInitRef = useRef(true);
+  useEffect(() => {
+    if (!isEdit || fieldType !== "AutoNumber") return;
+    if (autoNumInitRef.current) { autoNumInitRef.current = false; return; }
+    const config = { autoNumberMode: "custom" as const, autoNumberRules, autoNumberDigits };
+    updateField(currentTableId, editingField!.id, { config }).then(async (f) => {
+      if (!f) return;
+      // Update field in parent without closing popover
+      const { fetchRecords, fetchFields } = await import("../../api");
+      const [freshFields, freshRecords] = await Promise.all([
+        fetchFields(currentTableId),
+        fetchRecords(currentTableId),
+      ]);
+      // Dispatch custom event so App.tsx can update state
+      window.dispatchEvent(new CustomEvent("autonumber-config-updated", {
+        detail: { fields: freshFields, records: freshRecords },
+      }));
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoNumberRules, autoNumberDigits]);
 
   useEffect(() => {
     fetchTables().then(setAllTables);

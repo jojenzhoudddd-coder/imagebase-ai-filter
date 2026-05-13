@@ -1049,6 +1049,17 @@ export default function App() {
     setEditFieldState(null);
   }, [fields]);
 
+  // Listen for real-time AutoNumber config updates (from edit popover without closing)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { fields: f, records: r } = (e as CustomEvent).detail;
+      if (f) setFields(f);
+      if (r) setAllRecords(r);
+    };
+    window.addEventListener("autonumber-config-updated", handler);
+    return () => window.removeEventListener("autonumber-config-updated", handler);
+  }, []);
+
   const isFiltered = filter.conditions.length > 0;
 
   // Dirty = local filter differs from the saved (backend) filter

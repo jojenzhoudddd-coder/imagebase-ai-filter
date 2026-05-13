@@ -212,6 +212,8 @@
   flex-shrink: 0;
 }
 .so-remove:hover { background: var(--color-bg-hover); color: var(--text-primary); }
+.so-remove.disabled { opacity: 0.3; cursor: not-allowed; }
+.so-remove.disabled:hover { background: none; color: var(--text-muted); }
 .so-add {
   display: inline-flex;
   align-items: center;

@@ -75,10 +75,10 @@ function getDefaultCellValue(
     case "AutoNumber": {
       const counter = (counters[field.id] ?? 0) + 1;
       counters[field.id] = counter;
-      if (field.config.autoNumberMode === "custom" && field.config.autoNumberRules) {
+      if (field.config.autoNumberMode === "custom" && field.config.autoNumberRules && field.config.autoNumberRules.length > 0) {
         return formatAutoNumber(counter, field.config.autoNumberRules, field.config.autoNumberDigits ?? 3);
       }
-      return counter;
+      return String(counter);
     }
     case "CreatedTime":
       return record.createdAt;
@@ -503,7 +503,7 @@ export async function updateField(tableId: string, fieldId: string, dto: UpdateF
       if (field.config.autoNumberMode === "custom" && field.config.autoNumberRules && field.config.autoNumberRules.length > 0) {
         cells[fieldId] = formatAutoNumber(counter, field.config.autoNumberRules, field.config.autoNumberDigits ?? 3);
       } else {
-        cells[fieldId] = counter;
+        cells[fieldId] = String(counter);
       }
       await prisma.record.update({ where: { id: rec.id }, data: { cells: cells as any } });
     }

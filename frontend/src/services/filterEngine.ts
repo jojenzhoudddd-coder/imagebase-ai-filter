@@ -67,7 +67,7 @@ function resolveDateRange(value: unknown): { start: number; end: number } | null
 // ─── 字段类型分类 ───
 
 const DATE_TYPES = new Set(["DateTime", "CreatedTime", "ModifiedTime"]);
-const NUMERIC_TYPES = new Set(["Number", "AutoNumber", "Progress", "Currency", "Rating"]);
+const NUMERIC_TYPES = new Set(["Number", "Progress", "Currency", "Rating"]);
 const SELECT_TYPES = new Set(["SingleSelect", "ai_classify"]);
 const MULTI_SELECT_TYPES = new Set(["MultiSelect", "ai_tag"]);
 const USER_TYPES = new Set(["User", "CreatedUser", "ModifiedUser"]);

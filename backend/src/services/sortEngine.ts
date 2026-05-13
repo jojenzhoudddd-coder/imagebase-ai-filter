@@ -1,7 +1,7 @@
 import { TableRecord, ViewSort, Field, FieldType } from "../types.js";
 
 const DATE_TYPES: FieldType[] = ["DateTime", "CreatedTime", "ModifiedTime"];
-const NUMERIC_TYPES: FieldType[] = ["Number", "AutoNumber", "Progress", "Currency", "Rating"];
+const NUMERIC_TYPES: FieldType[] = ["Number", "Progress", "Currency", "Rating"];
 const SELECT_TYPES: FieldType[] = ["SingleSelect", "MultiSelect", "ai_classify", "ai_tag"];
 
 function compareValues(

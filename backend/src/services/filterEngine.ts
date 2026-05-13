@@ -68,7 +68,7 @@ function resolveDateRange(value: CellValue): { start: number; end: number } | nu
 // ─── Field type categories for operator routing ───
 
 const DATE_TYPES: FieldType[] = ["DateTime", "CreatedTime", "ModifiedTime"];
-const NUMERIC_TYPES: FieldType[] = ["Number", "AutoNumber", "Progress", "Currency", "Rating"];
+const NUMERIC_TYPES: FieldType[] = ["Number", "Progress", "Currency", "Rating"];
 const TEXT_TYPES: FieldType[] = [
   "Text", "Url", "Phone", "Email", "Location", "Barcode",
   "ai_summary", "ai_transition", "ai_extract",
