@@ -285,9 +285,13 @@ export async function renameTable(
 
 export async function updateView(
   viewId: string,
-  data: { fieldOrder?: string[]; hiddenFields?: string[]; name?: string; filter?: any; sort?: any }
+  data: { fieldOrder?: string[]; hiddenFields?: string[]; name?: string; filter?: any; sort?: any },
+  tableId?: string
 ): Promise<View> {
-  const res = await mutationFetch(`${BASE}/tables/views/${viewId}`, {
+  const url = tableId
+    ? `${BASE}/tables/${tableId}/views/${viewId}`
+    : `${BASE}/tables/views/${viewId}`;
+  const res = await mutationFetch(url, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),

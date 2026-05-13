@@ -461,7 +461,16 @@ router.get("/views/:viewId", async (req: Request, res: Response) => {
   res.json(view);
 });
 
-// PUT /api/tables/views/:viewId — update view
+// PUT /api/tables/:tableId/views/:viewId — update view (scoped by tableId)
+router.put("/:tableId/views/:viewId", async (req: Request, res: Response) => {
+  const { name, filter, sort, group, kanbanFieldId, fieldOrder, hiddenFields } = req.body;
+  const view = await store.updateView(req.params.viewId, { name, filter, sort, group, kanbanFieldId, fieldOrder, hiddenFields }, req.params.tableId);
+  if (!view) { res.status(400).json({ error: "更新视图失败" }); return; }
+  eventBus.emitChange({ type: "view:update", tableId: view.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { viewId: req.params.viewId, changes: { name, filter, sort, group, kanbanFieldId, fieldOrder, hiddenFields } } });
+  res.json(view);
+});
+
+// PUT /api/tables/views/:viewId — update view (legacy, scans all tables)
 router.put("/views/:viewId", async (req: Request, res: Response) => {
   const { name, filter, sort, group, kanbanFieldId, fieldOrder, hiddenFields } = req.body;
   const view = await store.updateView(req.params.viewId, { name, filter, sort, group, kanbanFieldId, fieldOrder, hiddenFields });

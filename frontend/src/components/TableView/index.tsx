@@ -1953,7 +1953,6 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       const finalRects = readRects();
 
       const curFieldOrder = fieldOrderRef.current;
-      console.log("[DragDrop]", { finalOverId, fieldId, curFieldOrder: curFieldOrder?.slice(), finalCurrentX });
       if (finalOverId && finalOverId !== fieldId && curFieldOrder) {
         const arr = [...curFieldOrder];
         const fromIdx = arr.indexOf(fieldId);
@@ -1966,7 +1965,6 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
               toIdx += 1;
             }
             arr.splice(toIdx, 0, fieldId);
-            console.log("[DragDrop] new order:", arr);
             onFieldOrderChangeRef.current?.(arr);
           }
         }

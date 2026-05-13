@@ -518,7 +518,7 @@ export default function App() {
   // Persist fieldOrder to backend
   const persistFieldOrder = useCallback(async (newOrder: string[]) => {
     try {
-      await updateView(activeViewId, { fieldOrder: newOrder });
+      await updateView(activeViewId, { fieldOrder: newOrder }, activeTableIdRef.current);
     } catch (err) {
       console.error("Failed to save field order:", err);
     }
@@ -527,7 +527,7 @@ export default function App() {
   // Persist hiddenFields to backend
   const persistHiddenFields = useCallback(async (newHidden: string[]) => {
     try {
-      await updateView(activeViewId, { hiddenFields: newHidden });
+      await updateView(activeViewId, { hiddenFields: newHidden }, activeTableIdRef.current);
     } catch (err) {
       console.error("Failed to save hidden fields:", err);
     }

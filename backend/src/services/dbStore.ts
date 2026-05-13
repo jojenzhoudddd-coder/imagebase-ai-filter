@@ -930,8 +930,10 @@ export async function createView(tableId: string, dto: CreateViewDTO): Promise<V
   return view;
 }
 
-export async function updateView(viewId: string, dto: UpdateViewDTO): Promise<View | null> {
-  const tables = await prisma.table.findMany();
+export async function updateView(viewId: string, dto: UpdateViewDTO, tableId?: string): Promise<View | null> {
+  const tables = tableId
+    ? [await prisma.table.findUnique({ where: { id: tableId } })].filter(Boolean) as any[]
+    : await prisma.table.findMany();
   for (const t of tables) {
     const views = (t.views ?? []) as View[];
     const view = views.find(v => v.id === viewId);

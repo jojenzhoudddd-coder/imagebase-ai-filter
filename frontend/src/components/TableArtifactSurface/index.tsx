@@ -275,15 +275,15 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
   // ── persist field order / hidden to backend view ──
   const persistFieldOrder = useCallback(async (newOrder: string[]) => {
     try {
-      await withClientId(instanceClientId, () => updateView(activeViewId, { fieldOrder: newOrder }));
+      await withClientId(instanceClientId, () => updateView(activeViewId, { fieldOrder: newOrder }, tableId));
     } catch (err) {
       console.error("Failed to persist field order:", err);
     }
-  }, [activeViewId, instanceClientId]);
+  }, [activeViewId, instanceClientId, tableId]);
 
   const persistHiddenFields = useCallback(async (newHidden: string[]) => {
     try {
-      await withClientId(instanceClientId, () => updateView(activeViewId, { hiddenFields: newHidden }));
+      await withClientId(instanceClientId, () => updateView(activeViewId, { hiddenFields: newHidden }, tableId));
     } catch (err) {
       console.error("Failed to persist hidden fields:", err);
     }
