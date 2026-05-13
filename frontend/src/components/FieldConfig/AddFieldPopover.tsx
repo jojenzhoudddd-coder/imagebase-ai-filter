@@ -119,34 +119,35 @@ const DATE_FORMAT_OPTIONS = [
   { value: "dd", label: "dd" },
 ];
 
-function formatAutoNumberPreview(rules: AutoNumberRule[]): string {
-  const now = new Date();
-  const y = String(now.getFullYear());
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return rules.map((r) => {
-    switch (r.type) {
-      case "increment": return "001";
-      case "fixed": return r.value;
-      case "date": {
-        const fmtMap: Record<string, string> = {
-          yyyyMMdd: `${y}${m}${d}`, yyyyMM: `${y}${m}`, yyMM: `${y.slice(2)}${m}`,
-          MMdd: `${m}${d}`, MM: m, dd: d,
-        };
-        return fmtMap[r.format] ?? "";
-      }
-    }
-  }).join("");
-}
+const RULE_LABEL: Record<string, string> = { increment: "自增数字", date: "创建日期", fixed: "固定字符" };
 
-function AutoNumberConfigPanel({ mode, rules, onModeChange, onRulesChange }: {
-  mode: "increment" | "custom";
+function AutoNumberConfigPanel({ rules, onRulesChange }: {
   rules: AutoNumberRule[];
-  onModeChange: (m: "increment" | "custom") => void;
   onRulesChange: (r: AutoNumberRule[]) => void;
 }) {
-  const { t } = useTranslation();
   const hasIncrement = rules.some((r) => r.type === "increment");
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+  const [overPos, setOverPos] = useState<"above" | "below">("below");
+
+  const handleDragStart = (e: React.DragEvent, idx: number) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(idx); };
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault(); e.dataTransfer.dropEffect = "move";
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setOverIdx(idx); setOverPos(e.clientY < rect.top + rect.height / 2 ? "above" : "below");
+  };
+  const handleDragLeave = () => { setOverIdx(null); };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (dragIdx === null || overIdx === null) return;
+    const next = [...rules];
+    const [moved] = next.splice(dragIdx, 1);
+    const insertAt = overPos === "above" ? (overIdx > dragIdx ? overIdx - 1 : overIdx) : (overIdx < dragIdx ? overIdx + 1 : overIdx);
+    next.splice(insertAt, 0, moved);
+    onRulesChange(next);
+    setDragIdx(null); setOverIdx(null);
+  };
+  const handleDragEnd = () => { setDragIdx(null); setOverIdx(null); };
 
   const addRule = (type: "increment" | "fixed" | "date") => {
     if (type === "increment" && hasIncrement) return;
@@ -157,92 +158,75 @@ function AutoNumberConfigPanel({ mode, rules, onModeChange, onRulesChange }: {
     onRulesChange([...rules, newRule]);
   };
 
-  const removeRule = (idx: number) => {
-    const r = rules[idx];
-    if (r.type === "increment") return; // increment is required
-    onRulesChange(rules.filter((_, i) => i !== idx));
-  };
-
   const updateRule = (idx: number, updated: AutoNumberRule) => {
-    const next = [...rules];
-    next[idx] = updated;
-    onRulesChange(next);
+    const next = [...rules]; next[idx] = updated; onRulesChange(next);
   };
 
   return (
-    <>
-      <div className="form-row">
-        <label>编号类型</label>
-        <CustomSelect
-          value={mode}
-          options={[
-            { value: "increment", label: "自增数字" },
-            { value: "custom", label: "自定义编号" },
-          ]}
-          onChange={(v) => onModeChange(v as "increment" | "custom")}
-        />
-        {mode === "custom" && (
-          <span className="form-hint">自定义格式与规则的文本编号</span>
-        )}
-      </div>
-
-      {mode === "custom" && (
-        <>
-          <div className="form-row">
-            <label>编号预览</label>
-            <div className="an-preview">{formatAutoNumberPreview(rules)}</div>
-          </div>
-
-          {rules.map((rule, idx) => (
-            <div key={idx} className="an-rule-row">
-              <span className="an-rule-drag">⁞⁞</span>
-              <span className="an-rule-label">
-                {rule.type === "increment" ? "自增数字 ⓘ" : rule.type === "date" ? "创建日期" : "固定字符"}
+    <div className="form-row">
+      <label>编号规则</label>
+      <div className="so-list">
+        {rules.map((rule, idx) => {
+          let cls = "so-item";
+          if (dragIdx === idx) cls += " is-dragging";
+          if (overIdx === idx && overPos === "above") cls += " drag-over-above";
+          if (overIdx === idx && overPos === "below") cls += " drag-over-below";
+          return (
+            <div key={idx} className={cls} draggable
+              onDragStart={(e) => handleDragStart(e, idx)}
+              onDragOver={(e) => handleDragOver(e, idx)}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onDragEnd={handleDragEnd}
+            >
+              <span className="so-drag">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
+                  <circle cx="3" cy="3" r="1.2" fill="currentColor"/><circle cx="7" cy="3" r="1.2" fill="currentColor"/>
+                  <circle cx="3" cy="7" r="1.2" fill="currentColor"/><circle cx="7" cy="7" r="1.2" fill="currentColor"/>
+                  <circle cx="3" cy="11" r="1.2" fill="currentColor"/><circle cx="7" cy="11" r="1.2" fill="currentColor"/>
+                </svg>
               </span>
-              <div className="an-rule-config">
-                {rule.type === "increment" && (
-                  <span className="an-rule-hint">3 位</span>
-                )}
-                {rule.type === "date" && (
-                  <CustomSelect
-                    value={rule.format}
-                    options={DATE_FORMAT_OPTIONS}
-                    onChange={(v) => updateRule(idx, { type: "date", format: v as any })}
-                  />
-                )}
-                {rule.type === "fixed" && (
-                  <input
-                    className="an-rule-input"
-                    value={rule.value}
-                    onChange={(e) => updateRule(idx, { type: "fixed", value: e.target.value })}
-                    placeholder="请输入"
-                  />
-                )}
-              </div>
+              <span className="so-input" style={{ flex: "0 0 auto", width: "auto", background: "none", border: "none", color: "var(--text-secondary)", fontSize: 13 }}>
+                {RULE_LABEL[rule.type]}
+              </span>
+              {rule.type === "increment" && (
+                <span style={{ fontSize: 12, color: "var(--text-placeholder)", marginLeft: "auto", marginRight: 4 }}>3 位</span>
+              )}
+              {rule.type === "date" && (
+                <div style={{ marginLeft: "auto", flex: "0 0 auto" }}>
+                  <CustomSelect value={rule.format} options={DATE_FORMAT_OPTIONS} onChange={(v) => updateRule(idx, { type: "date", format: v as any })} />
+                </div>
+              )}
+              {rule.type === "fixed" && (
+                <input
+                  className="so-input"
+                  style={{ marginLeft: "auto", flex: "0 1 100px" }}
+                  value={rule.value}
+                  onChange={(e) => updateRule(idx, { type: "fixed", value: e.target.value })}
+                  placeholder="请输入"
+                />
+              )}
               {rule.type !== "increment" && (
-                <button className="an-rule-remove" onClick={() => removeRule(idx)}>×</button>
+                <button type="button" className="so-remove" onClick={() => onRulesChange(rules.filter((_, i) => i !== idx))}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </button>
               )}
             </div>
-          ))}
-
-          <div className="an-add-rule">
-            <select
-              className="an-add-rule-select"
-              value=""
-              onChange={(e) => {
-                if (e.target.value) addRule(e.target.value as any);
-                e.target.value = "";
-              }}
-            >
-              <option value="" disabled>+ 编号规则</option>
-              {!hasIncrement && <option value="increment">自增数字</option>}
-              <option value="date">创建日期</option>
-              <option value="fixed">固定字符</option>
-            </select>
-          </div>
-        </>
-      )}
-    </>
+          );
+        })}
+        <button type="button" className="so-add-btn" style={{ width: "fit-content" }}
+          onClick={() => {
+            // Cycle: date → fixed → increment (if missing)
+            if (!rules.some(r => r.type === "date")) addRule("date");
+            else if (!rules.some(r => r.type === "fixed")) addRule("fixed");
+            else if (!hasIncrement) addRule("increment");
+            else addRule("date"); // allow multiple dates
+          }}
+        >+ 编号规则</button>
+      </div>
+    </div>
   );
 }
 
@@ -459,7 +443,6 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const [dateFormat, setDateFormat] = useState(editingField?.config?.format ?? "yyyy-MM-dd");
   const [numberFormat, setNumberFormat] = useState(editingField?.config?.format ?? "decimal_1");
   const [selectOptions, setSelectOptions] = useState<SelectOption[]>(editingField?.config?.options ?? []);
-  const [autoNumberMode, setAutoNumberMode] = useState<"increment" | "custom">(editingField?.config?.autoNumberMode ?? "increment");
   const [autoNumberRules, setAutoNumberRules] = useState<AutoNumberRule[]>(editingField?.config?.autoNumberRules ?? [{ type: "increment" }]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; path?: string } | null>(null);
@@ -536,7 +519,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
           dto.config = { ...dto.config, options: selectOptions };
         }
         if (fieldType === "AutoNumber") {
-          dto.config = { autoNumberMode, ...(autoNumberMode === "custom" ? { autoNumberRules } : {}) };
+          dto.config = { autoNumberMode: "custom", autoNumberRules };
         }
         const updated = clientId
           ? await withClientId(clientId, () => updateField(currentTableId, editingField.id, dto))
@@ -556,7 +539,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
             : isSelectType
             ? { options: selectOptions }
             : fieldType === "AutoNumber"
-            ? { autoNumberMode, ...(autoNumberMode === "custom" ? { autoNumberRules } : {}) }
+            ? { autoNumberMode: "custom" as const, autoNumberRules }
             : {};
         const dto = { name: title.trim(), type: fieldType, config };
         const newField = clientId
@@ -737,15 +720,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
 
           {fieldType === "AutoNumber" && (
             <AutoNumberConfigPanel
-              mode={autoNumberMode}
               rules={autoNumberRules}
-              onModeChange={(m) => {
-                setAutoNumberMode(m);
-                if (m === "increment") setAutoNumberRules([{ type: "increment" }]);
-                else if (autoNumberRules.length === 0 || (autoNumberRules.length === 1 && autoNumberRules[0].type === "increment")) {
-                  setAutoNumberRules([{ type: "increment" }]);
-                }
-              }}
               onRulesChange={setAutoNumberRules}
             />
           )}
