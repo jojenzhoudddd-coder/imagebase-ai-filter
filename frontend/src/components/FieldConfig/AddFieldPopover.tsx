@@ -162,11 +162,12 @@ function AddRuleMenu({ onAdd, dateLabel, fixedLabel, buttonLabel }: {
   );
 }
 
-function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }: {
+function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange, onSave }: {
   rules: AutoNumberRule[];
   onRulesChange: (r: AutoNumberRule[]) => void;
   digits: number;
   onDigitsChange: (d: number) => void;
+  onSave?: (rules: AutoNumberRule[], digits: number) => void;
 }) {
   const { t } = useTranslation();
   const ruleLabel = (type: string) => t(`addField.rule${type.charAt(0).toUpperCase() + type.slice(1)}` as any);
@@ -190,6 +191,7 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
     const insertAt = overPos === "above" ? (overIdx > dragIdx ? overIdx - 1 : overIdx) : (overIdx < dragIdx ? overIdx + 1 : overIdx);
     next.splice(insertAt, 0, moved);
     onRulesChange(next);
+    onSave?.(next, digits);
     setDragIdx(null); setOverIdx(null);
   };
   const handleDragEnd = () => { setDragIdx(null); setOverIdx(null); };
@@ -200,11 +202,26 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
       type === "increment" ? { type: "increment" }
       : type === "date" ? { type: "date", format: "yyyyMMdd" }
       : { type: "fixed", value: "" };
-    onRulesChange([...rules, newRule]);
+    const next = [...rules, newRule];
+    onRulesChange(next);
+    onSave?.(next, digits);
   };
 
   const updateRule = (idx: number, updated: AutoNumberRule) => {
-    const next = [...rules]; next[idx] = updated; onRulesChange(next);
+    const next = [...rules]; next[idx] = updated;
+    onRulesChange(next);
+    onSave?.(next, digits);
+  };
+
+  const removeRule = (idx: number) => {
+    const next = rules.filter((_, i) => i !== idx);
+    onRulesChange(next);
+    onSave?.(next, digits);
+  };
+
+  const changeDigits = (d: number) => {
+    onDigitsChange(d);
+    onSave?.(rules, d);
   };
 
   return (
@@ -240,14 +257,14 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
                     value={digits}
                     onChange={(e) => {
                       const v = Number(e.target.value);
-                      if (!isNaN(v)) onDigitsChange(Math.max(1, Math.min(10, v)));
+                      if (!isNaN(v)) changeDigits(Math.max(1, Math.min(10, v)));
                     }}
                   />
                   <div className="an-stepper-btns">
-                    <button type="button" className="an-stepper-up" onClick={() => onDigitsChange(Math.min(10, digits + 1))}>
+                    <button type="button" className="an-stepper-up" onClick={() => changeDigits(Math.min(10, digits + 1))}>
                       <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1.5 4.5L5 1.5L8.5 4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </button>
-                    <button type="button" className="an-stepper-down" onClick={() => onDigitsChange(Math.max(1, digits - 1))}>
+                    <button type="button" className="an-stepper-down" onClick={() => changeDigits(Math.max(1, digits - 1))}>
                       <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1.5 1.5L5 4.5L8.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </button>
                   </div>
@@ -269,7 +286,7 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange }:
               <button type="button"
                 className={`so-remove${rule.type === "increment" ? " disabled" : ""}`}
                 disabled={rule.type === "increment"}
-                onClick={() => { if (rule.type !== "increment") onRulesChange(rules.filter((_, i) => i !== idx)); }}
+                onClick={() => { if (rule.type !== "increment") removeRule(idx); }}
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -514,18 +531,14 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
 
   const { suggestions, loading: sugLoading, refresh: sugRefresh, fetchSuggestions, hasFetched } = fieldSuggestions;
 
-  // Auto-save AutoNumber config in edit mode — persist + refetch records on every change
-  const autoNumOrigRef = useRef(JSON.stringify({ r: editingField?.config?.autoNumberRules, d: editingField?.config?.autoNumberDigits }));
-  useEffect(() => {
-    if (!isEdit || fieldType !== "AutoNumber") return;
-    const current = JSON.stringify({ r: autoNumberRules, d: autoNumberDigits });
-    if (current === autoNumOrigRef.current) return; // skip if unchanged from initial
-    autoNumOrigRef.current = current; // update ref to avoid re-firing for same value
-    const config = { autoNumberMode: "custom" as const, autoNumberRules, autoNumberDigits };
-    updateField(currentTableId, editingField!.id, { config }).then(() => {
+  // Live-save AutoNumber config on every mutation (called directly from AutoNumberConfigPanel)
+  const handleAutoNumberSave = useCallback((newRules: AutoNumberRule[], newDigits: number) => {
+    if (!isEdit || !editingField) return;
+    const config = { autoNumberMode: "custom" as const, autoNumberRules: newRules, autoNumberDigits: newDigits };
+    updateField(currentTableId, editingField.id, { config }).then(() => {
       onLiveUpdate?.();
     }).catch(() => {});
-  }, [autoNumberRules, autoNumberDigits, isEdit, fieldType, currentTableId, editingField, onLiveUpdate]);
+  }, [isEdit, editingField, currentTableId, onLiveUpdate]);
 
   useEffect(() => {
     fetchTables().then(setAllTables);
@@ -798,6 +811,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
               onRulesChange={setAutoNumberRules}
               digits={autoNumberDigits}
               onDigitsChange={setAutoNumberDigits}
+              onSave={handleAutoNumberSave}
             />
           )}
         </div>
