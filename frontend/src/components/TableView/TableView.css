@@ -373,6 +373,22 @@
   background: rgba(20, 86, 240, 0.06);
 }
 
+.cell-dropdown-item.highlighted {
+  background: var(--color-bg-hover);
+}
+
+.cell-dropdown-create {
+  color: var(--text-secondary);
+  gap: 6px;
+}
+.cell-dropdown-create-label {
+  flex-shrink: 0;
+}
+.cell-dropdown-create-value {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
 .option-dot {
   width: 14px;
   height: 14px;

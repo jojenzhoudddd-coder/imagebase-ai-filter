@@ -395,8 +395,11 @@ function SelectEditor({
 }) {
   const options = field.config.options ?? [];
   const [query, setQuery] = useState("");
+  const [hlIdx, setHlIdx] = useState(0);
+  const composingRef = useRef(false);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const theme = useResolvedTheme();
 
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -409,11 +412,56 @@ function SelectEditor({
     return () => document.removeEventListener("mousedown", handler);
   }, [onCancel]);
 
-  const filtered = query.trim()
-    ? options.filter((o) => o.name.toLowerCase().includes(query.trim().toLowerCase()))
+  const trimmed = query.trim();
+  const filtered = trimmed
+    ? options.filter((o) => o.name.toLowerCase().includes(trimmed.toLowerCase()))
     : options;
+  const exactMatch = trimmed && filtered.some((o) => o.name === trimmed);
+  const showCreate = trimmed && !exactMatch;
+  // total items = filtered options + optional "create" item at end
+  const totalItems = filtered.length + (showCreate ? 1 : 0);
+
+  // reset highlight when filtered list changes
+  useEffect(() => { setHlIdx(0); }, [query]);
+
+  // scroll highlighted item into view
+  useEffect(() => {
+    const el = listRef.current?.children[hlIdx] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "nearest" });
+  }, [hlIdx]);
+
+  const createAndCommit = () => {
+    const colors = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#8F959E"];
+    const newOpt = { id: `opt_${Date.now()}`, name: trimmed, color: colors[options.length % colors.length] };
+    const newOptions = [...options, newOpt];
+    const updatedField = { ...field, config: { ...field.config, options: newOptions } };
+    import("../../api").then(({ updateField }) => {
+      updateField(field.tableId, field.id, { config: { options: newOptions } }).catch(() => {});
+    });
+    onFieldUpdate?.(updatedField);
+    if (field.type === "MultiSelect") {
+      const arr = Array.isArray(value) ? [...value] : [];
+      onCommit([...arr, newOpt.name]);
+    } else {
+      onCommit(newOpt.name);
+    }
+  };
+
+  const selectOption = (opt: { name: string }) => {
+    if (field.type === "MultiSelect") {
+      const arr = Array.isArray(value) ? [...value] : [];
+      if (arr.includes(opt.name)) {
+        onCommit(arr.filter((v) => v !== opt.name));
+      } else {
+        onCommit([...arr, opt.name]);
+      }
+    } else {
+      onCommit(opt.name);
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (composingRef.current) return;
     if (e.key === "Tab") {
       e.preventDefault();
       e.stopPropagation();
@@ -422,23 +470,19 @@ function SelectEditor({
     } else if (e.key === "Escape") {
       e.preventDefault();
       onCancel();
-    } else if (e.key === "Enter" && query.trim()) {
+    } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      const existing = options.find((o) => o.name === query.trim());
-      if (existing) {
-        onCommit(existing.name);
+      setHlIdx((i) => (i + 1) % totalItems);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHlIdx((i) => (i - 1 + totalItems) % totalItems);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (totalItems === 0) return;
+      if (hlIdx < filtered.length) {
+        selectOption(filtered[hlIdx]);
       } else {
-        // Create new option and select it
-        const colors = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#8F959E"];
-        const newOpt = { id: `opt_${Date.now()}`, name: query.trim(), color: colors[options.length % colors.length] };
-        const newOptions = [...options, newOpt];
-        const updatedField = { ...field, config: { ...field.config, options: newOptions } };
-        // Fire-and-forget field update
-        import("../../api").then(({ updateField }) => {
-          updateField(field.tableId, field.id, { config: { options: newOptions } }).catch(() => {});
-        });
-        onFieldUpdate?.(updatedField);
-        onCommit(newOpt.name);
+        createAndCommit();
       }
     }
   };
@@ -452,11 +496,13 @@ function SelectEditor({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
+          onCompositionStart={() => { composingRef.current = true; }}
+          onCompositionEnd={() => { composingRef.current = false; }}
           placeholder="查找或创建选项"
         />
       </div>
-      <div className="cell-dropdown-list">
-        {filtered.map((opt) => {
+      <div ref={listRef} className="cell-dropdown-list">
+        {filtered.map((opt, i) => {
           const optStyle = getOptionStyle(opt.color, theme === "dark");
           const isSelected = field.type === "MultiSelect"
             ? Array.isArray(value) && value.includes(opt.name)
@@ -464,26 +510,31 @@ function SelectEditor({
           return (
             <button
               key={opt.id}
-              className={`cell-dropdown-item${isSelected ? " selected" : ""}`}
+              className={`cell-dropdown-item${isSelected ? " selected" : ""}${i === hlIdx ? " highlighted" : ""}`}
               onMouseDown={(e) => {
                 e.preventDefault();
-                if (field.type === "MultiSelect") {
-                  const arr = Array.isArray(value) ? [...value] : [];
-                  if (arr.includes(opt.name)) {
-                    onCommit(arr.filter((v) => v !== opt.name));
-                  } else {
-                    onCommit([...arr, opt.name]);
-                  }
-                } else {
-                  onCommit(opt.name);
-                }
+                selectOption(opt);
               }}
+              onMouseEnter={() => setHlIdx(i)}
             >
               <span className="option-dot" style={{ background: optStyle.dot }} />
               <span className="option-label">{opt.name}</span>
             </button>
           );
         })}
+        {showCreate && (
+          <button
+            className={`cell-dropdown-item cell-dropdown-create${hlIdx === filtered.length ? " highlighted" : ""}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              createAndCommit();
+            }}
+            onMouseEnter={() => setHlIdx(filtered.length)}
+          >
+            <span className="cell-dropdown-create-label">创建选项</span>
+            <span className="cell-dropdown-create-value">{trimmed}</span>
+          </button>
+        )}
       </div>
     </div>
   );
