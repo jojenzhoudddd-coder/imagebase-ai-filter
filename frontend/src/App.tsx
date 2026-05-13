@@ -581,7 +581,7 @@ export default function App() {
 
   const handleSaveView = useCallback(async () => {
     try {
-      await updateViewFilter(activeViewId, filter);
+      await updateView(activeViewId, { filter }, activeTableIdRef.current);
       setSavedFilter(filter);
     } catch (err) {
       console.error("Failed to save view:", err);

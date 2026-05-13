@@ -361,7 +361,7 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
   const handleSaveView = useCallback(async () => {
     try {
       await withClientId(instanceClientId, () =>
-        updateView(activeViewId, { filter, sort })
+        updateView(activeViewId, { filter, sort }, tableId)
       );
       setSavedFilter(filter);
       setSavedSort(sort);
