@@ -571,6 +571,7 @@ async function* streamAnthropic(
   // Token usage 累计：message_start 给 input_tokens，message_delta 持续更新 output_tokens
   let promptTokens = 0;
   let completionTokens = 0;
+  let stopReason: string | undefined;
   const startedAt = Date.now();
 
   try {
@@ -609,11 +610,16 @@ async function* streamAnthropic(
           completionTokens = Number(d.message.usage.output_tokens ?? 0);
           continue;
         }
-        if (event === "message_delta" && d?.usage) {
-          // message_delta 的 usage 是 cumulative output_tokens
-          if (typeof d.usage.output_tokens === "number") {
-            completionTokens = Number(d.usage.output_tokens);
+        if (event === "message_delta") {
+          if (d?.usage) {
+            // message_delta 的 usage 是 cumulative output_tokens
+            if (typeof d.usage.output_tokens === "number") {
+              completionTokens = Number(d.usage.output_tokens);
+            }
           }
+          // Anthropic sends stop_reason on the message_delta event (or d.delta.stop_reason)
+          const sr = d?.delta?.stop_reason ?? d?.stop_reason;
+          if (sr) stopReason = sr;
           continue;
         }
 
@@ -692,7 +698,7 @@ async function* streamAnthropic(
               { ...usage, durationMs: Date.now() - startedAt },
             );
           }
-          yield { kind: "done", usage };
+          yield { kind: "done", usage, stopReason };
           return;
         }
 
@@ -796,6 +802,7 @@ async function* streamOpenAI(
   // 会附带 usage 字段；提前 capture 到 emit done 时一起记账。
   let promptTokens = 0;
   let completionTokens = 0;
+  let stopReason: string | undefined;
   const startedAt = Date.now();
 
   const emitDone = () => {
@@ -836,7 +843,7 @@ async function* streamOpenAI(
               };
             }
           }
-          yield { kind: "done", usage: emitDone() };
+          yield { kind: "done", usage: emitDone(), stopReason };
           return;
         }
 
@@ -881,6 +888,7 @@ async function* streamOpenAI(
         }
 
         if (choice.finish_reason) {
+          stopReason = choice.finish_reason; // "stop" | "length" | "tool_calls" etc.
           // Emit any completed tool calls before the terminal [DONE].
           for (const tc of toolCallsByIndex.values()) {
             if (tc.name && tc.id && !yieldedCallIds.has(tc.id)) {

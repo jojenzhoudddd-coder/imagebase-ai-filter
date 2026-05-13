@@ -2461,6 +2461,7 @@ async function* runAgentImpl(
     const funcCalls: RawFunctionCall[] = [];
     let roundText = "";
     let streamErrored: string | null = null;
+    let roundStopReason: string | undefined;
     try {
       for await (const ev of callModelStream(model, input, abortSignal, activeTools, tokenRecordContext)) {
         if (ev.kind === "text_delta") {
@@ -2490,6 +2491,7 @@ async function* runAgentImpl(
           streamErrored = ev.message;
           break;
         } else if (ev.kind === "done") {
+          roundStopReason = ev.stopReason;
           // V3.0 UX: surface incremental token usage as soon as a round
           // finishes so the "Generating · Xs · Y tokens" strip stays
           // honest live. We emit it BEFORE breaking so the FE sees the
@@ -2588,8 +2590,23 @@ async function* runAgentImpl(
     // so a later unrelated blip doesn't trip on compounded stale failures.
     recordModelSuccess(model.id);
 
-    // No tool calls → final answer; break out.
+    // No tool calls → check if the model was truncated by max_tokens.
+    // Anthropic returns stop_reason="max_tokens" (or "end_turn" for natural stop);
+    // OpenAI returns finish_reason="length" (or "stop" for natural stop).
+    // If truncated, inject a continuation prompt and keep looping instead of
+    // ending the turn — the model's output was cut mid-sentence/mid-tool-call.
+    const wasTruncated = roundStopReason === "max_tokens" || roundStopReason === "length";
     if (funcCalls.length === 0) {
+      if (wasTruncated) {
+        logAgent({ event: "max_tokens_continue", round, textLen: roundText.length, stopReason: roundStopReason });
+        // Append the partial text as assistant, then inject a user nudge
+        // asking the model to continue from where it left off.
+        if (roundText.trim()) {
+          input.push({ role: "assistant", content: [{ type: "input_text", text: roundText }] });
+        }
+        input.push({ role: "user", content: [{ type: "input_text", text: "你的上一轮输出被截断了（达到 max_tokens 上限）。请从截断处继续，不要重复已输出的内容。如果你正在调用工具，请重新发起工具调用。" }] });
+        continue; // next round
+      }
       logAgent({ event: "final_answer", round, textLen: roundText.length });
       break;
     }

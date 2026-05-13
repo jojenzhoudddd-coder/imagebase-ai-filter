@@ -42,7 +42,7 @@ export type ProviderStreamEvent =
   /** done 事件可附带 usage —— provider 解析到 stop/usage 时填，business
    * 层不直接消费（adapter 已经主动写了 token_usage 表）；保留在事件
    * 里方便日志 / 调试。 */
-  | { kind: "done"; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }
+  | { kind: "done"; usage?: { promptTokens: number; completionTokens: number; totalTokens: number }; stopReason?: "end_turn" | "max_tokens" | "stop_sequence" | "tool_use" | string }
   | { kind: "error"; message: string };
 
 // ─── Input shape (ARK Responses API today; provider-agnostic on Day 2) ───
