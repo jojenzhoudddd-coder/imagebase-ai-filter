@@ -708,8 +708,9 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
   const handleEditFieldConfirm = useCallback(async (updatedField: Field) => {
     const oldField = fields.find((f) => f.id === updatedField.id);
     const typeChanged = oldField && oldField.type !== updatedField.type;
+    const needRefetch = typeChanged || updatedField.type === "AutoNumber";
     setFields((prev) => prev.map((f) => (f.id === updatedField.id ? updatedField : f)));
-    if (typeChanged) {
+    if (needRefetch) {
       const r = await fetchRecords(tableId);
       setAllRecords(r);
     }

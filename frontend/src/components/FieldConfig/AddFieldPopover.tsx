@@ -191,7 +191,6 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange, o
     const insertAt = overPos === "above" ? (overIdx > dragIdx ? overIdx - 1 : overIdx) : (overIdx < dragIdx ? overIdx + 1 : overIdx);
     next.splice(insertAt, 0, moved);
     onRulesChange(next);
-    onSave?.(next, digits);
     setDragIdx(null); setOverIdx(null);
   };
   const handleDragEnd = () => { setDragIdx(null); setOverIdx(null); };
@@ -204,24 +203,20 @@ function AutoNumberConfigPanel({ rules, onRulesChange, digits, onDigitsChange, o
       : { type: "fixed", value: "" };
     const next = [...rules, newRule];
     onRulesChange(next);
-    onSave?.(next, digits);
   };
 
   const updateRule = (idx: number, updated: AutoNumberRule) => {
     const next = [...rules]; next[idx] = updated;
     onRulesChange(next);
-    onSave?.(next, digits);
   };
 
   const removeRule = (idx: number) => {
     const next = rules.filter((_, i) => i !== idx);
     onRulesChange(next);
-    onSave?.(next, digits);
   };
 
   const changeDigits = (d: number) => {
     onDigitsChange(d);
-    onSave?.(rules, d);
   };
 
   return (
@@ -607,7 +602,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
           dto.config = { ...dto.config, options: selectOptions };
         }
         if (fieldType === "AutoNumber") {
-          dto.config = { autoNumberMode: "custom", autoNumberRules };
+          dto.config = { autoNumberMode: "custom", autoNumberRules, autoNumberDigits };
         }
         const updated = clientId
           ? await withClientId(clientId, () => updateField(currentTableId, editingField.id, dto))
