@@ -85,7 +85,7 @@ const EMPTY_LOOKUP: LookupConfig = {
 };
 
 // Palette keys that match the cell-display color system (OPTION_PALETTE_LM/DM in TableView)
-const OPTION_COLORS = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#9E339E"];
+const OPTION_COLORS = ["#2B2F36", "#3B1A02", "#02312A", "#002270", "#D83931", "#F77234", "#9E339E"];
 // Tag-style colors (bg + text + dot) matching cell display palette
 const OPTION_TAG_COLORS_LM: Record<string, { bg: string; text: string; dot: string }> = {
   "#D83931": { bg: "#FEE2E2", text: "#D83931", dot: "#F54A45" },

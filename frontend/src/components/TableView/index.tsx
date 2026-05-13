@@ -546,7 +546,7 @@ function SelectEditor({
   }, [hlIdx]);
 
   const createAndCommit = async () => {
-    const colors = ["#D83931", "#F77234", "#02312A", "#002270", "#3B1A02", "#2B2F36", "#9E339E"];
+    const colors = ["#2B2F36", "#3B1A02", "#02312A", "#002270", "#D83931", "#F77234", "#9E339E"];
     const newOpt = { id: `opt_${Date.now()}`, name: trimmed, color: colors[options.length % colors.length] };
     const newOptions = [...options, newOpt];
     const updatedField = { ...field, config: { ...field.config, options: newOptions } };
