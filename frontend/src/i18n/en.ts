@@ -114,7 +114,7 @@ export const en = {
   "auth.sessionRestoring": "Restoring session…",
 
   // Toolbar
-  "toolbar.addRecord": "Add Record",
+  "toolbar.addRecord": "Add record",
   "toolbar.addARecord": "Add a record",
   "toolbar.addByChat": "Add by chat",
   "toolbar.addByChatPrompt.before": "I want to add records to ",

@@ -9,6 +9,9 @@
   overflow: hidden;
   cursor: default;
 }
+.swipe-del-root:hover {
+  background: var(--color-bg-hover, rgba(31,35,41,0.06));
+}
 
 .swipe-del-fill {
   position: absolute;

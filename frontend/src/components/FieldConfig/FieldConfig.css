@@ -724,7 +724,7 @@
 }
 .an-add-menu {
   position: fixed;
-  min-width: 120px;
+  width: 140px;
   padding: 4px;
   background: var(--surface-2);
   border: 1px solid var(--border-light);

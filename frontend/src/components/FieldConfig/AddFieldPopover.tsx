@@ -134,8 +134,8 @@ function AddRuleMenu({ onAdd, dateLabel, fixedLabel, buttonLabel }: {
       if (menuRef.current && !menuRef.current.contains(e.target as Node) &&
           btnRef.current && !btnRef.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("mousedown", handler, true);
+    return () => document.removeEventListener("mousedown", handler, true);
   }, [open]);
 
   const handleOpen = () => {

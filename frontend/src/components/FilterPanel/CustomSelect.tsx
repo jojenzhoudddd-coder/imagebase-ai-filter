@@ -48,8 +48,8 @@ export default function CustomSelect({
         setOpen(false);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("mousedown", handler, true);
+    return () => document.removeEventListener("mousedown", handler, true);
   }, [open]);
 
   // Reset search query each time the dropdown reopens; auto-focus the input
