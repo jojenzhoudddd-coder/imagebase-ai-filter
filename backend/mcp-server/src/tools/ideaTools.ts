@@ -12,7 +12,7 @@
  *     (auto-triggered by keywords like 灵感/idea/章节/append/insert into doc).
  */
 
-import { apiRequest, toolResult, confirmationRequired } from "../dataStoreClient.js";
+import { apiRequest, toolResult, confirmationRequired, DEFAULT_WORKSPACE_ID } from "../dataStoreClient.js";
 import type { ToolDefinition } from "./tableTools.js";
 
 /** Shared schema fragment for the anchor parameter of write tools. */
@@ -51,11 +51,11 @@ export const ideaNavTools: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "工作空间 id，默认使用当前工作空间" },
       },
     },
     handler: async (args, ctx) => {
-      const wsId = args.workspaceId || ctx?.workspaceId || "doc_default";
+      const wsId = args.workspaceId || ctx?.workspaceId || DEFAULT_WORKSPACE_ID;
       const result = await apiRequest<{ ideas: any[] }>(
         `/api/ideas?workspaceId=${encodeURIComponent(wsId)}`
       );
@@ -84,40 +84,20 @@ export const ideaNavTools: ToolDefinition[] = [
       },
       required: ["ideaId"],
     },
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       const id = String(args.ideaId);
-      // The public GET /:ideaId doesn't return sections in its default shape,
-      // but the list endpoint can. We fetch the full idea + explicitly ask
-      // the list endpoint for sections by id-filtering. Simpler: hit GET /:id
-      // for content, then grab sections via the list endpoint. But the list
-      // endpoint currently doesn't take an id filter, so we read it from
-      // the idea detail response, which in this codebase does NOT include
-      // sections. Simplest path: derive sections client-side by hitting the
-      // same extractor logic — but that would duplicate the slug algorithm.
-      // Pragmatic choice: extend list endpoint to accept includeSections and
-      // call it here. The endpoint already supports includeSections=1.
-      const [detail, listed] = await Promise.all([
-        apiRequest<any>(`/api/ideas/${id}`),
-        apiRequest<{ ideas: any[] }>(
-          `/api/ideas?workspaceId=${encodeURIComponent("doc_default")}&includeSections=1`
-        ).catch(() => ({ ideas: [] as any[] })),
-      ]);
-      // Fall back to the workspace declared by the detail so cross-workspace
-      // lookups still find sections.
+      // Fetch detail first to get the real workspaceId, then use it for sections.
+      const detail = await apiRequest<any>(`/api/ideas/${id}`);
+      const wsId = detail.workspaceId || ctx?.workspaceId || DEFAULT_WORKSPACE_ID;
       let sections: any[] = [];
-      const hitFromDefault = listed.ideas.find((i) => i.id === id);
-      if (hitFromDefault && Array.isArray(hitFromDefault.sections)) {
-        sections = hitFromDefault.sections;
-      } else if (detail.workspaceId && detail.workspaceId !== "doc_default") {
-        try {
-          const scoped = await apiRequest<{ ideas: any[] }>(
-            `/api/ideas?workspaceId=${encodeURIComponent(detail.workspaceId)}&includeSections=1`
-          );
-          const hit = scoped.ideas.find((i) => i.id === id);
-          if (hit && Array.isArray(hit.sections)) sections = hit.sections;
-        } catch {
-          /* ignored — sections empty is acceptable */
-        }
+      try {
+        const listed = await apiRequest<{ ideas: any[] }>(
+          `/api/ideas?workspaceId=${encodeURIComponent(wsId)}&includeSections=1`
+        );
+        const hit = listed.ideas.find((i: any) => i.id === id);
+        if (hit && Array.isArray(hit.sections)) sections = hit.sections;
+      } catch {
+        /* ignored — sections empty is acceptable */
       }
       // PR8: also fetch blocks so the Agent can use blockId-based mutations
       // without an extra round trip. Best-effort — if /blocks fails we
@@ -167,7 +147,7 @@ export const ideaWriteTools: ToolDefinition[] = [
       type: "object",
       properties: {
         name: { type: "string", description: "文档名称，如 '2026 Q2 产品线路图'" },
-        workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "工作空间 id，默认使用当前工作空间" },
         parentId: { type: "string", description: "父文件夹 id（可选）" },
       },
       required: ["name"],
@@ -175,7 +155,7 @@ export const ideaWriteTools: ToolDefinition[] = [
     handler: async (args, ctx) => {
       const body = {
         name: String(args.name),
-        workspaceId: args.workspaceId || ctx?.workspaceId || "doc_default",
+        workspaceId: args.workspaceId || ctx?.workspaceId || DEFAULT_WORKSPACE_ID,
         parentId: args.parentId || null,
       };
       const idea = await apiRequest<any>("/api/ideas", { method: "POST", body });

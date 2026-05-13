@@ -24,6 +24,9 @@ const BACKEND_BASE_URL = process.env.BACKEND_BASE_URL || "http://localhost:3001"
 const MCP_CLIENT_ID = process.env.MCP_CLIENT_ID || "mcp-agent";
 const COOKIE_NAME = process.env.AUTH_COOKIE_NAME || "ibase_auth";
 
+/** Must stay in sync with backend/src/services/dbStore.ts DEFAULT_WORKSPACE_ID. */
+export const DEFAULT_WORKSPACE_ID = "ws000000000001";
+
 /** AsyncLocalStorage 单例：agent 一个 turn 包一层 run()，本 turn 内
  * 任何 apiRequest 调用都能拿到原始用户的 JWT。并发 turn 互相隔离。 */
 interface AuthCtx {

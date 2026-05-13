@@ -8,12 +8,12 @@
  * See docs/vibe-demo-plan.md §9 + §10.
  */
 
-import { apiRequest, toolResult, confirmationRequired } from "../dataStoreClient.js";
+import { apiRequest, toolResult, confirmationRequired, DEFAULT_WORKSPACE_ID } from "../dataStoreClient.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
 function fwd(ctx?: ToolContext) {
   return {
-    workspaceId: ctx?.workspaceId || "doc_default",
+    workspaceId: ctx?.workspaceId || DEFAULT_WORKSPACE_ID,
   };
 }
 
@@ -28,11 +28,11 @@ export const demoNavTools: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspaceId: { type: "string", description: "默认 doc_default" },
+        workspaceId: { type: "string", description: "默认使用当前工作空间" },
       },
     },
     handler: async (args, ctx) => {
-      const wsId = (args.workspaceId as string) || ctx?.workspaceId || "doc_default";
+      const wsId = (args.workspaceId as string) || ctx?.workspaceId || DEFAULT_WORKSPACE_ID;
       const data = await apiRequest<any>(`/api/demos?workspaceId=${encodeURIComponent(wsId)}`);
       return toolResult(data);
     },
@@ -72,14 +72,14 @@ export const demoWriteTools: ToolDefinition[] = [
       type: "object",
       required: ["name"],
       properties: {
-        workspaceId: { type: "string", description: "默认 doc_default" },
+        workspaceId: { type: "string", description: "默认使用当前工作空间" },
         name: { type: "string", description: "Demo 名称，如 '活动报名表'" },
         template: { type: "string", enum: ["static", "react-spa"], description: "模板，默认 static" },
       },
     },
     handler: async (args, ctx) => {
       const body = {
-        workspaceId: (args.workspaceId as string) || ctx?.workspaceId || "doc_default",
+        workspaceId: (args.workspaceId as string) || ctx?.workspaceId || DEFAULT_WORKSPACE_ID,
         name: args.name,
         template: args.template || "static",
       };

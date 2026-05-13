@@ -3,7 +3,7 @@
  * Mirror of backend/src/routes/folderRoutes.ts — see CLAUDE.md "MCP Server 与 REST API 的同步规则".
  */
 
-import { apiRequest, toolResult } from "../dataStoreClient.js";
+import { apiRequest, toolResult, DEFAULT_WORKSPACE_ID } from "../dataStoreClient.js";
 import type { ToolDefinition } from "./tableTools.js";
 
 export const folderTools: ToolDefinition[] = [
@@ -13,11 +13,11 @@ export const folderTools: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "工作空间 id，默认使用当前工作空间" },
       },
     },
     handler: async (args, ctx) => {
-      const wsId = args.workspaceId || ctx?.workspaceId || "doc_default";
+      const wsId = args.workspaceId || ctx?.workspaceId || DEFAULT_WORKSPACE_ID;
       const tree = await apiRequest<any>(`/api/workspaces/${encodeURIComponent(wsId)}/tree`);
       return toolResult(tree.folders || []);
     },
@@ -31,12 +31,12 @@ export const folderTools: ToolDefinition[] = [
       properties: {
         name: { type: "string", description: "文件夹名称" },
         parentId: { type: "string", description: "父文件夹 id（可选，不指定则在根级别创建）" },
-        workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "工作空间 id，默认使用当前工作空间" },
       },
       required: ["name"],
     },
     handler: async (args, ctx) => {
-      const wsId = args.workspaceId || ctx?.workspaceId || "doc_default";
+      const wsId = args.workspaceId || ctx?.workspaceId || DEFAULT_WORKSPACE_ID;
       const result = await apiRequest<any>("/api/folders", {
         method: "POST",
         body: {

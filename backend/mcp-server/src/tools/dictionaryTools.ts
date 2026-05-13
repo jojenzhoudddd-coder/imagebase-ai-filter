@@ -13,7 +13,7 @@
  * 同步规则").
  */
 
-import { apiRequest, toolResult } from "../dataStoreClient.js";
+import { apiRequest, toolResult, DEFAULT_WORKSPACE_ID } from "../dataStoreClient.js";
 import type { ToolDefinition } from "./tableTools.js";
 
 export const dictionaryTools: ToolDefinition[] = [
@@ -26,7 +26,7 @@ export const dictionaryTools: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "工作空间 id，默认使用当前工作空间" },
         tableIds: {
           type: "array",
           items: { type: "string" },
@@ -35,7 +35,7 @@ export const dictionaryTools: ToolDefinition[] = [
       },
     },
     handler: async (args) => {
-      const wsId = (args.workspaceId as string) || "doc_default";
+      const wsId = (args.workspaceId as string) || DEFAULT_WORKSPACE_ID;
       const params = new URLSearchParams({ workspaceId: wsId });
       if (Array.isArray(args.tableIds)) {
         for (const id of args.tableIds as string[]) {

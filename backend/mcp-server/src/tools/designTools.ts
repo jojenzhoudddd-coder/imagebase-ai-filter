@@ -15,7 +15,7 @@
  * 术语对齐章节），本 MCP 工具同步跟随。
  */
 
-import { apiRequest, toolResult, confirmationRequired } from "../dataStoreClient.js";
+import { apiRequest, toolResult, confirmationRequired, DEFAULT_WORKSPACE_ID } from "../dataStoreClient.js";
 import type { ToolDefinition } from "./tableTools.js";
 
 // ── Tier 1 ─────────────────────────────────────────────────────────────────
@@ -29,11 +29,11 @@ export const designNavTools: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "工作空间 id，默认使用当前工作空间" },
       },
     },
     handler: async (args, ctx) => {
-      const wsId = args.workspaceId || ctx?.workspaceId || "doc_default";
+      const wsId = args.workspaceId || ctx?.workspaceId || DEFAULT_WORKSPACE_ID;
       // Reuse the tree endpoint — it returns designs directly for the workspace
       // without needing a dedicated list route.
       const tree = await apiRequest<{
@@ -74,7 +74,7 @@ export const designWriteTools: ToolDefinition[] = [
       type: "object",
       properties: {
         name: { type: "string", description: "画布名称，如 'Button 样式探索'" },
-        workspaceId: { type: "string", description: "所属工作空间 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "所属工作空间 id，默认使用当前工作空间" },
         parentId: { type: "string", description: "父文件夹 id（可选）" },
         figmaUrl: {
           type: "string",
@@ -86,7 +86,7 @@ export const designWriteTools: ToolDefinition[] = [
     handler: async (args, ctx) => {
       const body: Record<string, unknown> = {
         name: String(args.name),
-        workspaceId: args.workspaceId || ctx?.workspaceId || "doc_default",
+        workspaceId: args.workspaceId || ctx?.workspaceId || DEFAULT_WORKSPACE_ID,
         parentId: args.parentId || null,
       };
       if (args.figmaUrl) body.figmaUrl = String(args.figmaUrl);

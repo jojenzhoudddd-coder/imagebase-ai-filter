@@ -14,13 +14,13 @@
  * — a contract the frontend recognizes and renders as an inline table.
  */
 
-import { apiRequest, toolResult } from "../dataStoreClient.js";
+import { apiRequest, toolResult, DEFAULT_WORKSPACE_ID } from "../dataStoreClient.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
 function fwd(ctx?: ToolContext) {
   return {
     conversationId: ctx?.conversationId || "default",
-    workspaceId: ctx?.workspaceId || "doc_default",
+    workspaceId: ctx?.workspaceId || DEFAULT_WORKSPACE_ID,
   };
 }
 

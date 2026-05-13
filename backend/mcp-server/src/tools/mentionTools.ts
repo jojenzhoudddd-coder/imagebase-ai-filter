@@ -18,7 +18,7 @@
  * confirmation handshake.
  */
 
-import { apiRequest, toolResult } from "../dataStoreClient.js";
+import { apiRequest, toolResult, DEFAULT_WORKSPACE_ID } from "../dataStoreClient.js";
 import type { ToolDefinition } from "./tableTools.js";
 
 export const mentionTools: ToolDefinition[] = [
@@ -32,7 +32,7 @@ export const mentionTools: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "工作空间 id，默认使用当前工作空间" },
         q: { type: "string", description: "搜索关键字（支持中文、大小写不敏感）" },
         types: {
           type: "string",
@@ -45,7 +45,7 @@ export const mentionTools: ToolDefinition[] = [
       },
     },
     handler: async (args, ctx) => {
-      const wsId = args.workspaceId || ctx?.workspaceId || "doc_default";
+      const wsId = args.workspaceId || ctx?.workspaceId || DEFAULT_WORKSPACE_ID;
       const params = new URLSearchParams();
       if (args.q) params.set("q", String(args.q));
       if (args.types) params.set("types", String(args.types));
@@ -65,7 +65,7 @@ export const mentionTools: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "工作空间 id，默认使用当前工作空间" },
         targetType: {
           type: "string",
           enum: ["table", "design", "taste", "idea", "idea-section"],
@@ -79,7 +79,7 @@ export const mentionTools: ToolDefinition[] = [
       required: ["targetType", "targetId"],
     },
     handler: async (args, ctx) => {
-      const wsId = args.workspaceId || ctx?.workspaceId || "doc_default";
+      const wsId = args.workspaceId || ctx?.workspaceId || DEFAULT_WORKSPACE_ID;
       const params = new URLSearchParams({
         workspaceId: wsId,
         targetType: String(args.targetType),

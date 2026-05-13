@@ -3,7 +3,7 @@
  * Mirror of backend/src/routes/tableRoutes.ts — see CLAUDE.md "MCP Server 与 REST API 的同步规则".
  */
 
-import { apiRequest, toolResult, confirmationRequired } from "../dataStoreClient.js";
+import { apiRequest, toolResult, confirmationRequired, DEFAULT_WORKSPACE_ID } from "../dataStoreClient.js";
 
 /**
  * Runtime context passed alongside each tool invocation. Populated by the
@@ -121,11 +121,11 @@ export const tableTools: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspaceId: { type: "string", description: "工作空间 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "工作空间 id，默认使用当前工作空间" },
       },
     },
     handler: async (args, ctx) => {
-      const wsId = args.workspaceId || ctx?.workspaceId || "doc_default";
+      const wsId = args.workspaceId || ctx?.workspaceId || DEFAULT_WORKSPACE_ID;
       const tables = await apiRequest<unknown>(`/api/workspaces/${encodeURIComponent(wsId)}/tables`);
       return toolResult(tables);
     },
@@ -175,7 +175,7 @@ export const tableTools: ToolDefinition[] = [
       type: "object",
       properties: {
         name: { type: "string", description: "表名称，如 '客户管理'" },
-        workspaceId: { type: "string", description: "所属工作空间 id，默认 doc_default" },
+        workspaceId: { type: "string", description: "所属工作空间 id，默认使用当前工作空间" },
         language: { type: "string", enum: ["en", "zh"], description: "默认字段名语言" },
       },
       required: ["name"],
@@ -183,7 +183,7 @@ export const tableTools: ToolDefinition[] = [
     handler: async (args, ctx) => {
       const body = {
         name: String(args.name),
-        workspaceId: args.workspaceId || ctx?.workspaceId || "doc_default",
+        workspaceId: args.workspaceId || ctx?.workspaceId || DEFAULT_WORKSPACE_ID,
         language: args.language || "zh",
       };
       const tbl = await apiRequest<any>("/api/tables", { method: "POST", body });

@@ -13,7 +13,7 @@
  * The analyst HTTP API only supplies the handle's rows on demand.
  */
 
-import { apiRequest, toolResult } from "../dataStoreClient.js";
+import { apiRequest, toolResult, DEFAULT_WORKSPACE_ID } from "../dataStoreClient.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
 const MAX_TABLE_ROWS = 50_000;
@@ -22,7 +22,7 @@ const INLINE_PREVIEW_ROW_LIMIT = 500;
 function fwd(ctx?: ToolContext) {
   return {
     conversationId: ctx?.conversationId || "default",
-    workspaceId: ctx?.workspaceId || "doc_default",
+    workspaceId: ctx?.workspaceId || DEFAULT_WORKSPACE_ID,
   };
 }
 
