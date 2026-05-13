@@ -396,6 +396,11 @@
   background: var(--color-bg-hover);
 }
 
+.cell-dropdown-check {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .cell-dropdown-create {
   color: var(--text-secondary);
   gap: 6px;

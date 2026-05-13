@@ -577,6 +577,11 @@ function SelectEditor({
               onMouseEnter={() => setHlIdx(i)}
             >
               <span className="option-tag-preview" style={{ background: optStyle.bg, color: optStyle.text }}>{opt.name}</span>
+              {isSelected && (
+                <svg className="cell-dropdown-check" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M3.5 8.5L6.5 11.5L12.5 4.5" stroke="#3370FF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
             </button>
           );
         })}
