@@ -154,7 +154,15 @@
   height: 14px;
   border-radius: 3px;
   flex-shrink: 0;
-  margin-right: 4px; /* 8px gap + 4px margin = 12px between dot and input */
+  margin-right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.so-dot-inner {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 /* Drag indicator lines — same pattern as SortPanel */
 .so-item.drag-over-above::before,
