@@ -1040,8 +1040,9 @@ export default function App() {
   const handleEditFieldConfirm = useCallback(async (updatedField: Field) => {
     const oldField = fields.find(f => f.id === updatedField.id);
     const typeChanged = oldField && oldField.type !== updatedField.type;
+    const configChanged = oldField && JSON.stringify(oldField.config) !== JSON.stringify(updatedField.config);
     setFields((prev) => prev.map(f => f.id === updatedField.id ? updatedField : f));
-    if (typeChanged) {
+    if (typeChanged || configChanged) {
       const r = await fetchRecords(activeTableIdRef.current);
       setAllRecords(r);
     }
