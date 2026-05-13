@@ -302,13 +302,13 @@ function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
       return (
         <span className="cell-checkbox">
           {value ? (
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="0.5" y="0.5" width="13" height="13" rx="2.5" fill="#1456F0" stroke="#1456F0"/>
-              <path d="M3 7l3 3 5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="0.5" y="0.5" width="15" height="15" rx="3" fill="#1456F0" stroke="#1456F0"/>
+              <path d="M3.5 8l3 3 5.5-5.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           ) : (
-            <svg className="cell-checkbox-unchecked" width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="0.5" y="0.5" width="13" height="13" rx="2.5" stroke="currentColor"/>
+            <svg className="cell-checkbox-unchecked" width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="0.5" y="0.5" width="15" height="15" rx="3" stroke="currentColor"/>
             </svg>
           )}
         </span>
