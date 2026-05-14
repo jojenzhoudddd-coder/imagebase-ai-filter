@@ -66,7 +66,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const [streaming, setStreaming] = useState(false);
   const [mode, setMode] = useState<"source" | "preview">("preview");
   const [editingBlock, setEditingBlock] = useState<{
-    index: number;
+    startLine: number;
+    endLine: number;  // inclusive
     raw: string;
     domNode: HTMLElement;
     isMultiLine: boolean;
@@ -317,45 +318,67 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   }, [ideaId]);
 
   // ── Inline block editing ──
-  const handleBlockClick = useCallback((index: number, domNode: HTMLElement) => {
-    if (streaming) return;
+
+  /** Find the markdown block that best matches the clicked ProseMirror node.
+   *  Primary: index-based (same position). Fallback: content-based (text match). */
+  const findBlockForNode = useCallback((nodeIndex: number, domNode: HTMLElement) => {
     const blocks = splitMarkdownBlocks(contentRef.current);
-    const block = blocks.find(b => b.index === index);
+    if (blocks.length === 0) return null;
+    // Try index match first
+    if (nodeIndex < blocks.length) {
+      const candidate = blocks[nodeIndex];
+      // Sanity check: does the text roughly match?
+      const domText = (domNode.textContent ?? "").trim();
+      const blockText = candidate.raw.replace(/^[#>|\-*+\d.`~\s]+/gm, "").trim();
+      if (domText && blockText && (domText.includes(blockText.slice(0, 30)) || blockText.includes(domText.slice(0, 30)))) {
+        return candidate;
+      }
+      // Index matched but content doesn't — fall through to content search
+    }
+    // Content-based fallback: find block whose stripped text best matches DOM text
+    const domText = (domNode.textContent ?? "").trim().slice(0, 60);
+    if (!domText) return blocks[nodeIndex] ?? null; // last resort
+    for (const b of blocks) {
+      const stripped = b.raw.replace(/^[#>|\-*+\d.`~\s]+/gm, "").trim();
+      if (stripped.includes(domText.slice(0, 30)) || domText.includes(stripped.slice(0, 30))) {
+        return b;
+      }
+    }
+    return nodeIndex < blocks.length ? blocks[nodeIndex] : null;
+  }, []);
+
+  const handleBlockClick = useCallback((nodeIndex: number, domNode: HTMLElement) => {
+    if (streaming || editingBlock) return;
+    const block = findBlockForNode(nodeIndex, domNode);
     if (!block) return;
     const firstLine = block.raw.trimStart();
-    const isMultiLine = block.startLine !== block.endLine - 1
+    const multiLineContent = block.endLine > block.startLine;
+    const isMultiLine = multiLineContent
       || /^(`{3,}|~{3,})/.test(firstLine)
       || /^\|/.test(firstLine)
       || /^>/.test(firstLine)
       || /^(\d+\.\s|[-*+]\s)/.test(firstLine);
-    setEditingBlock({ index, raw: block.raw, domNode, isMultiLine });
-  }, [streaming]);
+    setEditingBlock({ startLine: block.startLine, endLine: block.endLine, raw: block.raw, domNode, isMultiLine });
+  }, [streaming, editingBlock, findBlockForNode]);
 
-  const commitBlockEdit = useCallback(() => {
+  // Use ref for commit so click-outside handler doesn't get stale closures
+  const commitRef = useRef<() => void>(() => {});
+  commitRef.current = () => {
     if (!editingBlock) return;
     const textarea = editTextareaRef.current;
     if (!textarea) { setEditingBlock(null); return; }
     const newRaw = textarea.value;
-    // No change → just close
     if (newRaw === editingBlock.raw) { setEditingBlock(null); return; }
-    const blocks = splitMarkdownBlocks(contentRef.current);
-    const block = blocks.find(b => b.index === editingBlock.index);
-    if (!block) { setEditingBlock(null); return; }
     const lines = contentRef.current.split("\n");
-    const before = lines.slice(0, block.startLine);
-    const after = lines.slice(block.endLine + 1);
+    const before = lines.slice(0, editingBlock.startLine);
+    const after = lines.slice(editingBlock.endLine + 1);
     const newContent = [...before, ...newRaw.split("\n"), ...after].join("\n");
     setContent(newContent);
     setEditingBlock(null);
     scheduleSave();
     requestAnimationFrame(() => { previewRef.current?.reload(); });
-  }, [editingBlock, scheduleSave]);
+  };
 
-  const cancelBlockEdit = useCallback(() => {
-    setEditingBlock(null);
-  }, []);
-
-  // Auto-grow textarea + keyboard handlers
   const handleEditTextareaInput = useCallback(() => {
     const ta = editTextareaRef.current;
     if (!ta) return;
@@ -366,43 +389,41 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const handleEditKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Escape") {
       e.preventDefault();
-      cancelBlockEdit();
+      setEditingBlock(null);
       return;
     }
     if (!editingBlock) return;
     if (editingBlock.isMultiLine) {
-      // Cmd/Ctrl+Enter to commit
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
-        commitBlockEdit();
+        commitRef.current();
       }
     } else {
-      // Enter to commit (single-line blocks)
       if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
-        commitBlockEdit();
+        commitRef.current();
       }
     }
-  }, [editingBlock, commitBlockEdit, cancelBlockEdit]);
+  }, [editingBlock]);
 
-  // Click outside to commit
+  // Click outside to commit — use pointerdown for reliability + capture phase
   useEffect(() => {
     if (!editingBlock) return;
-    const handler = (e: MouseEvent) => {
+    const handler = (e: PointerEvent) => {
       const ta = editTextareaRef.current;
       if (ta && !ta.contains(e.target as Node)) {
-        commitBlockEdit();
+        commitRef.current();
       }
     };
-    // Delay to avoid the same click that opened the editor
-    const timer = window.setTimeout(() => {
-      document.addEventListener("mousedown", handler);
-    }, 0);
+    // requestAnimationFrame to skip the same click that opened the editor
+    const raf = requestAnimationFrame(() => {
+      document.addEventListener("pointerdown", handler, true);
+    });
     return () => {
-      window.clearTimeout(timer);
-      document.removeEventListener("mousedown", handler);
+      cancelAnimationFrame(raf);
+      document.removeEventListener("pointerdown", handler, true);
     };
-  }, [editingBlock, commitBlockEdit]);
+  }, [editingBlock]);
 
   // Auto-focus and auto-grow on mount
   useEffect(() => {
@@ -412,7 +433,6 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     ta.focus();
     ta.style.height = "auto";
     ta.style.height = ta.scrollHeight + "px";
-    // Place cursor at end
     ta.selectionStart = ta.selectionEnd = ta.value.length;
   }, [editingBlock]);
 
