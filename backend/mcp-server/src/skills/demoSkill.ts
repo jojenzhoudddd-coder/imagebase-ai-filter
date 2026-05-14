@@ -226,7 +226,7 @@ const label = (fid: string, v: any) => {
 
 ## 硬规则
 
-- **读写文件前先确认 demoId 是当前对话里活跃的 demo**——对话历史中可能残留已删除 demo 的 ID，遇到 DEMO_NOT_FOUND 时立即调 `list_demos(workspaceId)` 获取最新列表，用正确的 demoId 重试
+- **读写文件前先确认 demoId 是当前对话里活跃的 demo**——对话历史中可能残留已删除 demo 的 ID，遇到 DEMO_NOT_FOUND 时立即调 list_demos(workspaceId) 获取最新列表，用正确的 demoId 重试
 - 生成 Demo 前调 get_data_dictionary / describe_table / readIdea 了解字段和内容
 - 代码里所有 SDK 调用必须 try/catch
 - **不要** 试图在 Demo 里 fetch \`/api/tables/...\` 或其他系统 API——只能通过 window.ImageBase
