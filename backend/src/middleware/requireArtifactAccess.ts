@@ -89,6 +89,10 @@ const PATH_RULES: Array<{ pattern: RegExp; param: keyof typeof ARTIFACT_RESOLVER
 const PUBLIC_PREFIXES = [
   "/api/auth/",
   "/share/",
+  // demo-runtime: published demos are accessed anonymously via /share/:slug,
+  // and the SDK inside calls /api/demo-runtime/:demoId/*. These requests have
+  // no auth cookie — demoCapabilityGuard handles access control instead.
+  "/api/demo-runtime/",
   // 以下是 list / create 操作的根路径，没有 artifact id，免检
   // （它们要么有 workspaceId 走 requireWorkspaceAccess，要么是 user-scoped）
   "/api/_schemas",
