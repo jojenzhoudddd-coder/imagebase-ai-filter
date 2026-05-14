@@ -693,7 +693,7 @@
 
 /* Hover highlight for clickable blocks in preview */
 .idea-block-hover {
-  outline: 2px solid var(--primary);
+  outline: 1px solid var(--primary);
   outline-offset: 2px;
   border-radius: 4px;
   cursor: pointer;
