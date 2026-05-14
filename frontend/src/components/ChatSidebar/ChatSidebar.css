@@ -1997,7 +1997,6 @@
 }
 .chat-generating-meta.phase-generated .chat-generating-meta-logo {
   animation: none;
-  opacity: 0.5;
 }
 @keyframes chat-generating-meta-spin {
   from { transform: rotate(0deg); }
