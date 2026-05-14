@@ -24,11 +24,11 @@
    * 5 层从底到顶：base / surface-1 / surface-2 / surface-3 / inset
    * surface-2 比 surface-1 更"浮起"（card / popover），surface-3 是
    * hover/active 态，inset 是凹陷态（输入框）。 */
-  --surface-base:        #F5F5F7;  /* macOS window bg — warm grey-white */
-  --surface-1:           #F2F2F4;  /* sidebar / secondary panels */
-  --surface-2:           #FBFBFD;  /* card / popover — near-white but not pure */
-  --surface-3:           #ECECEE;  /* hover / active states */
-  --surface-inset:       #EEEEF0;  /* input wells / inset areas */
+  --surface-base:        #FAFAFA;
+  --surface-1:           #F8F9FA;
+  --surface-2:           #FFFFFF;
+  --surface-3:           #F0F1F3;
+  --surface-inset:       #F5F6F7;
   --surface-modal-scrim: rgba(31, 35, 41, 0.38);
 
   /* ── Text 文字 ──────────────────────────────────────────────── */
