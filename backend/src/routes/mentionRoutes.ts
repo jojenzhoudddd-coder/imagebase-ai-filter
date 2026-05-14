@@ -157,41 +157,35 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
     }
   }
 
-  // ── Designs (whole-design mention) ──
-  // Designs with 0 tastes are filtered: empty canvas has nothing to show.
-  if (types.has("design")) {
+  // ── Designs + Tastes (merged: design → its tastes, in order) ──
+  // Single query for both types to ensure design-then-children ordering.
+  if (types.has("design") || types.has("taste")) {
     const designs = await prisma.design.findMany({
       where: { workspaceId },
+      orderBy: { order: "asc" },
       select: {
         id: true,
         name: true,
+        tastes: {
+          select: { id: true, name: true, filePath: true },
+          orderBy: { order: "asc" },
+        },
         _count: { select: { tastes: true } },
       },
     });
     for (const d of designs) {
-      if (d._count.tastes === 0) continue;
-      if (matchesAny([d.name])) {
+      // Design itself (skip empty canvases)
+      if (types.has("design") && d._count.tastes > 0 && matchesAny([d.name])) {
         designHits.push(decorate({ type: "design", id: d.id, label: d.name }));
       }
-    }
-  }
-
-  // ── Tastes (SVGs inside designs) ──
-  if (types.has("taste")) {
-    const designs = await prisma.design.findMany({
-      where: { workspaceId },
-      select: {
-        id: true,
-        name: true,
-        tastes: { select: { id: true, name: true, filePath: true } },
-      },
-    });
-    for (const d of designs) {
-      for (const tst of d.tastes) {
-        if (!tst.filePath) continue;
-        const label = `${d.name}.${tst.name}`;
-        if (matchesAny([label, d.name, tst.name])) {
-          tasteHits.push(decorate({ type: "taste", id: tst.id, label, designId: d.id }));
+      // Child tastes, ordered right after their parent design
+      if (types.has("taste")) {
+        for (const tst of d.tastes) {
+          if (!tst.filePath) continue;
+          const label = `${d.name}.${tst.name}`;
+          if (matchesAny([label, d.name, tst.name])) {
+            tasteHits.push(decorate({ type: "taste", id: tst.id, label, designId: d.id }));
+          }
         }
       }
     }
@@ -318,21 +312,46 @@ router.get("/:workspaceId/mentions/search", asyncHandler(async (req: Request, re
     return a.label.localeCompare(b.label);
   };
   tableHits.sort(rankCmp);
-  designHits.sort(rankCmp);
-  tasteHits.sort(rankCmp);
+  // Design + taste: interleave design → its tastes (already ordered by DB query).
+  // When both types are requested, merge into one bucket so they stay grouped.
+  // When query is present, sort by relevance; when empty, keep DB order.
+  if (q) { designHits.sort(rankCmp); tasteHits.sort(rankCmp); }
+  const designTasteBucket: MentionHit[] = [];
+  if (designHits.length > 0 || tasteHits.length > 0) {
+    // Group tastes by designId for interleaving
+    const tastesByDesign = new Map<string, MentionHit[]>();
+    for (const t of tasteHits) {
+      const did = t.designId ?? "";
+      if (!tastesByDesign.has(did)) tastesByDesign.set(did, []);
+      tastesByDesign.get(did)!.push(t);
+    }
+    // For each design, push design then its tastes
+    for (const dh of designHits) {
+      designTasteBucket.push(dh);
+      const children = tastesByDesign.get(dh.id);
+      if (children) {
+        designTasteBucket.push(...children);
+        tastesByDesign.delete(dh.id);
+      }
+    }
+    // Remaining tastes whose design wasn't in designHits (e.g. design type not requested)
+    for (const children of tastesByDesign.values()) {
+      designTasteBucket.push(...children);
+    }
+  }
   ideaHits.sort(rankCmp);
   sectionHits.sort(rankCmp);
   blockHits.sort(rankCmp);
   demoHits.sort(rankCmp);
   modelHits.sort(rankCmp);
 
-  // Order (model → table → taste/design → idea → idea-section → demo).
+  // Order (model → table → design+taste → idea → idea-section → demo).
   // Models go first so chat-input users always see them even when other
   // buckets dominate.
   // V2.9.3: 当 model 被请求时,给 modelHits 一个"前置 quota":先把全部 model
   // 放进去,再做正常 round-robin 填剩余 slot。这样用户在 chat input 里 @
   // 永远能看到所有可用模型,而不是被 100 张表稀释成 1-2 个。
-  const buckets = [tableHits, tasteHits, designHits, ideaHits, sectionHits, blockHits, demoHits];
+  const buckets = [tableHits, designTasteBucket, ideaHits, sectionHits, blockHits, demoHits];
   const hits: MentionHit[] = [];
   if (types.has("model")) {
     while (modelHits.length > 0 && hits.length < limit) {

@@ -97,8 +97,7 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
   const { groups, visualHits } = useMemo(() => {
     const groupLabelOf = (hit: MentionHit) =>
       hit.type === "table" ? t("idea.mentionTable")
-      : hit.type === "design" ? t("idea.mentionDesign")
-      : hit.type === "taste" ? t("idea.mentionTaste")
+      : hit.type === "design" || hit.type === "taste" ? t("idea.mentionDesign")
       : hit.type === "demo" ? t("idea.mentionDemo")
       : hit.type === "model" ? t("idea.mentionModel")
       : t("idea.mentionIdea");
@@ -115,15 +114,20 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
       }
       groupsList[gi].items.push(hit);
     }
-    // Within the merged 灵感 bucket, whole-idea hits come before their sections.
+    // Within merged groups, parent types come before children:
+    //   - design before taste (design → its tastes → next design → ...)
+    //   - idea before idea-section
     // Array#sort is stable in modern JS engines, so items with the same rank
     // keep their backend order as tiebreak.
+    const typeRank = (t: string) =>
+      t === "design" ? 0 : t === "taste" ? 1 :
+      t === "idea" ? 0 : t === "idea-section" ? 1 : 0;
     for (const g of groupsList) {
-      g.items.sort((a, b) => {
-        const ra = a.type === "idea-section" ? 1 : 0;
-        const rb = b.type === "idea-section" ? 1 : 0;
-        return ra - rb;
-      });
+      // Backend already sends design→taste in correct order; only re-sort
+      // the idea group where interleaving is possible.
+      if (g.items.some(i => i.type === "idea-section")) {
+        g.items.sort((a, b) => typeRank(a.type) - typeRank(b.type));
+      }
     }
     const visual: MentionHit[] = groupsList.flatMap(g => g.items);
     return { groups: groupsList, visualHits: visual };
