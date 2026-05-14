@@ -156,7 +156,7 @@ export default function MentionPicker({ workspaceId, query, atRect, onSelect, on
           // V2.9.5: 走到顶部时 wrap 到末尾
           setActiveIdx(i => (i - 1 + visualHits.length) % visualHits.length);
         }
-      } else if (e.key === "Enter" || e.key === "Tab") {
+      } else if ((e.key === "Enter" || e.key === "Tab") && !e.isComposing) {
         const pick = visualHits[activeIdx];
         if (pick) {
           e.preventDefault();

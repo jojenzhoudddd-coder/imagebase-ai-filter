@@ -78,7 +78,7 @@ export default function SkillPicker({ agentId, query, atRect, onSelect, onClose 
         e.preventDefault();
         e.stopImmediatePropagation();
         setActiveIdx((i) => (i - 1 + filtered.length) % Math.max(1, filtered.length));
-      } else if (e.key === "Enter" || e.key === "Tab") {
+      } else if ((e.key === "Enter" || e.key === "Tab") && !e.isComposing) {
         e.preventDefault();
         e.stopImmediatePropagation();
         if (filtered[activeIdx]) onSelect(filtered[activeIdx]);
