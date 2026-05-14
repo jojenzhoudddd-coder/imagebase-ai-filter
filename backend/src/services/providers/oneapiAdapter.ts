@@ -96,7 +96,14 @@ async function classifyError(
   if (res.status >= 500 && res.status < 600) overloaded = true;
   if (/\boverloaded_error\b|\bOverloaded\b/i.test(trimmed)) overloaded = true;
 
-  const message = `OneAPI(${provider}) ${res.status}: ${trimmed}`;
+  // Distinguish proxy-internal errors (SQLite transaction, DB errors) from
+  // real upstream overload for clearer logging.
+  const isProxyDbError = /SQL.*error|transaction|sqlite|database is locked/i.test(trimmed);
+  const reason = isProxyDbError ? "proxy-db-error" : (
+    /\boverloaded_error\b/i.test(trimmed) ? "upstream-overloaded" :
+    res.status === 429 ? "rate-limited" : "upstream-5xx"
+  );
+  const message = `OneAPI(${provider}) ${res.status} [${reason}]: ${trimmed}`;
   return { overloaded, message, retryAfterMs };
 }
 
@@ -548,7 +555,7 @@ async function* streamAnthropic(
     // 2 attempts ≈ 1 retry after 1s. Sufficient for brief blips; any longer
     // and we're better off switching models anyway (the agent-loop fallback).
     { maxAttempts: 2, signal: params.signal, onRetry: (err, ms, i) => {
-      console.warn(`[oneapi:anthropic] upstream overload (status=${err.status}), retry ${i + 1}/2 in ${ms}ms`);
+      console.warn(`[oneapi:anthropic] transient error (status=${err.status}), retry ${i + 1}/2 in ${ms}ms — ${err.message.slice(0, 200)}`);
     } },
   );
 
@@ -784,7 +791,7 @@ async function* streamOpenAI(
       return r;
     },
     { maxAttempts: 2, signal: params.signal, onRetry: (err, ms, i) => {
-      console.warn(`[oneapi:openai] upstream overload (status=${err.status}), retry ${i + 1}/2 in ${ms}ms`);
+      console.warn(`[oneapi:openai] transient error (status=${err.status}), retry ${i + 1}/2 in ${ms}ms — ${err.message.slice(0, 200)}`);
     } },
   );
 

@@ -188,7 +188,8 @@ export function evictStaleSkills(
   const dropped: string[] = [];
   for (const name of state.active) {
     const lastUsed = state.lastUsedTurn.get(name) ?? state.turnIndex;
-    if (state.turnIndex - lastUsed >= SKILL_EVICTION_TURNS) {
+    const threshold = availableSkillsByName[name]?.evictionTurns ?? SKILL_EVICTION_TURNS;
+    if (state.turnIndex - lastUsed >= threshold) {
       state.active.delete(name);
       state.lastUsedTurn.delete(name);
       dropped.push(name);
@@ -2547,7 +2548,8 @@ async function* runAgentImpl(
         // Feed the circuit breaker: 3 overloads in 60s on the same model
         // → auto-skip that model for 3 min. Prevents user from wasting a
         // second fresh turn on the same ailing upstream.
-        recordModelFailure(model.id, `upstream_overload status=${err.status}`);
+        const failReason = /proxy-db-error/.test(err.message) ? "proxy_db_error" : "upstream_overload";
+        recordModelFailure(model.id, `${failReason} status=${err.status}`);
         const next = pickOverloadFallback(model, triedForOverload);
         logAgent({
           event: "upstream_overload",

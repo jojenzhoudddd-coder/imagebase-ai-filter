@@ -85,4 +85,12 @@ export interface SkillDefinition {
    * terminology alignment.
    */
   promptFragment?: string;
+
+  /**
+   * Override the default idle-eviction threshold (SKILL_EVICTION_TURNS = 10)
+   * for this skill. Long-running iterative workflows (e.g. demo-skill where
+   * users send many small tweaks) benefit from a higher value to avoid
+   * mid-session skill unloading.
+   */
+  evictionTurns?: number;
 }

@@ -279,7 +279,10 @@ export const demoSkill: SkillDefinition = {
     // modify existing demo (add module / feature / page)
     /(加|增加|添加|新增|补充|扩展|加上).*(模块|功能|页面|组件|tab|面板|视图|板块|dark\s*mode|暗色)/,
     /(改|修改|改进|优化|重构|重写|升级|迭代).*(demo|页面|前端|app|组件|代码|界面)/i,
+    // UI tweaking (spacing, color, font, size, layout adjustments)
+    /(间距|距离|padding|margin|gap|圆角|border|边框|字号|字体|font|颜色|color|背景|宽度|高度|width|height|对齐|居中|布局|layout)/i,
   ],
   tools: demoWriteTools,
   promptFragment: DEMO_SKILL_PROMPT,
+  evictionTurns: 30, // Demo iterations are chatty — 10 turns is too short
 };
