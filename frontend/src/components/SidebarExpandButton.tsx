@@ -6,7 +6,7 @@
  * Hover 时显示一个 sidebar popover，可以快速切换 artifact。
  */
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { useSidebarToggle } from "../contexts/sidebarToggleContext";
 
@@ -16,15 +16,22 @@ const LEAVE_DELAY = 300;
 export default function SidebarExpandButton({ className }: { className?: string }) {
   const ctx = useSidebarToggle();
   const btnRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
   const enterTimer = useRef<ReturnType<typeof setTimeout>>();
   const leaveTimer = useRef<ReturnType<typeof setTimeout>>();
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
   const clearTimers = () => {
     clearTimeout(enterTimer.current);
     clearTimeout(leaveTimer.current);
   };
+
+  // Recompute position whenever popover opens
+  useLayoutEffect(() => {
+    if (!open) return;
+    const rect = btnRef.current?.getBoundingClientRect();
+    if (rect) setPos({ top: rect.bottom + 4, left: rect.left });
+  }, [open]);
 
   const handleEnter = useCallback(() => {
     clearTimers();
@@ -55,9 +62,6 @@ export default function SidebarExpandButton({ className }: { className?: string 
 
   if (!ctx || !ctx.collapsed) return null;
 
-  // Position the popover below the button, aligned left
-  const rect = btnRef.current?.getBoundingClientRect();
-
   return (
     <>
       <button
@@ -75,11 +79,10 @@ export default function SidebarExpandButton({ className }: { className?: string 
           <path d="M16.4088 15.2884L13.1208 12.0005L16.5876 8.53368C16.6442 8.47708 16.8661 8.25401 17.075 8.04388C17.3016 7.81597 17.301 7.44773 17.0737 7.2205C16.8454 6.99219 16.4751 6.99284 16.2475 7.22187C16.0792 7.39125 15.912 7.55943 15.8607 7.61073L11.8834 11.588C11.6556 11.8158 11.6556 12.1852 11.8834 12.413L15.659 16.1885C15.7197 16.2492 16.0001 16.5304 16.249 16.7799C16.4765 17.008 16.8459 17.0083 17.0738 16.7804C17.3009 16.5532 17.3015 16.1851 17.0749 15.9574C16.7981 15.6793 16.4721 15.3518 16.4088 15.2884Z" fill="currentColor"/>
         </svg>
       </button>
-      {open && rect && ctx.sidebarElement && createPortal(
+      {open && pos && ctx.sidebarElement && createPortal(
         <div
-          ref={popoverRef}
           className="sidebar-expand-popover"
-          style={{ top: rect.bottom + 4, left: rect.left }}
+          style={{ top: pos.top, left: pos.left }}
           onMouseEnter={handlePopoverEnter}
           onMouseLeave={handlePopoverLeave}
           onClick={handlePopoverClick}

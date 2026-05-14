@@ -264,10 +264,9 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
       onDeleteItem={ws.onDeleteItem}
       onMoveItem={ws.onMoveItem}
       onCreateByAI={handleCreateByAI}
-      width={blockState.sidebarWidth ?? 200}
-      onWidthChange={(w) => patchBlockState(blockId, { sidebarWidth: w })}
+      width={300}
     />
-  ) : null, [effectiveCollapsed, ws.sidebarItems, ws.onRenameItem, active?.id, handleSelectItem, ws.onReorderItems, ws.onDeleteTable, ws.tableCount, ws.onCreateWithAI, ws.onResetToDefault, handleCreateBlank, ws.folders, ws.onCreateFolder, handleCreateDesign, handleCreateIdea, handleCreateDemo, ws.onDeleteItem, ws.onMoveItem, handleCreateByAI, blockState.sidebarWidth, blockId, patchBlockState]);
+  ) : null, [effectiveCollapsed, ws.sidebarItems, ws.onRenameItem, active?.id, handleSelectItem, ws.onReorderItems, ws.onDeleteTable, ws.tableCount, ws.onCreateWithAI, ws.onResetToDefault, handleCreateBlank, ws.folders, ws.onCreateFolder, handleCreateDesign, handleCreateIdea, handleCreateDemo, ws.onDeleteItem, ws.onMoveItem, handleCreateByAI]);
 
   const sidebarToggleValue = useMemo(
     () => ({
