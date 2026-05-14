@@ -244,16 +244,41 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
   // per-block SidebarToggleProvider —— 让 artifact topbar 里的 SidebarExpandButton
   // 读取这个 block 的 collapsed 状态(原 App-level 全局 SidebarToggleProvider 不再
   // 反映 per-block 状态)。effectiveCollapsed 既包含用户偏好也包含宽度阈值。
+  const sidebarEl = useMemo(() => effectiveCollapsed ? (
+    <Sidebar
+      items={ws.sidebarItems}
+      onRenameItem={ws.onRenameItem}
+      activeItemId={active?.id ?? ""}
+      onSelectItem={handleSelectItem}
+      onReorderItems={ws.onReorderItems}
+      onDeleteTable={ws.onDeleteTable}
+      tableCount={ws.tableCount}
+      onCreateWithAI={ws.onCreateWithAI}
+      onResetToDefault={ws.onResetToDefault}
+      onCreateBlank={handleCreateBlank}
+      folders={ws.folders.map((f) => ({ id: f.id, name: f.name }))}
+      onCreateFolder={ws.onCreateFolder}
+      onCreateDesign={handleCreateDesign}
+      onCreateIdea={handleCreateIdea}
+      onCreateDemo={handleCreateDemo}
+      onDeleteItem={ws.onDeleteItem}
+      onMoveItem={ws.onMoveItem}
+      onCreateByAI={handleCreateByAI}
+      width={blockState.sidebarWidth ?? 200}
+      onWidthChange={(w) => patchBlockState(blockId, { sidebarWidth: w })}
+    />
+  ) : null, [effectiveCollapsed, ws.sidebarItems, ws.onRenameItem, active?.id, handleSelectItem, ws.onReorderItems, ws.onDeleteTable, ws.tableCount, ws.onCreateWithAI, ws.onResetToDefault, handleCreateBlank, ws.folders, ws.onCreateFolder, handleCreateDesign, handleCreateIdea, handleCreateDemo, ws.onDeleteItem, ws.onMoveItem, handleCreateByAI, blockState.sidebarWidth, blockId, patchBlockState]);
+
   const sidebarToggleValue = useMemo(
     () => ({
       collapsed: effectiveCollapsed,
       onToggle: () => {
-        // 用户主动 toggle —— 反转 sidebarCollapsedPreference
         patchBlockState(blockId, { sidebarCollapsedPreference: !userCollapsed });
       },
       expandTitle: t("sidebar.expand"),
+      sidebarElement: sidebarEl,
     }),
-    [effectiveCollapsed, userCollapsed, blockId, patchBlockState, t],
+    [effectiveCollapsed, userCollapsed, blockId, patchBlockState, t, sidebarEl],
   );
 
   return (

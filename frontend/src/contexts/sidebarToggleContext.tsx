@@ -8,12 +8,14 @@
  * 太啰嗦,而 collapse 状态属于 workspace 层面,context 是合适的抽象。
  */
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode, type ReactElement } from "react";
 
 interface SidebarToggleValue {
   collapsed: boolean;
   onToggle: () => void;
   expandTitle: string;
+  /** Pre-built Sidebar element to render inside the hover popover */
+  sidebarElement?: ReactElement | null;
 }
 
 const Ctx = createContext<SidebarToggleValue | null>(null);
