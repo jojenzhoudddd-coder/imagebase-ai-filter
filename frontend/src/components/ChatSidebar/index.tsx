@@ -1262,9 +1262,13 @@ export default function ChatSidebar({
                           completionTokens: summary.completionTokens ?? m.turnMeta.completionTokens,
                         }
                       : undefined,
+                    // Backend emits done AFTER all tool_results; if a tool is
+                    // still "running" here it means the SSE events arrived in
+                    // the same browser tick and the tool_result handler hasn't
+                    // fired yet. Mark as success (turn completed normally).
                     toolCalls: m.toolCalls.map((tc) =>
                       tc.status === "running"
-                        ? { ...tc, status: "error", progress: undefined, heartbeat: undefined }
+                        ? { ...tc, status: "success", progress: undefined, heartbeat: undefined }
                         : tc,
                     ),
                   }
@@ -1272,7 +1276,8 @@ export default function ChatSidebar({
             ),
           );
         } else {
-          // SSE closed — done with all turns.
+          // SSE closed — done with all turns. Any tool still "running" at
+          // this point completed successfully (backend finished normally).
           setStreaming(false);
           setMessages((prev) =>
             prev.map((m) =>
@@ -1289,7 +1294,7 @@ export default function ChatSidebar({
                       : undefined,
                     toolCalls: m.toolCalls.map((tc) =>
                       tc.status === "running"
-                        ? { ...tc, status: "error", progress: undefined, heartbeat: undefined }
+                        ? { ...tc, status: "success", progress: undefined, heartbeat: undefined }
                         : tc,
                     ),
                   }
