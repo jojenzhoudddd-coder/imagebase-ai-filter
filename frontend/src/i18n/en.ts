@@ -475,6 +475,7 @@ export const en = {
   "idea.offline": "Offline",
   "idea.streaming": "Agent writing…",
   "idea.empty": "Start writing your idea. Supports Markdown, @ mentions, and inline SVG / HTML.",
+  "idea.previewEmpty": "Preview mode — press ⌘/ to switch to source mode for editing.",
   "idea.mentionEmpty": "No matches",
   "idea.mentionView": "Table",
   "idea.mentionTable": "Table",

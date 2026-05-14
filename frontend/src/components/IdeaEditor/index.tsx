@@ -111,6 +111,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         if (!alive) return;
         setContent(idea.content || "");
         versionRef.current = idea.version ?? 0;
+        if (!idea.content) setMode("source");
         setLoaded(true);
       })
       .catch((err) => {
@@ -411,7 +412,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         ) : (
           <TiptapPreview
             ref={previewRef} source={content}
-            onDirty={handlePreviewDirty} placeholder={t("idea.empty")}
+            onDirty={handlePreviewDirty} placeholder={t("idea.previewEmpty")}
             onUploadFile={handleImageUpload} onMentionClick={() => {}}
           />
         )}
