@@ -68,7 +68,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const [editingBlock, setEditingBlock] = useState<{
     index: number;
     raw: string;
-    rect: DOMRect;
+    domNode: HTMLElement;
     isMultiLine: boolean;
   } | null>(null);
 
@@ -317,33 +317,30 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   }, [ideaId]);
 
   // ── Inline block editing ──
-  const handleBlockClick = useCallback((index: number, domRect: DOMRect) => {
+  const handleBlockClick = useCallback((index: number, domNode: HTMLElement) => {
     if (streaming) return;
     const blocks = splitMarkdownBlocks(contentRef.current);
     const block = blocks.find(b => b.index === index);
     if (!block) return;
-    // Determine if multi-line (code, table, list, blockquote)
     const firstLine = block.raw.trimStart();
-    const isMultiLine = block.startLine !== block.endLine
+    const isMultiLine = block.startLine !== block.endLine - 1
       || /^(`{3,}|~{3,})/.test(firstLine)
       || /^\|/.test(firstLine)
       || /^>/.test(firstLine)
       || /^(\d+\.\s|[-*+]\s)/.test(firstLine);
-    setEditingBlock({ index, raw: block.raw, rect: domRect, isMultiLine });
+    setEditingBlock({ index, raw: block.raw, domNode, isMultiLine });
   }, [streaming]);
 
   const commitBlockEdit = useCallback(() => {
     if (!editingBlock) return;
     const textarea = editTextareaRef.current;
-    if (!textarea) return;
+    if (!textarea) { setEditingBlock(null); return; }
     const newRaw = textarea.value;
+    // No change → just close
+    if (newRaw === editingBlock.raw) { setEditingBlock(null); return; }
     const blocks = splitMarkdownBlocks(contentRef.current);
     const block = blocks.find(b => b.index === editingBlock.index);
-    if (!block) {
-      setEditingBlock(null);
-      return;
-    }
-    // Replace the block lines in the full content
+    if (!block) { setEditingBlock(null); return; }
     const lines = contentRef.current.split("\n");
     const before = lines.slice(0, block.startLine);
     const after = lines.slice(block.endLine + 1);
@@ -351,7 +348,6 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     setContent(newContent);
     setEditingBlock(null);
     scheduleSave();
-    // Refresh preview
     requestAnimationFrame(() => { previewRef.current?.reload(); });
   }, [editingBlock, scheduleSave]);
 
@@ -536,13 +532,15 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         )}
         {editingBlock && mode === "preview" && (() => {
           const bodyEl = bodyRef.current;
-          if (!bodyEl) return null;
+          const node = editingBlock.domNode;
+          if (!bodyEl || !node) return null;
+          const nodeRect = node.getBoundingClientRect();
           const bodyRect = bodyEl.getBoundingClientRect();
           const style: CSSProperties = {
-            top: editingBlock.rect.top - bodyRect.top + bodyEl.scrollTop,
-            left: editingBlock.rect.left - bodyRect.left + bodyEl.scrollLeft,
-            width: editingBlock.rect.width,
-            minHeight: editingBlock.rect.height,
+            top: nodeRect.top - bodyRect.top + bodyEl.scrollTop,
+            left: nodeRect.left - bodyRect.left + bodyEl.scrollLeft,
+            width: nodeRect.width,
+            minHeight: nodeRect.height,
           };
           return (
             <textarea

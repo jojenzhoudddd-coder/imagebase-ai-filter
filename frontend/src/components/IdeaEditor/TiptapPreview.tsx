@@ -248,7 +248,7 @@ interface Props {
   placeholder?: string;
   onUploadFile?: (file: File) => Promise<ImageUploadResult>;
   /** Called when a top-level block is clicked in preview mode. */
-  onBlockClick?: (index: number, domRect: DOMRect) => void;
+  onBlockClick?: (index: number, domNode: HTMLElement) => void;
 }
 
 /**
@@ -259,7 +259,7 @@ interface Props {
 const blockHoverPluginKey = new PluginKey("blockHoverClick");
 
 function createBlockHoverClickPlugin(
-  onBlockClickRef: React.MutableRefObject<((index: number, domRect: DOMRect) => void) | undefined>,
+  onBlockClickRef: React.MutableRefObject<((index: number, domNode: HTMLElement) => void) | undefined>,
 ) {
   /** Resolve the top-level node index from a DOM event target. */
   function resolveTopLevelIndex(
@@ -347,8 +347,7 @@ function createBlockHoverClickPlugin(
             blockDom = blockDom.parentElement;
           }
 
-          const rect = blockDom.getBoundingClientRect();
-          onBlockClickRef.current(hit.index, rect);
+          onBlockClickRef.current(hit.index, blockDom as HTMLElement);
           return false; // don't prevent other handlers
         },
       },
