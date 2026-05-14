@@ -272,62 +272,61 @@ function findTopBlockDom(el: HTMLElement, root: HTMLElement): HTMLElement | null
   return node;
 }
 
+/** Resolve top-level ProseMirror node index from a mouse event. */
+function resolveTopIndex(
+  view: import("@tiptap/pm/view").EditorView,
+  event: MouseEvent,
+): number {
+  const target = event.target as HTMLElement;
+  if (target === view.dom) return -1;
+  const pos = view.posAtCoords({ left: event.clientX, top: event.clientY });
+  if (!pos) return -1;
+  const resolved = view.state.doc.resolve(pos.pos);
+  if (resolved.depth < 1) return -1;
+  return resolved.index(0);
+}
+
 function createBlockHoverClickPlugin(
   onBlockClickRef: React.MutableRefObject<BlockClickCb | undefined>,
   sourceRef: React.MutableRefObject<string>,
 ) {
-  function resolveHoveredBlock(view: import("@tiptap/pm/view").EditorView, event: MouseEvent) {
-    const target = event.target as HTMLElement;
-    if (target === view.dom) return null;
-    return findTopBlockDom(target, view.dom as HTMLElement);
-  }
-
   return new Plugin({
     key: blockHoverPluginKey,
     state: {
-      init() { return { hoveredDom: null as HTMLElement | null }; },
+      init() { return { hoveredIndex: -1 }; },
       apply(tr, value) {
         const meta = tr.getMeta(blockHoverPluginKey);
-        if (meta !== undefined) return { hoveredDom: meta.hoveredDom };
+        if (meta !== undefined) return { hoveredIndex: meta.hoveredIndex };
         return value;
       },
     },
     props: {
       decorations(state) {
         const pluginState = blockHoverPluginKey.getState(state);
-        if (!pluginState?.hoveredDom) return DecorationSet.empty;
-        const dom = pluginState.hoveredDom as HTMLElement;
-        // Only highlight if annotated (has source line data) — skip &nbsp; placeholders
-        if (!dom.dataset?.mdStart) return DecorationSet.empty;
-        // Find ProseMirror position of this DOM node
-        // Walk doc children to find the matching index
-        const root = dom.parentElement;
-        if (!root) return DecorationSet.empty;
-        let childIdx = 0;
-        let sibling = root.firstElementChild;
-        while (sibling && sibling !== dom) { childIdx++; sibling = sibling.nextElementSibling; }
-        if (childIdx >= state.doc.childCount) return DecorationSet.empty;
+        if (!pluginState || pluginState.hoveredIndex < 0) return DecorationSet.empty;
+        const idx = pluginState.hoveredIndex;
+        if (idx >= state.doc.childCount) return DecorationSet.empty;
         let pos = 0;
-        for (let i = 0; i < childIdx; i++) pos += state.doc.child(i).nodeSize;
-        const node = state.doc.child(childIdx);
+        for (let i = 0; i < idx; i++) pos += state.doc.child(i).nodeSize;
+        const node = state.doc.child(idx);
         return DecorationSet.create(state.doc, [
           Decoration.node(pos, pos + node.nodeSize, { class: "idea-block-hover" }),
         ]);
       },
       handleDOMEvents: {
         mousemove(view, event) {
-          const blockDom = resolveHoveredBlock(view, event);
-          const current = blockHoverPluginKey.getState(view.state)?.hoveredDom ?? null;
-          if (blockDom !== current) {
-            const tr = view.state.tr.setMeta(blockHoverPluginKey, { hoveredDom: blockDom });
+          const idx = resolveTopIndex(view, event);
+          const current = blockHoverPluginKey.getState(view.state)?.hoveredIndex ?? -1;
+          if (idx !== current) {
+            const tr = view.state.tr.setMeta(blockHoverPluginKey, { hoveredIndex: idx });
             tr.setMeta("addToHistory", false);
             view.dispatch(tr);
           }
           return false;
         },
         mouseleave(view) {
-          if (blockHoverPluginKey.getState(view.state)?.hoveredDom) {
-            const tr = view.state.tr.setMeta(blockHoverPluginKey, { hoveredDom: null });
+          if ((blockHoverPluginKey.getState(view.state)?.hoveredIndex ?? -1) >= 0) {
+            const tr = view.state.tr.setMeta(blockHoverPluginKey, { hoveredIndex: -1 });
             tr.setMeta("addToHistory", false);
             view.dispatch(tr);
           }
@@ -342,9 +341,10 @@ function createBlockHoverClickPlugin(
           const blockDom = findTopBlockDom(target, view.dom as HTMLElement);
           if (!blockDom) return false;
 
+          // Read source line range from DOM annotation (set by annotateBlockSourceLines)
           const startStr = blockDom.dataset?.mdStart;
           const endStr = blockDom.dataset?.mdEnd;
-          if (!startStr || !endStr) return false; // not annotated (blank-line placeholder)
+          if (!startStr || !endStr) return false;
 
           const startLine = parseInt(startStr, 10);
           const endLine = parseInt(endStr, 10);
