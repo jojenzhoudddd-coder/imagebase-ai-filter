@@ -27,7 +27,7 @@
   --surface-base:        #F4F3F1;
   --surface-1:           #F0EFED;
   --surface-2:           #FAF9F7;
-  --surface-3:           #E8E7E5;
+  --surface-3:           #E2E0DE;
   --surface-inset:       #F0EEEC;
   --surface-modal-scrim: rgba(31, 35, 41, 0.38);
 
@@ -41,9 +41,9 @@
   --text-link:           #1456F0;
 
   /* ── Border / Divider ─────────────────────────────────────────── */
-  --border-default:      #DCD9D6;
-  --border-light:        #EAE8E5;
-  --border-strong:       #CFCCC9;
+  --border-default:      #E0DEDA;
+  --border-light:        #EDEBE8;
+  --border-strong:       #D5D2CF;
   --border-focus:        #1456F0;
 
   /* ── Brand 主色 ───────────────────────────────────────────────── */
