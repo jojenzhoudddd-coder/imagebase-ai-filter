@@ -536,7 +536,12 @@ export default function ChatInput({
 
   return (
     <div className="chat-input-wrap">
-      <div className="chat-input-box">
+      <div className="chat-input-box" onClick={(e) => {
+        // Click anywhere in the box focuses the editor, except toolbar buttons
+        if (!(e.target as HTMLElement).closest(".chat-input-tools-right")) {
+          editorRef.current?.focus();
+        }
+      }}>
         <div className="chat-input-content">
           {/* Attachment thumbnails inside editor area, above text */}
           {attachments && attachments.length > 0 && (

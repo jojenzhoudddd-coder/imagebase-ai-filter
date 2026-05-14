@@ -651,6 +651,9 @@
   line-height: 22px;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  max-width: 100%;
 }
 /* Blinking cursor on streaming text was removed — "生成中" hint in the input
  * bar + the thinking indicator above the answer communicate in-flight state.
@@ -927,11 +930,15 @@
    * (non-markdown) mode keeps `pre-wrap` so short replies preserve their
    * original line breaks. */
   white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .chat-msg-assistant-md > *:first-child { margin-top: 0; }
 .chat-msg-assistant-md > *:last-child { margin-bottom: 0; }
 .chat-msg-assistant-md p {
   margin: 0 0 4px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .chat-msg-assistant-md p:empty { display: none; }
 /* Headings should never appear (normalizer demotes to bold) but kept as
@@ -1734,6 +1741,7 @@
   border: 0.5px solid var(--border-default);
   border-radius: 16px;
   overflow: hidden;
+  cursor: text;
   box-shadow:
     0 1px 2px -2px rgba(31, 35, 41, 0.05),
     0 2px 4px 0    rgba(31, 35, 41, 0.05),
