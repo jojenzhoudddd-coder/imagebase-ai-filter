@@ -30,7 +30,7 @@ import { createImageExtension } from "./extensions/ImageExtension";
 import type { ImageUploadResult } from "./extensions/ImageExtension";
 import { ChartCodeBlock } from "./extensions/ChartCodeBlockExtension";
 import { toMarkdown } from "./markdownBridge";
-import { extractSourceBlocks } from "./mdBlockSplitter";
+import { extractSourceBlocks, type SourceBlock } from "./mdBlockSplitter";
 
 /**
  * SafeCode — same as @tiptap/extension-code but skips <code> elements that
@@ -289,6 +289,7 @@ function resolveTopIndex(
 function createBlockHoverClickPlugin(
   onBlockClickRef: React.MutableRefObject<BlockClickCb | undefined>,
   sourceRef: React.MutableRefObject<string>,
+  sourceBlocksRef: React.MutableRefObject<SourceBlock[]>,
 ) {
   return new Plugin({
     key: blockHoverPluginKey,
@@ -338,20 +339,36 @@ function createBlockHoverClickPlugin(
           if (target.closest("a[href]")) return false;
           if (target === view.dom) return false;
 
-          const blockDom = findTopBlockDom(target, view.dom as HTMLElement);
+          // Use ProseMirror node index to look up the source block mapping
+          const nodeIdx = resolveTopIndex(view, event);
+          if (nodeIdx < 0) return false;
+
+          // Map ProseMirror node index to source block by skipping &nbsp;
+          // placeholder nodes (preserveBlankLines inserts them).
+          // Walk DOM children: count only non-placeholder children to find
+          // which sourceBlock index this ProseMirror node corresponds to.
+          const root = view.dom;
+          let sourceIdx = 0;
+          for (let i = 0; i < root.children.length && i <= nodeIdx; i++) {
+            const child = root.children[i] as HTMLElement;
+            const text = child.textContent ?? "";
+            const isPlaceholder = text.trim() === "" || text === "\u00a0";
+            if (i === nodeIdx) {
+              if (isPlaceholder) return false; // clicked a blank-line placeholder
+              break;
+            }
+            if (!isPlaceholder) sourceIdx++;
+          }
+
+          const blocks = sourceBlocksRef.current;
+          if (sourceIdx >= blocks.length) return false;
+          const block = blocks[sourceIdx];
+
+          // Find the actual DOM node for positioning
+          const blockDom = findTopBlockDom(target, root as HTMLElement);
           if (!blockDom) return false;
 
-          // Read source line range from DOM annotation (set by annotateBlockSourceLines)
-          const startStr = blockDom.dataset?.mdStart;
-          const endStr = blockDom.dataset?.mdEnd;
-          if (!startStr || !endStr) return false;
-
-          const startLine = parseInt(startStr, 10);
-          const endLine = parseInt(endStr, 10);
-          const lines = sourceRef.current.split("\n");
-          const raw = lines.slice(startLine, endLine + 1).join("\n");
-
-          onBlockClickRef.current(startLine, endLine, raw, blockDom);
+          onBlockClickRef.current(block.startLine, block.endLine, block.raw, blockDom);
           return false;
         },
       },
@@ -359,34 +376,9 @@ function createBlockHoverClickPlugin(
   });
 }
 
-/**
- * After Tiptap renders content, annotate each top-level DOM child with
- * `data-md-start` / `data-md-end` from the markdown-it parse.
- *
- * preserveBlankLines inserts extra `<p>&nbsp;</p>` nodes — we skip those
- * (they have no source mapping and shouldn't be editable).
- */
-function annotateBlockSourceLines(
-  editorDom: HTMLElement,
-  blocks: Array<{ startLine: number; endLine: number }>,
-) {
-  const children = Array.from(editorDom.children) as HTMLElement[];
-  let blockIdx = 0;
-  for (const child of children) {
-    // Skip blank-line placeholder nodes (contain only &nbsp; / \u00a0)
-    const text = child.textContent ?? "";
-    if (text.trim() === "" || text === "\u00a0") {
-      delete child.dataset.mdStart;
-      delete child.dataset.mdEnd;
-      continue;
-    }
-    if (blockIdx < blocks.length) {
-      child.dataset.mdStart = String(blocks[blockIdx].startLine);
-      child.dataset.mdEnd = String(blocks[blockIdx].endLine);
-      blockIdx++;
-    }
-  }
-}
+// annotateBlockSourceLines removed — source block mapping now lives in
+// sourceBlocksRef and is looked up by the click handler at runtime,
+// avoiding ProseMirror decoration re-renders from stripping data attributes.
 
 const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
   function TiptapPreview(
@@ -403,6 +395,11 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
     useEffect(() => { onBlockClickRef.current = onBlockClick; }, [onBlockClick]);
     const sourceRef = useRef(source);
     useEffect(() => { sourceRef.current = source; }, [source]);
+    const sourceBlocksRef = useRef<SourceBlock[]>([]);
+    // Keep sourceBlocksRef in sync with source
+    useEffect(() => {
+      sourceBlocksRef.current = extractSourceBlocks(source);
+    }, [source]);
 
     const editor = useEditor({
       extensions: [
@@ -457,7 +454,7 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
         Extension.create({
           name: "blockHoverClick",
           addProseMirrorPlugins() {
-            return [createBlockHoverClickPlugin(onBlockClickRef, sourceRef)];
+            return [createBlockHoverClickPlugin(onBlockClickRef, sourceRef, sourceBlocksRef)];
           },
         }),
       ],
@@ -488,11 +485,6 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
       onCreate({ editor: ed }) {
         setTimeout(() => { suppressRef.current = false; }, 50);
         markSpacerParagraphs(ed);
-        // Annotate DOM nodes with source line ranges
-        requestAnimationFrame(() => {
-          const blocks = extractSourceBlocks(sourceRef.current);
-          annotateBlockSourceLines(ed.view.dom as HTMLElement, blocks);
-        });
       },
       onUpdate({ editor: ed }) {
         markSpacerParagraphs(ed);
@@ -512,11 +504,6 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
       dirtyRef.current = false;
       editor.commands.setContent(preserveBlankLines(source));
       setTimeout(() => { suppressRef.current = false; }, 50);
-      // Re-annotate after external content sync
-      requestAnimationFrame(() => {
-        const blocks = extractSourceBlocks(source);
-        annotateBlockSourceLines(editor.view.dom as HTMLElement, blocks);
-      });
     }, [editor, source]);
 
     useImperativeHandle(ref, () => ({
@@ -565,10 +552,6 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
         dirtyRef.current = false;
         editor.commands.setContent(preserveBlankLines(source));
         setTimeout(() => { suppressRef.current = false; }, 50);
-        requestAnimationFrame(() => {
-          const blocks = extractSourceBlocks(source);
-          annotateBlockSourceLines(editor.view.dom as HTMLElement, blocks);
-        });
       },
     }), [editor, source]);
 
