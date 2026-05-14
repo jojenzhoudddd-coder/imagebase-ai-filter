@@ -1992,6 +1992,7 @@
   justify-content: center;
   width: 14px;
   height: 14px;
+  margin: 0 4px 0 2px;
   animation: chat-generating-meta-spin 1.2s linear infinite;
 }
 .chat-generating-meta.phase-generated .chat-generating-meta-logo {
