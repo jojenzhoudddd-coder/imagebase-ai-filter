@@ -30,7 +30,8 @@ import { createImageExtension } from "./extensions/ImageExtension";
 import type { ImageUploadResult } from "./extensions/ImageExtension";
 import { ChartCodeBlock } from "./extensions/ChartCodeBlockExtension";
 import { toMarkdown } from "./markdownBridge";
-import { extractSourceBlocks, type SourceBlock } from "./mdBlockSplitter";
+// extractSourceBlocks no longer used here — click handler serializes the
+// clicked ProseMirror node and finds it in the source text directly.
 
 /**
  * SafeCode — same as @tiptap/extension-code but skips <code> elements that
@@ -286,10 +287,34 @@ function resolveTopIndex(
   return resolved.index(0);
 }
 
+/**
+ * Find the Nth occurrence of `needle` in `haystack` (0-based).
+ * Returns the character index or -1.
+ */
+function findNthOccurrence(haystack: string, needle: string, n: number): number {
+  let idx = -1;
+  for (let i = 0; i <= n; i++) {
+    idx = haystack.indexOf(needle, idx + 1);
+    if (idx === -1) return -1;
+  }
+  return idx;
+}
+
+/**
+ * Given a character offset in a string, return the 0-based line number.
+ */
+function charOffsetToLine(text: string, offset: number): number {
+  let line = 0;
+  for (let i = 0; i < offset && i < text.length; i++) {
+    if (text[i] === "\n") line++;
+  }
+  return line;
+}
+
 function createBlockHoverClickPlugin(
   onBlockClickRef: React.MutableRefObject<BlockClickCb | undefined>,
   sourceRef: React.MutableRefObject<string>,
-  sourceBlocksRef: React.MutableRefObject<SourceBlock[]>,
+  editorRef: React.MutableRefObject<import("@tiptap/core").Editor | null>,
 ) {
   return new Plugin({
     key: blockHoverPluginKey,
@@ -339,36 +364,45 @@ function createBlockHoverClickPlugin(
           if (target.closest("a[href]")) return false;
           if (target === view.dom) return false;
 
-          // Use ProseMirror node index to look up the source block mapping
           const nodeIdx = resolveTopIndex(view, event);
           if (nodeIdx < 0) return false;
 
-          // Map ProseMirror node index to source block by skipping &nbsp;
-          // placeholder nodes (preserveBlankLines inserts them).
-          // Walk DOM children: count only non-placeholder children to find
-          // which sourceBlock index this ProseMirror node corresponds to.
-          const root = view.dom;
-          let sourceIdx = 0;
-          for (let i = 0; i < root.children.length && i <= nodeIdx; i++) {
-            const child = root.children[i] as HTMLElement;
-            const text = child.textContent ?? "";
-            const isPlaceholder = text.trim() === "" || text === "\u00a0";
-            if (i === nodeIdx) {
-              if (isPlaceholder) return false; // clicked a blank-line placeholder
-              break;
-            }
-            if (!isPlaceholder) sourceIdx++;
+          // Get the ProseMirror node and serialize it to markdown
+          const topNode = view.state.doc.child(nodeIdx);
+          // Skip blank-line placeholders (single &nbsp; text)
+          if (topNode.textContent.trim() === "" || topNode.textContent === "\u00a0") return false;
+
+          const editor = editorRef.current;
+          if (!editor) return false;
+          const serializer = (editor.storage as any).markdown?.serializer;
+          if (!serializer) return false;
+
+          // Create a temp doc fragment containing just this node to serialize
+          const nodeMd = serializer.serialize(topNode).trim();
+          if (!nodeMd) return false;
+
+          // Count how many nodes before this one serialize to the same text
+          // (handles duplicate content)
+          let occurrence = 0;
+          for (let i = 0; i < nodeIdx; i++) {
+            const prevNode = view.state.doc.child(i);
+            const prevMd = serializer.serialize(prevNode).trim();
+            if (prevMd === nodeMd) occurrence++;
           }
 
-          const blocks = sourceBlocksRef.current;
-          if (sourceIdx >= blocks.length) return false;
-          const block = blocks[sourceIdx];
+          // Find the Nth occurrence of this markdown text in the source
+          const source = sourceRef.current;
+          const charIdx = findNthOccurrence(source, nodeMd, occurrence);
+          if (charIdx === -1) return false;
 
-          // Find the actual DOM node for positioning
-          const blockDom = findTopBlockDom(target, root as HTMLElement);
+          const startLine = charOffsetToLine(source, charIdx);
+          const endLine = charOffsetToLine(source, charIdx + nodeMd.length);
+          const raw = source.split("\n").slice(startLine, endLine + 1).join("\n");
+
+          const blockDom = findTopBlockDom(target, view.dom as HTMLElement);
           if (!blockDom) return false;
 
-          onBlockClickRef.current(block.startLine, block.endLine, block.raw, blockDom);
+          onBlockClickRef.current(startLine, endLine, raw, blockDom);
           return false;
         },
       },
@@ -395,11 +429,7 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
     useEffect(() => { onBlockClickRef.current = onBlockClick; }, [onBlockClick]);
     const sourceRef = useRef(source);
     useEffect(() => { sourceRef.current = source; }, [source]);
-    const sourceBlocksRef = useRef<SourceBlock[]>([]);
-    // Keep sourceBlocksRef in sync with source
-    useEffect(() => {
-      sourceBlocksRef.current = extractSourceBlocks(source);
-    }, [source]);
+    const tiptapEditorRef = useRef<import("@tiptap/core").Editor | null>(null);
 
     const editor = useEditor({
       extensions: [
@@ -454,7 +484,7 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
         Extension.create({
           name: "blockHoverClick",
           addProseMirrorPlugins() {
-            return [createBlockHoverClickPlugin(onBlockClickRef, sourceRef, sourceBlocksRef)];
+            return [createBlockHoverClickPlugin(onBlockClickRef, sourceRef, tiptapEditorRef)];
           },
         }),
       ],
@@ -483,6 +513,7 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
         },
       },
       onCreate({ editor: ed }) {
+        tiptapEditorRef.current = ed;
         setTimeout(() => { suppressRef.current = false; }, 50);
         markSpacerParagraphs(ed);
       },
