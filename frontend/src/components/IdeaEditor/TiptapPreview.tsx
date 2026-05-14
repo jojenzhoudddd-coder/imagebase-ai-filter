@@ -303,7 +303,9 @@ function createBlockHoverClickPlugin(
       },
       handleDOMEvents: {
         mousemove(view, event) {
-          const hit = resolveTopLevelIndex(view, event);
+          // Ignore hover on editor root padding/empty area
+          const target = event.target as HTMLElement;
+          const hit = target === view.dom ? null : resolveTopLevelIndex(view, event);
           const idx = hit ? hit.index : -1;
           const current = blockHoverPluginKey.getState(view.state)?.hoveredIndex ?? -1;
           if (idx !== current) {
@@ -327,6 +329,9 @@ function createBlockHoverClickPlugin(
           // Don't intercept clicks on links
           const target = event.target as HTMLElement;
           if (target.closest("a[href]")) return false;
+
+          // Ignore clicks on the editor root itself (padding/empty area)
+          if (target === view.dom) return false;
 
           const hit = resolveTopLevelIndex(view, event);
           if (!hit) return false;
