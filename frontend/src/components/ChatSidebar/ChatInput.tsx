@@ -481,7 +481,7 @@ export default function ChatInput({
       e.preventDefault();
       const md = htmlToMarkdown(editorRef.current!);
       // V3.0 PR4: streaming 时也允许发送 (走 branch / queue 路径)
-      if (md.trim() && !disabled) onSend();
+      if ((md.trim() || hasAttachments) && !disabled) onSend();
       return;
     }
     // Backspace 删除 chip 时浏览器默认行为已经原子删除(因为 contentEditable=false)
@@ -490,7 +490,8 @@ export default function ChatInput({
   // V3.0 PR4: 任何时刻都允许发,只要内容非空。streaming 不再 disable input 或 voice。
   // 后端 turnOrchestrator 会处理:idle 起新主线 / inflight 起 branch / synth 中入队列。
   const hasText = value.trim().length > 0;
-  const canSend = !disabled && hasText;
+  const hasAttachments = (attachments?.length ?? 0) > 0;
+  const canSend = !disabled && (hasText || hasAttachments);
   // 4-state submit button (对齐 AI filter 的 send/stop 切换 + V3.0 append 路径):
   //   ┌──────────────┬──────┬────────────────────┐
   //   │ idle + empty │ disabled "Send"          │
