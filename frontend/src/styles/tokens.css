@@ -24,11 +24,11 @@
    * 5 层从底到顶：base / surface-1 / surface-2 / surface-3 / inset
    * surface-2 比 surface-1 更"浮起"（card / popover），surface-3 是
    * hover/active 态，inset 是凹陷态（输入框）。 */
-  --surface-base:        #FAFAFA;
-  --surface-1:           #F8F9FA;
-  --surface-2:           #FFFFFF;
-  --surface-3:           #F0F1F3;
-  --surface-inset:       #F5F6F7;
+  --surface-base:        #F4F3F1;
+  --surface-1:           #F0EFED;
+  --surface-2:           #FAF9F7;
+  --surface-3:           #E8E7E5;
+  --surface-inset:       #ECEAE8;
   --surface-modal-scrim: rgba(31, 35, 41, 0.38);
 
   /* ── Text 文字 ──────────────────────────────────────────────── */
@@ -41,9 +41,9 @@
   --text-link:           #1456F0;
 
   /* ── Border / Divider ─────────────────────────────────────────── */
-  --border-default:      #DEE0E3;
-  --border-light:        #EFF0F1;
-  --border-strong:       #D0D3D6;
+  --border-default:      #D6D4D1;
+  --border-light:        #E5E3E0;
+  --border-strong:       #C8C5C2;
   --border-focus:        #1456F0;
 
   /* ── Brand 主色 ───────────────────────────────────────────────── */
