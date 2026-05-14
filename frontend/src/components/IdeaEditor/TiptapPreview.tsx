@@ -30,6 +30,7 @@ import { createImageExtension } from "./extensions/ImageExtension";
 import type { ImageUploadResult } from "./extensions/ImageExtension";
 import { ChartCodeBlock } from "./extensions/ChartCodeBlockExtension";
 import { toMarkdown } from "./markdownBridge";
+import { extractSourceBlocks } from "./mdBlockSplitter";
 
 /**
  * SafeCode — same as @tiptap/extension-code but skips <code> elements that
@@ -247,78 +248,86 @@ interface Props {
   onDirty?: () => void;
   placeholder?: string;
   onUploadFile?: (file: File) => Promise<ImageUploadResult>;
-  /** Called when a top-level block is clicked in preview mode. */
-  onBlockClick?: (index: number, domNode: HTMLElement) => void;
+  /** Called when a top-level block is clicked in preview mode.
+   *  startLine/endLine are 0-based inclusive line numbers in the markdown source. */
+  onBlockClick?: (startLine: number, endLine: number, raw: string, domNode: HTMLElement) => void;
 }
 
 /**
- * BlockHoverClick — ProseMirror plugin that highlights the top-level block
- * under the mouse cursor and dispatches a click callback with the block's
- * index (position among top-level children) and DOM rect.
+ * BlockHoverClick — ProseMirror plugin.
+ *
+ * Hover: highlights top-level block under cursor.
+ * Click: reads `data-md-start`/`data-md-end` from the DOM node (annotated
+ * after each setContent by `annotateBlockSourceLines`) and fires callback
+ * with exact source line range.
  */
 const blockHoverPluginKey = new PluginKey("blockHoverClick");
 
+type BlockClickCb = (startLine: number, endLine: number, raw: string, domNode: HTMLElement) => void;
+
+/** Walk up from a DOM element to find the direct child of the editor root. */
+function findTopBlockDom(el: HTMLElement, root: HTMLElement): HTMLElement | null {
+  let node: HTMLElement | null = el;
+  while (node && node.parentElement !== root) node = node.parentElement;
+  return node;
+}
+
 function createBlockHoverClickPlugin(
-  onBlockClickRef: React.MutableRefObject<((index: number, domNode: HTMLElement) => void) | undefined>,
+  onBlockClickRef: React.MutableRefObject<BlockClickCb | undefined>,
+  sourceRef: React.MutableRefObject<string>,
 ) {
-  /** Resolve the top-level node index from a DOM event target. */
-  function resolveTopLevelIndex(
-    view: import("@tiptap/pm/view").EditorView,
-    event: MouseEvent,
-  ): { index: number; from: number; to: number } | null {
-    const pos = view.posAtCoords({ left: event.clientX, top: event.clientY });
-    if (!pos) return null;
-    const resolved = view.state.doc.resolve(pos.pos);
-    // depth 0 = doc, depth 1 = top-level node
-    if (resolved.depth < 1) return null;
-    const topDepth = 1;
-    const parentOffset = resolved.start(topDepth) - 1; // before the node
-    const topIndex = resolved.index(0); // index within doc children
-    const topNode = view.state.doc.child(topIndex);
-    return { index: topIndex, from: parentOffset, to: parentOffset + topNode.nodeSize };
+  function resolveHoveredBlock(view: import("@tiptap/pm/view").EditorView, event: MouseEvent) {
+    const target = event.target as HTMLElement;
+    if (target === view.dom) return null;
+    return findTopBlockDom(target, view.dom as HTMLElement);
   }
 
   return new Plugin({
     key: blockHoverPluginKey,
     state: {
-      init() { return { hoveredIndex: -1 as number }; },
+      init() { return { hoveredDom: null as HTMLElement | null }; },
       apply(tr, value) {
         const meta = tr.getMeta(blockHoverPluginKey);
-        if (meta !== undefined) return { hoveredIndex: meta.hoveredIndex };
+        if (meta !== undefined) return { hoveredDom: meta.hoveredDom };
         return value;
       },
     },
     props: {
       decorations(state) {
         const pluginState = blockHoverPluginKey.getState(state);
-        if (!pluginState || pluginState.hoveredIndex < 0) return DecorationSet.empty;
-        const idx = pluginState.hoveredIndex;
-        if (idx >= state.doc.childCount) return DecorationSet.empty;
+        if (!pluginState?.hoveredDom) return DecorationSet.empty;
+        const dom = pluginState.hoveredDom as HTMLElement;
+        // Only highlight if annotated (has source line data) — skip &nbsp; placeholders
+        if (!dom.dataset?.mdStart) return DecorationSet.empty;
+        // Find ProseMirror position of this DOM node
+        // Walk doc children to find the matching index
+        const root = dom.parentElement;
+        if (!root) return DecorationSet.empty;
+        let childIdx = 0;
+        let sibling = root.firstElementChild;
+        while (sibling && sibling !== dom) { childIdx++; sibling = sibling.nextElementSibling; }
+        if (childIdx >= state.doc.childCount) return DecorationSet.empty;
         let pos = 0;
-        for (let i = 0; i < idx; i++) pos += state.doc.child(i).nodeSize;
-        const node = state.doc.child(idx);
+        for (let i = 0; i < childIdx; i++) pos += state.doc.child(i).nodeSize;
+        const node = state.doc.child(childIdx);
         return DecorationSet.create(state.doc, [
           Decoration.node(pos, pos + node.nodeSize, { class: "idea-block-hover" }),
         ]);
       },
       handleDOMEvents: {
         mousemove(view, event) {
-          // Ignore hover on editor root padding/empty area
-          const target = event.target as HTMLElement;
-          const hit = target === view.dom ? null : resolveTopLevelIndex(view, event);
-          const idx = hit ? hit.index : -1;
-          const current = blockHoverPluginKey.getState(view.state)?.hoveredIndex ?? -1;
-          if (idx !== current) {
-            const tr = view.state.tr.setMeta(blockHoverPluginKey, { hoveredIndex: idx });
+          const blockDom = resolveHoveredBlock(view, event);
+          const current = blockHoverPluginKey.getState(view.state)?.hoveredDom ?? null;
+          if (blockDom !== current) {
+            const tr = view.state.tr.setMeta(blockHoverPluginKey, { hoveredDom: blockDom });
             tr.setMeta("addToHistory", false);
             view.dispatch(tr);
           }
           return false;
         },
         mouseleave(view) {
-          const current = blockHoverPluginKey.getState(view.state)?.hoveredIndex ?? -1;
-          if (current !== -1) {
-            const tr = view.state.tr.setMeta(blockHoverPluginKey, { hoveredIndex: -1 });
+          if (blockHoverPluginKey.getState(view.state)?.hoveredDom) {
+            const tr = view.state.tr.setMeta(blockHoverPluginKey, { hoveredDom: null });
             tr.setMeta("addToHistory", false);
             view.dispatch(tr);
           }
@@ -326,38 +335,57 @@ function createBlockHoverClickPlugin(
         },
         click(view, event) {
           if (!onBlockClickRef.current) return false;
-          // Don't intercept clicks on links
           const target = event.target as HTMLElement;
           if (target.closest("a[href]")) return false;
-
-          // Ignore clicks on the editor root itself (padding/empty area)
           if (target === view.dom) return false;
 
-          const hit = resolveTopLevelIndex(view, event);
-          if (!hit) return false;
+          const blockDom = findTopBlockDom(target, view.dom as HTMLElement);
+          if (!blockDom) return false;
 
-          // Find the DOM node for this top-level block
-          let pos = 0;
-          for (let i = 0; i < hit.index; i++) pos += view.state.doc.child(i).nodeSize;
-          const domAtPos = view.domAtPos(pos + 1); // +1 to get inside the node
-          const domNode = domAtPos.node instanceof HTMLElement
-            ? domAtPos.node
-            : domAtPos.node.parentElement;
-          if (!domNode) return false;
+          const startStr = blockDom.dataset?.mdStart;
+          const endStr = blockDom.dataset?.mdEnd;
+          if (!startStr || !endStr) return false; // not annotated (blank-line placeholder)
 
-          // Walk up to the direct child of the editor root
-          let blockDom: HTMLElement = domNode;
-          const root = view.dom;
-          while (blockDom.parentElement && blockDom.parentElement !== root) {
-            blockDom = blockDom.parentElement;
-          }
+          const startLine = parseInt(startStr, 10);
+          const endLine = parseInt(endStr, 10);
+          const lines = sourceRef.current.split("\n");
+          const raw = lines.slice(startLine, endLine + 1).join("\n");
 
-          onBlockClickRef.current(hit.index, blockDom as HTMLElement);
-          return false; // don't prevent other handlers
+          onBlockClickRef.current(startLine, endLine, raw, blockDom);
+          return false;
         },
       },
     },
   });
+}
+
+/**
+ * After Tiptap renders content, annotate each top-level DOM child with
+ * `data-md-start` / `data-md-end` from the markdown-it parse.
+ *
+ * preserveBlankLines inserts extra `<p>&nbsp;</p>` nodes — we skip those
+ * (they have no source mapping and shouldn't be editable).
+ */
+function annotateBlockSourceLines(
+  editorDom: HTMLElement,
+  blocks: Array<{ startLine: number; endLine: number }>,
+) {
+  const children = Array.from(editorDom.children) as HTMLElement[];
+  let blockIdx = 0;
+  for (const child of children) {
+    // Skip blank-line placeholder nodes (contain only &nbsp; / \u00a0)
+    const text = child.textContent ?? "";
+    if (text.trim() === "" || text === "\u00a0") {
+      delete child.dataset.mdStart;
+      delete child.dataset.mdEnd;
+      continue;
+    }
+    if (blockIdx < blocks.length) {
+      child.dataset.mdStart = String(blocks[blockIdx].startLine);
+      child.dataset.mdEnd = String(blocks[blockIdx].endLine);
+      blockIdx++;
+    }
+  }
 }
 
 const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
@@ -373,6 +401,8 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
     useEffect(() => { onDirtyRef.current = onDirty; }, [onDirty]);
     const onBlockClickRef = useRef(onBlockClick);
     useEffect(() => { onBlockClickRef.current = onBlockClick; }, [onBlockClick]);
+    const sourceRef = useRef(source);
+    useEffect(() => { sourceRef.current = source; }, [source]);
 
     const editor = useEditor({
       extensions: [
@@ -427,7 +457,7 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
         Extension.create({
           name: "blockHoverClick",
           addProseMirrorPlugins() {
-            return [createBlockHoverClickPlugin(onBlockClickRef)];
+            return [createBlockHoverClickPlugin(onBlockClickRef, sourceRef)];
           },
         }),
       ],
@@ -458,6 +488,11 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
       onCreate({ editor: ed }) {
         setTimeout(() => { suppressRef.current = false; }, 50);
         markSpacerParagraphs(ed);
+        // Annotate DOM nodes with source line ranges
+        requestAnimationFrame(() => {
+          const blocks = extractSourceBlocks(sourceRef.current);
+          annotateBlockSourceLines(ed.view.dom as HTMLElement, blocks);
+        });
       },
       onUpdate({ editor: ed }) {
         markSpacerParagraphs(ed);
@@ -477,6 +512,11 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
       dirtyRef.current = false;
       editor.commands.setContent(preserveBlankLines(source));
       setTimeout(() => { suppressRef.current = false; }, 50);
+      // Re-annotate after external content sync
+      requestAnimationFrame(() => {
+        const blocks = extractSourceBlocks(source);
+        annotateBlockSourceLines(editor.view.dom as HTMLElement, blocks);
+      });
     }, [editor, source]);
 
     useImperativeHandle(ref, () => ({
@@ -525,6 +565,10 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
         dirtyRef.current = false;
         editor.commands.setContent(preserveBlankLines(source));
         setTimeout(() => { suppressRef.current = false; }, 50);
+        requestAnimationFrame(() => {
+          const blocks = extractSourceBlocks(source);
+          annotateBlockSourceLines(editor.view.dom as HTMLElement, blocks);
+        });
       },
     }), [editor, source]);
 

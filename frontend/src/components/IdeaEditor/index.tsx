@@ -10,7 +10,7 @@ import TiptapPreview from "./TiptapPreview";
 import type { TiptapPreviewHandle } from "./TiptapPreview";
 import CodeMirrorSource from "./CodeMirrorSource";
 import type { CodeMirrorSourceHandle } from "./CodeMirrorSource";
-import { splitMarkdownBlocks } from "./mdBlockSplitter";
+// mdBlockSplitter now only exports extractSourceBlocks (used by TiptapPreview)
 import "./IdeaEditor.css";
 
 interface Props {
@@ -319,47 +319,16 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
 
   // ── Inline block editing ──
 
-  /** Find the markdown block that best matches the clicked ProseMirror node.
-   *  Primary: index-based (same position). Fallback: content-based (text match). */
-  const findBlockForNode = useCallback((nodeIndex: number, domNode: HTMLElement) => {
-    const blocks = splitMarkdownBlocks(contentRef.current);
-    if (blocks.length === 0) return null;
-    // Try index match first
-    if (nodeIndex < blocks.length) {
-      const candidate = blocks[nodeIndex];
-      // Sanity check: does the text roughly match?
-      const domText = (domNode.textContent ?? "").trim();
-      const blockText = candidate.raw.replace(/^[#>|\-*+\d.`~\s]+/gm, "").trim();
-      if (domText && blockText && (domText.includes(blockText.slice(0, 30)) || blockText.includes(domText.slice(0, 30)))) {
-        return candidate;
-      }
-      // Index matched but content doesn't — fall through to content search
-    }
-    // Content-based fallback: find block whose stripped text best matches DOM text
-    const domText = (domNode.textContent ?? "").trim().slice(0, 60);
-    if (!domText) return blocks[nodeIndex] ?? null; // last resort
-    for (const b of blocks) {
-      const stripped = b.raw.replace(/^[#>|\-*+\d.`~\s]+/gm, "").trim();
-      if (stripped.includes(domText.slice(0, 30)) || domText.includes(stripped.slice(0, 30))) {
-        return b;
-      }
-    }
-    return nodeIndex < blocks.length ? blocks[nodeIndex] : null;
-  }, []);
-
-  const handleBlockClick = useCallback((nodeIndex: number, domNode: HTMLElement) => {
+  const handleBlockClick = useCallback((startLine: number, endLine: number, raw: string, domNode: HTMLElement) => {
     if (streaming || editingBlock) return;
-    const block = findBlockForNode(nodeIndex, domNode);
-    if (!block) return;
-    const firstLine = block.raw.trimStart();
-    const multiLineContent = block.endLine > block.startLine;
-    const isMultiLine = multiLineContent
+    const firstLine = raw.trimStart();
+    const isMultiLine = endLine > startLine
       || /^(`{3,}|~{3,})/.test(firstLine)
       || /^\|/.test(firstLine)
       || /^>/.test(firstLine)
       || /^(\d+\.\s|[-*+]\s)/.test(firstLine);
-    setEditingBlock({ startLine: block.startLine, endLine: block.endLine, raw: block.raw, domNode, isMultiLine });
-  }, [streaming, editingBlock, findBlockForNode]);
+    setEditingBlock({ startLine, endLine, raw, domNode, isMultiLine });
+  }, [streaming, editingBlock]);
 
   // Use ref for commit so click-outside handler doesn't get stale closures
   const commitRef = useRef<() => void>(() => {});
