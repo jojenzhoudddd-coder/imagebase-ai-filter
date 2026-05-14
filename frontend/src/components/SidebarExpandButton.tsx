@@ -68,7 +68,7 @@ export default function SidebarExpandButton({ className }: { className?: string 
         ref={btnRef}
         type="button"
         className={`artifact-sidebar-expand-btn${className ? " " + className : ""}`}
-        onClick={ctx.onToggle}
+        onClick={() => { clearTimers(); setOpen(false); ctx.onToggle(); }}
         title={ctx.expandTitle}
         aria-label={ctx.expandTitle}
         onMouseEnter={handleEnter}
