@@ -1986,22 +1986,21 @@
   margin-left: 1px;
   color: var(--text-muted);
 }
-.chat-generating-meta-pulse {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--primary);
-  display: inline-block;
-  animation: chat-generating-meta-pulse 1.4s ease-in-out infinite;
+.chat-generating-meta-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  animation: chat-generating-meta-spin 1.2s linear infinite;
 }
-.chat-generating-meta.phase-generated .chat-generating-meta-pulse {
-  background: var(--text-muted);
+.chat-generating-meta.phase-generated .chat-generating-meta-logo {
   animation: none;
   opacity: 0.5;
 }
-@keyframes chat-generating-meta-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.35; transform: scale(0.7); }
+@keyframes chat-generating-meta-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
 /* Voice / microphone button — lives in .chat-input-tools-left alongside the
