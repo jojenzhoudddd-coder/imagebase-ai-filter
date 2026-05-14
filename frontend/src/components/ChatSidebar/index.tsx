@@ -1865,9 +1865,9 @@ export default function ChatSidebar({
           }}
           onClose={() => setConvListOpen(false)}
           width={260}
-          // 把 chat block 容器作为 boundary —— 弹窗最大高度被夹在 chat
-          // sidebar 底边减 20px 内,内容超出竖直滚动,不会探出 block 底。
-          boundaryEl={sidebarRef.current}
+          // 用 .chat-part 父容器(包含 header + aside)作为 boundary,
+          // 弹窗最大高度被夹在 block 底边减 20px 内,内容超出竖直滚动。
+          boundaryEl={sidebarRef.current?.parentElement ?? sidebarRef.current}
         />
       )}
       {/* Old refresh confirm — V3.0 不再使用,但保留兼容(防有地方还在用) */}
