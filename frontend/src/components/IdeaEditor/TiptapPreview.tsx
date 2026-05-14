@@ -24,7 +24,8 @@ import { TableHeader } from "@tiptap/extension-table-header";
 import { Markdown } from "tiptap-markdown";
 import { Extension, Mark } from "@tiptap/core";
 import Code from "@tiptap/extension-code";
-import { Plugin } from "@tiptap/pm/state";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { createImageExtension } from "./extensions/ImageExtension";
 import type { ImageUploadResult } from "./extensions/ImageExtension";
 import { ChartCodeBlock } from "./extensions/ChartCodeBlockExtension";
@@ -246,11 +247,118 @@ interface Props {
   onDirty?: () => void;
   placeholder?: string;
   onUploadFile?: (file: File) => Promise<ImageUploadResult>;
+  /** Called when a top-level block is clicked in preview mode. */
+  onBlockClick?: (index: number, domRect: DOMRect) => void;
+}
+
+/**
+ * BlockHoverClick — ProseMirror plugin that highlights the top-level block
+ * under the mouse cursor and dispatches a click callback with the block's
+ * index (position among top-level children) and DOM rect.
+ */
+const blockHoverPluginKey = new PluginKey("blockHoverClick");
+
+function createBlockHoverClickPlugin(
+  onBlockClickRef: React.MutableRefObject<((index: number, domRect: DOMRect) => void) | undefined>,
+) {
+  /** Resolve the top-level node index from a DOM event target. */
+  function resolveTopLevelIndex(
+    view: import("@tiptap/pm/view").EditorView,
+    event: MouseEvent,
+  ): { index: number; from: number; to: number } | null {
+    const pos = view.posAtCoords({ left: event.clientX, top: event.clientY });
+    if (!pos) return null;
+    const resolved = view.state.doc.resolve(pos.pos);
+    // depth 0 = doc, depth 1 = top-level node
+    if (resolved.depth < 1) return null;
+    const topDepth = 1;
+    const parentOffset = resolved.start(topDepth) - 1; // before the node
+    const topIndex = resolved.index(0); // index within doc children
+    const topNode = view.state.doc.child(topIndex);
+    return { index: topIndex, from: parentOffset, to: parentOffset + topNode.nodeSize };
+  }
+
+  return new Plugin({
+    key: blockHoverPluginKey,
+    state: {
+      init() { return { hoveredIndex: -1 as number }; },
+      apply(tr, value) {
+        const meta = tr.getMeta(blockHoverPluginKey);
+        if (meta !== undefined) return { hoveredIndex: meta.hoveredIndex };
+        return value;
+      },
+    },
+    props: {
+      decorations(state) {
+        const pluginState = blockHoverPluginKey.getState(state);
+        if (!pluginState || pluginState.hoveredIndex < 0) return DecorationSet.empty;
+        const idx = pluginState.hoveredIndex;
+        if (idx >= state.doc.childCount) return DecorationSet.empty;
+        let pos = 0;
+        for (let i = 0; i < idx; i++) pos += state.doc.child(i).nodeSize;
+        const node = state.doc.child(idx);
+        return DecorationSet.create(state.doc, [
+          Decoration.node(pos, pos + node.nodeSize, { class: "idea-block-hover" }),
+        ]);
+      },
+      handleDOMEvents: {
+        mousemove(view, event) {
+          const hit = resolveTopLevelIndex(view, event);
+          const idx = hit ? hit.index : -1;
+          const current = blockHoverPluginKey.getState(view.state)?.hoveredIndex ?? -1;
+          if (idx !== current) {
+            const tr = view.state.tr.setMeta(blockHoverPluginKey, { hoveredIndex: idx });
+            tr.setMeta("addToHistory", false);
+            view.dispatch(tr);
+          }
+          return false;
+        },
+        mouseleave(view) {
+          const current = blockHoverPluginKey.getState(view.state)?.hoveredIndex ?? -1;
+          if (current !== -1) {
+            const tr = view.state.tr.setMeta(blockHoverPluginKey, { hoveredIndex: -1 });
+            tr.setMeta("addToHistory", false);
+            view.dispatch(tr);
+          }
+          return false;
+        },
+        click(view, event) {
+          if (!onBlockClickRef.current) return false;
+          // Don't intercept clicks on links
+          const target = event.target as HTMLElement;
+          if (target.closest("a[href]")) return false;
+
+          const hit = resolveTopLevelIndex(view, event);
+          if (!hit) return false;
+
+          // Find the DOM node for this top-level block
+          let pos = 0;
+          for (let i = 0; i < hit.index; i++) pos += view.state.doc.child(i).nodeSize;
+          const domAtPos = view.domAtPos(pos + 1); // +1 to get inside the node
+          const domNode = domAtPos.node instanceof HTMLElement
+            ? domAtPos.node
+            : domAtPos.node.parentElement;
+          if (!domNode) return false;
+
+          // Walk up to the direct child of the editor root
+          let blockDom: HTMLElement = domNode;
+          const root = view.dom;
+          while (blockDom.parentElement && blockDom.parentElement !== root) {
+            blockDom = blockDom.parentElement;
+          }
+
+          const rect = blockDom.getBoundingClientRect();
+          onBlockClickRef.current(hit.index, rect);
+          return false; // don't prevent other handlers
+        },
+      },
+    },
+  });
 }
 
 const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
   function TiptapPreview(
-    { source, onMentionClick, editable = false, onDirty, placeholder, onUploadFile },
+    { source, onMentionClick, editable = false, onDirty, placeholder, onUploadFile, onBlockClick },
     ref,
   ) {
     const suppressRef = useRef(true);
@@ -259,6 +367,8 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
     useEffect(() => { onMentionClickRef.current = onMentionClick; }, [onMentionClick]);
     const onDirtyRef = useRef(onDirty);
     useEffect(() => { onDirtyRef.current = onDirty; }, [onDirty]);
+    const onBlockClickRef = useRef(onBlockClick);
+    useEffect(() => { onBlockClickRef.current = onBlockClick; }, [onBlockClick]);
 
     const editor = useEditor({
       extensions: [
@@ -309,6 +419,13 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
         // drop/paste. Must come AFTER createImageExtension so the image
         // plugin gets first shot at drop/paste events.
         ReadOnlyButDroppable,
+        // Block hover highlight + click handler for inline editing
+        Extension.create({
+          name: "blockHoverClick",
+          addProseMirrorPlugins() {
+            return [createBlockHoverClickPlugin(onBlockClickRef)];
+          },
+        }),
       ],
       content: preserveBlankLines(source),
       // Keep technically "editable" so ProseMirror plugins (image

@@ -689,6 +689,38 @@
   white-space: nowrap;
 }
 
+/* ─── Inline Block Editing (preview mode) ─── */
+
+/* Hover highlight for clickable blocks in preview */
+.idea-block-hover {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: outline-color 0.12s;
+}
+
+/* Inline edit textarea overlay */
+.idea-block-edit-overlay {
+  position: absolute;
+  z-index: 10;
+  background: var(--surface-2);
+  border: 2px solid var(--primary);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  resize: none;
+  overflow: hidden; /* auto-grow */
+  min-height: 32px;
+  box-shadow: var(--shadow-popover);
+}
+.idea-block-edit-overlay:focus {
+  outline: none;
+}
+
 /* CodeMirror 选中色完全走 tokens.css 里的 --selection-bg(LM / DM 各自值),
  * 见 CodeMirrorSource.tsx 的 .cm-selectionBackground 规则。不再需要这里
  * 单独 [data-theme=dark] 覆写。 */

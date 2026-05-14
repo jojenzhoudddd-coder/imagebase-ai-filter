@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "../../i18n/index";
 import { useToast } from "../Toast/index";
 import InlineEdit from "../InlineEdit";
@@ -10,6 +10,7 @@ import TiptapPreview from "./TiptapPreview";
 import type { TiptapPreviewHandle } from "./TiptapPreview";
 import CodeMirrorSource from "./CodeMirrorSource";
 import type { CodeMirrorSourceHandle } from "./CodeMirrorSource";
+import { splitMarkdownBlocks } from "./mdBlockSplitter";
 import "./IdeaEditor.css";
 
 interface Props {
@@ -64,10 +65,18 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [streaming, setStreaming] = useState(false);
   const [mode, setMode] = useState<"source" | "preview">("preview");
+  const [editingBlock, setEditingBlock] = useState<{
+    index: number;
+    raw: string;
+    rect: DOMRect;
+    isMultiLine: boolean;
+  } | null>(null);
 
   const cmRef = useRef<CodeMirrorSourceHandle>(null);
   const previewRef = useRef<TiptapPreviewHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef(content);
   useEffect(() => { contentRef.current = content; }, [content]);
 
@@ -307,6 +316,110 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     return { url: att.url, mime: att.mime, originalName: att.originalName };
   }, [ideaId]);
 
+  // ── Inline block editing ──
+  const handleBlockClick = useCallback((index: number, domRect: DOMRect) => {
+    if (streaming) return;
+    const blocks = splitMarkdownBlocks(contentRef.current);
+    const block = blocks.find(b => b.index === index);
+    if (!block) return;
+    // Determine if multi-line (code, table, list, blockquote)
+    const firstLine = block.raw.trimStart();
+    const isMultiLine = block.startLine !== block.endLine
+      || /^(`{3,}|~{3,})/.test(firstLine)
+      || /^\|/.test(firstLine)
+      || /^>/.test(firstLine)
+      || /^(\d+\.\s|[-*+]\s)/.test(firstLine);
+    setEditingBlock({ index, raw: block.raw, rect: domRect, isMultiLine });
+  }, [streaming]);
+
+  const commitBlockEdit = useCallback(() => {
+    if (!editingBlock) return;
+    const textarea = editTextareaRef.current;
+    if (!textarea) return;
+    const newRaw = textarea.value;
+    const blocks = splitMarkdownBlocks(contentRef.current);
+    const block = blocks.find(b => b.index === editingBlock.index);
+    if (!block) {
+      setEditingBlock(null);
+      return;
+    }
+    // Replace the block lines in the full content
+    const lines = contentRef.current.split("\n");
+    const before = lines.slice(0, block.startLine);
+    const after = lines.slice(block.endLine + 1);
+    const newContent = [...before, ...newRaw.split("\n"), ...after].join("\n");
+    setContent(newContent);
+    setEditingBlock(null);
+    scheduleSave();
+    // Refresh preview
+    requestAnimationFrame(() => { previewRef.current?.reload(); });
+  }, [editingBlock, scheduleSave]);
+
+  const cancelBlockEdit = useCallback(() => {
+    setEditingBlock(null);
+  }, []);
+
+  // Auto-grow textarea + keyboard handlers
+  const handleEditTextareaInput = useCallback(() => {
+    const ta = editTextareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = ta.scrollHeight + "px";
+  }, []);
+
+  const handleEditKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancelBlockEdit();
+      return;
+    }
+    if (!editingBlock) return;
+    if (editingBlock.isMultiLine) {
+      // Cmd/Ctrl+Enter to commit
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        commitBlockEdit();
+      }
+    } else {
+      // Enter to commit (single-line blocks)
+      if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        commitBlockEdit();
+      }
+    }
+  }, [editingBlock, commitBlockEdit, cancelBlockEdit]);
+
+  // Click outside to commit
+  useEffect(() => {
+    if (!editingBlock) return;
+    const handler = (e: MouseEvent) => {
+      const ta = editTextareaRef.current;
+      if (ta && !ta.contains(e.target as Node)) {
+        commitBlockEdit();
+      }
+    };
+    // Delay to avoid the same click that opened the editor
+    const timer = window.setTimeout(() => {
+      document.addEventListener("mousedown", handler);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("mousedown", handler);
+    };
+  }, [editingBlock, commitBlockEdit]);
+
+  // Auto-focus and auto-grow on mount
+  useEffect(() => {
+    if (!editingBlock) return;
+    const ta = editTextareaRef.current;
+    if (!ta) return;
+    ta.focus();
+    ta.style.height = "auto";
+    ta.style.height = ta.scrollHeight + "px";
+    // Place cursor at end
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+  }, [editingBlock]);
+
   // ── Status label ──
   const statusLabel = (() => {
     if (!loaded) return t("idea.loading");
@@ -392,7 +505,11 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/svg+xml,application/pdf,video/mp4,video/webm"
             multiple style={{ display: "none" }} onChange={handleFileInputChange}
           />
-          <button className="idea-editor-topbar-btn" onClick={toggleMode} title={t("idea.toggleHint")}>
+          <button
+            className={`idea-editor-topbar-btn${editingBlock ? " disabled" : ""}`}
+            onClick={toggleMode} disabled={!!editingBlock}
+            title={t("idea.toggleHint")}
+          >
             {mode === "source" ? PREVIEW_ICON : SOURCE_ICON}
             {mode === "source" ? t("idea.preview") : t("idea.source")}
           </button>
@@ -400,7 +517,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         </div>
       </div>
 
-      <div className="idea-editor-body">
+      <div className="idea-editor-body" ref={bodyRef} style={{ position: "relative" }}>
         {!loaded ? (
           <div className="idea-editor-loading">{t("idea.loading")}</div>
         ) : mode === "source" ? (
@@ -414,8 +531,30 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             ref={previewRef} source={content}
             onDirty={handlePreviewDirty} placeholder={t("idea.previewEmpty")}
             onUploadFile={handleImageUpload} onMentionClick={() => {}}
+            onBlockClick={handleBlockClick}
           />
         )}
+        {editingBlock && mode === "preview" && (() => {
+          const bodyEl = bodyRef.current;
+          if (!bodyEl) return null;
+          const bodyRect = bodyEl.getBoundingClientRect();
+          const style: CSSProperties = {
+            top: editingBlock.rect.top - bodyRect.top + bodyEl.scrollTop,
+            left: editingBlock.rect.left - bodyRect.left + bodyEl.scrollLeft,
+            width: editingBlock.rect.width,
+            minHeight: editingBlock.rect.height,
+          };
+          return (
+            <textarea
+              ref={editTextareaRef}
+              className="idea-block-edit-overlay"
+              defaultValue={editingBlock.raw}
+              style={style}
+              onInput={handleEditTextareaInput}
+              onKeyDown={handleEditKeyDown}
+            />
+          );
+        })()}
       </div>
     </div>
   );
