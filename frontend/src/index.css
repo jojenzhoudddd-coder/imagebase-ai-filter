@@ -104,22 +104,18 @@ input[type="radio"] {
   accent-color: var(--primary);
 }
 
-/* ── DM 滚动条（webkit） ──────────────────────────────────────────
- * 默认滚动条 + 横纵交汇处的 corner 在 DM 下太亮（默认是白色块）。
- * track / corner 都设为透明，让父级深底色透上来。
- * V2.9: 去掉 thumb 周围 3px solid 边框 —— 旧实现在圆角 + dark border 叠加下
- * 在 thumb 两端形成视觉上的"黑圈"。改为 background-clip:padding-box
- * 让边框透明,thumb 显示为干净的圆角 pill。 */
-[data-theme="dark"] ::-webkit-scrollbar {
+/* ── 滚动条（webkit, LM + DM 统一走 token） ─────────────────────
+ * track 透明让父级底色透上来，thumb 用 token 色，LM/DM 自动适配。 */
+::-webkit-scrollbar {
   width: 12px;
   height: 12px;
 }
-[data-theme="dark"] ::-webkit-scrollbar-track { background: transparent; }
-[data-theme="dark"] ::-webkit-scrollbar-corner { background: transparent; }
-[data-theme="dark"] ::-webkit-scrollbar-thumb {
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
   background: var(--surface-3);
   border-radius: 6px;
   border: 3px solid transparent;
   background-clip: padding-box;
 }
-[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: padding-box; }
