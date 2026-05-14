@@ -35,8 +35,8 @@ export const zh: TranslationKeys = {
   "sidebar.collapse": "收起侧边栏",
   "sidebar.expand": "展开侧边栏",
   "topbar.statsTitle": "工作区资产统计",
-  "topbar.statArtifacts": "artifacts",
-  "topbar.statArtifactsTitle": "全部资产数量（表 + 灵感 + 画布 + Demo）",
+  "topbar.statArtifacts": "作品",
+  "topbar.statArtifactsTitle": "全部作品数量（表 + 灵感 + 画布 + Demo）",
   "topbar.statWorkend": "workend",
   "topbar.statWorkendTitle": "已发布作品数量",
   "topbar.statTable": "表",
@@ -63,7 +63,7 @@ export const zh: TranslationKeys = {
 
   // Auth pages (login / register)
   "auth.heroTitle": "Table · Taste · Idea · Demo",
-  "auth.heroSubtitle": "四种 artifact × AI → 千变万化的 workend。",
+  "auth.heroSubtitle": "四种作品 × AI → 千变万化的 workend。",
   "auth.login.title": "欢迎回来",
   "auth.login.subtitle": "登录进入你的工作空间",
   "auth.login.emailLabel": "邮箱",
@@ -458,7 +458,7 @@ export const zh: TranslationKeys = {
   "createMenu.import": "导入/同步数据",
   "createMenu.appSection": "应用",
   "createMenu.app": "应用",
-  "createMenu.aiCreatePrompt": "我想创建一个新的 artifact，请根据我的需求帮我创建数据表、灵感文档、创意画布或 Demo。你想创建什么？",
+  "createMenu.aiCreatePrompt": "我想创建一个新的作品，请根据我的需求帮我创建数据表、灵感文档、创意画布或 Demo。你想创建什么？",
 
   // Toast (table creation)
   "toast.createTableFailed": "创建数据表失败",
@@ -475,7 +475,7 @@ export const zh: TranslationKeys = {
   "idea.saved": "已保存",
   "idea.unsaved": "尚未保存",
   "idea.offline": "离线",
-  "idea.streaming": "Agent 正在写入…",
+  "idea.streaming": "智能体正在写入…",
   "idea.empty": "在这里记录你的灵感。支持 Markdown、@ 提及和内嵌 SVG / HTML。",
   "idea.previewEmpty": "当前为渲染模式 — 按 ⌘/ 切换到源码模式编辑内容。",
   "idea.mentionEmpty": "未找到匹配项",
@@ -566,7 +566,7 @@ export const zh: TranslationKeys = {
   "chat.refresh": "刷新对话",
   "chat.refreshDisabled": "当前已是新对话",
   "chat.menu.more": "更多",
-  "chat.agent.renameAria": "双击重命名 Agent",
+  "chat.agent.renameAria": "双击重命名智能体",
   "chat.agent.renameHint": "双击重命名",
   "chat.menu.refresh": "刷新会话",
   "chat.refresh.confirm.title": "确定刷新当前会话？",
@@ -589,7 +589,7 @@ export const zh: TranslationKeys = {
   "chat.list.newChat": "新建对话",
   "chat.menu.clearCurrent": "清空对话",
   // Chat agent meta button (chat header 左数第 3 个图标) tooltip
-  "chat.agent.menu.title": "Agent 设置",
+  "chat.agent.menu.title": "智能体设置",
   // Chat agent meta dropdown —— 7 个占位菜单项,功能待接(visual style 对齐
   // artifact sidebar 右键菜单)
   "chat.agent.menu.nature": "第一性",
@@ -607,7 +607,7 @@ export const zh: TranslationKeys = {
   "agent.models.addModel": "对话添加",
   "agent.nature.editByChat": "对话编辑",
   "agent.acknowledge.addByChat": "对话添加",
-  "agent.block.noKnowledge": "暂无知识 — Agent 会自主学习，或你可以引导它",
+  "agent.block.noKnowledge": "暂无知识 — 智能体会自主学习，或你可以引导它",
   "agent.acknowledge.selectDoc": "选择文档查看内容",
   "agent.activities.searchPlaceholder": "搜索 query、回复、来源...",
   "agent.activities.source": "来源",
@@ -695,13 +695,13 @@ export const zh: TranslationKeys = {
   "chat.clear.confirm.message": "对话内的所有消息将被永久删除,但对话本身保留。此操作不可撤销。",
   "chat.clear.confirm.ok": "清空",
   "chat.clear.confirm.cancel": "取消",
-  "chat.agent.identity": "Agent 身份",
-  "chat.agent.title": "Agent 身份",
+  "chat.agent.identity": "智能体身份",
+  "chat.agent.title": "智能体身份",
   "chat.agent.loading": "加载身份中…",
   "chat.agent.soul.label": "Soul · 我是谁",
-  "chat.agent.soul.hint": "Agent 如何看待自己：角色、风格、语气。编辑它来调整 Agent 说话的方式和偏重。",
-  "chat.agent.profile.label": "Profile · Agent 了解的你",
-  "chat.agent.profile.hint": "Agent 记得的关于你的信息：语言、时区、偏好、正在做的事。可以随时手动编辑。",
+  "chat.agent.soul.hint": "智能体如何看待自己：角色、风格、语气。编辑它来调整智能体说话的方式和偏重。",
+  "chat.agent.profile.label": "Profile · 智能体了解的你",
+  "chat.agent.profile.hint": "智能体记得的关于你的信息：语言、时区、偏好、正在做的事。可以随时手动编辑。",
   "chat.agent.save": "保存",
   "chat.agent.saving": "保存中…",
   "chat.agent.saved": "已保存",
@@ -827,7 +827,7 @@ export const zh: TranslationKeys = {
   "demo.buildFailed": "构建失败",
   "demo.buildFailedHint": "修改源码后点\"构建\"重试",
   "demo.noPreview": "还没有预览",
-  "demo.noPreviewHint": "让 Agent 生成代码后会自动构建，或点上方\"构建\"按钮手动触发",
+  "demo.noPreviewHint": "让智能体生成代码后会自动构建，或点上方\"构建\"按钮手动触发",
   "demo.filesHeader": "源文件",
   "demo.publishConfirmTitle": "将 Demo 「{{name}}」 publish as workend？",
   "demo.publishConfirmBody": "访问公开 URL 的任何人（无需登录）将能：",
@@ -872,8 +872,8 @@ export const zh: TranslationKeys = {
 
   // AddBlockMenu
   "addBlock.chat": "对话",
-  "addBlock.artifact": "制品",
-  "addBlock.brain": "大脑",
+  "addBlock.artifact": "作品",
+  "addBlock.brain": "智能体",
   "addBlock.maxBlocks": "已达上限 {max} 个 block",
 
   // Agency (High Agency Mode)
@@ -903,7 +903,7 @@ export const zh: TranslationKeys = {
   "agency.checkpoint.saved": "检查点已保存",
   "agency.checkpoint.artifact": "个产物",
   "agency.checkpoint.artifacts": "个产物",
-  "agency.empty.hint": "点击左侧 <b>开始运行</b> 来规划路线。Agent 的执行进度将实时显示在这里。",
+  "agency.empty.hint": "点击左侧 <b>开始运行</b> 来规划路线。智能体的执行进度将实时显示在这里。",
   "agency.empty.plan": "规划",
   "agency.empty.execute": "执行",
   "agency.empty.validate": "验证",
@@ -929,7 +929,7 @@ export const zh: TranslationKeys = {
   "agency.route.restart": "重启",
   "agency.route.clear": "清除",
   "agency.welcome.title": "你想达成什么目标？",
-  "agency.welcome.subtitle": "设定一个目标，Agent 将自主驱动执行。以下是基于你工作区的一些建议：",
+  "agency.welcome.subtitle": "设定一个目标，智能体将自主驱动执行。以下是基于你工作区的一些建议：",
   "agency.welcome.steps": "步",
 
   // Admin Block
@@ -950,7 +950,7 @@ export const zh: TranslationKeys = {
   "admin.table.models": "模型",
   "admin.table.createdAt": "注册时间",
   "admin.table.lastLogin": "最后登录",
-  "admin.table.agent": "Agent",
+  "admin.table.agent": "智能体",
   "admin.table.lastMessage": "最后消息",
   "admin.table.tokens": "Token 用量",
   "admin.table.workspaces": "工作空间",
