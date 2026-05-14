@@ -1333,6 +1333,9 @@ export interface SpawnSubagentOptions {
    *  Subagent 调 read/write_worktree_file 等工具时仍由其自己负责传 worktreeId,
    *  这里只做 prompt-level binding 提醒。 */
   worktreeId?: string | null;
+  /** Owner user id — propagated so subagent tokens are recorded to token_usage
+   *  under the correct user (previously null → silently skipped). */
+  ownerUserId?: string | null;
 }
 
 /** Convert WorkflowEvent (executor) to SseEvent (chat stream). */
@@ -1571,7 +1574,7 @@ export async function* spawnSubagent(
       let roundThinking = "";
 
       const stream = callModelStream(model, input, abortSignal, effectiveTools, {
-        userId: null,
+        userId: opts.ownerUserId ?? null,
         workspaceId: toolCtx.workspaceId ?? null,
         feature: "chat-subagent",
       });
@@ -1798,10 +1801,12 @@ export async function* spawnSubagent(
       durationMs,
       finalText,
       toolCallsCount: accToolCalls.length,
+      promptTokens: accPromptTokens,
+      completionTokens: accCompletionTokens,
     },
   };
 
-  return { runId: run.id, finalText, success };
+  return { runId: run.id, finalText, success, promptTokens: accPromptTokens, completionTokens: accCompletionTokens };
 }
 
 /** Public entry —— 包一层 AsyncLocalStorage，把用户 JWT 透传给 MCP
@@ -2143,11 +2148,12 @@ async function* runAgentImpl(
             worktreeId: sopts.worktreeId ?? null,
             hostTools: activeTools,
             toolCtx: toolCtx as ToolContext,
+            ownerUserId,
             depth: 1, // workflow 起的 subagent = 1 (host 调 workflow → workflow 调 sub)
           },
           abortSignal,
         );
-        let result = { runId: "spawn_failed", finalText: "", success: false };
+        let result: { runId: string; finalText: string; success: boolean; promptTokens?: number; completionTokens?: number } = { runId: "spawn_failed", finalText: "", success: false };
         let next = await stream.next();
         while (!next.done) {
           const ev = next.value;
@@ -2175,6 +2181,9 @@ async function* runAgentImpl(
           next = await stream.next();
         }
         if (next.value) result = next.value as typeof result;
+        // Propagate workflow-subagent tokens into parent turn
+        turnPromptTokens += result.promptTokens ?? 0;
+        turnCompletionTokens += result.completionTokens ?? 0;
         return result;
       };
       // Run the workflow generator, pump its events into queuedEvents.
@@ -2281,12 +2290,13 @@ async function* runAgentImpl(
           worktreeId: opts.worktreeId ?? null,
           hostTools: activeTools,
           toolCtx: toolCtx as ToolContext,
+          ownerUserId,
           // V2.4 B2: 内部 _depth 走过来则用,否则 host 直调 = depth 1
           depth: typeof opts._depth === "number" ? opts._depth : 1,
         },
         abortSignal,
       );
-      let result: { runId: string; finalText: string; success: boolean } | null = null;
+      let result: { runId: string; finalText: string; success: boolean; promptTokens?: number; completionTokens?: number } | null = null;
       try {
         let next = await stream.next();
         while (!next.done) {
@@ -2306,11 +2316,17 @@ async function* runAgentImpl(
           }
           next = await stream.next();
         }
-        result = next.value as { runId: string; finalText: string; success: boolean };
+        result = next.value as typeof result;
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         // We still need to return SOMETHING so the tool handler can serialize.
         return { runId: "spawn_failed", finalText: `subagent 启动失败: ${errMsg}`, success: false };
+      }
+      // Propagate subagent tokens into parent turn totals so they show up in
+      // the Message row + turn_usage SSE event + workspace/admin stats.
+      if (result) {
+        turnPromptTokens += result.promptTokens ?? 0;
+        turnCompletionTokens += result.completionTokens ?? 0;
       }
       return result ?? { runId: "spawn_unknown", finalText: "", success: false };
     },
