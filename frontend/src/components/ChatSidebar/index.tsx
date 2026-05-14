@@ -1865,6 +1865,7 @@ export default function ChatSidebar({
           }}
           onClose={() => setConvListOpen(false)}
           width={260}
+          maxHeightPx={400}
           // 用 .chat-part 父容器(包含 header + aside)作为 boundary,
           // 弹窗最大高度被夹在 block 底边减 20px 内,内容超出竖直滚动。
           boundaryEl={sidebarRef.current?.parentElement ?? sidebarRef.current}

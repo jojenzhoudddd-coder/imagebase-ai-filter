@@ -46,9 +46,11 @@ interface Props {
    *  在 chat block / artifact block 这种内嵌容器里不会探出底边。超出则
    *  内部纵向滚动。 */
   boundaryEl?: HTMLElement | null;
+  /** Hard max-height cap (px). When set, overrides boundary-computed value. */
+  maxHeightPx?: number;
 }
 
-export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "auto", width, activeSubMenuKey, onMenuRef, onItemRef, extraContainers, className, boundaryEl }: Props) {
+export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "auto", width, activeSubMenuKey, onMenuRef, onItemRef, extraContainers, className, boundaryEl, maxHeightPx }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number | null }>({
     top: -9999, left: -9999, maxHeight: null,
@@ -177,8 +179,9 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
         width: width ?? undefined,
         // boundaryEl 限高时溢出滚动。CSS 兜底 padding 4px(.dropdown-menu)
         // 跟 max-height 一起作用,内容超出会出现纵向滚动条。
-        maxHeight: pos.maxHeight ?? undefined,
-        overflowY: pos.maxHeight != null ? "auto" : undefined,
+        maxHeight: maxHeightPx ?? pos.maxHeight ?? undefined,
+        overflowY: (maxHeightPx ?? pos.maxHeight) != null ? "auto" : undefined,
+        scrollbarWidth: maxHeightPx != null ? "none" : undefined,
       }}
     >
       {groups.map((group, gi) => (
