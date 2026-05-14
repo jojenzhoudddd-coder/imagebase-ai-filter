@@ -24,9 +24,9 @@
    * 5 层从底到顶：base / surface-1 / surface-2 / surface-3 / inset
    * surface-2 比 surface-1 更"浮起"（card / popover），surface-3 是
    * hover/active 态，inset 是凹陷态（输入框）。 */
-  --surface-base:        #FAFAFA;
-  --surface-1:           #F8F9FA;
-  --surface-2:           #FFFFFF;
+  --surface-base:        #F7F7F5;  /* warm grey-white, slightly yellow tint */
+  --surface-1:           #F5F5F3;
+  --surface-2:           #FDFDFB;
   --surface-3:           #F0F1F3;
   --surface-inset:       #F5F6F7;
   --surface-modal-scrim: rgba(31, 35, 41, 0.38);
