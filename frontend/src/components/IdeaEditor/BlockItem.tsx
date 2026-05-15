@@ -228,11 +228,9 @@ const BlockItem = memo(function BlockItem({
   // Determine if this is a divider (just render <hr>)
   const isDivider = block.type === "divider";
 
+  const showHover = hovered && !editing && !readOnly;
   const containerStyle: React.CSSProperties = {
     position: "relative",
-    borderRadius: 4,
-    transition: "outline-color 0.15s ease",
-    outline: hovered && !editing && !readOnly ? "1px solid rgba(55, 120, 251, 0.35)" : "1px solid transparent",
     cursor: readOnly ? "default" : "text",
     minHeight: isDivider ? 20 : 24,
   };
@@ -240,15 +238,19 @@ const BlockItem = memo(function BlockItem({
   const viewStyle: React.CSSProperties = {
     padding: "2px 4px",
     lineHeight: 1.6,
+    borderRadius: 4,
+    outline: showHover ? "1px solid var(--color-primary, #3778FB)" : "1px solid transparent",
+    outlineOffset: 4,
+    transition: "outline-color 0.12s ease",
   };
 
   const textareaStyle: React.CSSProperties = {
     display: "block",
     width: "100%",
     minHeight: 32,
-    padding: "4px 4px",
+    padding: "2px 4px",
     margin: 0,
-    border: "1px solid var(--color-primary, #3778FB)",
+    border: "none",
     borderRadius: 4,
     background: "var(--bg-body, #fff)",
     color: "var(--text-primary, #1f2329)",
@@ -257,7 +259,8 @@ const BlockItem = memo(function BlockItem({
     lineHeight: "1.6",
     resize: "none",
     overflow: "hidden",
-    outline: "none",
+    outline: "1px solid var(--color-primary, #3778FB)",
+    outlineOffset: 4,
     boxSizing: "border-box" as const,
   };
 
@@ -291,12 +294,17 @@ const BlockItem = memo(function BlockItem({
   return (
     <div
       style={containerStyle}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
       onClick={enterEdit}
     >
       {isDivider ? (
-        <hr style={{ border: "none", borderTop: "1px solid var(--border-divider, #dee0e3)", margin: "8px 0" }} />
+        <hr style={{
+          border: "none", borderTop: "1px solid var(--border-divider, #dee0e3)", margin: "8px 0",
+          borderRadius: 4,
+          outline: showHover ? "1px solid var(--color-primary, #3778FB)" : "1px solid transparent",
+          outlineOffset: 4, transition: "outline-color 0.12s ease",
+        }} />
       ) : (
         <div
           style={viewStyle}
