@@ -1474,34 +1474,53 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                           const ti = item.treeIndex;
                           const treeNode = layouts[ti];
                           const resizingPrefix = `${ti}:`;
+                          // Find the first tree member's block index for reorder line
+                          const treeLeafIds = collectLeafIds(treeNode);
+                          const firstTreeBlockIdx = treeLeafIds.reduce((min, id) => {
+                            const i = blocks.findIndex(b => b.id === id);
+                            return i >= 0 && i < min ? i : min;
+                          }, Infinity);
+                          const lastTreeBlockIdx = treeLeafIds.reduce((max, id) => {
+                            const i = blocks.findIndex(b => b.id === id);
+                            return i >= 0 && i > max ? i : max;
+                          }, -1);
+                          const showTreeReorderAbove = dropTarget?.type === "reorder" && dropTarget.insertIdx === firstTreeBlockIdx && dragBlockId;
+                          const showTreeReorderBelow = dropTarget?.type === "reorder" && dropTarget.insertIdx === lastTreeBlockIdx + 1 && dragBlockId;
                           return (
-                            <BlockLayoutRenderer
-                              key={`__layout_tree_${ti}__`}
-                              node={treeNode}
-                              blocks={blocks}
-                              ideaId={ideaId}
-                              streaming={streaming}
-                              autoEditBlockId={autoEditBlockId}
-                              focusBlockId={focusBlockId}
-                              focusTrigger={focusTrigger}
-                              focusCursorPos={focusCursorPos}
-                              pendingRemoteBlocks={pendingRemoteBlockRef.current}
-                              dragBlockId={dragBlockId}
-                              dropTarget={activeLayoutDrop}
-                              onSaved={handleBlockSaved}
-                              onDeleted={handleBlockDeleted}
-                              onCreatedAfter={handleBlockCreatedAfter}
-                              onConflict={handleBlockConflict}
-                              onFocusChange={handleBlockFocusChange}
-                              onEditBlocked={() => toast.info(t("idea.editLocked"))}
-                              onSplit={handleSplit}
-                              onMergeIntoPrev={handleMergeIntoPrev}
-                              onDragStart={handleBlockDragStart}
-                              onFocusPrev={handleLayoutFocusPrev}
-                              onFocusNext={handleLayoutFocusNext}
-                              onResizeStart={(path, e) => handleLayoutResizeStart(ti, path, e)}
-                              resizingPath={resizingLayoutPath?.startsWith(resizingPrefix) ? resizingLayoutPath.slice(resizingPrefix.length) : null}
-                            />
+                            <div key={`__layout_tree_${ti}__`} style={{ position: "relative" }}>
+                              {showTreeReorderAbove && (
+                                <div style={{ position: "absolute", top: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
+                              )}
+                              {showTreeReorderBelow && (
+                                <div style={{ position: "absolute", bottom: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
+                              )}
+                              <BlockLayoutRenderer
+                                node={treeNode}
+                                blocks={blocks}
+                                ideaId={ideaId}
+                                streaming={streaming}
+                                autoEditBlockId={autoEditBlockId}
+                                focusBlockId={focusBlockId}
+                                focusTrigger={focusTrigger}
+                                focusCursorPos={focusCursorPos}
+                                pendingRemoteBlocks={pendingRemoteBlockRef.current}
+                                dragBlockId={dragBlockId}
+                                dropTarget={activeLayoutDrop}
+                                onSaved={handleBlockSaved}
+                                onDeleted={handleBlockDeleted}
+                                onCreatedAfter={handleBlockCreatedAfter}
+                                onConflict={handleBlockConflict}
+                                onFocusChange={handleBlockFocusChange}
+                                onEditBlocked={() => toast.info(t("idea.editLocked"))}
+                                onSplit={handleSplit}
+                                onMergeIntoPrev={handleMergeIntoPrev}
+                                onDragStart={handleBlockDragStart}
+                                onFocusPrev={handleLayoutFocusPrev}
+                                onFocusNext={handleLayoutFocusNext}
+                                onResizeStart={(path, e) => handleLayoutResizeStart(ti, path, e)}
+                                resizingPath={resizingLayoutPath?.startsWith(resizingPrefix) ? resizingLayoutPath.slice(resizingPrefix.length) : null}
+                              />
+                            </div>
                           );
                         }
                         const { block, idx } = item;
