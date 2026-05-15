@@ -306,22 +306,35 @@ const BlockItem = memo(function BlockItem({
       return;
     }
 
-    // ArrowUp at start → focus previous block
+    // ArrowUp at very first position → focus previous block
     if (e.key === "ArrowUp" && ta.selectionStart === 0 && ta.selectionEnd === 0) {
-      e.preventDefault();
-      deletingRef.current = true; // suppress blur-save (commitEdit already called)
-      void commitEdit().then(() => { deletingRef.current = false; });
-      onFocusPrev?.();
-      return;
+      // Only jump if cursor is on the first visual line (no line above)
+      const textBefore = ta.value.slice(0, ta.selectionStart);
+      if (!textBefore.includes("\n")) {
+        e.preventDefault();
+        deletingRef.current = true;
+        void commitEdit().then(() => { deletingRef.current = false; });
+        onFocusPrev?.();
+        return;
+      }
     }
 
-    // ArrowDown at end → focus next block
-    if (e.key === "ArrowDown" && ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length) {
-      e.preventDefault();
-      deletingRef.current = true;
-      void commitEdit().then(() => { deletingRef.current = false; });
-      onFocusNext?.();
-      return;
+    // ArrowDown at very last position → focus next block
+    if (e.key === "ArrowDown") {
+      const textAfter = ta.value.slice(ta.selectionEnd);
+      // Only jump if cursor is on the last visual line (no line below)
+      if (!textAfter.includes("\n") || textAfter.trim() === "") {
+        // Let the browser handle the keydown first, then check if cursor moved
+        const posBefore = ta.selectionStart;
+        requestAnimationFrame(() => {
+          if (ta.selectionStart === posBefore && ta.selectionStart >= ta.value.trimEnd().length) {
+            deletingRef.current = true;
+            void commitEdit().then(() => { deletingRef.current = false; });
+            onFocusNext?.();
+          }
+        });
+        return;
+      }
     }
   }, [cancelEdit, commitEdit, sourceMode, editValue, ideaId, block.id, onCreatedAfter, onDeleted, onFocusPrev, onFocusNext]);
 
