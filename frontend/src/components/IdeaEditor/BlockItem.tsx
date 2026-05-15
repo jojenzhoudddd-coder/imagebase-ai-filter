@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useRef, useState, memo } from "react";
 import MarkdownIt from "markdown-it";
+import { useTranslation } from "../../i18n";
 
 // Inject a scoped style to remove bottom margin from the last child in each
 // block view — avoids double spacing between blocks. Done once at module load.
@@ -79,6 +80,7 @@ const BlockItem = memo(function BlockItem({
   onEditBlocked,
   editLocked = false,
 }: BlockItemProps) {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<"view" | "selected" | "editing">("view");
   const [editValue, setEditValue] = useState("");
   const [hovered, setHovered] = useState(false);
@@ -93,9 +95,12 @@ const BlockItem = memo(function BlockItem({
     blockVersionRef.current = (block as any).version ?? 0;
   }, [block]);
 
-  // Auto-focus on mount if requested (skip selected state)
+  // Auto-focus: only for newly created blocks (autoFocus=true on first mount).
+  // Uses a ref to fire only once and not re-trigger on parent re-renders.
+  const didAutoFocus = useRef(false);
   useEffect(() => {
-    if (autoFocus && !readOnly && !editLocked) {
+    if (autoFocus && !didAutoFocus.current && !readOnly && !editLocked) {
+      didAutoFocus.current = true;
       setEditValue(block.content);
       setMode("editing");
       onFocusChange?.(block.id, true);
@@ -271,7 +276,7 @@ const BlockItem = memo(function BlockItem({
             padding: "2px 4px",
             lineHeight: 1.4,
           }}>
-            ⚠ Updated by another user
+            ⚠ {t("idea.block.remoteUpdate")}
           </div>
         )}
         <textarea
@@ -285,7 +290,7 @@ const BlockItem = memo(function BlockItem({
         />
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
           <span style={{ flex: 1, fontSize: 12, color: "var(--text-muted)", lineHeight: "32px" }}>
-            Alt+Enter 提交 · Esc 取消
+            {t("idea.block.editHint")}
           </span>
           <button
             type="button"
@@ -293,14 +298,14 @@ const BlockItem = memo(function BlockItem({
             style={btnBase}
             onClick={(e) => { e.stopPropagation(); cancelEdit(); }}
             disabled={saving}
-          >取消</button>
+          >{t("idea.block.cancel")}</button>
           <button
             type="button"
             className="block-edit-btn-commit"
             style={btnBase}
             onClick={(e) => { e.stopPropagation(); void commitEdit(); }}
             disabled={saving}
-          >{saving ? "保存中…" : "提交"}</button>
+          >{saving ? t("idea.block.saving") : t("idea.block.commit")}</button>
         </div>
       </div>
     );
@@ -316,7 +321,7 @@ const BlockItem = memo(function BlockItem({
     >
       <div style={{ ...outlineStyle, position: "relative" }}>
         {isDivider ? (
-          <hr style={{ border: "none", borderTop: "1px solid var(--border-divider, #dee0e3)", margin: "8px 0" }} />
+          <hr style={{ border: "none", borderTop: "0.5px solid var(--border-light)", margin: "8px 0" }} />
         ) : (
           <div
             style={viewStyle}
