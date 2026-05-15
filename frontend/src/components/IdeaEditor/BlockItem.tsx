@@ -325,17 +325,25 @@ const BlockItem = memo(function BlockItem({
     }
 
     // ArrowUp at position 0 → focus previous block (cursor at end)
-    if (e.key === "ArrowUp" && ta.selectionStart === 0 && ta.selectionEnd === 0) {
-      e.preventDefault();
-      onFocusPrev?.();
-      return;
+    if (e.key === "ArrowUp") {
+      console.log("[BlockItem] ArrowUp", { selStart: ta.selectionStart, selEnd: ta.selectionEnd, blockId: block.id });
+      if (ta.selectionStart === 0 && ta.selectionEnd === 0) {
+        e.preventDefault();
+        console.log("[BlockItem] → onFocusPrev");
+        onFocusPrev?.();
+        return;
+      }
     }
 
     // ArrowDown at end → focus next block (cursor at start)
-    if (e.key === "ArrowDown" && ta.selectionStart === editValue.length && ta.selectionEnd === editValue.length) {
-      e.preventDefault();
-      onFocusNext?.();
-      return;
+    if (e.key === "ArrowDown") {
+      console.log("[BlockItem] ArrowDown", { selStart: ta.selectionStart, selEnd: ta.selectionEnd, len: editValue.length, blockId: block.id });
+      if (ta.selectionStart === editValue.length && ta.selectionEnd === editValue.length) {
+        e.preventDefault();
+        console.log("[BlockItem] → onFocusNext");
+        onFocusNext?.();
+        return;
+      }
     }
   }, [cancelEdit, commitEdit, sourceMode, editValue, ideaId, block.id, onCreatedAfter, onDeleted, onFocusPrev, onFocusNext]);
 
