@@ -2070,12 +2070,13 @@ export async function getKnowledgeEntry(
 export async function createIdea(
   name: string,
   workspaceId: string,
-  parentId?: string | null
+  parentId?: string | null,
+  lang?: string,
 ): Promise<IdeaBrief> {
   const res = await mutationFetch(`${BASE}/ideas`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, workspaceId, parentId: parentId || null }),
+    body: JSON.stringify({ name, workspaceId, parentId: parentId || null, lang }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

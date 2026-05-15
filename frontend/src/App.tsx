@@ -1537,7 +1537,7 @@ export default function App() {
       // Backend generates the default name + dedup suffix, so we just pass
       // the localised base name ("灵感" / "Idea").
       const baseName = t("createMenu.doc");
-      const idea = await apiCreateIdea(baseName, WORKSPACE_ID);
+      const idea = await apiCreateIdea(baseName, WORKSPACE_ID, null, locale);
       setDocumentIdeas(prev => [...prev, { ...idea, parentId: idea.parentId ?? null }]);
       setActiveTableId(idea.id);
       setActiveItemType("idea");

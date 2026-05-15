@@ -111,7 +111,7 @@ router.get("/", asyncHandler(async (req: Request, res: Response) => {
 // POST /api/ideas — create idea
 // body: { name?: string, workspaceId: string, parentId?: string }
 router.post("/", asyncHandler(async (req: Request, res: Response) => {
-  const { name, workspaceId, parentId } = req.body;
+  const { name, workspaceId, parentId, lang } = req.body;
 
   const wsId = workspaceId || DEFAULT_WORKSPACE_ID;
   const baseName = (name && typeof name === "string" && name.trim())
@@ -132,15 +132,14 @@ router.post("/", asyncHandler(async (req: Request, res: Response) => {
 
   const uniqueName = await generateUniqueIdeaName(wsId, baseName);
 
-  // Create idea with default template blocks — placeholder text is real
-  // content that the user replaces. BlockItem renders it in muted color
-  // when it matches the known placeholder pattern.
+  // Create idea with default template blocks, localized by lang param
+  const isZh = lang === "zh";
   const templateBlocks = [
-    { order: 0, type: "heading",   content: "# Untitled\n",            props: { level: 1, slug: "untitled", text: "Untitled" } },
-    { order: 1, type: "heading",   content: "## Section 1\n",          props: { level: 2, slug: "section-1", text: "Section 1" } },
-    { order: 2, type: "paragraph", content: "Start writing here...\n", props: {} },
-    { order: 3, type: "heading",   content: "## Section 2\n",          props: { level: 2, slug: "section-2", text: "Section 2" } },
-    { order: 4, type: "paragraph", content: "Start writing here...\n", props: {} },
+    { order: 0, type: "heading",   content: isZh ? "# 无标题\n"           : "# Untitled\n",            props: { level: 1, slug: isZh ? "无标题" : "untitled", text: isZh ? "无标题" : "Untitled" } },
+    { order: 1, type: "heading",   content: isZh ? "## 第一部分\n"        : "## Section 1\n",          props: { level: 2, slug: isZh ? "第一部分" : "section-1", text: isZh ? "第一部分" : "Section 1" } },
+    { order: 2, type: "paragraph", content: isZh ? "在这里开始写作…\n"    : "Start writing here...\n", props: {} },
+    { order: 3, type: "heading",   content: isZh ? "## 第二部分\n"        : "## Section 2\n",          props: { level: 2, slug: isZh ? "第二部分" : "section-2", text: isZh ? "第二部分" : "Section 2" } },
+    { order: 4, type: "paragraph", content: isZh ? "在这里开始写作…\n"    : "Start writing here...\n", props: {} },
   ];
   const templateContent = templateBlocks.map(b => b.content).join("\n");
 
