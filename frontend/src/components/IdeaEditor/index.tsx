@@ -1344,7 +1344,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             )}
           </div>
           {/* Drag ghost */}
-          {dragBlockId && ghostPos && console.log("[drag] GHOST rendering", dragBlockId, ghostPos)}
+          {console.log("[drag] RENDER dragBlockId:", dragBlockId, "ghostPos:", ghostPos)}
           {dragBlockId && ghostPos && createPortal(
             <div style={{
               position: "fixed",
