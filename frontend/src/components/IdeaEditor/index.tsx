@@ -987,12 +987,11 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             versionRef.current = bRes.version;
           })();
         } else if (target.type === "layout-split") {
-          // Layout tree split: insert source block at target's side
           const directionMap = { top: "top", bottom: "bottom", left: "left", right: "right" } as const;
           const direction = directionMap[target.side];
           const targetBlockId = target.targetBlockId;
+          console.log("[commitDrop] layout-split", { blockId, targetBlockId, direction, hasLayout: !!layout });
 
-          // If layout exists, move within it; otherwise create a new layout
           if (layout) {
             const newLayout = moveBlockInLayout(layout, blockId, targetBlockId, direction);
             if (newLayout && newLayout !== layout) {
