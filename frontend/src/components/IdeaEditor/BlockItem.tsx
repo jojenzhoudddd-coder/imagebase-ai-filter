@@ -17,7 +17,14 @@ import MarkdownIt from "markdown-it";
 if (typeof document !== "undefined" && !document.getElementById("block-item-style")) {
   const s = document.createElement("style");
   s.id = "block-item-style";
-  s.textContent = ".block-item-view > *:last-child { margin-bottom: 0 !important; }";
+  s.textContent = [
+    ".block-item-view > *:last-child { margin-bottom: 0 !important; }",
+    ".block-edit-btn-cancel { background: var(--surface-3); color: var(--text-secondary); transition: background 0.12s, color 0.12s; }",
+    ".block-edit-btn-cancel:hover { background: var(--border-default); color: var(--text-primary); }",
+    ".block-edit-btn-commit { background: var(--primary); color: var(--text-on-primary); transition: background 0.12s; }",
+    ".block-edit-btn-commit:hover { background: var(--primary-hover); }",
+    ".block-edit-btn-cancel:disabled, .block-edit-btn-commit:disabled { opacity: 0.5; cursor: not-allowed; }",
+  ].join("\n");
   document.head.appendChild(s);
 }
 
@@ -213,7 +220,7 @@ const BlockItem = memo(function BlockItem({
 
   const outlineStyle: React.CSSProperties = {
     borderRadius: 4,
-    outline: showHover ? "1px solid var(--color-primary, #3778FB)" : "1px solid transparent",
+    outline: showHover ? "1px solid var(--primary)" : "1px solid transparent",
     outlineOffset: 2,
     transition: "outline-color 0.12s ease",
   };
@@ -232,14 +239,14 @@ const BlockItem = memo(function BlockItem({
     margin: 0,
     border: "none",
     borderRadius: 4,
-    background: "var(--bg-body, #fff)",
-    color: "var(--text-primary, #1f2329)",
-    fontFamily: "var(--font-mono, 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace)",
+    background: "var(--surface-2)",
+    color: "var(--text-primary)",
+    fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, ui-monospace, monospace",
     fontSize: 13,
     lineHeight: "1.6",
     resize: "none",
     overflow: "hidden",
-    outline: "1px solid var(--color-primary, #3778FB)",
+    outline: "1px solid var(--primary)",
     outlineOffset: 2,
     boxSizing: "border-box" as const,
   };
@@ -277,18 +284,20 @@ const BlockItem = memo(function BlockItem({
           spellCheck={false}
         />
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-          <span style={{ flex: 1, fontSize: 12, color: "var(--text-muted, #8f959e)", lineHeight: "32px" }}>
+          <span style={{ flex: 1, fontSize: 12, color: "var(--text-muted)", lineHeight: "32px" }}>
             Alt+Enter 提交 · Esc 取消
           </span>
           <button
             type="button"
-            style={{ ...btnBase, background: "var(--surface-3, #f0f1f3)", color: "var(--text-secondary, #646a73)" }}
+            className="block-edit-btn-cancel"
+            style={btnBase}
             onClick={(e) => { e.stopPropagation(); cancelEdit(); }}
             disabled={saving}
           >取消</button>
           <button
             type="button"
-            style={{ ...btnBase, background: "var(--color-primary, #3778FB)", color: "#fff" }}
+            className="block-edit-btn-commit"
+            style={btnBase}
             onClick={(e) => { e.stopPropagation(); void commitEdit(); }}
             disabled={saving}
           >{saving ? "保存中…" : "提交"}</button>
@@ -319,8 +328,8 @@ const BlockItem = memo(function BlockItem({
         {selected && (
           <div style={{
             position: "absolute", inset: 0, borderRadius: 4,
-            background: "rgba(55, 120, 251, 0.08)",
-            border: "1px solid var(--color-primary, #3778FB)",
+            background: "var(--primary-bg)",
+            border: "1px solid var(--primary)",
             pointerEvents: "none",
           }} />
         )}
