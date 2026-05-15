@@ -354,8 +354,12 @@ const BlockItem = memo(function BlockItem({
     ta.style.height = ta.scrollHeight + "px";
   }, []);
 
-  // Render markdown to HTML. Only strip the final trailing newline (block separator).
-  const renderedHtml = md.render(block.content.replace(/\n$/, "") || " ");
+  // Render markdown to HTML.
+  const trimmedContent = block.content.replace(/\n+$/, "").trim();
+  const isEmptyBlock = trimmedContent.length === 0;
+  const renderedHtml = isEmptyBlock
+    ? '<p style="margin:0;min-height:1em">&nbsp;</p>'
+    : md.render(trimmedContent);
 
   // Determine if this is a divider (just render <hr>)
   const isDivider = block.type === "divider";
