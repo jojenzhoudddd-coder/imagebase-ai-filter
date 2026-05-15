@@ -360,6 +360,14 @@ const BlockItem = memo(function BlockItem({
     ta.style.height = ta.scrollHeight + "px";
   }, []);
 
+  // Must be before any early return to keep hook count stable
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (selected && !sourceMode && onDragStart) {
+      e.preventDefault();
+      onDragStart(block.id);
+    }
+  }, [selected, sourceMode, onDragStart, block.id]);
+
   // Render markdown to HTML.
   const trimmedContent = block.content.replace(/\n+$/, "").trim();
   const isEmptyBlock = trimmedContent.length === 0;
@@ -471,14 +479,6 @@ const BlockItem = memo(function BlockItem({
       </div>
     );
   }
-
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (selected && !sourceMode && onDragStart) {
-      // Initiate drag from selected state
-      e.preventDefault();
-      onDragStart(block.id);
-    }
-  }, [selected, sourceMode, onDragStart, block.id]);
 
   return (
     <div
