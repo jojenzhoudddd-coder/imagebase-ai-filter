@@ -640,6 +640,8 @@ export const zh: TranslationKeys = {
   "skill.workflow-skill.desc": "模板化工作流编排",
   "skill.skill-creator.name": "技能创建器",
   "skill.skill-creator.desc": "创建、管理、更新自定义技能",
+  "skill.system-theme-skill.name": "当前系统主题设计",
+  "skill.system-theme-skill.desc": "注入系统 UI/UX 视觉规范（色彩、LM/DM 双主题、排版、组件样式），让 Demo 自动沿用系统风格",
   "habit.habit_system_evolve.name": "自我进化",
   "habit.habit_system_evolve.desc": "每天回顾对话，提炼并更新灵魂和用户画像",
   "habit.habit_system_suggest.name": "推荐待办",

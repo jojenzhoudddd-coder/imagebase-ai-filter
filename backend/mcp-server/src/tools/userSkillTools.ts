@@ -1,9 +1,10 @@
 /**
  * Tier 0 — User-Skill management tools (Skill Creator V1).
  *
- * 6 个工具,跟 update_profile / update_soul / create_memory 同级,任何对话都能调:
+ * 7 个工具,跟 update_profile / update_soul / create_memory 同级,任何对话都能调:
  *   - create_skill              新建一个用户级 skill (promptFragment / workflowDocs / toolWhitelist 任意一个非空)
  *   - list_my_skills            列出自己保存的 skill (含 enable / invokedCount / 资产摘要)
+ *   - get_skill                 获取完整详情 (promptFragment / workflowDocs / toolWhitelist)
  *   - update_skill              局部 patch 一个 skill
  *   - delete_skill ⚠           删除(走危险确认流)
  *   - enable_skill              persistent enable/disable toggle (跨对话,跨 agent session)
@@ -187,7 +188,7 @@ export const userSkillTools: ToolDefinition[] = [
     description:
       "列出当前 Agent 自己保存的 user skill(分页一次性返回,V1 数量小)。" +
       "返回 id/name/description/triggers/enabled/invokedCount/lastInvokedAt/assetSummary。" +
-      "需要看完整 workflowDocs / promptFragment 时配合 list 拿到 id 后,目前没有专门的 get,可以再调 update_skill 时把要看的字段读出来,或直接用 DB 工具。",
+      "需要看完整 workflowDocs / promptFragment 时,用 get_skill(id) 获取。",
     inputSchema: {
       type: "object",
       properties: {
@@ -211,6 +212,40 @@ export const userSkillTools: ToolDefinition[] = [
           total: rows.length,
           skills: rows.map(rowToListDto),
         });
+      } catch (err) {
+        return errToToolJson(err);
+      }
+    },
+  },
+
+  // ─── get_skill ─────────────────────────────────────────────────────────
+  {
+    name: "get_skill",
+    description:
+      "获取一个用户自定义 skill 的完整详情,包含 promptFragment / workflowDocs / toolWhitelist。" +
+      "list_my_skills 只返回摘要,需要看完整内容时用这个工具。" +
+      "如需导出到 Idea 文档,拿到内容后直接链式调用 idea-skill 的写入工具即可。",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string", description: "skill id" },
+        agentId: { type: "string", description: "可选;默认当前 Agent" },
+      },
+    },
+    handler: async (args, ctx) => {
+      const ownerId = resolveAgentId(args, ctx);
+      const id = String(args.id ?? "").trim();
+      if (!id) return JSON.stringify({ ok: false, error: "id is required" });
+      try {
+        const row = await getUserSkill(id);
+        if (!row) {
+          return JSON.stringify({ ok: false, error: "skill not found", code: "NOT_FOUND" });
+        }
+        if (row.ownerId !== ownerId) {
+          return JSON.stringify({ ok: false, error: "permission denied — this skill belongs to another agent", code: "PERMISSION" });
+        }
+        return JSON.stringify({ ok: true, skill: rowToDetailDto(row) });
       } catch (err) {
         return errToToolJson(err);
       }

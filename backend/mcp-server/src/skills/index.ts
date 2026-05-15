@@ -26,6 +26,7 @@ import { vibeCodingSkill } from "./vibeCodingSkill.js";
 import { worktreeSkill } from "./worktreeSkill.js";
 import { workflowSkill } from "./workflowSkill.js";
 import { skillCreatorSkill } from "./skillCreatorSkill.js";
+import { systemThemeSkill } from "./systemThemeSkill.js";
 import type { SkillDefinition } from "./types.js";
 
 export const allSkills: SkillDefinition[] = [
@@ -42,6 +43,7 @@ export const allSkills: SkillDefinition[] = [
   worktreeSkill,
   workflowSkill,
   skillCreatorSkill,
+  systemThemeSkill,
 ];
 
 export const skillsByName: Record<string, SkillDefinition> = Object.fromEntries(

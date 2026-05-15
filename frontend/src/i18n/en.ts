@@ -639,6 +639,8 @@ export const en = {
   "skill.workflow-skill.desc": "Template-based workflow orchestration",
   "skill.skill-creator.name": "Skill Creator",
   "skill.skill-creator.desc": "Create, manage, update custom skills",
+  "skill.system-theme-skill.name": "System Theme Design",
+  "skill.system-theme-skill.desc": "Inject system UI/UX design tokens (colors, LM/DM themes, typography, components) so Demos follow the system visual style",
   "habit.habit_system_evolve.name": "Self Evolution",
   "habit.habit_system_evolve.desc": "Daily review of conversations to update soul and profile",
   "habit.habit_system_suggest.name": "Todo Suggestions",
