@@ -286,8 +286,6 @@ const BlockItem = memo(function BlockItem({
     lineHeight: 1.6,
     padding: 0,
     minHeight: "auto",
-    whiteSpace: "pre-wrap",
-    wordBreak: "break-word",
   };
 
   const textareaStyle: React.CSSProperties = {
@@ -335,6 +333,7 @@ const BlockItem = memo(function BlockItem({
         )}
         <textarea
           ref={textareaRef}
+          rows={1}
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onKeyDown={handleKeyDown}
