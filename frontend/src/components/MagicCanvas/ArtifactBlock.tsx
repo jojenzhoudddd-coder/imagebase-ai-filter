@@ -187,6 +187,14 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
   // 渲染 artifact 内容 —— 按 active.type 选择独立 mount or fallback 到 global render()
   const artifactContent = useMemo(() => {
     if (!active) {
+      // Auto-select first available artifact to avoid blank block
+      const firstItem = ws.sidebarItems.find(i => i.type !== "static" && i.type !== "folder");
+      if (firstItem) {
+        const kind = toArtifactKind(firstItem.type as TreeItemType);
+        if (kind) {
+          requestAnimationFrame(() => patchBlockState(blockId, { active: { type: kind, id: firstItem.id } }));
+        }
+      }
       return <div className="mc-artifact-empty" />;
     }
     if (active.type === "idea") {
