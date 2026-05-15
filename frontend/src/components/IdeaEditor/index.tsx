@@ -734,14 +734,21 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         // Preview → Source: contentRef is already synced by block saves
         setContent(contentRef.current);
       }
-      // Restore focus to the same block after mode switch
+      // Restore focus/scroll to the same block after mode switch
       if (currentFocusBlock) {
-        // Use setTimeout to run after React commits the new mode's DOM
         setTimeout(() => {
-          setFocusBlockId(currentFocusBlock);
-          setFocusCursorPos(0);
-          setFocusTrigger(n => n + 1);
-        }, 50);
+          const container = blockListRef.current;
+          if (!container) return;
+          const blockEl = container.querySelector(`[data-block-id="${currentFocusBlock}"]`);
+          if (!blockEl) return;
+          blockEl.scrollIntoView({ block: "center", behavior: "instant" });
+          // In source mode, also focus the textarea
+          const ta = blockEl.querySelector("textarea") as HTMLTextAreaElement | null;
+          if (ta) {
+            ta.focus();
+            ta.selectionStart = ta.selectionEnd = 0;
+          }
+        }, 100);
       }
       return m === "source" ? "preview" : "source";
     });
