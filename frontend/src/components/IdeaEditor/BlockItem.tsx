@@ -360,13 +360,13 @@ const BlockItem = memo(function BlockItem({
     ta.style.height = ta.scrollHeight + "px";
   }, []);
 
-  // Must be before any early return to keep hook count stable
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (selected && !sourceMode && onDragStart) {
-      e.preventDefault();
-      onDragStart(block.id);
-    }
-  }, [selected, sourceMode, onDragStart, block.id]);
+  // Drag handle pointerdown — initiates drag directly (no need for selected state)
+  const handleDragHandleDown = useCallback((e: React.PointerEvent) => {
+    if (sourceMode || readOnly || !onDragStart) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onDragStart(block.id);
+  }, [sourceMode, readOnly, onDragStart, block.id]);
 
   // Render markdown to HTML.
   const trimmedContent = block.content.replace(/\n+$/, "").trim();
@@ -381,7 +381,7 @@ const BlockItem = memo(function BlockItem({
   const showHover = hovered && !editing && !selected && !readOnly;
   const containerStyle: React.CSSProperties = {
     position: "relative",
-    cursor: readOnly ? "default" : editing ? "text" : (selected && hovered) ? "grab" : selected ? "default" : "pointer",
+    cursor: readOnly ? "default" : editing ? "text" : "pointer",
     minHeight: isDivider ? 20 : 24,
     opacity: isDragging ? 0.3 : 1,
     transition: "opacity 0.15s ease",
@@ -480,6 +480,8 @@ const BlockItem = memo(function BlockItem({
     );
   }
 
+  const showDragHandle = hovered && !editing && !sourceMode && !readOnly && !isDragging;
+
   return (
     <div
       style={containerStyle}
@@ -487,8 +489,40 @@ const BlockItem = memo(function BlockItem({
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       onClick={handleClick}
-      onPointerDown={handlePointerDown}
     >
+      {/* Drag handle — appears on hover, 8px to the left */}
+      {showDragHandle && (
+        <div
+          onPointerDown={handleDragHandleDown}
+          style={{
+            position: "absolute",
+            left: -28,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 20,
+            height: 20,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "grab",
+            borderRadius: 4,
+            color: "var(--text-muted)",
+            transition: "color 0.12s, background 0.12s",
+            zIndex: 5,
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--surface-3)"; (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <circle cx="4" cy="2.5" r="1" fill="currentColor"/>
+            <circle cx="8" cy="2.5" r="1" fill="currentColor"/>
+            <circle cx="4" cy="6" r="1" fill="currentColor"/>
+            <circle cx="8" cy="6" r="1" fill="currentColor"/>
+            <circle cx="4" cy="9.5" r="1" fill="currentColor"/>
+            <circle cx="8" cy="9.5" r="1" fill="currentColor"/>
+          </svg>
+        </div>
+      )}
       <div style={outlineStyle}>
         {selected && <div style={{
           position: "absolute", inset: -2, borderRadius: 4,
