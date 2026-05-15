@@ -212,7 +212,21 @@ export interface IdeaBrief {
 export interface IdeaDetail extends IdeaBrief {
   content: string;
   version: number;
+  layout?: BlockLayoutNode | null;
 }
+
+// ─── Block Layout Tree (recursive binary split tree for idea blocks) ───
+export type BlockLayoutNode =
+  | { kind: "leaf"; blockId: string }
+  | {
+      kind: "split";
+      /** h: vertical divider (left/right); v: horizontal divider (top/bottom) */
+      orientation: "h" | "v";
+      /** first child's fraction [0,1]; second = 1-ratio */
+      ratio: number;
+      first: BlockLayoutNode;
+      second: BlockLayoutNode;
+    };
 
 // ─── Mention system ───
 // v3: four workspace-level targets. The label already carries the

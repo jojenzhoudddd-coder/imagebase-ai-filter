@@ -1,5 +1,5 @@
 import { Field, FieldConfig, FieldType, TableRecord, View, ViewFilter, ViewSort } from "./types";
-import type { IdeaBrief, IdeaDetail, MentionHit } from "./types";
+import type { IdeaBrief, IdeaDetail, MentionHit, BlockLayoutNode } from "./types";
 
 const BASE = "/api";
 
@@ -2125,6 +2125,17 @@ export async function renameIdea(ideaId: string, name: string): Promise<{ id: st
     body: JSON.stringify({ name }),
   });
   if (!res.ok) throw new Error("Failed to rename idea");
+  return res.json();
+}
+
+/** Save the block layout tree for an idea. Pass null to clear. */
+export async function saveIdeaLayout(ideaId: string, layout: BlockLayoutNode | null): Promise<{ ok: boolean }> {
+  const res = await mutationFetch(`${BASE}/ideas/${ideaId}/layout`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ layout }),
+  });
+  if (!res.ok) throw new Error("Failed to save idea layout");
   return res.json();
 }
 

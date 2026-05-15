@@ -513,6 +513,11 @@ model Idea {
   order       Int      @default(0)
   content     String   @default("")
   version     Int      @default(0)
+  /// Optional recursive block layout tree (BlockLayoutNode JSON).
+  /// When present, blocks referenced in the tree render according to the
+  /// tree structure (splits with ratios). Blocks not in the tree render
+  /// vertically below. null = all blocks in normal vertical flow.
+  layout      Json?
   // Snapshot of the heading structure extracted from `content` on every
   // save. Persisted as JSON so the @mention picker can surface idea
   // sections without re-parsing every document on each keystroke, and so

@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction, RequestHandler } from "express";
-import { PrismaClient } from "../generated/prisma/client.js";
+import { PrismaClient, Prisma } from "../generated/prisma/client.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { eventBus } from "../services/eventBus.js";
@@ -221,9 +221,31 @@ router.get("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
     order: idea.order,
     content: idea.content,
     version: idea.version,
+    layout: idea.layout ?? null,
     createdAt: idea.createdAt.toISOString(),
     updatedAt: idea.updatedAt.toISOString(),
   });
+}));
+
+// PUT /api/ideas/:ideaId/layout — update block layout tree
+// body: { layout: BlockLayoutNode | null }
+router.put("/:ideaId/layout", asyncHandler(async (req: Request, res: Response) => {
+  const { layout } = req.body;
+  // layout can be null (clear) or a JSON object
+  if (layout !== null && typeof layout !== "object") {
+    res.status(400).json({ error: "layout must be a JSON object or null" });
+    return;
+  }
+  const existing = await prisma.idea.findUnique({ where: { id: req.params.ideaId } });
+  if (!existing) {
+    res.status(404).json({ error: "Idea not found" });
+    return;
+  }
+  const updated = await prisma.idea.update({
+    where: { id: req.params.ideaId },
+    data: { layout: layout === null ? Prisma.JsonNull : layout },
+  });
+  res.json({ ok: true, layout: updated.layout ?? null });
 }));
 
 // GET /api/ideas/:ideaId/blocks — PR6 block-based read API for the FE
