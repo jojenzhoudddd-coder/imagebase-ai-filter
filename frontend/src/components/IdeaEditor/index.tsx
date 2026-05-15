@@ -1405,10 +1405,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                         const showSplitRight = dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "right" && dragBlockId;
                         return (
                           <React.Fragment key={block.id}>
-                            {showReorderLine && (
-                              <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, margin: "2px 0", pointerEvents: "none" }} />
-                            )}
                             <div style={{ position: "relative" }}>
+                              {showReorderLine && (
+                                <div style={{ position: "absolute", top: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
+                              )}
                               {showSplitTop && (
                                 <div style={{ position: "absolute", top: -1, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
                               )}
@@ -1474,13 +1474,16 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                     const showReorderLineAfter = dropTarget?.type === "reorder" && dropTarget.insertIdx === idx + 1 && dragBlockId && layoutIdx === blockLayout.length - 1;
                     return (
                       <React.Fragment key={block.id}>
-                        {showReorderLine && (
-                          <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, margin: "2px 0", pointerEvents: "none" }} />
-                        )}
-                        {dragInsertIdx === idx && !dragBlockId && (
-                          <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, margin: "2px 0", pointerEvents: "none" }} />
-                        )}
                         <div style={{ position: "relative" }}>
+                          {showReorderLine && (
+                            <div style={{ position: "absolute", top: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
+                          )}
+                          {dragInsertIdx === idx && !dragBlockId && (
+                            <div style={{ position: "absolute", top: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
+                          )}
+                          {showReorderLineAfter && (
+                            <div style={{ position: "absolute", bottom: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
+                          )}
                           {/* Drop indicators for layout-split */}
                           {dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "left" && (
                             <div style={{ position: "absolute", left: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
@@ -1539,9 +1542,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                             }}
                           />
                         </div>
-                        {showReorderLineAfter && (
-                          <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, margin: "2px 0", pointerEvents: "none" }} />
-                        )}
+                        {/* showReorderLineAfter handled by absolute positioning inside the block wrapper */}
                       </React.Fragment>
                     );
                   } else {
@@ -1688,7 +1689,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
               ));
             })()}
             {dragInsertIdx === blocks.length && !dragBlockId && (
-              <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, margin: "2px 0", pointerEvents: "none" }} />
+              <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, marginTop: -7, pointerEvents: "none" }} />
             )}
             {dropTarget?.type === "reorder" && dropTarget.insertIdx === blocks.length && dragBlockId && (
               <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, margin: "2px 0", pointerEvents: "none" }} />
