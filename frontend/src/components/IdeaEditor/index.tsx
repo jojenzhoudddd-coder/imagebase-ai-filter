@@ -85,6 +85,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   useEffect(() => { focusBlockIdRef.current = focusBlockId; }, [focusBlockId]);
   const pendingRemoteBlockRef = useRef<Set<string>>(new Set());
 
+  const mergingRef = useRef(false);
   const versionRef = useRef(0);
   const dirtyRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
@@ -535,17 +536,16 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   }, [ideaId]);
 
   const handleMergeIntoPrev = useCallback(async (blockId: string, contentToAppend: string) => {
+    if (mergingRef.current) return; // prevent re-entrant merge chain
     const idx = blocks.findIndex(b => b.id === blockId);
-    if (idx <= 0) return; // no previous block to merge into
+    if (idx <= 0) return;
     const prevBlock = blocks[idx - 1];
-    // Strip trailing newlines to find the real content boundary
     const prevText = prevBlock.content.replace(/\n+$/, "");
     const appendText = contentToAppend.replace(/\n+$/, "");
-    // Cursor at the join point
     const cursorPos = prevText.length;
-    // Update focus BEFORE API calls so SSE delete event won't match the deleted block
     setFocusBlockId(prevBlock.id);
     focusBlockIdRef.current = prevBlock.id;
+    mergingRef.current = true;
     try {
       const mergedContent = prevText + appendText + "\n";
       await patchIdeaBlock(ideaId, prevBlock.id, { content: mergedContent });
@@ -559,6 +559,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       setFocusTrigger(n => n + 1);
     } catch (err) {
       console.error("[IdeaEditor] merge failed:", err);
+    } finally {
+      // Delay clearing the guard to prevent immediate re-trigger from cursor at pos 0
+      setTimeout(() => { mergingRef.current = false; }, 100);
     }
   }, [ideaId, blocks]);
 
