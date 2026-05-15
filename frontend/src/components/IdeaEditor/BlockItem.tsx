@@ -138,11 +138,11 @@ const BlockItem = memo(function BlockItem({
   // Pending cursor: set by focusTrigger, consumed by content sync or layout effect
   const pendingCursorRef = useRef<{ pos: number; trigger: number } | null>(null);
 
-  // When focusTrigger increments, record desired cursor position
-  const prevFocusTrigger = useRef(focusTrigger);
-  if (focusTrigger !== prevFocusTrigger.current) {
+  // When focusTrigger increments (or is set on first mount), record desired cursor position
+  const prevFocusTrigger = useRef(0);
+  if (focusTrigger > 0 && focusTrigger !== prevFocusTrigger.current) {
     prevFocusTrigger.current = focusTrigger;
-    if (sourceMode && focusTrigger > 0) {
+    if (sourceMode) {
       pendingCursorRef.current = { pos: focusCursorPos ?? 0, trigger: focusTrigger };
     }
   }
