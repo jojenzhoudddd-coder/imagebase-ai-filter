@@ -276,9 +276,10 @@ async function _updateKnowledgeImpl(input: KnowledgeUpdateInput) {
       await tx.knowledgeEntry.delete({ where: { id: probe.id } });
     }
     await Promise.all(
-      chunks.map((chunk, i) =>
+      chunks.map(async (chunk, i) =>
         tx.knowledgeEntry.create({
           data: {
+            id: await generateId("knowledgeEntry"),
             agentId: input.agentId,
             title: newTitle,
             content: chunk,

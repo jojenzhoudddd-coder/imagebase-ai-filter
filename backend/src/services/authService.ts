@@ -353,6 +353,7 @@ export async function createUserWithWorkspace(input: {
     // ── 创建这个用户自己的 Agent（不复用 agent_default —— 那是 user_default 的）
     const agent = await tx.agent.create({
       data: {
+        id: await generateId("agent"),
         userId: user.id,
         name: `${name}'s Agent`,
       },
