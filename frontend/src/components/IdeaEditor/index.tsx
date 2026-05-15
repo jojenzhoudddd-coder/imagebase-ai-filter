@@ -168,20 +168,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         // Load layout from idea or migrate from old column props
         if (idea.layout) {
           setLayout(idea.layout as BlockLayoutNode);
-        } else if (loadedBlocks.length > 0) {
-          // Check if blocks have old column props → migrate
-          const hasColumnGroups = loadedBlocks.some(
-            (b: IdeaBlockBrief) => !!(b.props as any)?.columnGroupId,
-          );
-          if (hasColumnGroups) {
-            const migrated = migrateColumnPropsToLayout(loadedBlocks);
-            if (migrated) {
-              setLayout(migrated);
-              // Persist the migrated layout
-              void saveIdeaLayout(ideaId, migrated);
-            }
-          }
         }
+        // Old column-group auto-migration disabled — layout tree is the only system now
         if (!idea.content) setMode("source");
         setLoaded(true);
       })
