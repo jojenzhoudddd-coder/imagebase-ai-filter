@@ -632,9 +632,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
 
   const [dragBlockId, setDragBlockId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
-  const [ghostRect, setGhostRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+  const [ghostState, setGhostState] = useState<{ mouseX: number; mouseY: number; offsetX: number; offsetY: number; width: number; height: number } | null>(null);
   const dragStartPos = useRef<{ x: number; y: number } | null>(null);
-  const dragGhostRef = useRef<HTMLDivElement | null>(null);
+  const dragOffsetRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const dragActive = useRef(false);
 
   // Column resize state
@@ -679,15 +679,18 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     const handler = (e: PointerEvent) => {
       if (!dragActive.current) {
         dragActive.current = true;
-        dragStartPos.current = { x: e.clientX, y: e.clientY };
         setDragBlockId(dragId);
-        // Capture the block content area's fixed position for the ghost
+        // Capture offset: mouse position relative to block's top-left
         const contentEl = blockListRef.current?.querySelector(`[data-block-content="${dragId}"]`);
         if (contentEl) {
           const r = contentEl.getBoundingClientRect();
-          setGhostRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+          dragOffsetRef.current = { x: e.clientX - r.left, y: e.clientY - r.top, w: r.width, h: r.height };
+        } else {
+          dragOffsetRef.current = { x: 20, y: 12, w: 200, h: 40 };
         }
       }
+      const off = dragOffsetRef.current!;
+      setGhostState({ mouseX: e.clientX, mouseY: e.clientY, offsetX: off.x, offsetY: off.y, width: off.w, height: off.h });
       // Calculate drop target
       const container = blockListRef.current;
       if (!container) return;
@@ -737,9 +740,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       if (!dragActive.current) {
         setDragBlockId(null);
         setDropTarget(null);
-        setGhostRect(null);
+        setGhostState(null);
       } else {
-        setGhostRect(null);
+        setGhostState(null);
         dragActive.current = false;
       }
     };
@@ -750,7 +753,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         document.removeEventListener("keydown", escHandler);
         setDragBlockId(null);
         setDropTarget(null);
-        setGhostRect(null);
+        setGhostState(null);
         dragActive.current = false;
       }
     };
@@ -763,9 +766,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const dropTargetRef = useRef<DropTarget | null>(null);
   useEffect(() => { dropTargetRef.current = dropTarget; }, [dropTarget]);
 
-  // Commit on pointerup (ghostRect becomes null while dragBlockId is set)
+  // Commit on pointerup (ghostState becomes null while dragBlockId is set)
   useEffect(() => {
-    if (dragBlockId && ghostRect === null && dragActive.current === false) {
+    if (dragBlockId && ghostState === null && dragActive.current === false) {
       const target = dropTargetRef.current;
       if (target && dragBlockId) {
         const blockId = dragBlockId;
@@ -851,7 +854,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         setDropTarget(null);
       }
     }
-  }, [dragBlockId, ghostRect, blocks, ideaId]);
+  }, [dragBlockId, ghostState, blocks, ideaId]);
 
   // Column resize handler
   const handleColumnResizeStart = useCallback((groupId: string, e: React.PointerEvent) => {
@@ -1340,14 +1343,14 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             )}
           </div>
           {/* Drag ghost */}
-          {dragBlockId && ghostRect && createPortal(
+          {dragBlockId && ghostState && createPortal(
             <div style={{
               position: "fixed",
-              top: ghostRect.top,
-              left: ghostRect.left,
-              width: ghostRect.width,
-              height: ghostRect.height,
-              border: "2px dashed var(--primary, #4080FF)",
+              top: ghostState.mouseY - ghostState.offsetY,
+              left: ghostState.mouseX - ghostState.offsetX,
+              width: ghostState.width,
+              height: ghostState.height,
+              border: "1px dashed var(--primary, #4080FF)",
               borderRadius: 6,
               background: "rgba(20, 86, 240, 0.06)",
               pointerEvents: "none",
