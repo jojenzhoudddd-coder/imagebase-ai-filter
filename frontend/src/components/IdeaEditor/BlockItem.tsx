@@ -518,7 +518,7 @@ const BlockItem = memo(function BlockItem({
         </div>
       )}
       {/* Block content area */}
-      <div style={{ ...containerStyle, marginLeft: sourceMode ? 0 : 36 }} onClick={handleClick}>
+      <div data-block-content={block.id} style={{ ...containerStyle, marginLeft: sourceMode ? 0 : 36 }} onClick={handleClick}>
       <div style={outlineStyle}>
         {selected && <div style={{
           position: "absolute", inset: -2, borderRadius: 4,

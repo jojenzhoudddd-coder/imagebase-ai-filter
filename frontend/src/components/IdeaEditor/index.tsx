@@ -1338,7 +1338,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           </div>
           {/* Drag ghost */}
           {dragBlockId && ghostPos && (() => {
-            const el = blockListRef.current?.querySelector(`[data-block-id="${dragBlockId}"]`);
+            const el = blockListRef.current?.querySelector(`[data-block-content="${dragBlockId}"]`);
             const rect = el?.getBoundingClientRect();
             const w = rect?.width ?? 200;
             const h = rect?.height ?? 40;
