@@ -722,8 +722,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // ── Mode toggle with cursor preservation ──
   const caretOffsetRef = useRef(0);
   const toggleMode = useCallback(() => {
-    // Save which block has focus so we can restore after mode switch
-    const currentFocusBlock = focusBlockIdRef.current;
+    // Save which block has focus — read from DOM (most reliable, covers direct clicks)
+    const activeEl = document.activeElement;
+    const currentFocusBlock = activeEl?.closest?.("[data-block-id]")?.getAttribute("data-block-id")
+      ?? focusBlockIdRef.current;
     setMode((m) => {
       if (m === "source") {
         // Source → Preview: refetch blocks (may have changed via source edits)
