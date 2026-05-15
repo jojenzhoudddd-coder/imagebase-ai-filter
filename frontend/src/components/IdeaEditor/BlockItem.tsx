@@ -132,11 +132,12 @@ const BlockItem = memo(function BlockItem({
 
   const handleClick = useCallback(() => {
     if (readOnly) return;
+    // If user selected text (drag to select for copy), skip state transition
+    const sel = window.getSelection();
+    if (sel && sel.toString().length > 0) return;
     if (mode === "view") {
-      // Selected = preview highlight, does NOT lock other blocks
       setMode("selected");
     } else if (mode === "selected") {
-      // Second click: enter editing — this locks other blocks
       if (editLocked) { onEditBlocked?.(); return; }
       setEditValue(block.content);
       setMode("editing");
