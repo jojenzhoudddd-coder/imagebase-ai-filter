@@ -771,8 +771,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           }
         }
       }
+      lastDropTarget = foundTarget;
       setDropTarget(foundTarget);
     };
+    let lastDropTarget: DropTarget | null = null;
     const upHandler = () => {
       document.removeEventListener("pointermove", handler);
       document.removeEventListener("pointerup", upHandler);
@@ -782,8 +784,16 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         setDropTarget(null);
         setGhostState(null);
       } else {
+        // Commit drop using the closure-captured dropTarget (not stale ref)
+        const finalTarget = lastDropTarget;
+        const finalBlockId = dragId;
         setGhostState(null);
+        setDragBlockId(null);
+        setDropTarget(null);
         dragActive.current = false;
+        if (finalTarget) {
+          commitDrop(finalBlockId, finalTarget);
+        }
       }
     };
     const escHandler = (e: KeyboardEvent) => {
@@ -802,19 +812,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     document.addEventListener("keydown", escHandler);
   }, [mode, streaming, blocks]);
 
-  // Handle drop commit
-  const dropTargetRef = useRef<DropTarget | null>(null);
-  useEffect(() => { dropTargetRef.current = dropTarget; }, [dropTarget]);
-
-  // Commit on pointerup (ghostState becomes null while dragBlockId is set)
-  useEffect(() => {
-    if (dragBlockId && ghostState === null && dragActive.current === false) {
-      const target = dropTargetRef.current;
-      if (target && dragBlockId) {
-        const blockId = dragBlockId;
-        setDragBlockId(null);
-        setDropTarget(null);
-
+  // Commit a drop operation directly (called from upHandler closure)
+  const commitDrop = useCallback((blockId: string, target: DropTarget) => {
         if (target.type === "reorder") {
           const draggedBlock = blocks.find(b => b.id === blockId);
           const groupId = (draggedBlock?.props as any)?.columnGroupId;
@@ -910,12 +909,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             versionRef.current = bRes.version;
           })();
         }
-      } else {
-        setDragBlockId(null);
-        setDropTarget(null);
-      }
-    }
-  }, [dragBlockId, ghostState, blocks, ideaId]);
+  }, [blocks, ideaId]);
 
   // Column resize handler — key format: "groupId:dividerIndex"
   const handleColumnResizeStart = useCallback((resizeKey: string, e: React.PointerEvent) => {
