@@ -52,6 +52,90 @@ import { recordTokenUsage } from "../tokenUsageService.js";
 const ONEAPI_BASE_URL =
   (process.env.ONEAPI_BASE_URL || "https://oneapi.example.com/v1").replace(/\/$/, "");
 
+// ─── Multi-channel load balancing ──────────────────────────────────────
+//
+// ONEAPI_CHANNELS env var: comma-separated list of "baseUrl|apiKey" pairs.
+// Example: "https://proxy1.example.com/v1|sk-xxx,https://proxy2.example.com/v1|sk-yyy"
+// If not set, falls back to ONEAPI_BASE_URL + ONEAPI_API_KEY (single channel).
+// Round-robin + health tracking: channels that fail get a 60s cooldown.
+
+interface OneApiChannel {
+  baseUrl: string;
+  apiKey: string;
+  healthy: boolean;
+  cooldownUntil: number; // timestamp
+  requestCount: number;
+}
+
+const CHANNEL_COOLDOWN_MS = 60_000; // 1 minute cooldown on failure
+
+const channels: OneApiChannel[] = (() => {
+  const raw = process.env.ONEAPI_CHANNELS || "";
+  if (!raw.trim()) return []; // empty = single channel mode (legacy)
+  return raw.split(",").map(entry => {
+    const [baseUrl, apiKey] = entry.trim().split("|");
+    return {
+      baseUrl: (baseUrl || "").replace(/\/$/, ""),
+      apiKey: apiKey || "",
+      healthy: true,
+      cooldownUntil: 0,
+      requestCount: 0,
+    };
+  }).filter(ch => ch.baseUrl && ch.apiKey);
+})();
+
+let _channelRobinIdx = 0;
+
+/**
+ * Pick the next healthy channel via round-robin.
+ * Falls back to ONEAPI_BASE_URL + ONEAPI_API_KEY if no channels configured
+ * or all channels are in cooldown.
+ */
+export function pickChannel(): { baseUrl: string; apiKey: string } {
+  if (channels.length === 0) {
+    // Legacy single-channel mode
+    return { baseUrl: ONEAPI_BASE_URL, apiKey: process.env.ONEAPI_API_KEY || "" };
+  }
+
+  const now = Date.now();
+  // Restore channels past cooldown
+  for (const ch of channels) {
+    if (!ch.healthy && now >= ch.cooldownUntil) ch.healthy = true;
+  }
+
+  // Try round-robin among healthy channels
+  const healthy = channels.filter(ch => ch.healthy);
+  if (healthy.length > 0) {
+    const idx = _channelRobinIdx % healthy.length;
+    _channelRobinIdx = (_channelRobinIdx + 1) % healthy.length;
+    healthy[idx].requestCount++;
+    return healthy[idx];
+  }
+
+  // All channels in cooldown — fall back to primary
+  console.warn("[oneapi] all channels in cooldown, falling back to primary");
+  return { baseUrl: ONEAPI_BASE_URL, apiKey: process.env.ONEAPI_API_KEY || "" };
+}
+
+/** Mark a channel as unhealthy after a failure. */
+export function markChannelUnhealthy(baseUrl: string): void {
+  const ch = channels.find(c => c.baseUrl === baseUrl);
+  if (ch) {
+    ch.healthy = false;
+    ch.cooldownUntil = Date.now() + CHANNEL_COOLDOWN_MS;
+    console.warn(`[oneapi] channel ${baseUrl} marked unhealthy for ${CHANNEL_COOLDOWN_MS / 1000}s`);
+  }
+}
+
+/** Mark a channel as healthy after a successful request. */
+export function markChannelHealthy(baseUrl: string): void {
+  const ch = channels.find(c => c.baseUrl === baseUrl);
+  if (ch && !ch.healthy) {
+    ch.healthy = true;
+    ch.cooldownUntil = 0;
+  }
+}
+
 // ─── Typed upstream errors ──────────────────────────────────────────────
 //
 // Distinguishing *transient upstream overload* (retryable) from *hard
@@ -465,7 +549,8 @@ function parseSseBlock(block: string): { event: string; data: unknown } | null {
 async function* streamAnthropic(
   model: ModelEntry,
   params: ProviderStreamParams,
-  apiKey: string
+  apiKey: string,
+  baseUrlOverride?: string,
 ): AsyncGenerator<ProviderStreamEvent> {
   const { system, messages } = toAnthropicShape(params.input);
 
@@ -521,7 +606,7 @@ async function* streamAnthropic(
     };
   }
 
-  const baseUrl = (model.customBaseUrl ?? ONEAPI_BASE_URL).replace(/\/$/, "");
+  const baseUrl = (model.customBaseUrl ?? baseUrlOverride ?? ONEAPI_BASE_URL).replace(/\/$/, "");
   const url = `${baseUrl.replace(/\/v1$/, "")}/v1/messages`;
   // Use modern API version for custom endpoints (tool use GA requires
   // >= 2024-04-04); keep older version for OneAPI where the proxy handles
@@ -745,7 +830,8 @@ async function* streamAnthropic(
 async function* streamOpenAI(
   model: ModelEntry,
   params: ProviderStreamParams,
-  apiKey: string
+  apiKey: string,
+  baseUrlOverride?: string,
 ): AsyncGenerator<ProviderStreamEvent> {
   const messages = toOpenAIShape(params.input);
 
@@ -767,7 +853,7 @@ async function* streamOpenAI(
     body.tools = toOpenAITools(params.tools);
   }
 
-  const rawBase = (model.customBaseUrl ?? ONEAPI_BASE_URL).replace(/\/$/, "");
+  const rawBase = (model.customBaseUrl ?? baseUrlOverride ?? ONEAPI_BASE_URL).replace(/\/$/, "");
   // Ensure the URL ends with /v1 for OpenAI-compatible endpoints.
   const baseUrl = rawBase.endsWith("/v1") ? rawBase : `${rawBase}/v1`;
   const url = `${baseUrl}/chat/completions`;
@@ -928,19 +1014,30 @@ export const oneapiAdapter: ProviderAdapter = {
 
   async *stream(params: ProviderStreamParams): AsyncGenerator<ProviderStreamEvent> {
     const { model } = params;
-    // Custom models carry their own API key; builtin models use the shared env var.
-    const apiKey = model.customApiKey ?? process.env.ONEAPI_API_KEY;
+    // Multi-channel: custom models use their own key; builtin models pick
+    // a channel via round-robin load balancer. Channel health is tracked
+    // so failed channels get a 60s cooldown.
+    const channel = model.customBaseUrl ? null : pickChannel();
+    const apiKey = model.customApiKey ?? channel?.apiKey ?? process.env.ONEAPI_API_KEY;
     if (!apiKey) {
       throw new Error("ONEAPI_API_KEY not configured");
     }
 
-    if (model.group === "anthropic") {
-      yield* streamAnthropic(model, params, apiKey);
-      return;
+    try {
+      if (model.group === "anthropic") {
+        yield* streamAnthropic(model, params, apiKey, channel?.baseUrl);
+      } else {
+        // Default to OpenAI-compat wire format (openai group + any future
+        // providers that OneAPI exposes under chat.completions).
+        yield* streamOpenAI(model, params, apiKey, channel?.baseUrl);
+      }
+      // Mark channel healthy on success
+      if (channel) markChannelHealthy(channel.baseUrl);
+    } catch (err) {
+      // Mark channel unhealthy on failure so round-robin skips it
+      if (channel) markChannelUnhealthy(channel.baseUrl);
+      throw err;
     }
-    // Default to OpenAI-compat wire format (openai group + any future
-    // providers that OneAPI exposes under chat.completions).
-    yield* streamOpenAI(model, params, apiKey);
   },
 };
 

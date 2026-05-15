@@ -38,24 +38,41 @@ import type { ProviderAdapter } from "./providers/types.js";
 // acquire() returns a promise that resolves when a slot is available.
 // The caller MUST call the returned release() when done (even on error).
 
+/** Request priority levels. Lower number = higher priority. */
+export const enum ModelRequestPriority {
+  /** User directly typing in chat — must feel instant. */
+  USER_CHAT = 0,
+  /** Subagent spawned by the user's turn — user is waiting. */
+  SUBAGENT = 1,
+  /** Workflow branch — user is waiting but tolerates some delay. */
+  WORKFLOW = 2,
+  /** Background tasks: habit/cron, taste-meta, suggestion refresh. */
+  BACKGROUND = 3,
+}
+
 export class AsyncSemaphore {
   private _current = 0;
-  private _queue: Array<() => void> = [];
+  private _queue: Array<{ priority: number; resolve: () => void }> = [];
   constructor(readonly capacity: number) {}
 
   get current() { return this._current; }
   get waiting() { return this._queue.length; }
 
-  acquire(): Promise<() => void> {
+  /**
+   * Acquire a concurrency slot. Lower `priority` number = served first.
+   * Returns a release function that MUST be called when done.
+   */
+  acquire(priority: number = ModelRequestPriority.USER_CHAT): Promise<() => void> {
     if (this._current < this.capacity) {
       this._current++;
       return Promise.resolve(this._release.bind(this));
     }
     return new Promise<() => void>((resolve) => {
-      this._queue.push(() => {
-        this._current++;
-        resolve(this._release.bind(this));
-      });
+      const entry = { priority, resolve: () => { this._current++; resolve(this._release.bind(this)); } };
+      // Insert sorted by priority (lower = earlier in queue)
+      const idx = this._queue.findIndex(e => e.priority > priority);
+      if (idx === -1) this._queue.push(entry);
+      else this._queue.splice(idx, 0, entry);
     });
   }
 
@@ -63,7 +80,7 @@ export class AsyncSemaphore {
     this._current--;
     if (this._queue.length > 0) {
       const next = this._queue.shift()!;
-      next();
+      next.resolve();
     }
   }
 }

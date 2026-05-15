@@ -43,6 +43,7 @@ import {
   recordModelFailure,
   recordModelSuccess,
   getModelSemaphore,
+  ModelRequestPriority,
   type ModelEntry,
 } from "./modelRegistry.js";
 import { UpstreamOverloadError } from "./providers/oneapiAdapter.js";
@@ -1366,13 +1367,15 @@ async function* callModelStream(
   input: ArkInputItem[],
   abortSignal?: AbortSignal,
   tools?: ToolDefinition[],
-  recordContext?: { userId: string | null; workspaceId?: string | null; feature: string }
+  recordContext?: { userId: string | null; workspaceId?: string | null; feature: string },
+  priority?: number,
 ): AsyncGenerator<ProviderStreamEvent> {
   // Acquire a concurrency slot for this model before calling the provider.
   // This prevents N concurrent requests from overwhelming the upstream API
   // (e.g., Claude parallelLimit=3 means at most 3 in-flight requests).
+  // Priority: user chat (0) > subagent (1) > workflow (2) > background (3).
   const sem = getModelSemaphore(model.id);
-  const release = await sem.acquire();
+  const release = await sem.acquire(priority);
   try {
     const adapter = resolveAdapter(model);
     yield* adapter.stream({ model, input, tools, signal: abortSignal, recordContext });
@@ -1783,7 +1786,7 @@ export async function* spawnSubagent(
         userId: opts.ownerUserId ?? null,
         workspaceId: toolCtx.workspaceId ?? null,
         feature: "chat-subagent",
-      });
+      }, ModelRequestPriority.SUBAGENT);
 
       // Will accumulate one round of text + thinking and execute any tool calls inline
       const pendingToolCalls: Array<{ callId: string; name: string; args: any }> = [];
@@ -2685,7 +2688,7 @@ async function* runAgentImpl(
     let streamErrored: string | null = null;
     let roundStopReason: string | undefined;
     try {
-      for await (const ev of callModelStream(model, input, abortSignal, activeTools, tokenRecordContext)) {
+      for await (const ev of callModelStream(model, input, abortSignal, activeTools, tokenRecordContext, ModelRequestPriority.USER_CHAT)) {
         if (ev.kind === "text_delta") {
           // V2 streaming-write interception. Route to the idea doc's SSE
           // channel instead of the chat bubble so the user sees the content
@@ -2832,6 +2835,62 @@ async function* runAgentImpl(
       }
       logAgent({ event: "final_answer", round, textLen: roundText.length });
       break;
+    }
+
+    // ── Parallel subagent pre-pass ────────────────────────────────────
+    // If this round has ≥2 spawn_subagent calls AND no non-subagent calls
+    // mixed in, run them in parallel. Otherwise fall through to sequential.
+    // The parallel path collects all results, injects them into `input`,
+    // and skips the sequential loop for those calls.
+    const subagentCalls = funcCalls.filter(fc => fc.name === "spawn_subagent");
+    const nonSubagentCalls = funcCalls.filter(fc => fc.name !== "spawn_subagent");
+    const parallelSubagentResults = new Map<string, string>(); // callId → output
+
+    if (subagentCalls.length >= 2 && nonSubagentCalls.length === 0) {
+      logAgent({ event: "parallel_subagent_start", round, count: subagentCalls.length });
+      yield { event: "message", data: { text: `\n> 并行启动 ${subagentCalls.length} 个子任务…\n\n`, delta: true } };
+      accumulatedText += `\n> 并行启动 ${subagentCalls.length} 个子任务…\n\n`;
+
+      // Parse args + look up tool for each
+      const jobs = subagentCalls.map(fc => {
+        let parsedArgs: Record<string, unknown> = {};
+        try { parsedArgs = JSON.parse(fc.arguments || "{}"); } catch { /* */ }
+        const tool = toolsByNameForTurn[fc.name];
+        return { fc, parsedArgs, tool };
+      });
+
+      // Fire all in parallel (semaphore inside callModelStream handles concurrency)
+      const promises = jobs.map(async ({ fc, parsedArgs, tool }) => {
+        if (!tool) return { callId: fc.callId, output: JSON.stringify({ error: `未知工具: ${fc.name}` }), success: false };
+        try {
+          toolCtx.callId = fc.callId;
+          const out = await tool.handler(parsedArgs, toolCtx);
+          return { callId: fc.callId, output: out, success: true };
+        } catch (err) {
+          return { callId: fc.callId, output: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), success: false };
+        }
+      });
+
+      const results = await Promise.allSettled(promises);
+
+      for (const r of results) {
+        const val = r.status === "fulfilled" ? r.value : { callId: "?", output: JSON.stringify({ error: "subagent rejected" }), success: false };
+        parallelSubagentResults.set(val.callId, val.output);
+
+        // Emit tool_start + tool_result for each so the FE shows cards
+        yield { event: "tool_start", data: { callId: val.callId, tool: "spawn_subagent", args: {} } };
+        yield { event: "tool_result", data: { callId: val.callId, tool: "spawn_subagent", output: val.output, success: val.success } };
+        accumulatedToolCalls.push({ callId: val.callId, tool: "spawn_subagent", args: {}, status: val.success ? "success" : "error" });
+
+        // Feed back to model
+        const job = jobs.find(j => j.fc.callId === val.callId);
+        input.push({ type: "function_call", call_id: val.callId, name: "spawn_subagent", arguments: job?.fc.arguments || "{}" });
+        input.push({ type: "function_call_output", call_id: val.callId, output: truncateToolOutput(val.output, "spawn_subagent") });
+      }
+
+      logAgent({ event: "parallel_subagent_done", round, count: subagentCalls.length });
+      // Skip the sequential loop — all calls handled
+      continue; // next round
     }
 
     // Execute each tool call sequentially.
