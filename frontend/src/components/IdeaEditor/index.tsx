@@ -1337,33 +1337,27 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             )}
           </div>
           {/* Drag ghost */}
-          {dragBlockId && ghostPos && createPortal(
-            <div style={{
-              position: "fixed",
-              left: ghostPos.x - 40,
-              top: ghostPos.y - 16,
-              width: 200,
-              maxHeight: 80,
-              overflow: "hidden",
-              padding: "8px 12px",
-              background: "var(--surface-1, #fff)",
-              border: "1px solid var(--border-default, #e0e0e0)",
-              borderRadius: 8,
-              boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-              opacity: 0.85,
-              pointerEvents: "none",
-              zIndex: 99999,
-              fontSize: 13,
-              lineHeight: 1.4,
-              color: "var(--text-primary)",
-            }}>
-              {(() => {
-                const db = blocks.find(b => b.id === dragBlockId);
-                return db ? db.content.slice(0, 80) + (db.content.length > 80 ? "..." : "") : "";
-              })()}
-            </div>,
-            document.body,
-          )}
+          {dragBlockId && ghostPos && (() => {
+            const el = blockListRef.current?.querySelector(`[data-block-id="${dragBlockId}"]`);
+            const rect = el?.getBoundingClientRect();
+            const w = rect?.width ?? 200;
+            const h = rect?.height ?? 40;
+            return createPortal(
+              <div style={{
+                position: "fixed",
+                left: ghostPos.x - 20,
+                top: ghostPos.y - 12,
+                width: w,
+                height: h,
+                border: "2px dashed var(--primary, #4080FF)",
+                borderRadius: 6,
+                background: "rgba(20, 86, 240, 0.06)",
+                pointerEvents: "none",
+                zIndex: 99999,
+              }} />,
+              document.body,
+            );
+          })()}
           </>
         ) : (
           <TiptapPreview
