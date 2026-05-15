@@ -505,8 +505,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
 
   // ── Drag-drop for images (both modes) ──
   const [dragInsertIdx, setDragInsertIdx] = useState<number | null>(null);
-  // Source mode: line number for anchor + Y position for indicator
-  const [sourceDragLine, setSourceDragLine] = useState<{ line: number; y: number } | null>(null);
+  // (sourceDragLine removed — source mode now uses same block list as preview)
 
   const isImageFile = useCallback((file: File) => {
     return /^image\/(png|jpeg|jpg|gif|svg\+xml|webp)$/.test(file.type);
@@ -587,110 +586,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
 
   // ── Source mode drag-drop with block-level anchor ──
 
-  /** Find the nearest blank-line boundary in the source for the given clientY. */
-  const getSourceBlockBoundary = useCallback((clientY: number): { line: number; y: number } | null => {
-    const view = cmRef.current?.getView();
-    if (!view) return null;
-    const doc = view.state.doc;
-    // Collect blank-line positions (block boundaries): line 1 and every line after a blank line
-    const boundaries: number[] = [1]; // always can insert before line 1
-    for (let i = 1; i <= doc.lines; i++) {
-      const lineText = doc.line(i).text;
-      if (lineText.trim() === "" && i < doc.lines) {
-        boundaries.push(i + 1); // insert after this blank line
-      }
-    }
-    boundaries.push(doc.lines + 1); // can insert after last line
-
-    // Find the boundary whose Y position is closest to clientY
-    let best = boundaries[0];
-    let bestDist = Infinity;
-    for (const lineNum of boundaries) {
-      let y: number;
-      if (lineNum <= doc.lines) {
-        const lineStart = doc.line(lineNum).from;
-        const coords = view.coordsAtPos(lineStart);
-        y = coords ? coords.top : 0;
-      } else {
-        // After last line
-        const lastLineEnd = doc.line(doc.lines).to;
-        const coords = view.coordsAtPos(lastLineEnd);
-        y = coords ? coords.bottom + 4 : 0;
-      }
-      const dist = Math.abs(clientY - y);
-      if (dist < bestDist) { bestDist = dist; best = lineNum; }
-    }
-
-    // Get the Y coordinate for the best boundary
-    let bestY = 0;
-    if (best <= doc.lines) {
-      const coords = view.coordsAtPos(doc.line(best).from);
-      bestY = coords ? coords.top : 0;
-    } else {
-      const coords = view.coordsAtPos(doc.line(doc.lines).to);
-      bestY = coords ? coords.bottom + 4 : 0;
-    }
-    return { line: best, y: bestY };
-  }, []);
-
-  const handleSourceDragOver = useCallback((e: React.DragEvent) => {
-    if (streaming || !e.dataTransfer.types.includes("Files")) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    const boundary = getSourceBlockBoundary(e.clientY);
-    setSourceDragLine(boundary);
-  }, [streaming, getSourceBlockBoundary]);
-
-  const handleSourceDragLeave = useCallback((e: React.DragEvent) => {
-    if (bodyRef.current && !bodyRef.current.contains(e.relatedTarget as Node)) {
-      setSourceDragLine(null);
-    }
-  }, []);
-
-  const handleSourceDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const insertLine = sourceDragLine?.line ?? null;
-    setSourceDragLine(null);
-    if (insertLine === null || streaming) return;
-
-    const files = Array.from(e.dataTransfer.files).filter(isImageFile);
-    if (files.length === 0) return;
-
-    const view = cmRef.current?.getView();
-    if (!view) return;
-
-    for (const file of files) {
-      try {
-        const att = await uploadIdeaAttachment(ideaId, file);
-        const alt = (att.originalName || "image").replace(/[\[\]]/g, "");
-        const mdContent = `![${alt}](${att.url})\n\n`;
-
-        // Insert at the line boundary
-        const doc = view.state.doc;
-        let insertPos: number;
-        if (insertLine <= doc.lines) {
-          insertPos = doc.line(insertLine).from;
-        } else {
-          insertPos = doc.length;
-          // Ensure there's a newline before the insert
-          if (doc.length > 0 && doc.sliceString(doc.length - 1) !== "\n") {
-            view.dispatch({ changes: { from: doc.length, insert: "\n" } });
-            insertPos = view.state.doc.length;
-          }
-        }
-        view.dispatch({
-          changes: { from: insertPos, insert: mdContent },
-          selection: { anchor: insertPos + mdContent.length },
-        });
-        // Trigger onChange
-        handleSourceChange(view.state.doc.toString(), insertPos + mdContent.length);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        toast.error(t("idea.uploadFailed") + `: ${msg}`);
-      }
-    }
-  }, [sourceDragLine, streaming, isImageFile, ideaId, handleSourceChange, toast, t]);
+  // Source mode drag removed — source mode now uses same block list + drag-drop as preview
 
   // ── Status label ──
   const statusLabel = (() => {
@@ -776,32 +672,6 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       <div className="idea-editor-body" ref={bodyRef} style={{ position: "relative" }}>
         {!loaded ? (
           <div className="idea-editor-loading">{t("idea.loading")}</div>
-        ) : mode === "source" ? (
-          <div
-            style={{ position: "relative" }}
-            onDragOver={handleSourceDragOver}
-            onDragLeave={handleSourceDragLeave}
-            onDrop={handleSourceDrop}
-          >
-            <CodeMirrorSource
-              ref={cmRef} value={content} readOnly={streaming} streaming={streaming}
-              placeholder={t("idea.empty")} onChange={handleSourceChange}
-              onPasteFiles={handleSourcePasteFiles}
-            />
-            {sourceDragLine && (
-              <div style={{
-                position: "fixed",
-                left: bodyRef.current?.getBoundingClientRect().left ?? 0,
-                right: window.innerWidth - (bodyRef.current?.getBoundingClientRect().right ?? 0),
-                top: sourceDragLine.y - 1,
-                height: 2,
-                background: "var(--primary, #1456F0)",
-                borderRadius: 1,
-                pointerEvents: "none",
-                zIndex: 50,
-              }} />
-            )}
-          </div>
         ) : blocks.length > 0 ? (
           <div
             ref={blockListRef}
@@ -825,6 +695,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                   block={block}
                   ideaId={ideaId}
                   readOnly={streaming}
+                  sourceMode={mode === "source"}
                   autoFocus={autoEditBlockId === block.id}
                   remoteUpdatePending={pendingRemoteBlockRef.current.has(block.id)}
                   onSaved={handleBlockSaved}
@@ -832,7 +703,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                   onCreatedAfter={handleBlockCreatedAfter}
                   onConflict={handleBlockConflict}
                   onFocusChange={handleBlockFocusChange}
-                  editLocked={!!focusBlockId && focusBlockId !== block.id}
+                  editLocked={mode !== "source" && !!focusBlockId && focusBlockId !== block.id}
                   onEditBlocked={() => toast.info(t("idea.editLocked"))}
                   onFocusPrev={() => {
                     if (idx > 0) setFocusBlockId(blocks[idx - 1].id);

@@ -71,6 +71,8 @@ export interface BlockItemProps {
   onEditBlocked?: () => void;
   /** True if another block is currently being edited. */
   editLocked?: boolean;
+  /** Source mode: always show raw markdown, click to focus (no two-click flow). */
+  sourceMode?: boolean;
 }
 
 const BlockItem = memo(function BlockItem({
@@ -88,10 +90,11 @@ const BlockItem = memo(function BlockItem({
   onFocusChange,
   onEditBlocked,
   editLocked = false,
+  sourceMode = false,
 }: BlockItemProps) {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<"view" | "selected" | "editing">("view");
-  const [editValue, setEditValue] = useState("");
+  const [mode, setMode] = useState<"view" | "selected" | "editing">(sourceMode ? "editing" : "view");
+  const [editValue, setEditValue] = useState(sourceMode ? block.content : "");
   const [hovered, setHovered] = useState(false);
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -103,6 +106,11 @@ const BlockItem = memo(function BlockItem({
   useEffect(() => {
     blockVersionRef.current = (block as any).version ?? 0;
   }, [block]);
+
+  // Source mode: sync editValue when block content changes externally
+  useEffect(() => {
+    if (sourceMode && !saving) setEditValue(block.content);
+  }, [sourceMode, block.content, saving]);
 
   // Auto-focus: only for newly created blocks (autoFocus=true on first mount).
   // Uses a ref to fire only once and not re-trigger on parent re-renders.
@@ -157,20 +165,27 @@ const BlockItem = memo(function BlockItem({
   }, [readOnly, editLocked, mode, block.content, block.id, onFocusChange, onEditBlocked]);
 
   const cancelEdit = useCallback(() => {
+    if (sourceMode) {
+      // Source mode: revert content but stay in editing
+      setEditValue(block.content);
+      return;
+    }
     setMode("view");
     setEditValue("");
     setHovered(false);
     onFocusChange?.(block.id, false);
-  }, [block.id, onFocusChange]);
+  }, [block.id, block.content, onFocusChange, sourceMode]);
 
   const commitEdit = useCallback(async () => {
     if (!editing || saving) return;
     const trimmed = editValue;
-    // No change → just close
+    // No change → just close (or stay in source mode)
     if (trimmed === block.content) {
-      setMode("view");
-      setHovered(false);
-      onFocusChange?.(block.id, false);
+      if (!sourceMode) {
+        setMode("view");
+        setHovered(false);
+        onFocusChange?.(block.id, false);
+      }
       return;
     }
     setSaving(true);
@@ -180,15 +195,19 @@ const BlockItem = memo(function BlockItem({
         baseVersion: blockVersionRef.current,
       });
       blockVersionRef.current = res.blockVersion;
-      setMode("view");
-      setHovered(false);
-      onFocusChange?.(block.id, false);
-      onSaved?.(res);
-    } catch (err: any) {
-      if (err?.status === 409) {
+      if (!sourceMode) {
         setMode("view");
         setHovered(false);
         onFocusChange?.(block.id, false);
+      }
+      onSaved?.(res);
+    } catch (err: any) {
+      if (err?.status === 409) {
+        if (!sourceMode) {
+          setMode("view");
+          setHovered(false);
+          onFocusChange?.(block.id, false);
+        }
         onConflict?.();
       } else {
         // Keep editing on other errors so user doesn't lose work
@@ -199,7 +218,10 @@ const BlockItem = memo(function BlockItem({
     }
   }, [editing, saving, editValue, block.content, block.id, ideaId, onSaved, onConflict, onFocusChange]);
 
-  // No blur-to-commit — editing is a stable state with explicit commit/cancel buttons
+  // Source mode: auto-save on blur
+  const handleBlur = useCallback(() => {
+    if (sourceMode && editing) void commitEdit();
+  }, [sourceMode, editing, commitEdit]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Escape") {
@@ -254,20 +276,20 @@ const BlockItem = memo(function BlockItem({
   const textareaStyle: React.CSSProperties = {
     display: "block",
     width: "100%",
-    minHeight: 32,
-    padding: "2px 0",
+    minHeight: sourceMode ? 20 : 32,
+    padding: sourceMode ? "0" : "2px 0",
     margin: 0,
     border: "none",
-    borderRadius: 4,
-    background: "var(--surface-2)",
+    borderRadius: sourceMode ? 0 : 4,
+    background: sourceMode ? "transparent" : "var(--surface-2)",
     color: "var(--text-primary)",
-    fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, ui-monospace, monospace",
-    fontSize: 13,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
+    fontSize: sourceMode ? 14 : 13,
     lineHeight: "1.6",
     resize: "none",
     overflow: "hidden",
-    outline: "1px solid var(--primary)",
-    outlineOffset: 2,
+    outline: sourceMode ? "none" : "1px solid var(--primary)",
+    outlineOffset: sourceMode ? 0 : 2,
     boxSizing: "border-box" as const,
   };
 
@@ -283,7 +305,7 @@ const BlockItem = memo(function BlockItem({
 
   if (editing) {
     return (
-      <div style={containerStyle}>
+      <div style={containerStyle} data-block-id={block.id}>
         {remoteUpdatePending && (
           <div style={{
             fontSize: 11,
@@ -299,29 +321,32 @@ const BlockItem = memo(function BlockItem({
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
           onInput={handleTextareaInput}
           style={textareaStyle}
           spellCheck={false}
         />
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-          <span style={{ flex: 1, fontSize: 12, color: "var(--text-muted)", lineHeight: "32px" }}>
-            {t("idea.block.editHint")}
-          </span>
-          <button
-            type="button"
-            className="block-edit-btn-cancel"
-            style={btnBase}
-            onClick={(e) => { e.stopPropagation(); cancelEdit(); }}
-            disabled={saving}
-          >{t("idea.block.cancel")}</button>
-          <button
-            type="button"
-            className="block-edit-btn-commit"
-            style={btnBase}
-            onClick={(e) => { e.stopPropagation(); void commitEdit(); }}
-            disabled={saving}
-          >{saving ? t("idea.block.saving") : t("idea.block.commit")}</button>
-        </div>
+        {!sourceMode && (
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+            <span style={{ flex: 1, fontSize: 12, color: "var(--text-muted)", lineHeight: "32px" }}>
+              {t("idea.block.editHint")}
+            </span>
+            <button
+              type="button"
+              className="block-edit-btn-cancel"
+              style={btnBase}
+              onClick={(e) => { e.stopPropagation(); cancelEdit(); }}
+              disabled={saving}
+            >{t("idea.block.cancel")}</button>
+            <button
+              type="button"
+              className="block-edit-btn-commit"
+              style={btnBase}
+              onClick={(e) => { e.stopPropagation(); void commitEdit(); }}
+              disabled={saving}
+            >{saving ? t("idea.block.saving") : t("idea.block.commit")}</button>
+          </div>
+        )}
       </div>
     );
   }
