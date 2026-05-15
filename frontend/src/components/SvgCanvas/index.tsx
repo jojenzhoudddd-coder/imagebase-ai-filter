@@ -439,7 +439,7 @@ function useCanvasTransform() {
     return () => ac.abort();
   }, []);
 
-  // ── fitToView: set scale & pan so contentBounds fits with 40px padding on top/left/right ──
+  // ── fitToView: scale + pan so contentBounds fits with 60px padding on top/left/right ──
   const fitToView = useCallback(
     (contentBounds: { x: number; y: number; width: number; height: number }) => {
       const el = elRef.current;
@@ -448,19 +448,20 @@ function useCanvasTransform() {
 
       const vw = el.clientWidth;
       const vh = el.clientHeight;
-      const pad = 40; // fixed 40px padding on top, left, right
+      const pad = 60; // fixed 60px padding on top, left, right
 
-      // Scale so content fits within (vw - 2*pad) horizontally and (vh - pad) vertically
-      const scaleX = (vw - pad * 2) / contentBounds.width;
-      const scaleY = (vh - pad * 2) / contentBounds.height;
-      const s = Math.min(scaleX, scaleY, 2); // cap at 200%
+      // Determine scale so that content * scale = available space
+      const availW = vw - pad * 2;  // left + right padding
+      const availH = vh - pad * 2;  // top + bottom padding
+      const s = Math.min(availW / contentBounds.width, availH / contentBounds.height, 2);
 
-      // Position: left edge at pad, top edge at pad
+      // Pan so that content's top-left lands at (pad, pad) in screen space
+      // screen_x = content_x * scale + panX  =>  panX = pad - content_x * scale
       const panX = pad - contentBounds.x * s;
       const panY = pad - contentBounds.y * s;
 
-      panRef.current = { x: panX, y: panY };
       scaleRef.current = Math.max(MIN_SCALE, s);
+      panRef.current = { x: panX, y: panY };
       applyTransform();
       setZoomPercent(Math.round(scaleRef.current * 100));
     },
