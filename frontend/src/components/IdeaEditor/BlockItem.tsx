@@ -124,14 +124,19 @@ const BlockItem = memo(function BlockItem({
     }
   }, [autoFocus]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-grow textarea and focus
+  // Auto-grow textarea (and focus only in non-source mode)
   useEffect(() => {
     if (!editing || !textareaRef.current) return;
     const ta = textareaRef.current;
-    ta.focus();
-    ta.style.height = "auto";
-    ta.style.height = ta.scrollHeight + "px";
-    ta.selectionStart = ta.selectionEnd = ta.value.length;
+    // Use rAF to ensure DOM has rendered before measuring
+    requestAnimationFrame(() => {
+      ta.style.height = "auto";
+      ta.style.height = ta.scrollHeight + "px";
+    });
+    if (!sourceMode) {
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
+    }
   }, [editing]);
 
   // Click outside selected block → deselect
