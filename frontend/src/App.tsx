@@ -21,6 +21,7 @@ import type { SidebarItem } from "./components/Sidebar";
 import type { TreeItemType, IdeaBrief, FocusEntity } from "./types";
 import SvgCanvas from "./components/SvgCanvas/index";
 import IdeaEditor from "./components/IdeaEditor/index";
+import { Component } from "react";
 import DemoPreviewPanel from "./components/DemoPreviewPanel/index";
 import { useToast } from "./components/Toast/index";
 import { useTranslation } from "./i18n/index";
@@ -43,6 +44,17 @@ type UndoItem =
   | { type: "fields"; fieldDefs: Field[]; snapshot: any; removedConditions: ViewFilter["conditions"]; removedSavedConditions: ViewFilter["conditions"]; removedHiddenIds: string[]; fieldOrderBefore: string[] }
   | { type: "cellEdit"; recordId: string; fieldId: string; oldValue: CellValue; newValue: CellValue }
   | { type: "cellBatchClear"; changes: Array<{ recordId: string; fieldId: string; oldValue: CellValue }> };
+
+// Temporary error boundary to catch IdeaEditor crashes
+class IdeaErrorBoundary extends Component<{children: React.ReactNode}, {error: Error | null}> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error) { console.error("[IdeaErrorBoundary]", error); }
+  render() {
+    if (this.state.error) return <div style={{padding:40,color:"red",whiteSpace:"pre-wrap"}}><h2>IdeaEditor crashed</h2><pre>{this.state.error.message}{"\n"}{this.state.error.stack}</pre></div>;
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const [fields, setFields] = useState<Field[]>([]);
@@ -1932,15 +1944,17 @@ export default function App() {
       const idea = documentIdeas.find((x) => x.id === activeTableId);
       if (!idea) return null;
       return (
-        <IdeaEditor
-          key={activeTableId}
-          ideaId={activeTableId}
-          ideaName={idea.name}
-          workspaceId={WORKSPACE_ID}
-          clientId={CLIENT_ID}
-          onRename={(name) => handleRenameSidebarItemExtended(activeTableId, name)}
-          onNavigate={handleNavigateToEntity}
-        />
+        <IdeaErrorBoundary>
+          <IdeaEditor
+            key={activeTableId}
+            ideaId={activeTableId}
+            ideaName={idea.name}
+            workspaceId={WORKSPACE_ID}
+            clientId={CLIENT_ID}
+            onRename={(name) => handleRenameSidebarItemExtended(activeTableId, name)}
+            onNavigate={handleNavigateToEntity}
+          />
+        </IdeaErrorBoundary>
       );
     }
     if (activeItemType === "demo") {

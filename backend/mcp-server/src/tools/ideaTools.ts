@@ -74,9 +74,11 @@ export const ideaNavTools: ToolDefinition[] = [
   {
     name: "get_idea",
     description:
-      "读取一篇灵感文档的完整内容 + 章节结构 + block 列表(每段一个 blockId,供 update_idea_block / delete_idea_block / move_idea_block 定位)。" +
-      "content 是原始 Markdown(可能嵌入 HTML)。" +
-      "blocks 是 PR8 引入的精准编辑锚点 — 每段都有唯一 id,reorder/delete/transform 不会跑偏。",
+      "读取一篇灵感文档的完整内容 + 章节结构 + block 列表。\n" +
+      "**Block Tree 是数据源**：每篇 idea 由 block 组成（heading / paragraph / list / code / quote / divider），" +
+      "每个 block 有唯一 id、type、content（Markdown 原文）、version。编辑时优先使用 block 级工具 " +
+      "(update_idea_block / create_idea_block / delete_idea_block / move_idea_block / batch_update_idea_blocks)。\n" +
+      "content 字段 = 所有 block.content 拼接的整篇 Markdown，仅供参考阅读，不要用它做拆分定位。",
     inputSchema: {
       type: "object",
       properties: {
@@ -99,21 +101,20 @@ export const ideaNavTools: ToolDefinition[] = [
       } catch {
         /* ignored — sections empty is acceptable */
       }
-      // PR8: also fetch blocks so the Agent can use blockId-based mutations
-      // without an extra round trip. Best-effort — if /blocks fails we
-      // just return without blocks.
-      let blocks: { id: string; order: number; type: string; props: any }[] = [];
+      // Fetch blocks — blocks are the source of truth in block-tree mode.
+      // Include content so the Agent can read/edit individual blocks.
+      let blocks: { id: string; order: number; type: string; content: string; version: number; parentId: string | null; props: any }[] = [];
       try {
-        const blocksRes = await apiRequest<{ blocks: { id: string; order: number; type: string; content: string; props: any }[] }>(
+        const blocksRes = await apiRequest<{ blocks: { id: string; order: number; type: string; content: string; parentId?: string | null; version?: number; props: any }[] }>(
           `/api/ideas/${id}/blocks`,
         );
-        // Strip raw `content` from the per-block payload — the Agent already
-        // has detail.content; emitting it twice doubles tokens. props is
-        // small + useful (e.g. heading.level / list.ordered).
         blocks = blocksRes.blocks.map((b) => ({
           id: b.id,
           order: b.order,
           type: b.type,
+          content: b.content,
+          version: b.version ?? 0,
+          parentId: b.parentId ?? null,
           props: b.props,
         }));
       } catch {
@@ -125,6 +126,9 @@ export const ideaNavTools: ToolDefinition[] = [
         workspaceId: detail.workspaceId,
         parentId: detail.parentId,
         version: detail.version,
+        layout: detail.layout ?? null,
+        // content = all blocks concatenated (read-only reference).
+        // For editing, use block-level tools with blockId + baseVersion.
         content: detail.content,
         sections,
         blocks,
@@ -140,26 +144,26 @@ export const ideaWriteTools: ToolDefinition[] = [
   {
     name: "create_idea",
     description:
-      "新建一篇空白灵感文档。返回 {id, name, version}。" +
-      "新建的文档 version 恒为 0 —— 如果紧接着要调用 begin_idea_stream_write，" +
-      "直接把返回的 version 当成 baseVersion 传进去，不要猜数字、也不必再调 get_idea。",
+      "新建一篇灵感文档（含 5 个模板 block：标题 + 2 个章节各带正文）。返回 {id, name, version}。\n" +
+      "新建后可立即用 get_idea 获取所有 block 的 id，然后用 update_idea_block 修改各段内容。",
     inputSchema: {
       type: "object",
       properties: {
         name: { type: "string", description: "文档名称，如 '2026 Q2 产品线路图'" },
         workspaceId: { type: "string", description: "工作空间 id，默认使用当前工作空间" },
         parentId: { type: "string", description: "父文件夹 id（可选）" },
+        lang: { type: "string", enum: ["zh", "en"], description: "模板语言，默认 en" },
       },
       required: ["name"],
     },
     handler: async (args, ctx) => {
-      const body = {
+      const body: Record<string, unknown> = {
         name: String(args.name),
         workspaceId: args.workspaceId || ctx?.workspaceId || DEFAULT_WORKSPACE_ID,
         parentId: args.parentId || null,
       };
+      if (args.lang) body.lang = String(args.lang);
       const idea = await apiRequest<any>("/api/ideas", { method: "POST", body });
-      // version is 0 for a fresh idea; fall back to 0 if server-side is older
       return toolResult({
         id: idea.id,
         name: idea.name,
@@ -216,7 +220,7 @@ export const ideaWriteTools: ToolDefinition[] = [
   {
     name: "append_to_idea",
     description:
-      "在灵感文档的末尾追加 Markdown 内容。适合没有明确章节锚点、直接续写新段落的场景。" +
+      "（优先用 create_idea_block）在灵感文档的末尾追加 Markdown 内容。内部会自动创建新 block。适合没有明确章节锚点、直接续写新段落的场景。" +
       "payload 允许嵌入 HTML（<div> / <figure> / <pre> 等都可以），以及 @ mention 链接——" +
       "mention 链接格式：[@标签](mention://<type>/<id>[?query])，type ∈ {view,taste,idea,idea-section}。" +
       "写 mention 前先用 find_mentionable 拿到 markdown 字段，把它原样嵌入即可。\n" +
@@ -240,7 +244,8 @@ export const ideaWriteTools: ToolDefinition[] = [
   {
     name: "insert_into_idea",
     description:
-      "按锚点向灵感文档插入内容。anchor 可以是 {position:'start'|'end'} 或 {section:<slug>, mode:'append'|'after'|'replace'}。" +
+      "（优先用 create_idea_block / update_idea_block）按锚点向灵感文档插入内容。" +
+      "anchor 可以是 {position:'start'|'end'} 或 {section:<slug>, mode:'append'|'after'|'replace'}。" +
       "slug 来自 get_idea 返回的 sections 数组。若 slug 不存在则返回错误，调用方需回退到 append_to_idea。",
     inputSchema: {
       type: "object",
@@ -261,8 +266,8 @@ export const ideaWriteTools: ToolDefinition[] = [
   {
     name: "replace_idea_content",
     description:
-      "⚠️ 用新的 Markdown 完整替换整篇灵感文档的正文。会触发 version 自增和 mention 重建，" +
-      "旧内容不可恢复。只在用户明确要求重写整篇时使用，必须先征得同意。",
+      "⚠️（优先用 batch_update_idea_blocks）用新的 Markdown 完整替换整篇灵感文档的正文。" +
+      "会触发 version 自增、block 重建和 mention 重建，旧内容不可恢复。只在用户明确要求重写整篇时使用，必须先征得同意。",
     danger: true,
     inputSchema: {
       type: "object",
@@ -390,11 +395,10 @@ export const ideaWriteTools: ToolDefinition[] = [
     name: "update_idea_block",
     description:
       "替换某 idea 中某 block 的内容,或把 block type 转换成另一种。" +
-      "调用时机:精确改一段而不动其它段(比 replace_idea_content 安全得多)。" +
-      "传 content 直接替换该 block 的 markdown 字节;传 transformTo 自动转类型。" +
-      "transformTo 可选:paragraph / heading-1 ~ heading-6 / quote / list-bullet / divider。" +
-      "至少要传 content / transformTo 之一。" +
-      "返回 idea 的新 version,后续写入用此版本号。",
+      "**这是编辑 idea 的首选工具** — 精确改一段而不动其它段,比 replace_idea_content 安全得多。\n" +
+      "传 content 直接替换该 block 的 markdown；传 transformTo 自动转类型。至少传一个。\n" +
+      "baseVersion：从 get_idea 的 blocks[].version 取,用于乐观并发（版本不匹配返回 409）。" +
+      "返回 blockVersion（该 block 的新版本号）+ idea 的新 version。",
     inputSchema: {
       type: "object",
       properties: {
@@ -403,12 +407,16 @@ export const ideaWriteTools: ToolDefinition[] = [
         content: {
           type: "string",
           description:
-            "新的 block markdown(整段替换)。需要包含必要的标记(heading 的 # / quote 的 > 等)。",
+            "新的 block markdown(整段替换)。需要包含必要的标记(heading 的 # / quote 的 > 等)。结尾应含 \\n。",
         },
         transformTo: {
           type: "string",
           enum: ["paragraph", "heading-1", "heading-2", "heading-3", "heading-4", "heading-5", "heading-6", "quote", "list-bullet", "divider"],
           description: "把该 block 转成此类型(自动处理标记)",
+        },
+        baseVersion: {
+          type: "number",
+          description: "该 block 当前的 version（从 get_idea blocks[].version 取）。不匹配返回 409。",
         },
       },
       required: ["ideaId", "blockId"],
@@ -420,16 +428,20 @@ export const ideaWriteTools: ToolDefinition[] = [
       const body: Record<string, unknown> = {};
       if (typeof args.content === "string") body.content = args.content;
       if (typeof args.transformTo === "string") body.transformTo = args.transformTo;
-      if (Object.keys(body).length === 0) {
+      if (typeof args.baseVersion === "number") body.baseVersion = args.baseVersion;
+      if (!body.content && !body.transformTo) {
         return JSON.stringify({ error: "either content or transformTo required" });
       }
       try {
-        const r = await apiRequest<{ id: string; version: number; content: string }>(
+        const r = await apiRequest<{ id: string; version: number; content: string; blockVersion: number }>(
           `/api/ideas/${ideaId}/blocks/${blockId}`,
           { method: "PATCH", body },
         );
-        return toolResult({ ideaId: r.id, version: r.version, contentLength: r.content.length });
-      } catch (err) {
+        return toolResult({ ideaId: r.id, version: r.version, blockVersion: r.blockVersion });
+      } catch (err: any) {
+        if (err?.status === 409 || err?.message?.includes("409")) {
+          return JSON.stringify({ error: "version conflict — re-fetch get_idea to get latest block versions", conflict: true });
+        }
         return JSON.stringify({ error: `update_idea_block failed: ${err instanceof Error ? err.message : String(err)}` });
       }
     },

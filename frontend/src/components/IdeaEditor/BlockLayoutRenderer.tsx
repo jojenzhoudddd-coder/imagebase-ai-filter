@@ -1,18 +1,20 @@
 /**
- * BlockLayoutRenderer — recursively renders a BlockLayoutNode tree.
+ * BlockLayoutRenderer — renders a ColumnRow recursively.
  *
- * - leaf nodes render a <BlockItem> for the referenced blockId
- * - split nodes render CSS Grid with two children + a resize handle
+ * direction "h": CSS Grid side-by-side columns (fr widths + 12px resize handles)
+ * direction "v": flex column with natural heights, no resize handles
  *
- * All styling is inline (no CSS file changes).
+ * Anchor lines:
+ *   "h" row: 4 edge lines on the whole row (6px gap) + insertion lines between columns
+ *   "v" row: horizontal lines tight against blocks
  */
 import React, { useCallback, useRef } from "react";
-import type { BlockLayoutNode } from "../../types";
+import type { ColumnRow, ColumnCell } from "../../types";
 import type { IdeaBlockBrief, PatchBlockResponse } from "../../api";
 import BlockItem from "./BlockItem";
 
 export interface BlockLayoutRendererProps {
-  node: BlockLayoutNode;
+  row: ColumnRow;
   blocks: IdeaBlockBrief[];
   ideaId: string;
   streaming: boolean;
@@ -34,27 +36,110 @@ export interface BlockLayoutRendererProps {
   onDragStart: (blockId: string) => void;
   onFocusPrev: (blockId: string) => void;
   onFocusNext: (blockId: string) => void;
-  /** Callback when a resize handle is dragged. path identifies which split. */
-  onResizeStart: (path: ("first" | "second")[], e: React.PointerEvent) => void;
-  /** Current path being resized (for visual feedback). null if not resizing. */
-  resizingPath: string | null;
-  /** Current depth for enforcing max nesting. */
+  onResizeStart: (rowId: string, dividerIndex: number, e: React.PointerEvent) => void;
+  resizingDivider: string | null;
   depth?: number;
 }
 
 export interface LayoutDropTarget {
   type: "layout-side";
   targetBlockId: string;
-  side: "top" | "right" | "bottom" | "left";
+  side: "left" | "right" | "top" | "bottom";
 }
 
-/** Serialize path for comparison */
-function pathKey(path: ("first" | "second")[]): string {
-  return path.join(".");
+const MAX_DEPTH = 6;
+
+export default function BlockLayoutRenderer(props: BlockLayoutRendererProps) {
+  const { row, depth = 0 } = props;
+  const isH = row.direction === "h";
+
+  if (isH) return <HorizontalRow {...props} depth={depth} />;
+  return <VerticalStack {...props} depth={depth} />;
 }
 
-export default function BlockLayoutRenderer({
-  node,
+// ─── Horizontal row (CSS Grid, fr widths, resize handles) ──────────────
+
+function HorizontalRow(props: BlockLayoutRendererProps & { depth: number }) {
+  const { row, depth, resizingDivider } = props;
+  const template = row.widths.map((w) => `${w}fr`).join(" 12px ");
+  // Show percentage badges during resize of THIS row
+  const isResizingThisRow = resizingDivider?.startsWith(row.id + ":") ?? false;
+  const totalW = row.widths.reduce((s, w) => s + w, 0) || 1;
+
+  return (
+    <div
+      data-layout-row={row.id}
+      style={{
+        display: "grid",
+        gridTemplateColumns: template,
+        gap: 0,
+        minWidth: 0,
+        alignItems: "start",
+      }}
+    >
+      {row.columns.map((cell, colIdx) => (
+        <React.Fragment key={cellKey(cell, colIdx)}>
+          {colIdx > 0 && (
+            <ResizeHandle
+              rowId={row.id}
+              dividerIndex={colIdx - 1}
+              direction="h"
+              onResizeStart={props.onResizeStart}
+              isResizing={resizingDivider === `${row.id}:${colIdx - 1}`}
+            />
+          )}
+          <div style={{ position: "relative", minWidth: 0 }}>
+            {/* Percentage badge during resize */}
+            {isResizingThisRow && (
+              <div style={{
+                position: "absolute", top: 8, right: 8, zIndex: 20,
+                fontSize: 11, lineHeight: "18px", padding: "0 5px",
+                borderRadius: 4, pointerEvents: "none",
+                color: "var(--text-secondary)", background: "var(--surface-2)",
+              }}>
+                {Math.round((row.widths[colIdx] / totalW) * 100)}%
+              </div>
+            )}
+            {cell.type === "block" ? (
+              <BlockCell blockId={cell.blockId} parentDirection="h" {...props} />
+            ) : depth < MAX_DEPTH ? (
+              <BlockLayoutRenderer {...props} row={cell.row} depth={depth + 1} />
+            ) : null}
+          </div>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+// ─── Vertical stack (flex column, natural heights, no resize) ──────────
+
+function VerticalStack(props: BlockLayoutRendererProps & { depth: number }) {
+  const { row, depth, dropTarget, dragBlockId } = props;
+
+  return (
+    <div
+      data-layout-row={row.id}
+      style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}
+    >
+      {row.columns.map((cell, cellIdx) => (
+        <React.Fragment key={cellKey(cell, cellIdx)}>
+          {cell.type === "block" ? (
+            <BlockCell blockId={cell.blockId} parentDirection="v" {...props} />
+          ) : depth < MAX_DEPTH ? (
+            <BlockLayoutRenderer {...props} row={cell.row} depth={depth + 1} />
+          ) : null}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+// ─── Block Cell (leaf) ─────────────────────────────────────────────────
+
+function BlockCell({
+  blockId,
+  parentDirection,
   blocks,
   ideaId,
   streaming,
@@ -76,180 +161,101 @@ export default function BlockLayoutRenderer({
   onDragStart,
   onFocusPrev,
   onFocusNext,
-  onResizeStart,
-  resizingPath,
-  depth = 0,
-}: BlockLayoutRendererProps) {
-  if (node.kind === "leaf") {
-    const block = blocks.find((b) => b.id === node.blockId);
-    if (!block) return null;
+}: BlockLayoutRendererProps & { blockId: string; parentDirection: "h" | "v" }) {
+  const block = blocks.find((b) => b.id === blockId);
+  if (!block) return null;
 
-    const showDropTop = dropTarget?.type === "layout-side" && dropTarget.targetBlockId === block.id && dropTarget.side === "top";
-    const showDropBottom = dropTarget?.type === "layout-side" && dropTarget.targetBlockId === block.id && dropTarget.side === "bottom";
-    const showDropLeft = dropTarget?.type === "layout-side" && dropTarget.targetBlockId === block.id && dropTarget.side === "left";
-    const showDropRight = dropTarget?.type === "layout-side" && dropTarget.targetBlockId === block.id && dropTarget.side === "right";
+  const dt = dropTarget;
+  const isTarget = dt?.type === "layout-side" && dt.targetBlockId === block.id;
 
-    return (
-      <div style={{ position: "relative", minWidth: 0, minHeight: 0 }}>
-        {showDropTop && (
-          <div style={{ position: "absolute", top: -1, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-        )}
-        {showDropBottom && (
-          <div style={{ position: "absolute", bottom: -1, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-        )}
-        {showDropLeft && (
-          <div style={{ position: "absolute", left: -1, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-        )}
-        {showDropRight && (
-          <div style={{ position: "absolute", right: -1, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-        )}
-        <BlockItem
-          block={block}
-          ideaId={ideaId}
-          readOnly={streaming}
-          sourceMode={false}
-          autoFocus={autoEditBlockId === block.id}
-          focusTrigger={focusBlockId === block.id ? focusTrigger : 0}
-          focusCursorPos={focusBlockId === block.id ? focusCursorPos : null}
-          remoteUpdatePending={pendingRemoteBlocks.has(block.id)}
-          onSaved={onSaved}
-          onDeleted={onDeleted}
-          onCreatedAfter={onCreatedAfter}
-          onConflict={onConflict}
-          onFocusChange={onFocusChange}
-          editLocked={!!focusBlockId && focusBlockId !== block.id}
-          onEditBlocked={onEditBlocked}
-          onSplit={onSplit}
-          onMergeIntoPrev={onMergeIntoPrev}
-          onDragStart={onDragStart}
-          isDragging={dragBlockId === block.id}
-          dragInProgress={!!dragBlockId}
-          onFocusPrev={() => onFocusPrev(block.id)}
-          onFocusNext={() => onFocusNext(block.id)}
-        />
-      </div>
-    );
-  }
-
-  // Split node — render as CSS Grid
-  const isH = node.orientation === "h";
-  const currentPath: ("first" | "second")[] = [];
-  const currentPathKey = pathKey(currentPath);
-  const handleSize = 12;
-
-  const gridStyle: React.CSSProperties = isH
-    ? {
-        display: "grid",
-        gridTemplateColumns: `${node.ratio}fr ${handleSize}px ${1 - node.ratio}fr`,
-        gap: 0,
-        minWidth: 0,
-        alignItems: "start",
-      }
-    : {
-        display: "grid",
-        gridTemplateRows: `auto ${handleSize}px auto`,
-        gap: 0,
-        minWidth: 0,
-      };
+  // "h" parent: top/bottom indicators (for nesting vertically into this column)
+  // "v" parent: top/bottom indicators (for sibling insertion in vertical stack)
+  //           + left/right indicators (for nesting horizontally)
+  const showTop = isTarget && dt.side === "top";
+  const showBottom = isTarget && dt.side === "bottom";
+  const showLeft = isTarget && parentDirection === "v" && dt.side === "left";
+  const showRight = isTarget && parentDirection === "v" && dt.side === "right";
 
   return (
-    <div style={gridStyle}>
-      <div style={{ minWidth: 0 }}>
-        <BlockLayoutRenderer
-          {...{
-            node: node.first,
-            blocks,
-            ideaId,
-            streaming,
-            autoEditBlockId,
-            focusBlockId,
-            focusTrigger,
-            focusCursorPos,
-            pendingRemoteBlocks,
-            dragBlockId,
-            dropTarget,
-            onSaved,
-            onDeleted,
-            onCreatedAfter,
-            onConflict,
-            onFocusChange,
-            onEditBlocked,
-            onSplit,
-            onMergeIntoPrev,
-            onDragStart,
-            onFocusPrev,
-            onFocusNext,
-            onResizeStart,
-            resizingPath,
-            depth: depth + 1,
-          }}
-        />
-      </div>
-      <ResizeHandle
-        orientation={node.orientation}
-        path={currentPath}
-        onResizeStart={onResizeStart}
-        isResizing={resizingPath === currentPathKey}
+    <div style={{ position: "relative", minWidth: 0, minHeight: 0 }}>
+      {showTop && (
+        <div style={{
+          position: "absolute", left: 0, right: 0, top: -1, height: 2,
+          background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none",
+        }} />
+      )}
+      {showBottom && (
+        <div style={{
+          position: "absolute", left: 0, right: 0, bottom: -1, height: 2,
+          background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none",
+        }} />
+      )}
+      {showLeft && (
+        <div style={{
+          position: "absolute", top: 0, bottom: 0, left: -1, width: 2,
+          background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none",
+        }} />
+      )}
+      {showRight && (
+        <div style={{
+          position: "absolute", top: 0, bottom: 0, right: -1, width: 2,
+          background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none",
+        }} />
+      )}
+      <BlockItem
+        block={block}
+        ideaId={ideaId}
+        readOnly={streaming}
+        sourceMode={false}
+        autoFocus={autoEditBlockId === block.id}
+        focusTrigger={focusBlockId === block.id ? focusTrigger : 0}
+        focusCursorPos={focusBlockId === block.id ? focusCursorPos : null}
+        remoteUpdatePending={pendingRemoteBlocks.has(block.id)}
+        onSaved={onSaved}
+        onDeleted={onDeleted}
+        onCreatedAfter={onCreatedAfter}
+        onConflict={onConflict}
+        onFocusChange={onFocusChange}
+        editLocked={!!focusBlockId && focusBlockId !== block.id}
+        onEditBlocked={onEditBlocked}
+        onSplit={onSplit}
+        onMergeIntoPrev={onMergeIntoPrev}
+        onDragStart={onDragStart}
+        isDragging={dragBlockId === block.id}
+        dragInProgress={!!dragBlockId}
+        onFocusPrev={() => onFocusPrev(block.id)}
+        onFocusNext={() => onFocusNext(block.id)}
       />
-      <div style={{ minWidth: 0 }}>
-        <BlockLayoutRenderer
-          {...{
-            node: node.second,
-            blocks,
-            ideaId,
-            streaming,
-            autoEditBlockId,
-            focusBlockId,
-            focusTrigger,
-            focusCursorPos,
-            pendingRemoteBlocks,
-            dragBlockId,
-            dropTarget,
-            onSaved,
-            onDeleted,
-            onCreatedAfter,
-            onConflict,
-            onFocusChange,
-            onEditBlocked,
-            onSplit,
-            onMergeIntoPrev,
-            onDragStart,
-            onFocusPrev,
-            onFocusNext,
-            onResizeStart,
-            resizingPath,
-            depth: depth + 1,
-          }}
-        />
-      </div>
     </div>
   );
 }
 
-// ─── Resize Handle ──────────────────────────────────────────────────────
+// ─── Resize Handle (horizontal only) ───────────────────────────────────
 
 interface ResizeHandleProps {
-  orientation: "h" | "v";
-  path: ("first" | "second")[];
-  onResizeStart: (path: ("first" | "second")[], e: React.PointerEvent) => void;
+  rowId: string;
+  dividerIndex: number;
+  direction: "h" | "v";
+  onResizeStart: (rowId: string, dividerIndex: number, e: React.PointerEvent) => void;
   isResizing: boolean;
 }
 
-function ResizeHandle({ orientation, path, onResizeStart, isResizing }: ResizeHandleProps) {
+function ResizeHandle({ rowId, dividerIndex, direction, onResizeStart, isResizing }: ResizeHandleProps) {
   const barRef = useRef<HTMLDivElement>(null);
-  const isH = orientation === "h";
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      onResizeStart(path, e);
+      onResizeStart(rowId, dividerIndex, e);
     },
-    [path, onResizeStart],
+    [rowId, dividerIndex, onResizeStart],
   );
 
-  const containerStyle: React.CSSProperties = isH
-    ? {
+  return (
+    <div
+      data-resize-handle={`${rowId}:${dividerIndex}`}
+      style={{
         width: 24,
         marginLeft: -6,
         marginRight: -6,
@@ -261,59 +267,32 @@ function ResizeHandle({ orientation, path, onResizeStart, isResizing }: ResizeHa
         position: "relative",
         zIndex: 5,
         background: "transparent",
-      }
-    : {
-        height: 24,
-        marginTop: -6,
-        marginBottom: -6,
-        cursor: "row-resize",
-        justifySelf: "stretch",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        position: "relative",
-        zIndex: 5,
-        background: "transparent",
-      };
-
-  const barStyle: React.CSSProperties = isH
-    ? {
-        width: 2,
-        borderRadius: 2,
-        position: "absolute",
-        top: 0,
-        bottom: 0,
-        left: 11,
-        opacity: isResizing ? 1 : 0,
-        background: "var(--primary, #1456F0)",
-        transition: "opacity 0.15s",
-        pointerEvents: "none",
-      }
-    : {
-        height: 2,
-        borderRadius: 2,
-        position: "absolute",
-        left: 0,
-        right: 0,
-        top: 11,
-        opacity: isResizing ? 1 : 0,
-        background: "var(--primary, #1456F0)",
-        transition: "opacity 0.15s",
-        pointerEvents: "none",
-      };
-
-  return (
-    <div
-      style={containerStyle}
+      }}
       onPointerDown={handlePointerDown}
-      onPointerEnter={() => {
-        if (barRef.current) barRef.current.style.opacity = "1";
-      }}
-      onPointerLeave={() => {
-        if (!isResizing && barRef.current) barRef.current.style.opacity = "0";
-      }}
+      onPointerEnter={() => { if (barRef.current) barRef.current.style.opacity = "1"; }}
+      onPointerLeave={() => { if (!isResizing && barRef.current) barRef.current.style.opacity = "0"; }}
     >
-      <div ref={barRef} style={barStyle} />
+      <div
+        ref={barRef}
+        style={{
+          width: 2,
+          borderRadius: 2,
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          left: 11,
+          opacity: isResizing ? 1 : 0,
+          background: "var(--primary, #1456F0)",
+          transition: "opacity 0.15s",
+          pointerEvents: "none",
+        }}
+      />
     </div>
   );
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────
+
+function cellKey(cell: ColumnCell, idx: number): string {
+  return cell.type === "block" ? cell.blockId : `nested_${cell.row.id}_${idx}`;
 }

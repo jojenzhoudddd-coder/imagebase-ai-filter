@@ -10,8 +10,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState, memo } from "react";
+import { createPortal } from "react-dom";
 import MarkdownIt from "markdown-it";
 import { useTranslation } from "../../i18n";
+import { useToast } from "../Toast/index";
+import SwipeDelete from "../SwipeDelete/index";
 
 // Inject a scoped style to remove bottom margin from the last child in each
 // block view — avoids double spacing between blocks. Done once at module load.
@@ -114,6 +117,7 @@ const BlockItem = memo(function BlockItem({
   dragInProgress = false,
 }: BlockItemProps) {
   const { t } = useTranslation();
+  const toast = useToast();
   /** Strip the trailing \n that blocks store for markdown concatenation —
    *  it shows as an empty line in the textarea. Re-added on save. */
   const displayContent = (s: string) => s.replace(/\n+$/, "");
@@ -133,6 +137,8 @@ const BlockItem = memo(function BlockItem({
   }, [sourceMode]); // eslint-disable-line react-hooks/exhaustive-deps
   const [hovered, setHovered] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const ctxMenuRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const blockVersionRef = useRef<number>((block as any).version ?? 0);
   const deletingRef = useRef(false);
@@ -143,6 +149,60 @@ const BlockItem = memo(function BlockItem({
   useEffect(() => {
     blockVersionRef.current = (block as any).version ?? 0;
   }, [block]);
+
+  // ── Context menu (right-click) ──
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  // Close context menu on click-outside or Escape
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const onClick = (e: MouseEvent) => {
+      if (ctxMenuRef.current && !ctxMenuRef.current.contains(e.target as Node)) close();
+    };
+    document.addEventListener("pointerdown", onClick, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onClick, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ctxMenu]);
+
+  const handleCtxAddBlock = useCallback(async () => {
+    setCtxMenu(null);
+    try {
+      const res = await createIdeaBlock(ideaId, {
+        afterBlockId: block.id,
+        type: "paragraph",
+        content: "\n",
+      });
+      onCreatedAfter?.({
+        id: res.block.id,
+        order: res.block.order,
+        type: res.block.type,
+        content: res.block.content,
+        props: res.block.props,
+        version: res.block.version,
+      });
+    } catch { /* ignore */ }
+  }, [ideaId, block.id, onCreatedAfter]);
+
+  const handleCtxDeleteBlock = useCallback(() => {
+    setCtxMenu(null);
+    if (deletingRef.current) return;
+    deletingRef.current = true;
+    deleteIdeaBlock(ideaId, block.id)
+      .then(() => {
+        onDeleted?.(block.id);
+        toast.success(t("idea.block.deleted"));
+      })
+      .catch(() => { deletingRef.current = false; });
+  }, [ideaId, block.id, onDeleted, toast, t]);
 
   // Pending cursor: set by focusTrigger, consumed by content sync or layout effect
   const pendingCursorRef = useRef<{ pos: number; trigger: number } | null>(null);
@@ -497,6 +557,7 @@ const BlockItem = memo(function BlockItem({
       data-block-id={block.id}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
+      onContextMenu={handleContextMenu}
     >
       {/* Drag handle — 8px left of hover outline, aligned to top */}
       {!sourceMode && showDragHandle && (
@@ -546,8 +607,62 @@ const BlockItem = memo(function BlockItem({
         )}
       </div>
       </div>
+      {/* Context menu */}
+      {ctxMenu && createPortal(
+        <BlockContextMenu
+          ref={ctxMenuRef}
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onAddBlock={handleCtxAddBlock}
+          onDeleteBlock={handleCtxDeleteBlock}
+          t={t}
+        />,
+        document.body,
+      )}
     </div>
   );
 });
+
+// ─── Context menu (right-click) ─────────────────────────────────────────
+
+interface BlockContextMenuProps {
+  x: number;
+  y: number;
+  onAddBlock: () => void;
+  onDeleteBlock: () => void;
+  t: (key: string) => string;
+}
+
+import { forwardRef } from "react";
+
+const BlockContextMenu = forwardRef<HTMLDivElement, BlockContextMenuProps>(
+  function BlockContextMenu({ x, y, onAddBlock, onDeleteBlock, t }, ref) {
+    // Clamp position to viewport
+    const menuW = 180, menuH = 80;
+    const left = Math.min(x, window.innerWidth - menuW - 8);
+    const top = Math.min(y, window.innerHeight - menuH - 8);
+
+    return (
+      <div
+        ref={ref}
+        className="field-context-menu"
+        style={{ left, top, minWidth: menuW }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <button className="field-context-menu-item" onClick={onAddBlock}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2.5v11M2.5 8h11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
+          {t("idea.block.add")}
+        </button>
+        <div className="field-context-menu-divider" />
+        <SwipeDelete
+          label={t("idea.block.delete")}
+          onDelete={onDeleteBlock}
+        />
+      </div>
+    );
+  },
+);
 
 export default BlockItem;

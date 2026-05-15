@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "../../i18n/index";
 import { useToast } from "../Toast/index";
@@ -22,18 +22,16 @@ import BlockItem from "./BlockItem";
 import BlockLayoutRenderer from "./BlockLayoutRenderer";
 import type { LayoutDropTarget } from "./BlockLayoutRenderer";
 import {
-  collectLeafIds,
-  removeFromLayout,
-  insertIntoLayout,
-  moveBlockInLayout,
-  updateRatioAtPath,
-  migrateColumnPropsToLayout,
-  findTreeForBlock,
-  allTreeBlockIds,
-  updateTreeInLayouts,
-  removeTreeFromLayouts,
+  findRowForBlock,
+  findTopRowForBlock,
+  findRowById,
+  allRowBlockIds,
+  addSibling,
+  removeFromRows,
+  resizeRow,
+  nestBlock,
 } from "./blockLayoutUtils";
-import type { BlockLayoutNode } from "../../types";
+import type { ColumnRow, ColumnCell } from "../../types";
 import type { PatchBlockResponse } from "../../api";
 import { saveIdeaLayout } from "../../api";
 import "./IdeaEditor.css";
@@ -89,9 +87,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const [autoEditBlockId, setAutoEditBlockId] = useState<string | null>(null);
   const [focusTrigger, setFocusTrigger] = useState(0);
   const [focusCursorPos, setFocusCursorPos] = useState<number | null>(null);
-  const [layouts, setLayouts] = useState<BlockLayoutNode[]>([]);
+  const [layouts, setLayouts] = useState<ColumnRow[]>([]);
   const [layoutDropTarget, setLayoutDropTarget] = useState<LayoutDropTarget | null>(null);
-  const [resizingLayoutPath, setResizingLayoutPath] = useState<string | null>(null);
+  const [resizingDivider, setResizingDivider] = useState<string | null>(null);
 
   const cmRef = useRef<CodeMirrorSourceHandle>(null);
   const previewRef = useRef<TiptapPreviewHandle>(null);
@@ -169,13 +167,18 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         if (loadedBlocks.length > 0) {
           setBlocks(loadedBlocks);
         }
-        // Load layout from idea — backward compat: single tree or array
-        if (idea.layout) {
-          if (Array.isArray(idea.layout)) {
-            setLayouts(idea.layout as BlockLayoutNode[]);
-          } else {
-            setLayouts([idea.layout as BlockLayoutNode]);
+        // Load layout from idea — validate + migrate old formats
+        if (idea.layout && Array.isArray(idea.layout)) {
+          const migrated: ColumnRow[] = [];
+          for (const r of idea.layout as any[]) {
+            if (!r || !Array.isArray(r.columns) || !Array.isArray(r.widths)) continue;
+            // Migrate old string[] columns to ColumnCell[]
+            const cols: ColumnCell[] = r.columns.map((c: any) =>
+              typeof c === "string" ? { type: "block", blockId: c } : c,
+            );
+            migrated.push({ id: r.id, direction: r.direction || "h", columns: cols, widths: r.widths });
           }
+          if (migrated.length > 0) setLayouts(migrated);
         }
         // Old column-group auto-migration disabled — layout tree is the only system now
         if (!idea.content) setMode("source");
@@ -502,17 +505,12 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   }, [ideaId]);
 
   const handleBlockDeleted = useCallback((_blockId: string) => {
-    // Remove block from whichever layout tree contains it
+    // Remove block from whichever row contains it
     setLayouts((prev) => {
-      const tree = findTreeForBlock(prev, _blockId);
-      if (!tree) return prev;
-      const newTree = removeFromLayout(tree, _blockId);
-      const newLayouts = newTree
-        ? updateTreeInLayouts(prev, tree, newTree)
-        : removeTreeFromLayouts(prev, tree);
-      if (newLayouts !== prev) {
-        void saveIdeaLayout(ideaId, newLayouts.length > 0 ? newLayouts : null);
-      }
+      const row = findRowForBlock(prev, _blockId);
+      if (!row) return prev;
+      const newLayouts = removeFromRows(prev, _blockId);
+      void saveIdeaLayout(ideaId, newLayouts.length > 0 ? newLayouts : null);
       return newLayouts;
     });
     // Refetch blocks and content after delete
@@ -670,9 +668,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // ── Block drag reorder + column layout ──
   type DropTarget =
     | { type: "reorder"; insertIdx: number }
-    | { type: "column-left"; targetBlockId: string }
-    | { type: "column-right"; targetBlockId: string }
-    | { type: "layout-split"; targetBlockId: string; side: "top" | "right" | "bottom" | "left" };
+    | { type: "layout-split"; targetBlockId: string; side: "left" | "right" | "top" | "bottom" };
 
   const [dragBlockId, setDragBlockId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
@@ -682,58 +678,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const dragActive = useRef(false);
 
   // Column resize state
-  const [resizingGroup, setResizingGroup] = useState<string | null>(null);
-  const resizeStartX = useRef(0);
-  const resizeStartRatio = useRef(0.5);
+
   const resizeContainerRect = useRef<DOMRect | null>(null);
-
-  /** Helper: get columnIndex from props (backward compat with "left"/"right") */
-  const getColumnIndex = (props: any): number => {
-    if (typeof props?.columnIndex === "number") return props.columnIndex;
-    if (props?.columnPosition === "left") return 0;
-    if (props?.columnPosition === "right") return 1;
-    return 0;
-  };
-  const getColumnWidth = (props: any): number => {
-    return props?.columnWidth ?? props?.columnRatio ?? 0.5;
-  };
-
-  /** Group blocks by columnGroupId for rendering — supports N columns */
-  const blockLayout = useMemo(() => {
-    type ColumnGroup = { type: "column"; groupId: string; columns: IdeaBlockBrief[]; widths: number[] };
-    const layout: Array<{ type: "single"; block: IdeaBlockBrief } | ColumnGroup> = [];
-    const visited = new Set<string>();
-    const groupMap = new Map<string, IdeaBlockBrief[]>();
-
-    // Collect groups
-    for (const b of blocks) {
-      const groupId = (b.props as any)?.columnGroupId as string | undefined;
-      if (groupId) {
-        if (!groupMap.has(groupId)) groupMap.set(groupId, []);
-        groupMap.get(groupId)!.push(b);
-      }
-    }
-
-    for (let i = 0; i < blocks.length; i++) {
-      if (visited.has(blocks[i].id)) continue;
-      const b = blocks[i];
-      const groupId = (b.props as any)?.columnGroupId as string | undefined;
-      if (groupId && groupMap.has(groupId)) {
-        const members = groupMap.get(groupId)!;
-        if (members.length >= 2) {
-          members.forEach(m => visited.add(m.id));
-          // Sort by columnIndex
-          members.sort((a, b) => getColumnIndex(a.props) - getColumnIndex(b.props));
-          const widths = members.map(m => getColumnWidth(m.props));
-          layout.push({ type: "column", groupId, columns: members, widths });
-          continue;
-        }
-      }
-      visited.add(b.id);
-      layout.push({ type: "single", block: b });
-    }
-    return layout;
-  }, [blocks]);
 
   const handleBlockDragStart = useCallback((blockId: string) => {
     if (mode === "source" || streaming) return;
@@ -767,61 +713,118 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       // Use content areas (not outer wrappers with handle) for hit testing
       const blockEls = container.querySelectorAll<HTMLElement>("[data-block-content]");
       let foundTarget: DropTarget | null = null;
-      for (let i = 0; i < blockEls.length; i++) {
-        const el = blockEls[i];
-        const elBlockId = el.getAttribute("data-block-content");
-        if (elBlockId === blockId) continue;
-        const rect = el.getBoundingClientRect();
-        if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
-          const relX = e.clientX - rect.left;
-          const relY = e.clientY - rect.top;
-          const width = rect.width;
-          const height = rect.height;
-          const xFrac = relX / width;
-          const yFrac = relY / height;
-          const idx = blocks.findIndex(b => b.id === elBlockId);
-          // Check if target block is inside any layout tree
-          const treeIds = allTreeBlockIds(layouts);
-          const inTree = treeIds.has(elBlockId!);
 
-          if (inTree) {
-            // Blocks in the tree: all 4 sides create layout-splits
-            if (yFrac < 0.2) {
-              foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "top" };
-            } else if (yFrac > 0.8) {
-              foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "bottom" };
-            } else if (xFrac < 0.2) {
-              foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "left" };
-            } else if (xFrac > 0.8) {
-              foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "right" };
+      // ── 1. Check resize-handle gaps in h-rows (column insertion) ──
+      const handleEls = container.querySelectorAll<HTMLElement>("[data-resize-handle]");
+      for (let i = 0; i < handleEls.length; i++) {
+        const hRect = handleEls[i].getBoundingClientRect();
+        if (e.clientX >= hRect.left && e.clientX <= hRect.right && e.clientY >= hRect.top && e.clientY <= hRect.bottom) {
+          // Cursor is in a divider gap → find adjacent block to insert next to
+          const key = handleEls[i].getAttribute("data-resize-handle")!; // "rowId:dividerIdx"
+          const [rowId, divIdxStr] = key.split(":");
+          const divIdx = parseInt(divIdxStr, 10);
+          const targetRow = findRowById(layouts, rowId);
+          if (targetRow && divIdx + 1 < targetRow.columns.length) {
+            const rightCell = targetRow.columns[divIdx + 1];
+            if (rightCell.type === "block") {
+              foundTarget = { type: "layout-split", targetBlockId: rightCell.blockId, side: "left" };
             }
-          } else {
-            // Blocks NOT in tree: top/bottom = reorder, left/right = layout-split
-            const yEdge = Math.min(24, height * 0.3);
-            if (relY < yEdge && idx >= 0) {
-              foundTarget = { type: "reorder", insertIdx: idx };
-            } else if (relY > height - yEdge && idx >= 0) {
-              foundTarget = { type: "reorder", insertIdx: idx + 1 };
-            } else if (xFrac < 0.2) {
-              foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "left" };
-            } else if (xFrac > 0.8) {
-              foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "right" };
-            }
-          }
-          // Center zone with no target yet → reorder
-          if (!foundTarget && idx >= 0) {
-            foundTarget = { type: "reorder", insertIdx: yFrac < 0.5 ? idx : idx + 1 };
           }
           break;
         }
       }
-      // If no block was hit (cursor in gap between blocks, or above/below all)
+
+      // ── 2. Check per-block targets ──
+      if (!foundTarget) {
+        for (let i = 0; i < blockEls.length; i++) {
+          const el = blockEls[i];
+          const elBlockId = el.getAttribute("data-block-content");
+          if (elBlockId === blockId) continue;
+          const rect = el.getBoundingClientRect();
+          if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+            const xFrac = (e.clientX - rect.left) / rect.width;
+            const yFrac = (e.clientY - rect.top) / rect.height;
+            const idx = blocks.findIndex(b => b.id === elBlockId);
+
+            const parentRow = findRowForBlock(layouts, elBlockId!);
+            const parentDir = parentRow?.direction ?? null;
+
+            if (parentDir === null) {
+              // Standalone: left/right 20% → h-split
+              if (xFrac < 0.2) {
+                foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "left" };
+              } else if (xFrac > 0.8) {
+                foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "right" };
+              } else if (idx >= 0) {
+                foundTarget = { type: "reorder", insertIdx: yFrac < 0.5 ? idx : idx + 1 };
+              }
+            } else if (parentDir === "h") {
+              // In h-row: ONLY top/bottom for nesting vertically (no per-block L/R)
+              if (yFrac < 0.3) {
+                foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "top" };
+              } else if (yFrac > 0.7) {
+                foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "bottom" };
+              }
+              // center → no action (reorder doesn't make sense inside row)
+            } else {
+              // In v-row: left/right for nesting h; top/bottom for sibling insert
+              if (xFrac < 0.25) {
+                foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "left" };
+              } else if (xFrac > 0.75) {
+                foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "right" };
+              } else if (yFrac < 0.3) {
+                foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "top" };
+              } else if (yFrac > 0.7) {
+                foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "bottom" };
+              }
+            }
+            break;
+          }
+        }
+      }
+
+      // ── 3. Check h-row edges (left/right of entire row → add column) ──
+      if (!foundTarget) {
+        const rowEls = container.querySelectorAll<HTMLElement>("[data-layout-row]");
+        for (let i = 0; i < rowEls.length; i++) {
+          const rEl = rowEls[i];
+          const rRect = rEl.getBoundingClientRect();
+          if (e.clientY >= rRect.top && e.clientY <= rRect.bottom) {
+            const relX = e.clientX - rRect.left;
+            if (relX >= -6 && relX < 20) {
+              // Left edge of row → add column at left
+              const rowId = rEl.getAttribute("data-layout-row")!;
+              const row = findRowById(layouts, rowId);
+              if (row && row.direction === "h" && row.columns.length > 0) {
+                const firstCell = row.columns[0];
+                if (firstCell.type === "block") {
+                  foundTarget = { type: "layout-split", targetBlockId: firstCell.blockId, side: "left" };
+                }
+              }
+              break;
+            }
+            const relXR = rRect.right - e.clientX;
+            if (relXR >= -6 && relXR < 20) {
+              // Right edge of row → add column at right
+              const rowId = rEl.getAttribute("data-layout-row")!;
+              const row = findRowById(layouts, rowId);
+              if (row && row.direction === "h" && row.columns.length > 0) {
+                const lastCell = row.columns[row.columns.length - 1];
+                if (lastCell.type === "block") {
+                  foundTarget = { type: "layout-split", targetBlockId: lastCell.blockId, side: "right" };
+                }
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      // ── 4. Reorder (gap between standalone blocks) ──
       if (!foundTarget && blockEls.length > 0) {
-        // Check gaps between consecutive blocks
         for (let i = 0; i < blockEls.length; i++) {
           const r = blockEls[i].getBoundingClientRect();
           if (e.clientY < r.top) {
-            // Cursor above this block → insert before it
             const bId = blockEls[i].getAttribute("data-block-content");
             const idx = blocks.findIndex(b => b.id === bId);
             if (idx >= 0) foundTarget = { type: "reorder", insertIdx: idx };
@@ -876,9 +879,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     document.addEventListener("keydown", escHandler);
   }, [mode, streaming, blocks, layouts]);
 
-  // ── Layout tree persistence (debounced) ──
+  // ── Layout row persistence (debounced) ──
   const layoutSaveTimerRef = useRef<number | null>(null);
-  const persistLayouts = useCallback((newLayouts: BlockLayoutNode[]) => {
+  const persistLayouts = useCallback((newLayouts: ColumnRow[]) => {
     setLayouts(newLayouts);
     if (layoutSaveTimerRef.current) window.clearTimeout(layoutSaveTimerRef.current);
     layoutSaveTimerRef.current = window.setTimeout(() => {
@@ -890,310 +893,117 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // Commit a drop operation directly (called from upHandler closure via ref)
   const commitDropRef = useRef<(blockId: string, target: DropTarget) => void>(() => {});
   const commitDrop = useCallback((blockId: string, target: DropTarget) => {
-        if (target.type === "reorder") {
-          // If the block is in any layout tree, remove it from there first
-          setLayouts((prev) => {
-            const tree = findTreeForBlock(prev, blockId);
-            if (!tree) return prev;
-            const newTree = removeFromLayout(tree, blockId);
-            const newLayouts = newTree
-              ? updateTreeInLayouts(prev, tree, newTree)
-              : removeTreeFromLayouts(prev, tree);
-            if (newLayouts !== prev) {
-              void saveIdeaLayout(ideaId, newLayouts.length > 0 ? newLayouts : null);
-            }
-            return newLayouts;
-          });
-          const draggedBlock = blocks.find(b => b.id === blockId);
-          const groupId = (draggedBlock?.props as any)?.columnGroupId;
-          void (async () => {
-            // Remove from column group if the dragged block is in one
-            if (groupId) {
-              const remaining = blocks.filter(b => b.id !== blockId && (b.props as any)?.columnGroupId === groupId);
-              // Clear dragged block's column props
-              await patchIdeaBlock(ideaId, blockId, { props: { columnGroupId: null, columnIndex: null, columnWidth: null, columnPosition: null, columnRatio: null } });
-              if (remaining.length <= 1) {
-                // Only 1 left → dissolve group
-                for (const m of remaining) {
-                  await patchIdeaBlock(ideaId, m.id, { props: { columnGroupId: null, columnIndex: null, columnWidth: null, columnPosition: null, columnRatio: null } });
-                }
-              } else {
-                // Re-index and redistribute widths among remaining
-                remaining.sort((a, b) => getColumnIndex(a.props) - getColumnIndex(b.props));
-                const equalWidth = 1 / remaining.length;
-                for (let i = 0; i < remaining.length; i++) {
-                  await patchIdeaBlock(ideaId, remaining[i].id, { props: { ...remaining[i].props, columnIndex: i, columnWidth: equalWidth } });
-                }
-              }
-            }
-            // Adjust insertIdx for the "remove then insert" semantics:
-            // if the dragged block is before the target, removing it shifts target down by 1
-            const dragIdx = blocks.findIndex(b => b.id === blockId);
-            let adjustedIdx = target.insertIdx;
-            if (dragIdx >= 0 && dragIdx < target.insertIdx) adjustedIdx--;
-            await moveIdeaBlock(ideaId, blockId, adjustedIdx);
-            const bRes = await fetchIdeaBlocks(ideaId);
-            setBlocks(bRes.blocks);
-            contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
-            setContent(contentRef.current);
-            versionRef.current = bRes.version;
-          })();
-        } else if (target.type === "column-left" || target.type === "column-right") {
-          const targetBlockId = target.targetBlockId;
-          const targetBlock = blocks.find(b => b.id === targetBlockId);
-          const draggedBlock = blocks.find(b => b.id === blockId);
-          if (!targetBlock || !draggedBlock) return;
+    if (target.type === "reorder") {
+      // If the block is in any row, remove it first
+      setLayouts((prev) => {
+        const row = findRowForBlock(prev, blockId);
+        if (!row) return prev;
+        const newLayouts = removeFromRows(prev, blockId);
+        void saveIdeaLayout(ideaId, newLayouts.length > 0 ? newLayouts : null);
+        return newLayouts;
+      });
+      void (async () => {
+        // Adjust insertIdx for the "remove then insert" semantics
+        const dragIdx = blocks.findIndex(b => b.id === blockId);
+        let adjustedIdx = target.insertIdx;
+        if (dragIdx >= 0 && dragIdx < target.insertIdx) adjustedIdx--;
+        await moveIdeaBlock(ideaId, blockId, adjustedIdx);
+        const bRes = await fetchIdeaBlocks(ideaId);
+        setBlocks(bRes.blocks);
+        contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+        setContent(contentRef.current);
+        versionRef.current = bRes.version;
+      })();
+    } else if (target.type === "layout-split") {
+      const side = target.side;
+      const targetBlockId = target.targetBlockId;
 
-          const targetGroupId = (targetBlock.props as any)?.columnGroupId as string | undefined;
-          const draggedGroupId = (draggedBlock.props as any)?.columnGroupId as string | undefined;
+      // Remove source from its current row first (if any)
+      let newLayouts = removeFromRows([...layouts], blockId);
 
-          void (async () => {
-            // Break dragged block's existing column if needed
-            if (draggedGroupId && draggedGroupId !== targetGroupId) {
-              const oldMembers = blocks.filter(b => b.id !== blockId && (b.props as any)?.columnGroupId === draggedGroupId);
-              if (oldMembers.length === 1) {
-                // Only 1 left → dissolve group
-                await patchIdeaBlock(ideaId, oldMembers[0].id, { props: { columnGroupId: null, columnIndex: null, columnWidth: null, columnPosition: null, columnRatio: null } });
-              } else {
-                // Redistribute widths among remaining
-                const removedWidth = getColumnWidth(draggedBlock.props);
-                const remaining = oldMembers.length;
-                for (const m of oldMembers) {
-                  const oldW = getColumnWidth(m.props);
-                  const newIdx = getColumnIndex(m.props);
-                  await patchIdeaBlock(ideaId, m.id, { props: { ...m.props, columnWidth: oldW + removedWidth / remaining, columnIndex: newIdx } });
-                }
-              }
-            }
-
-            if (targetGroupId) {
-              // Add to existing group
-              const members = blocks.filter(b => (b.props as any)?.columnGroupId === targetGroupId);
-              const targetIdx = getColumnIndex(targetBlock.props);
-              const insertIdx = target.type === "column-left" ? targetIdx : targetIdx + 1;
-              // Shift existing members' indices
-              const newWidth = 1 / (members.length + 1);
-              for (const m of members) {
-                let idx = getColumnIndex(m.props);
-                if (idx >= insertIdx) idx++;
-                await patchIdeaBlock(ideaId, m.id, { props: { ...m.props, columnGroupId: targetGroupId, columnIndex: idx, columnWidth: newWidth } });
-              }
-              await patchIdeaBlock(ideaId, blockId, { props: { columnGroupId: targetGroupId, columnIndex: insertIdx, columnWidth: newWidth, columnPosition: null, columnRatio: null } });
-            } else {
-              // Create new 2-column group
-              const newGroupId = `col_${Date.now()}`;
-              const leftId = target.type === "column-left" ? blockId : targetBlockId;
-              const rightId = target.type === "column-left" ? targetBlockId : blockId;
-              await patchIdeaBlock(ideaId, leftId, { props: { columnGroupId: newGroupId, columnIndex: 0, columnWidth: 0.5 } });
-              await patchIdeaBlock(ideaId, rightId, { props: { columnGroupId: newGroupId, columnIndex: 1, columnWidth: 0.5 } });
-            }
-
-            // Move dragged block adjacent to target in document order
-            const targetDocIdx = blocks.findIndex(b => b.id === targetBlockId);
-            const dragDocIdx = blocks.findIndex(b => b.id === blockId);
-            if (Math.abs(dragDocIdx - targetDocIdx) > 1) {
-              const newIdx = target.type === "column-right" ? targetDocIdx + 1 : targetDocIdx;
-              await moveIdeaBlock(ideaId, blockId, newIdx);
-            }
-
-            const bRes = await fetchIdeaBlocks(ideaId);
-            setBlocks(bRes.blocks);
-            contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
-            setContent(contentRef.current);
-            versionRef.current = bRes.version;
-          })();
-        } else if (target.type === "layout-split") {
-          const directionMap = { top: "top", bottom: "bottom", left: "left", right: "right" } as const;
-          const direction = directionMap[target.side];
-          const targetBlockId = target.targetBlockId;
-          const sourceTree = findTreeForBlock(layouts, blockId);
-          const targetTree = findTreeForBlock(layouts, targetBlockId);
-
-          let newLayouts = [...layouts];
-
-          if (sourceTree && targetTree && sourceTree === targetTree) {
-            // Both in same tree → move within that tree
-            const moved = moveBlockInLayout(sourceTree, blockId, targetBlockId, direction) ?? sourceTree;
-            newLayouts = updateTreeInLayouts(newLayouts, sourceTree, moved);
-          } else if (sourceTree && targetTree && sourceTree !== targetTree) {
-            // Source in one tree, target in another → remove from source, insert in target
-            const withoutSource = removeFromLayout(sourceTree, blockId);
-            newLayouts = withoutSource
-              ? updateTreeInLayouts(newLayouts, sourceTree, withoutSource)
-              : removeTreeFromLayouts(newLayouts, sourceTree);
-            const targetTreeRef = newLayouts.find((t) => t === targetTree) ?? targetTree;
-            const withInserted = insertIntoLayout(targetTreeRef, targetBlockId, blockId, direction);
-            newLayouts = updateTreeInLayouts(newLayouts, targetTreeRef, withInserted);
-          } else if (targetTree && !sourceTree) {
-            // Target in tree, source not → insert source next to target in that tree
-            const withInserted = insertIntoLayout(targetTree, targetBlockId, blockId, direction);
-            newLayouts = updateTreeInLayouts(newLayouts, targetTree, withInserted);
-          } else if (sourceTree && !targetTree) {
-            // Source in a tree, target not → remove from source, create new tree with source+target
-            const withoutSource = removeFromLayout(sourceTree, blockId);
-            newLayouts = withoutSource
-              ? updateTreeInLayouts(newLayouts, sourceTree, withoutSource)
-              : removeTreeFromLayouts(newLayouts, sourceTree);
-            const orientation: "h" | "v" = direction === "left" || direction === "right" ? "h" : "v";
-            const isFirst = direction === "left" || direction === "top";
-            const sourceLeaf: BlockLayoutNode = { kind: "leaf", blockId };
-            const targetLeaf: BlockLayoutNode = { kind: "leaf", blockId: targetBlockId };
-            const newSplit: BlockLayoutNode = {
-              kind: "split", orientation, ratio: 0.5,
-              first: isFirst ? sourceLeaf : targetLeaf,
-              second: isFirst ? targetLeaf : sourceLeaf,
-            };
-            newLayouts.push(newSplit);
-          } else {
-            // Neither in a tree → create new tree and push to layouts
-            const orientation: "h" | "v" = direction === "left" || direction === "right" ? "h" : "v";
-            const isFirst = direction === "left" || direction === "top";
-            const sourceLeaf: BlockLayoutNode = { kind: "leaf", blockId };
-            const targetLeaf: BlockLayoutNode = { kind: "leaf", blockId: targetBlockId };
-            const newSplit: BlockLayoutNode = {
-              kind: "split", orientation, ratio: 0.5,
-              first: isFirst ? sourceLeaf : targetLeaf,
-              second: isFirst ? targetLeaf : sourceLeaf,
-            };
-            newLayouts.push(newSplit);
-          }
-          persistLayouts(newLayouts);
-
-          // Move source block adjacent to target in document order so the tree
-          // renders at the target's position (not the source's original position)
-          const srcIdx = blocks.findIndex(b => b.id === blockId);
-          const tgtIdx = blocks.findIndex(b => b.id === targetBlockId);
-          if (srcIdx >= 0 && tgtIdx >= 0 && Math.abs(srcIdx - tgtIdx) > 1) {
-            const moveToIdx = direction === "right" || direction === "bottom" ? tgtIdx + 1 : tgtIdx;
-            const adjustedIdx = srcIdx < moveToIdx ? moveToIdx - 1 : moveToIdx;
-            void moveIdeaBlock(ideaId, blockId, adjustedIdx).then(() =>
-              fetchIdeaBlocks(ideaId).then((bRes) => {
-                setBlocks(bRes.blocks);
-                contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
-                setContent(contentRef.current);
-                versionRef.current = bRes.version;
-              })
-            ).catch(() => {});
-          }
+      const parentRow = findRowForBlock(newLayouts, targetBlockId);
+      if (!parentRow) {
+        // Target is standalone — create new top-level "h" row
+        newLayouts = addSibling(newLayouts, targetBlockId, blockId, side);
+      } else {
+        // Determine if this is a same-direction add (sibling) or cross-direction (nest)
+        const isSameDir =
+          (parentRow.direction === "h" && (side === "left" || side === "right")) ||
+          (parentRow.direction === "v" && (side === "top" || side === "bottom"));
+        if (isSameDir) {
+          newLayouts = addSibling(newLayouts, targetBlockId, blockId, side);
+        } else {
+          newLayouts = nestBlock(newLayouts, targetBlockId, blockId, side);
         }
+      }
+      persistLayouts(newLayouts);
+
+      // Move source block adjacent to target in document order
+      const srcIdx = blocks.findIndex(b => b.id === blockId);
+      const tgtIdx = blocks.findIndex(b => b.id === targetBlockId);
+      if (srcIdx >= 0 && tgtIdx >= 0 && Math.abs(srcIdx - tgtIdx) > 1) {
+        const after = side === "right" || side === "bottom";
+        const moveToIdx = after ? tgtIdx + 1 : tgtIdx;
+        const adjustedIdx = srcIdx < moveToIdx ? moveToIdx - 1 : moveToIdx;
+        void moveIdeaBlock(ideaId, blockId, adjustedIdx).then(() =>
+          fetchIdeaBlocks(ideaId).then((bRes) => {
+            setBlocks(bRes.blocks);
+            contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+            setContent(contentRef.current);
+            versionRef.current = bRes.version;
+          })
+        ).catch(() => {});
+      }
+    }
   }, [blocks, ideaId, layouts, persistLayouts]);
   commitDropRef.current = commitDrop;
 
-  // Column resize handler — key format: "groupId:dividerIndex"
-  const handleColumnResizeStart = useCallback((resizeKey: string, e: React.PointerEvent) => {
+  // ── Row resize handler ──
+  const handleRowResizeStart = useCallback((rowId: string, dividerIndex: number, e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const [groupId, divIdxStr] = resizeKey.split(":");
-    const divIdx = parseInt(divIdxStr, 10);
-    setResizingGroup(resizeKey);
-    resizeStartX.current = e.clientX;
+    const row = findRowById(layouts, rowId);
+    if (!row || dividerIndex < 0 || dividerIndex + 1 >= row.widths.length) return;
+    const isH = row.direction === "h";
+    const dividerKey = `${rowId}:${dividerIndex}`;
+    setResizingDivider(dividerKey);
+    const startPos = isH ? e.clientX : e.clientY;
 
-    // Find the two adjacent columns
-    const members = blocks.filter(b => (b.props as any)?.columnGroupId === groupId);
-    members.sort((a, b) => getColumnIndex(a.props) - getColumnIndex(b.props));
-    const leftCol = members[divIdx];
-    const rightCol = members[divIdx + 1];
-    if (!leftCol || !rightCol) return;
-
-    const leftW = getColumnWidth(leftCol.props);
-    const rightW = getColumnWidth(rightCol.props);
+    const leftW = row.widths[dividerIndex];
+    const rightW = row.widths[dividerIndex + 1];
     const totalW = leftW + rightW;
-    resizeStartRatio.current = leftW / totalW;
+    const startRatio = leftW / totalW;
 
     const container = blockListRef.current;
     if (container) {
       resizeContainerRect.current = container.getBoundingClientRect();
     }
-    let lastX = e.clientX;
-    let lastRatio = resizeStartRatio.current;
-    const moveHandler = (ev: PointerEvent) => {
-      lastX = ev.clientX;
-      const containerWidth = resizeContainerRect.current?.width ?? 600;
-      const dx = ev.clientX - resizeStartX.current;
-      const deltaRatio = dx / (containerWidth - 12); // subtract divider width
-      const newLocalRatio = Math.max(0.15, Math.min(0.85, resizeStartRatio.current + deltaRatio));
-      lastRatio = newLocalRatio;
-      // Update only the two adjacent columns' widths
-      const newLeftW = totalW * newLocalRatio;
-      const newRightW = totalW * (1 - newLocalRatio);
-      setBlocks(prev => prev.map(b => {
-        if (b.id === leftCol.id) return { ...b, props: { ...b.props, columnWidth: newLeftW } };
-        if (b.id === rightCol.id) return { ...b, props: { ...b.props, columnWidth: newRightW } };
-        return b;
-      }));
-    };
-    const upHandler = () => {
-      document.removeEventListener("pointermove", moveHandler);
-      document.removeEventListener("pointerup", upHandler);
-      setResizingGroup(null);
-      const finalLeftW = totalW * lastRatio;
-      const finalRightW = totalW * (1 - lastRatio);
-      void patchIdeaBlock(ideaId, leftCol.id, { props: { ...leftCol.props, columnWidth: finalLeftW } });
-      void patchIdeaBlock(ideaId, rightCol.id, { props: { ...rightCol.props, columnWidth: finalRightW } });
-    };
-    document.addEventListener("pointermove", moveHandler);
-    document.addEventListener("pointerup", upHandler, { once: true });
-  }, [blocks, ideaId]);
-
-  // ── Layout tree resize handler ──
-  // treeIndex identifies which tree in layouts[] to resize
-  const handleLayoutResizeStart = useCallback((treeIndex: number, path: ("first" | "second")[], e: React.PointerEvent) => {
-    const tree = layouts[treeIndex];
-    if (!tree || tree.kind !== "split") return;
-    e.preventDefault();
-    e.stopPropagation();
-    const pathStr = `${treeIndex}:${path.join(".")}`;
-    setResizingLayoutPath(pathStr);
-
-    // Navigate to the split node at the given path
-    let splitNode: BlockLayoutNode = tree;
-    for (const step of path) {
-      if (splitNode.kind !== "split") return;
-      splitNode = step === "first" ? splitNode.first : splitNode.second;
-    }
-    if (splitNode.kind !== "split") return;
-
-    const splitOrientation = splitNode.orientation;
-    const isH = splitOrientation === "h";
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startRatio = splitNode.ratio;
-
-    const container = blockListRef.current;
-    const containerRect = container?.getBoundingClientRect();
-    const containerSize = isH
-      ? (containerRect?.width ?? 600)
-      : (containerRect?.height ?? 400);
 
     let lastRatio = startRatio;
 
     const moveHandler = (ev: PointerEvent) => {
-      const delta = isH ? ev.clientX - startX : ev.clientY - startY;
+      const containerSize = isH
+        ? (resizeContainerRect.current?.width ?? 600)
+        : (resizeContainerRect.current?.height ?? 400);
+      const delta = (isH ? ev.clientX : ev.clientY) - startPos;
       const deltaRatio = delta / (containerSize - 12);
       lastRatio = Math.max(0.15, Math.min(0.85, startRatio + deltaRatio));
-      setLayouts((prev) => {
-        const t = prev[treeIndex];
-        if (!t) return prev;
-        const updated = updateRatioAtPath(t, path, lastRatio);
-        const next = [...prev];
-        next[treeIndex] = updated;
-        return next;
-      });
+      const newLeftW = totalW * lastRatio;
+      const newRightW = totalW * (1 - lastRatio);
+      setLayouts((prev) => resizeRow(prev, rowId, dividerIndex, newLeftW, newRightW));
     };
 
     const upHandler = () => {
       document.removeEventListener("pointermove", moveHandler);
       document.removeEventListener("pointerup", upHandler);
-      setResizingLayoutPath(null);
-      // Persist
+      setResizingDivider(null);
+      // Persist final widths
       setLayouts((prev) => {
-        const t = prev[treeIndex];
-        if (!t) return prev;
-        const updated = updateRatioAtPath(t, path, lastRatio);
-        const next = [...prev];
-        next[treeIndex] = updated;
-        void saveIdeaLayout(ideaId, next.length > 0 ? next : null);
-        return next;
+        const newLeftW = totalW * lastRatio;
+        const newRightW = totalW * (1 - lastRatio);
+        const final_ = resizeRow(prev, rowId, dividerIndex, newLeftW, newRightW);
+        void saveIdeaLayout(ideaId, final_.length > 0 ? final_ : null);
+        return final_;
       });
     };
 
@@ -1201,29 +1011,30 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     document.addEventListener("pointerup", upHandler, { once: true });
   }, [layouts, ideaId]);
 
-  // ── Layout-aware focus navigation (across all trees) ──
-  const handleLayoutFocusPrev = useCallback((blockId: string) => {
-    // Collect leaves across all trees
-    const allLeaves: string[] = [];
-    for (const tree of layouts) {
-      allLeaves.push(...collectLeafIds(tree));
-    }
-    const idx = allLeaves.indexOf(blockId);
-    if (idx > 0) {
-      setFocusBlockId(allLeaves[idx - 1]);
-      setFocusTrigger((n) => n + 1);
+  // ── Row-aware focus navigation ──
+  const handleRowFocusPrev = useCallback((blockId: string) => {
+    const row = findRowForBlock(layouts, blockId);
+    if (!row) return;
+    const colIdx = row.columns.findIndex(c => c.type === "block" && c.blockId === blockId);
+    if (colIdx > 0) {
+      const prev = row.columns[colIdx - 1];
+      if (prev.type === "block") {
+        setFocusBlockId(prev.blockId);
+        setFocusTrigger((n) => n + 1);
+      }
     }
   }, [layouts]);
 
-  const handleLayoutFocusNext = useCallback((blockId: string) => {
-    const allLeaves: string[] = [];
-    for (const tree of layouts) {
-      allLeaves.push(...collectLeafIds(tree));
-    }
-    const idx = allLeaves.indexOf(blockId);
-    if (idx >= 0 && idx < allLeaves.length - 1) {
-      setFocusBlockId(allLeaves[idx + 1]);
-      setFocusTrigger((n) => n + 1);
+  const handleRowFocusNext = useCallback((blockId: string) => {
+    const row = findRowForBlock(layouts, blockId);
+    if (!row) return;
+    const colIdx = row.columns.findIndex(c => c.type === "block" && c.blockId === blockId);
+    if (colIdx >= 0 && colIdx < row.columns.length - 1) {
+      const next = row.columns[colIdx + 1];
+      if (next.type === "block") {
+        setFocusBlockId(next.blockId);
+        setFocusTrigger((n) => n + 1);
+      }
     }
   }, [layouts]);
 
@@ -1433,387 +1244,165 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             onDrop={handleBlockListDrop}
           >
             {(() => {
-              // Render using layout trees or column groups in preview mode
-              if (mode === "preview") {
-                // ── Layout tree rendering (multi-tree) ──
-                if (layouts.length > 0) {
-                  const allIds = allTreeBlockIds(layouts);
-                  // Build a map: blockId → treeIndex for quick lookup
-                  const blockToTreeIdx = new Map<string, number>();
-                  layouts.forEach((tree, ti) => {
-                    for (const id of collectLeafIds(tree)) {
-                      blockToTreeIdx.set(id, ti);
-                    }
-                  });
-
-                  const activeLayoutDrop: LayoutDropTarget | null =
-                    dropTarget?.type === "layout-split"
-                      ? { type: "layout-side", targetBlockId: dropTarget.targetBlockId, side: dropTarget.side }
-                      : null;
-
-                  // Build render sequence: iterate blocks in order, inject each tree at its first member
-                  type RenderItem = { kind: "tree"; treeIndex: number } | { kind: "block"; block: IdeaBlockBrief; idx: number };
-                  const renderItems: RenderItem[] = [];
-                  const treesInserted = new Set<number>();
-                  blocks.forEach((b, i) => {
-                    const ti = blockToTreeIdx.get(b.id);
-                    if (ti !== undefined) {
-                      if (!treesInserted.has(ti)) {
-                        renderItems.push({ kind: "tree", treeIndex: ti });
-                        treesInserted.add(ti);
-                      }
-                    } else {
-                      renderItems.push({ kind: "block", block: b, idx: i });
-                    }
-                  });
-
-                  return (
-                    <>
-                      {renderItems.map((item) => {
-                        if (item.kind === "tree") {
-                          const ti = item.treeIndex;
-                          const treeNode = layouts[ti];
-                          const resizingPrefix = `${ti}:`;
-                          // Find the first tree member's block index for reorder line
-                          const treeLeafIds = collectLeafIds(treeNode);
-                          const firstTreeBlockIdx = treeLeafIds.reduce((min, id) => {
-                            const i = blocks.findIndex(b => b.id === id);
-                            return i >= 0 && i < min ? i : min;
-                          }, Infinity);
-                          const lastTreeBlockIdx = treeLeafIds.reduce((max, id) => {
-                            const i = blocks.findIndex(b => b.id === id);
-                            return i >= 0 && i > max ? i : max;
-                          }, -1);
-                          const showTreeReorderAbove = dropTarget?.type === "reorder" && dropTarget.insertIdx === firstTreeBlockIdx && dragBlockId;
-                          const showTreeReorderBelow = dropTarget?.type === "reorder" && dropTarget.insertIdx === lastTreeBlockIdx + 1 && dragBlockId;
-                          return (
-                            <div key={`__layout_tree_${ti}__`} style={{ position: "relative" }}>
-                              {showTreeReorderAbove && (
-                                <div style={{ position: "absolute", top: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
-                              )}
-                              {showTreeReorderBelow && (
-                                <div style={{ position: "absolute", bottom: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
-                              )}
-                              <BlockLayoutRenderer
-                                node={treeNode}
-                                blocks={blocks}
-                                ideaId={ideaId}
-                                streaming={streaming}
-                                autoEditBlockId={autoEditBlockId}
-                                focusBlockId={focusBlockId}
-                                focusTrigger={focusTrigger}
-                                focusCursorPos={focusCursorPos}
-                                pendingRemoteBlocks={pendingRemoteBlockRef.current}
-                                dragBlockId={dragBlockId}
-                                dropTarget={activeLayoutDrop}
-                                onSaved={handleBlockSaved}
-                                onDeleted={handleBlockDeleted}
-                                onCreatedAfter={handleBlockCreatedAfter}
-                                onConflict={handleBlockConflict}
-                                onFocusChange={handleBlockFocusChange}
-                                onEditBlocked={() => toast.info(t("idea.editLocked"))}
-                                onSplit={handleSplit}
-                                onMergeIntoPrev={handleMergeIntoPrev}
-                                onDragStart={handleBlockDragStart}
-                                onFocusPrev={handleLayoutFocusPrev}
-                                onFocusNext={handleLayoutFocusNext}
-                                onResizeStart={(path, e) => handleLayoutResizeStart(ti, path, e)}
-                                resizingPath={resizingLayoutPath?.startsWith(resizingPrefix) ? resizingLayoutPath.slice(resizingPrefix.length) : null}
-                              />
-                            </div>
-                          );
-                        }
-                        const { block, idx } = item;
-                        const showReorderLine = dropTarget?.type === "reorder" && dropTarget.insertIdx === idx && dragBlockId;
-                        // Remaining blocks (not in tree): only show left/right split indicators, not top/bottom
-                        const showSplitTop = false;
-                        const showSplitBottom = false;
-                        const showSplitLeft = dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "left" && dragBlockId;
-                        const showSplitRight = dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "right" && dragBlockId;
-                        return (
-                          <React.Fragment key={block.id}>
-                            <div style={{ position: "relative" }}>
-                              {showReorderLine && (
-                                <div style={{ position: "absolute", top: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
-                              )}
-                              {showSplitTop && (
-                                <div style={{ position: "absolute", top: -1, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-                              )}
-                              {showSplitBottom && (
-                                <div style={{ position: "absolute", bottom: -1, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-                              )}
-                              {showSplitLeft && (
-                                <div style={{ position: "absolute", left: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-                              )}
-                              {showSplitRight && (
-                                <div style={{ position: "absolute", right: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-                              )}
-                              <BlockItem
-                                block={block}
-                                ideaId={ideaId}
-                                readOnly={streaming}
-                                sourceMode={false}
-                                autoFocus={autoEditBlockId === block.id}
-                                focusTrigger={focusBlockId === block.id ? focusTrigger : 0}
-                                focusCursorPos={focusBlockId === block.id ? focusCursorPos : null}
-                                remoteUpdatePending={pendingRemoteBlockRef.current.has(block.id)}
-                                onSaved={handleBlockSaved}
-                                onDeleted={handleBlockDeleted}
-                                onCreatedAfter={handleBlockCreatedAfter}
-                                onConflict={handleBlockConflict}
-                                onFocusChange={handleBlockFocusChange}
-                                editLocked={!!focusBlockId && focusBlockId !== block.id}
-                                onEditBlocked={() => toast.info(t("idea.editLocked"))}
-                                onSplit={handleSplit}
-                                onMergeIntoPrev={handleMergeIntoPrev}
-                                onDragStart={handleBlockDragStart}
-                                isDragging={dragBlockId === block.id}
-                                dragInProgress={!!dragBlockId}
-                                onFocusPrev={() => {
-                                  if (idx > 0) {
-                                    setFocusBlockId(blocks[idx - 1].id);
-                                    setFocusTrigger((n) => n + 1);
-                                  }
-                                }}
-                                onFocusNext={() => {
-                                  if (idx < blocks.length - 1) {
-                                    setFocusBlockId(blocks[idx + 1].id);
-                                    setFocusTrigger((n) => n + 1);
-                                  }
-                                }}
-                              />
-                            </div>
-                          </React.Fragment>
-                        );
-                      })}
-                    </>
-                  );
-                }
-
-                // ── Fallback: old column-group rendering (no layout tree) ──
-                let blockIdx = 0;
-                return blockLayout.map((item, layoutIdx) => {
-                  if (item.type === "single") {
-                    const block = item.block;
-                    const idx = blocks.findIndex(b => b.id === block.id);
-                    blockIdx++;
-                    const showReorderLine = dropTarget?.type === "reorder" && dropTarget.insertIdx === idx && dragBlockId;
-                    const showReorderLineAfter = dropTarget?.type === "reorder" && dropTarget.insertIdx === idx + 1 && dragBlockId && layoutIdx === blockLayout.length - 1;
-                    return (
-                      <React.Fragment key={block.id}>
-                        <div style={{ position: "relative" }}>
-                          {showReorderLine && (
-                            <div style={{ position: "absolute", top: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
-                          )}
-                          {dragInsertIdx === idx && !dragBlockId && (
-                            <div style={{ position: "absolute", top: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
-                          )}
-                          {showReorderLineAfter && (
-                            <div style={{ position: "absolute", bottom: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
-                          )}
-                          {/* Drop indicators for layout-split */}
-                          {dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "left" && (
-                            <div style={{ position: "absolute", left: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-                          )}
-                          {dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "right" && (
-                            <div style={{ position: "absolute", right: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-                          )}
-                          {dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "top" && (
-                            <div style={{ position: "absolute", top: -1, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-                          )}
-                          {dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "bottom" && (
-                            <div style={{ position: "absolute", bottom: -1, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-                          )}
-                          <BlockItem
-                            block={block}
-                            ideaId={ideaId}
-                            readOnly={streaming}
-                            sourceMode={false}
-                            autoFocus={autoEditBlockId === block.id}
-                            focusTrigger={focusBlockId === block.id ? focusTrigger : 0}
-                            focusCursorPos={focusBlockId === block.id ? focusCursorPos : null}
-                            remoteUpdatePending={pendingRemoteBlockRef.current.has(block.id)}
-                            onSaved={handleBlockSaved}
-                            onDeleted={handleBlockDeleted}
-                            onCreatedAfter={handleBlockCreatedAfter}
-                            onConflict={handleBlockConflict}
-                            onFocusChange={handleBlockFocusChange}
-                            editLocked={!!focusBlockId && focusBlockId !== block.id}
-                            onEditBlocked={() => toast.info(t("idea.editLocked"))}
-                            onSplit={handleSplit}
-                            onMergeIntoPrev={handleMergeIntoPrev}
-                            onDragStart={handleBlockDragStart}
-                            isDragging={dragBlockId === block.id}
-                            dragInProgress={!!dragBlockId}
-                            onFocusPrev={() => {
-                              if (idx > 0) {
-                                const container = blockListRef.current;
-                                if (container) {
-                                  const allTas = container.querySelectorAll('textarea');
-                                  const prevTa = allTas[idx - 1];
-                                  if (prevTa) { prevTa.focus(); prevTa.selectionStart = prevTa.selectionEnd = prevTa.value.length; }
-                                }
-                                setFocusBlockId(blocks[idx - 1].id);
-                              }
-                            }}
-                            onFocusNext={() => {
-                              if (idx < blocks.length - 1) {
-                                const container = blockListRef.current;
-                                if (container) {
-                                  const allTas = container.querySelectorAll('textarea');
-                                  const nextTa = allTas[idx + 1];
-                                  if (nextTa) { nextTa.focus(); nextTa.selectionStart = nextTa.selectionEnd = 0; }
-                                }
-                                setFocusBlockId(blocks[idx + 1].id);
-                              }
-                            }}
-                          />
-                        </div>
-                        {/* showReorderLineAfter handled by absolute positioning inside the block wrapper */}
-                      </React.Fragment>
-                    );
-                  } else {
-                    // N-column group (legacy)
-                    const { groupId, columns, widths } = item;
-                    const firstColIdx = blocks.findIndex(b => b.id === columns[0].id);
-                    const lastColIdx = blocks.findIndex(b => b.id === columns[columns.length - 1].id);
-                    blockIdx += columns.length;
-                    const showLineAbove = dropTarget?.type === "reorder" && dropTarget.insertIdx === firstColIdx && dragBlockId;
-                    const showLineBelow = dropTarget?.type === "reorder" && dropTarget.insertIdx === lastColIdx + 1 && dragBlockId && layoutIdx === blockLayout.length - 1;
-                    const gridCols = widths.map(w => `${w}fr`).join(" 12px ");
-                    return (
-                      <React.Fragment key={groupId}>
-                      {showLineAbove && (
-                        <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, margin: "2px 0", pointerEvents: "none" }} />
-                      )}
-                      <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 0, alignItems: "start" }}>
-                        {columns.map((col, colIdx) => {
-                          const bIdx = blocks.findIndex(b => b.id === col.id);
-                          const isFirst = colIdx === 0;
-                          return (
-                            <React.Fragment key={col.id}>
-                              {!isFirst && (
-                                <div
-                                  style={{
-                                    width: 24, marginLeft: -6, marginRight: -6,
-                                    cursor: "col-resize", alignSelf: "stretch",
-                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                    position: "relative", zIndex: 5, background: "transparent",
-                                  }}
-                                  onPointerEnter={(e) => {
-                                    const bar = e.currentTarget.querySelector("[data-resize-bar]") as HTMLElement;
-                                    if (bar) bar.style.opacity = "1";
-                                  }}
-                                  onPointerLeave={(e) => {
-                                    if (resizingGroup !== `${groupId}:${colIdx - 1}`) {
-                                      const bar = e.currentTarget.querySelector("[data-resize-bar]") as HTMLElement;
-                                      if (bar) bar.style.opacity = "0";
-                                    }
-                                  }}
-                                  onPointerDown={(e) => handleColumnResizeStart(`${groupId}:${colIdx - 1}`, e)}
-                                >
-                                  <div data-resize-bar="" style={{
-                                    width: 2, borderRadius: 2, position: "absolute",
-                                    top: 0, bottom: 0, left: 11,
-                                    opacity: resizingGroup === `${groupId}:${colIdx - 1}` ? 1 : 0,
-                                    background: "var(--primary)", transition: "opacity 0.15s", pointerEvents: "none",
-                                  }} />
-                                </div>
-                              )}
-                              <div style={{ position: "relative", minWidth: 0 }}>
-                                <BlockItem
-                                  block={col}
-                                  ideaId={ideaId}
-                                  readOnly={streaming}
-                                  sourceMode={false}
-                                  autoFocus={autoEditBlockId === col.id}
-                                  focusTrigger={focusBlockId === col.id ? focusTrigger : 0}
-                                  focusCursorPos={focusBlockId === col.id ? focusCursorPos : null}
-                                  remoteUpdatePending={pendingRemoteBlockRef.current.has(col.id)}
-                                  onSaved={handleBlockSaved}
-                                  onDeleted={handleBlockDeleted}
-                                  onCreatedAfter={handleBlockCreatedAfter}
-                                  onConflict={handleBlockConflict}
-                                  onFocusChange={handleBlockFocusChange}
-                                  editLocked={!!focusBlockId && focusBlockId !== col.id}
-                                  onEditBlocked={() => toast.info(t("idea.editLocked"))}
-                                  onSplit={handleSplit}
-                                  onMergeIntoPrev={handleMergeIntoPrev}
-                                  onDragStart={handleBlockDragStart}
-                                  isDragging={dragBlockId === col.id}
-                                  dragInProgress={!!dragBlockId}
-                                  onFocusPrev={() => {
-                                    if (colIdx > 0) setFocusBlockId(columns[colIdx - 1].id);
-                                    else if (bIdx > 0) setFocusBlockId(blocks[bIdx - 1].id);
-                                  }}
-                                  onFocusNext={() => {
-                                    if (colIdx < columns.length - 1) setFocusBlockId(columns[colIdx + 1].id);
-                                    else if (bIdx < blocks.length - 1) setFocusBlockId(blocks[bIdx + 1].id);
-                                  }}
-                                />
-                              </div>
-                            </React.Fragment>
-                          );
-                        })}
-                      </div>
-                      {showLineBelow && (
-                        <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, margin: "2px 0", pointerEvents: "none" }} />
-                      )}
-                      </React.Fragment>
-                    );
+              const isSourceMode = mode === "source";
+              const rowIds = allRowBlockIds(layouts);
+              // Build a map: blockId → top-level ColumnRow for quick lookup
+              const blockToRow = new Map<string, ColumnRow>();
+              for (const row of layouts) {
+                // Collect all block IDs in this top-level row (recursively)
+                function walkCells(cells: ColumnCell[]) {
+                  for (const c of cells) {
+                    if (c.type === "block") blockToRow.set(c.blockId, row);
+                    else walkCells(c.row.columns);
                   }
-                });
+                }
+                walkCells(row.columns);
               }
 
-              // Source mode: flat list (no column support)
-              return blocks.map((block, idx) => (
-                <React.Fragment key={block.id}>
-                  {dragInsertIdx === idx && (
-                    <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, margin: "2px 0", pointerEvents: "none" }} />
-                  )}
-                  <BlockItem
-                    block={block}
-                    ideaId={ideaId}
-                    readOnly={streaming}
-                    sourceMode={true}
-                    autoFocus={autoEditBlockId === block.id}
-                    focusTrigger={focusBlockId === block.id ? focusTrigger : 0}
-                    focusCursorPos={focusBlockId === block.id ? focusCursorPos : null}
-                    remoteUpdatePending={pendingRemoteBlockRef.current.has(block.id)}
-                    onSaved={handleBlockSaved}
-                    onDeleted={handleBlockDeleted}
-                    onCreatedAfter={handleBlockCreatedAfter}
-                    onConflict={handleBlockConflict}
-                    onFocusChange={handleBlockFocusChange}
-                    editLocked={false}
-                    onEditBlocked={() => toast.info(t("idea.editLocked"))}
-                    onSplit={handleSplit}
-                    onMergeIntoPrev={handleMergeIntoPrev}
-                    onFocusPrev={() => {
-                      if (idx > 0) {
-                        const container = blockListRef.current;
-                        if (container) {
-                          const allTas = container.querySelectorAll('textarea');
-                          const prevTa = allTas[idx - 1];
-                          if (prevTa) { prevTa.focus(); prevTa.selectionStart = prevTa.selectionEnd = prevTa.value.length; }
-                        }
-                        setFocusBlockId(blocks[idx - 1].id);
-                      }
-                    }}
-                    onFocusNext={() => {
-                      if (idx < blocks.length - 1) {
-                        const container = blockListRef.current;
-                        if (container) {
-                          const allTas = container.querySelectorAll('textarea');
-                          const nextTa = allTas[idx + 1];
-                          if (nextTa) { nextTa.focus(); nextTa.selectionStart = nextTa.selectionEnd = 0; }
-                        }
-                        setFocusBlockId(blocks[idx + 1].id);
-                      }
-                    }}
-                  />
-                </React.Fragment>
-              ));
+              const activeLayoutDrop: LayoutDropTarget | null =
+                dropTarget?.type === "layout-split"
+                  ? { type: "layout-side", targetBlockId: dropTarget.targetBlockId, side: dropTarget.side }
+                  : null;
+
+              // Track which rows have already been rendered
+              const rowsRendered = new Set<string>();
+              const elements: React.ReactNode[] = [];
+
+              blocks.forEach((block, idx) => {
+                const row = blockToRow.get(block.id);
+
+                if (row && !isSourceMode) {
+                  // This block is part of a row — render the full row at the position of its first member
+                  if (rowsRendered.has(row.id)) return; // skip — already rendered
+                  rowsRendered.add(row.id);
+
+                  // Find first and last block indices for reorder lines (recursive)
+                  const rowBlockIds = allRowBlockIds([row]);
+                  let firstRowBlockIdx = Infinity;
+                  let lastRowBlockIdx = -1;
+                  blocks.forEach((b, i) => {
+                    if (rowBlockIds.has(b.id)) {
+                      if (i < firstRowBlockIdx) firstRowBlockIdx = i;
+                      if (i > lastRowBlockIdx) lastRowBlockIdx = i;
+                    }
+                  });
+                  const showRowReorderAbove = dropTarget?.type === "reorder" && dropTarget.insertIdx === firstRowBlockIdx && dragBlockId;
+                  const showRowReorderBelow = dropTarget?.type === "reorder" && dropTarget.insertIdx === lastRowBlockIdx + 1 && dragBlockId;
+
+                  // Row-edge indicators: left/right side lines (6px gap)
+                  // Detect if the drop target is for the first/last block of this top-level row
+                  const firstBlockCell = row.columns[0];
+                  const lastBlockCell = row.columns[row.columns.length - 1];
+                  const firstBlockId = firstBlockCell?.type === "block" ? firstBlockCell.blockId : null;
+                  const lastBlockId = lastBlockCell?.type === "block" ? lastBlockCell.blockId : null;
+                  const showRowEdgeLeft = dragBlockId && dropTarget?.type === "layout-split" && dropTarget.targetBlockId === firstBlockId && dropTarget.side === "left";
+                  const showRowEdgeRight = dragBlockId && dropTarget?.type === "layout-split" && dropTarget.targetBlockId === lastBlockId && dropTarget.side === "right";
+
+                  elements.push(
+                    <div key={`__row_${row.id}__`} style={{ position: "relative" }}>
+                      {showRowReorderAbove && (
+                        <div style={{ position: "absolute", top: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
+                      )}
+                      {showRowReorderBelow && (
+                        <div style={{ position: "absolute", bottom: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
+                      )}
+                      {showRowEdgeLeft && (
+                        <div style={{ position: "absolute", left: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
+                      )}
+                      {showRowEdgeRight && (
+                        <div style={{ position: "absolute", right: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
+                      )}
+                      <BlockLayoutRenderer
+                        row={row}
+                        blocks={blocks}
+                        ideaId={ideaId}
+                        streaming={streaming}
+                        autoEditBlockId={autoEditBlockId}
+                        focusBlockId={focusBlockId}
+                        focusTrigger={focusTrigger}
+                        focusCursorPos={focusCursorPos}
+                        pendingRemoteBlocks={pendingRemoteBlockRef.current}
+                        dragBlockId={dragBlockId}
+                        dropTarget={activeLayoutDrop}
+                        onSaved={handleBlockSaved}
+                        onDeleted={handleBlockDeleted}
+                        onCreatedAfter={handleBlockCreatedAfter}
+                        onConflict={handleBlockConflict}
+                        onFocusChange={handleBlockFocusChange}
+                        onEditBlocked={() => toast.info(t("idea.editLocked"))}
+                        onSplit={handleSplit}
+                        onMergeIntoPrev={handleMergeIntoPrev}
+                        onDragStart={handleBlockDragStart}
+                        onFocusPrev={handleRowFocusPrev}
+                        onFocusNext={handleRowFocusNext}
+                        onResizeStart={handleRowResizeStart}
+                        resizingDivider={resizingDivider}
+                      />
+                    </div>,
+                  );
+                  return;
+                }
+
+                // Standalone block (not in any row, or source mode)
+                const showReorderLine = dropTarget?.type === "reorder" && dropTarget.insertIdx === idx && dragBlockId;
+                const showSplitLeft = !isSourceMode && dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "left" && dragBlockId;
+                const showSplitRight = !isSourceMode && dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "right" && dragBlockId;
+
+                elements.push(
+                  <React.Fragment key={block.id}>
+                    <div style={{ position: "relative" }}>
+                      {showReorderLine && (
+                        <div style={{ position: "absolute", top: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
+                      )}
+                      {dragInsertIdx === idx && !dragBlockId && (
+                        <div style={{ position: "absolute", top: -7, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, pointerEvents: "none", zIndex: 10 }} />
+                      )}
+                      {showSplitLeft && (
+                        <div style={{ position: "absolute", left: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
+                      )}
+                      {showSplitRight && (
+                        <div style={{ position: "absolute", right: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
+                      )}
+                      <BlockItem
+                        block={block}
+                        ideaId={ideaId}
+                        readOnly={streaming}
+                        sourceMode={isSourceMode}
+                        autoFocus={autoEditBlockId === block.id}
+                        focusTrigger={focusBlockId === block.id ? focusTrigger : 0}
+                        focusCursorPos={focusBlockId === block.id ? focusCursorPos : null}
+                        remoteUpdatePending={pendingRemoteBlockRef.current.has(block.id)}
+                        onSaved={handleBlockSaved}
+                        onDeleted={handleBlockDeleted}
+                        onCreatedAfter={handleBlockCreatedAfter}
+                        onConflict={handleBlockConflict}
+                        onFocusChange={handleBlockFocusChange}
+                        editLocked={!isSourceMode && !!focusBlockId && focusBlockId !== block.id}
+                        onEditBlocked={() => toast.info(t("idea.editLocked"))}
+                        onSplit={handleSplit}
+                        onMergeIntoPrev={handleMergeIntoPrev}
+                        onDragStart={isSourceMode ? undefined : handleBlockDragStart}
+                        isDragging={dragBlockId === block.id}
+                        dragInProgress={!!dragBlockId}
+                        onFocusPrev={() => {
+                          if (idx > 0) {
+                            setFocusBlockId(blocks[idx - 1].id);
+                            setFocusTrigger((n) => n + 1);
+                          }
+                        }}
+                        onFocusNext={() => {
+                          if (idx < blocks.length - 1) {
+                            setFocusBlockId(blocks[idx + 1].id);
+                            setFocusTrigger((n) => n + 1);
+                          }
+                        }}
+                      />
+                    </div>
+                  </React.Fragment>,
+                );
+              });
+
+              return elements;
             })()}
             {dragInsertIdx === blocks.length && !dragBlockId && (
               <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, marginTop: -7, pointerEvents: "none" }} />
