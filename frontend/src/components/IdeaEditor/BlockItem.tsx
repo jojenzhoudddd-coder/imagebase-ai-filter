@@ -459,8 +459,14 @@ const BlockItem = memo(function BlockItem({
           spellCheck={false}
         />
         {!sourceMode && (
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-            <span style={{ flex: 1, fontSize: 12, color: "var(--text-muted)", lineHeight: "32px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+            <span
+              title={t("idea.block.editHint")}
+              style={{
+                flex: 1, minWidth: 0, fontSize: 12, color: "var(--text-muted)", lineHeight: "32px",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}
+            >
               {t("idea.block.editHint")}
             </span>
             <button
