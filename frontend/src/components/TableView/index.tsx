@@ -370,16 +370,20 @@ function TextEditor({
   const committedRef = useRef(false);
   const isText = field.type === "Text" || field.type === "Url";
 
-  // Auto-resize textarea height — stay at 32px for single-line content
+  // Auto-resize textarea height; scrollbar only when capped at maxH
+  const maxHRef = useRef<number | undefined>(undefined);
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "32px";
     el.style.overflowY = "hidden";
-    const needsExpand = el.scrollHeight > 32;
-    if (needsExpand) {
-      el.style.height = el.scrollHeight + "px";
+    const natural = el.scrollHeight;
+    const cap = maxHRef.current;
+    if (cap && natural > cap) {
+      el.style.height = cap + "px";
       el.style.overflowY = "auto";
+    } else if (natural > 32) {
+      el.style.height = natural + "px";
     }
   }, []);
 
@@ -391,7 +395,9 @@ function TextEditor({
     if (!el) return;
     const block = el.closest(".artifact-block, .mc-block, .table-artifact-surface, .table-view-outer") as HTMLElement | null;
     if (block) {
-      setMaxH(block.clientHeight - 40);
+      const h = block.clientHeight - 40;
+      setMaxH(h);
+      maxHRef.current = h;
     }
   }, [isText]);
 
