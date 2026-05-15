@@ -1393,13 +1393,30 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                       {/* Blocks not in the layout tree render vertically below */}
                       {remainingBlocks.map((block) => {
                         const idx = blocks.findIndex((b) => b.id === block.id);
-                        const showReorderLine = dropTarget?.type === "reorder" && dropTarget.insertIdx === idx && dragBlockId;
+                        const hasLayoutSplit = dropTarget?.type === "layout-split" && dragBlockId;
+                        const showReorderLine = !hasLayoutSplit && dropTarget?.type === "reorder" && dropTarget.insertIdx === idx && dragBlockId;
+                        const showSplitTop = dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "top" && dragBlockId;
+                        const showSplitBottom = dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "bottom" && dragBlockId;
+                        const showSplitLeft = dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "left" && dragBlockId;
+                        const showSplitRight = dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "right" && dragBlockId;
                         return (
                           <React.Fragment key={block.id}>
                             {showReorderLine && (
                               <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, margin: "2px 0", pointerEvents: "none" }} />
                             )}
                             <div style={{ position: "relative" }}>
+                              {showSplitTop && (
+                                <div style={{ position: "absolute", top: -1, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
+                              )}
+                              {showSplitBottom && (
+                                <div style={{ position: "absolute", bottom: -1, left: 0, right: 0, height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
+                              )}
+                              {showSplitLeft && (
+                                <div style={{ position: "absolute", left: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
+                              )}
+                              {showSplitRight && (
+                                <div style={{ position: "absolute", right: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
+                              )}
                               <BlockItem
                                 block={block}
                                 ideaId={ideaId}
@@ -1449,8 +1466,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                     const block = item.block;
                     const idx = blocks.findIndex(b => b.id === block.id);
                     blockIdx++;
-                    const showReorderLine = dropTarget?.type === "reorder" && dropTarget.insertIdx === idx && dragBlockId;
-                    const showReorderLineAfter = dropTarget?.type === "reorder" && dropTarget.insertIdx === idx + 1 && dragBlockId && layoutIdx === blockLayout.length - 1;
+                    // Don't show reorder line if a layout-split indicator is active on this or adjacent block
+                    const hasLayoutSplit = dropTarget?.type === "layout-split" && dragBlockId;
+                    const showReorderLine = !hasLayoutSplit && dropTarget?.type === "reorder" && dropTarget.insertIdx === idx && dragBlockId;
+                    const showReorderLineAfter = !hasLayoutSplit && dropTarget?.type === "reorder" && dropTarget.insertIdx === idx + 1 && dragBlockId && layoutIdx === blockLayout.length - 1;
                     return (
                       <React.Fragment key={block.id}>
                         {showReorderLine && (
