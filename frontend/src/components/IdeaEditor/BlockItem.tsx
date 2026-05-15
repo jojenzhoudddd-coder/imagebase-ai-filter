@@ -141,7 +141,6 @@ const BlockItem = memo(function BlockItem({
   }, [sourceMode, block.content, saving]);
 
   // Auto-focus: only for newly created blocks (autoFocus=true on first mount).
-  // Uses a ref to fire only once and not re-trigger on parent re-renders.
   const didAutoFocus = useRef(false);
   useEffect(() => {
     if (autoFocus && !didAutoFocus.current && !readOnly && !editLocked) {
@@ -152,13 +151,19 @@ const BlockItem = memo(function BlockItem({
     }
   }, [autoFocus]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Source mode: focus textarea when focusTrigger increments
+  // Source mode: focus + set cursor AFTER content sync (use rAF to run after React commit)
+  const prevFocusTrigger = useRef(focusTrigger);
   useEffect(() => {
-    if (!sourceMode || focusTrigger === 0 || !textareaRef.current) return;
-    const ta = textareaRef.current;
-    ta.focus();
-    const pos = focusCursorPos != null ? Math.min(focusCursorPos, ta.value.length) : 0;
-    ta.selectionStart = ta.selectionEnd = pos;
+    if (!sourceMode || focusTrigger === 0 || focusTrigger === prevFocusTrigger.current) return;
+    prevFocusTrigger.current = focusTrigger;
+    // Delay to ensure editValue sync effect has committed and DOM is updated
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      const pos = focusCursorPos != null ? Math.min(focusCursorPos, ta.value.length) : 0;
+      ta.selectionStart = ta.selectionEnd = pos;
+    });
   }, [focusTrigger, sourceMode, focusCursorPos]);
 
   // Auto-grow textarea height to fit content
