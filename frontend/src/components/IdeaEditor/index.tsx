@@ -509,7 +509,6 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // ── Source mode: split and merge blocks ──
 
   const handleSplit = useCallback(async (blockId: string, contentBefore: string, contentAfter: string) => {
-    if (mergingRef.current) return;
     mergingRef.current = true;
     const before = contentBefore.replace(/\n+$/, "") + "\n";
     const after = (contentAfter.replace(/^\n+/, "").replace(/\n+$/, "") || "") + "\n";
@@ -533,8 +532,20 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       return next;
     });
     setFocusBlockId(tempId);
-    setFocusCursorPos(0);
-    setFocusTrigger(n => n + 1);
+
+    // Direct DOM focus on the new block textarea (inserted at idx+1)
+    requestAnimationFrame(() => {
+      const container = blockListRef.current;
+      if (container) {
+        const allTas = container.querySelectorAll('textarea');
+        const idx = blocks.findIndex(b => b.id === blockId);
+        const newTa = allTas[idx + 1];
+        if (newTa) {
+          newTa.focus();
+          newTa.selectionStart = newTa.selectionEnd = 0;
+        }
+      }
+    });
 
     // API calls in background
     try {
@@ -585,8 +596,21 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     });
     setFocusBlockId(prevBlock.id);
     focusBlockIdRef.current = prevBlock.id;
-    setFocusCursorPos(cursorPos);
-    setFocusTrigger(n => n + 1);
+
+    // Direct DOM focus — state-based pendingCursor is unreliable when content doesn't change
+    requestAnimationFrame(() => {
+      const container = blockListRef.current;
+      if (container) {
+        const allTas = container.querySelectorAll('textarea');
+        // After removing the current block, prev block is at idx-1
+        const prevTa = allTas[idx - 1];
+        if (prevTa) {
+          prevTa.focus();
+          const pos = Math.min(cursorPos, prevTa.value.length);
+          prevTa.selectionStart = prevTa.selectionEnd = pos;
+        }
+      }
+    });
 
     // API calls in background
     try {
