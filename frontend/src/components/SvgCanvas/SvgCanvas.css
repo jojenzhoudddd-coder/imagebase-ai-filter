@@ -428,17 +428,17 @@
 
 .alt-distance-h {
   height: 1px;
-  background: var(--danger);
+  background: var(--primary);
 }
 
 .alt-distance-v {
   width: 1px;
-  background: var(--danger);
+  background: var(--primary);
   flex-direction: column;
 }
 
 .alt-distance-label {
-  background: var(--danger);
+  background: var(--primary);
   color: var(--text-on-primary);
   font-size: 10px;
   line-height: 1;
