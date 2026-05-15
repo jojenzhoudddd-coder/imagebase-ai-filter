@@ -85,6 +85,20 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   useEffect(() => { focusBlockIdRef.current = focusBlockId; }, [focusBlockId]);
   const pendingRemoteBlockRef = useRef<Set<string>>(new Set());
 
+  // Unified direct DOM focus: runs after React commits new blocks to DOM
+  useEffect(() => {
+    if (!focusBlockId || focusTrigger === 0) return;
+    const container = blockListRef.current;
+    if (!container) return;
+    // Find the textarea inside the block with matching data-block-id
+    const blockEl = container.querySelector(`[data-block-id="${focusBlockId}"] textarea`) as HTMLTextAreaElement
+      ?? container.querySelector(`[data-block-id="${focusBlockId}"]`) as HTMLTextAreaElement;
+    if (!blockEl || blockEl.tagName !== "TEXTAREA") return;
+    blockEl.focus();
+    const pos = focusCursorPos != null ? Math.min(focusCursorPos, blockEl.value.length) : 0;
+    blockEl.selectionStart = blockEl.selectionEnd = pos;
+  }, [focusBlockId, focusTrigger, focusCursorPos]);
+
   const mergingRef = useRef(false);
   const versionRef = useRef(0);
   const dirtyRef = useRef(false);
@@ -532,20 +546,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       return next;
     });
     setFocusBlockId(tempId);
-
-    // Direct DOM focus on the new block textarea (inserted at idx+1)
-    requestAnimationFrame(() => {
-      const container = blockListRef.current;
-      if (container) {
-        const allTas = container.querySelectorAll('textarea');
-        const idx = blocks.findIndex(b => b.id === blockId);
-        const newTa = allTas[idx + 1];
-        if (newTa) {
-          newTa.focus();
-          newTa.selectionStart = newTa.selectionEnd = 0;
-        }
-      }
-    });
+    setFocusCursorPos(0);
+    setFocusTrigger(n => n + 1);
 
     // API calls in background
     try {
@@ -596,21 +598,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     });
     setFocusBlockId(prevBlock.id);
     focusBlockIdRef.current = prevBlock.id;
-
-    // Direct DOM focus — state-based pendingCursor is unreliable when content doesn't change
-    requestAnimationFrame(() => {
-      const container = blockListRef.current;
-      if (container) {
-        const allTas = container.querySelectorAll('textarea');
-        // After removing the current block, prev block is at idx-1
-        const prevTa = allTas[idx - 1];
-        if (prevTa) {
-          prevTa.focus();
-          const pos = Math.min(cursorPos, prevTa.value.length);
-          prevTa.selectionStart = prevTa.selectionEnd = pos;
-        }
-      }
-    });
+    setFocusCursorPos(cursorPos);
+    setFocusTrigger(n => n + 1);
 
     // API calls in background
     try {
