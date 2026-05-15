@@ -724,6 +724,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           foundTarget = { type: "reorder", insertIdx: 0 };
         }
       }
+      if (foundTarget) console.log("[drag] dropTarget:", foundTarget);
       setDropTarget(foundTarget);
     };
     const upHandler = () => {
