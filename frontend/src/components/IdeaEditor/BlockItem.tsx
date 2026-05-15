@@ -150,22 +150,25 @@ const BlockItem = memo(function BlockItem({
     if (!sourceMode || focusTrigger === 0 || !textareaRef.current) return;
     const ta = textareaRef.current;
     ta.focus();
-    ta.selectionStart = ta.selectionEnd = ta.value.length;
+    // Cursor at start (e.g. after Enter creates new block)
+    ta.selectionStart = ta.selectionEnd = 0;
   }, [focusTrigger, sourceMode]);
 
-  // Auto-grow textarea (and focus only in non-source mode)
+  // Auto-grow textarea height to fit content
   useEffect(() => {
     if (!editing || !textareaRef.current) return;
     const ta = textareaRef.current;
-    requestAnimationFrame(() => {
-      ta.style.height = "auto";
-      ta.style.height = ta.scrollHeight + "px";
-    });
-    if (!sourceMode) {
-      ta.focus();
-      ta.selectionStart = ta.selectionEnd = ta.value.length;
-    }
-  }, [editing]);
+    ta.style.height = "auto";
+    ta.style.height = ta.scrollHeight + "px";
+  }, [editing, editValue]);
+
+  // Focus textarea when entering edit mode (non-source only)
+  useEffect(() => {
+    if (!editing || sourceMode || !textareaRef.current) return;
+    const ta = textareaRef.current;
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+  }, [editing, sourceMode]);
 
   // Click outside selected block → deselect
   useEffect(() => {
