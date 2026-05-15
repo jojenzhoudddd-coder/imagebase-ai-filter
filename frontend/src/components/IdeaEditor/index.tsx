@@ -808,12 +808,23 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           const draggedBlock = blocks.find(b => b.id === blockId);
           const groupId = (draggedBlock?.props as any)?.columnGroupId;
           void (async () => {
-            // Only break column if the dragged block is IN a column
+            // Remove from column group if the dragged block is in one
             if (groupId) {
-              const partner = blocks.find(b => b.id !== blockId && (b.props as any)?.columnGroupId === groupId);
-              await patchIdeaBlock(ideaId, blockId, { props: { columnGroupId: null, columnPosition: null, columnRatio: null } });
-              if (partner) {
-                await patchIdeaBlock(ideaId, partner.id, { props: { columnGroupId: null, columnPosition: null, columnRatio: null } });
+              const remaining = blocks.filter(b => b.id !== blockId && (b.props as any)?.columnGroupId === groupId);
+              // Clear dragged block's column props
+              await patchIdeaBlock(ideaId, blockId, { props: { columnGroupId: null, columnIndex: null, columnWidth: null, columnPosition: null, columnRatio: null } });
+              if (remaining.length <= 1) {
+                // Only 1 left → dissolve group
+                for (const m of remaining) {
+                  await patchIdeaBlock(ideaId, m.id, { props: { columnGroupId: null, columnIndex: null, columnWidth: null, columnPosition: null, columnRatio: null } });
+                }
+              } else {
+                // Re-index and redistribute widths among remaining
+                remaining.sort((a, b) => getColumnIndex(a.props) - getColumnIndex(b.props));
+                const equalWidth = 1 / remaining.length;
+                for (let i = 0; i < remaining.length; i++) {
+                  await patchIdeaBlock(ideaId, remaining[i].id, { props: { ...remaining[i].props, columnIndex: i, columnWidth: equalWidth } });
+                }
               }
             }
             await moveIdeaBlock(ideaId, blockId, target.insertIdx);
@@ -1230,11 +1241,20 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                   } else {
                     // N-column group
                     const { groupId, columns, widths } = item;
+                    const firstColIdx = blocks.findIndex(b => b.id === columns[0].id);
+                    const lastColIdx = blocks.findIndex(b => b.id === columns[columns.length - 1].id);
                     blockIdx += columns.length;
+                    // Reorder lines above/below the column group
+                    const showLineAbove = dropTarget?.type === "reorder" && dropTarget.insertIdx === firstColIdx && dragBlockId;
+                    const showLineBelow = dropTarget?.type === "reorder" && dropTarget.insertIdx === lastColIdx + 1 && dragBlockId && layoutIdx === blockLayout.length - 1;
                     // Build grid template: w1fr 12px w2fr 12px w3fr ...
                     const gridCols = widths.map(w => `${w}fr`).join(" 12px ");
                     return (
-                      <div key={groupId} style={{ display: "grid", gridTemplateColumns: gridCols, gap: 0, alignItems: "start" }}>
+                      <React.Fragment key={groupId}>
+                      {showLineAbove && (
+                        <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, margin: "2px 0", pointerEvents: "none" }} />
+                      )}
+                      <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 0, alignItems: "start" }}>
                         {columns.map((col, colIdx) => {
                           const bIdx = blocks.findIndex(b => b.id === col.id);
                           const isFirst = colIdx === 0;
@@ -1312,6 +1332,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                           );
                         })}
                       </div>
+                      {showLineBelow && (
+                        <div style={{ height: 2, background: "var(--primary, #1456F0)", borderRadius: 1, margin: "2px 0", pointerEvents: "none" }} />
+                      )}
+                      </React.Fragment>
                     );
                   }
                 });
