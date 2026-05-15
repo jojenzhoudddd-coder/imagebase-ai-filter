@@ -212,6 +212,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   useIdeaSync(ideaId, clientId, {
     onContentChange: useCallback((remoteContent: string, remoteVersion: number) => {
       if (dirtyRef.current) return;
+      if (mergingRef.current) return; // suppress during merge/split operations
       setContent(remoteContent);
       versionRef.current = remoteVersion;
     }, []),
@@ -261,9 +262,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     }, [ideaId]),
     // ── Block-level SSE events (PR-B + PR-C) ──
     onBlockUpdate: useCallback((p: BlockUpdatePayload) => {
-      // PR-C: if the updated block is currently being edited by the user,
-      // do NOT overwrite — set a pending flag. The server version will be
-      // applied when the user exits edit mode (via handleBlockConflict).
+      if (mergingRef.current) return; // suppress during merge/split
       if (focusBlockIdRef.current === p.blockId) {
         pendingRemoteBlockRef.current.add(p.blockId);
         // Still update version so next save uses correct baseVersion
@@ -313,7 +312,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       });
     }, []),
     onBlockDelete: useCallback((p: BlockDeletePayload) => {
-      // PR-C: if the deleted block is being edited, exit edit mode and toast
+      if (mergingRef.current) return; // suppress during merge/split
       if (focusBlockIdRef.current === p.blockId) {
         setFocusBlockId(null);
         toast.info(t("toast.ideaConflict"));
@@ -510,8 +509,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // ── Source mode: split and merge blocks ──
 
   const handleSplit = useCallback(async (blockId: string, contentBefore: string, contentAfter: string) => {
+    if (mergingRef.current) return;
+    mergingRef.current = true;
     try {
-      // 1. Update current block with contentBefore (ensure single trailing \n)
       const before = contentBefore.replace(/\n+$/, "") + "\n";
       await patchIdeaBlock(ideaId, blockId, { content: before });
       // 2. Create new block after with contentAfter (ensure single trailing \n)
@@ -532,6 +532,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       setFocusTrigger(n => n + 1);
     } catch (err) {
       console.error("[IdeaEditor] split failed:", err);
+    } finally {
+      setTimeout(() => { mergingRef.current = false; }, 100);
     }
   }, [ideaId]);
 
