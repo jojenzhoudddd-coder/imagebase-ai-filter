@@ -511,59 +511,102 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const handleSplit = useCallback(async (blockId: string, contentBefore: string, contentAfter: string) => {
     if (mergingRef.current) return;
     mergingRef.current = true;
+    const before = contentBefore.replace(/\n+$/, "") + "\n";
+    const after = (contentAfter.replace(/^\n+/, "").replace(/\n+$/, "") || "") + "\n";
+    // Temp ID for optimistic new block
+    const tempId = `temp_${Date.now()}`;
+
+    // Optimistic local update
+    setBlocks(prev => {
+      const idx = prev.findIndex(b => b.id === blockId);
+      if (idx < 0) return prev;
+      const updated = { ...prev[idx], content: before };
+      const newBlock: IdeaBlockBrief = {
+        id: tempId, order: updated.order + 0.5, type: "paragraph",
+        content: after, props: {},
+      };
+      const next = [...prev];
+      next[idx] = updated;
+      next.splice(idx + 1, 0, newBlock);
+      contentRef.current = next.map(b => b.content).join("");
+      setContent(contentRef.current);
+      return next;
+    });
+    setFocusBlockId(tempId);
+    setFocusCursorPos(0);
+    setFocusTrigger(n => n + 1);
+
+    // API calls in background
     try {
-      const before = contentBefore.replace(/\n+$/, "") + "\n";
       await patchIdeaBlock(ideaId, blockId, { content: before });
-      // 2. Create new block after with contentAfter (ensure single trailing \n)
-      const after = (contentAfter.replace(/^\n+/, "").replace(/\n+$/, "") || "") + "\n";
-      const res = await createIdeaBlock(ideaId, {
-        type: "paragraph",
-        content: after,
-        afterBlockId: blockId,
-      });
-      // 3. Refetch and focus the new block
+      const res = await createIdeaBlock(ideaId, { type: "paragraph", content: after, afterBlockId: blockId });
+      // Replace temp ID with real ID and sync
       const bRes = await fetchIdeaBlocks(ideaId);
       setBlocks(bRes.blocks);
       contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
       setContent(contentRef.current);
       versionRef.current = bRes.version;
+      // Update focus to real block ID
       setFocusBlockId(res.block.id);
-      setFocusCursorPos(0);
       setFocusTrigger(n => n + 1);
     } catch (err) {
       console.error("[IdeaEditor] split failed:", err);
+      const bRes = await fetchIdeaBlocks(ideaId).catch(() => null);
+      if (bRes) {
+        setBlocks(bRes.blocks);
+        contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+        setContent(contentRef.current);
+        versionRef.current = bRes.version;
+      }
     } finally {
-      setTimeout(() => { mergingRef.current = false; }, 100);
+      setTimeout(() => { mergingRef.current = false; }, 200);
     }
   }, [ideaId]);
 
   const handleMergeIntoPrev = useCallback(async (blockId: string, contentToAppend: string) => {
-    if (mergingRef.current) return; // prevent re-entrant merge chain
+    if (mergingRef.current) return;
     const idx = blocks.findIndex(b => b.id === blockId);
     if (idx <= 0) return;
     const prevBlock = blocks[idx - 1];
     const prevText = prevBlock.content.replace(/\n+$/, "");
     const appendText = contentToAppend.replace(/\n+$/, "");
     const cursorPos = prevText.length;
+    const mergedContent = prevText + appendText + "\n";
+    mergingRef.current = true;
+
+    // Optimistic local update FIRST — remove deleted block, update prev block content
+    setBlocks(prev => {
+      const next = prev
+        .filter(b => b.id !== blockId)
+        .map(b => b.id === prevBlock.id ? { ...b, content: mergedContent } : b);
+      contentRef.current = next.map(b => b.content).join("");
+      setContent(contentRef.current);
+      return next;
+    });
     setFocusBlockId(prevBlock.id);
     focusBlockIdRef.current = prevBlock.id;
-    mergingRef.current = true;
+    setFocusCursorPos(cursorPos);
+    setFocusTrigger(n => n + 1);
+
+    // API calls in background
     try {
-      const mergedContent = prevText + appendText + "\n";
       await patchIdeaBlock(ideaId, prevBlock.id, { content: mergedContent });
       await deleteIdeaBlock(ideaId, blockId);
+      // Sync version from server
       const bRes = await fetchIdeaBlocks(ideaId);
-      setBlocks(bRes.blocks);
-      contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
-      setContent(contentRef.current);
       versionRef.current = bRes.version;
-      setFocusCursorPos(cursorPos);
-      setFocusTrigger(n => n + 1);
     } catch (err) {
       console.error("[IdeaEditor] merge failed:", err);
+      // Rollback: refetch
+      const bRes = await fetchIdeaBlocks(ideaId).catch(() => null);
+      if (bRes) {
+        setBlocks(bRes.blocks);
+        contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+        setContent(contentRef.current);
+        versionRef.current = bRes.version;
+      }
     } finally {
-      // Delay clearing the guard to prevent immediate re-trigger from cursor at pos 0
-      setTimeout(() => { mergingRef.current = false; }, 100);
+      setTimeout(() => { mergingRef.current = false; }, 200);
     }
   }, [ideaId, blocks]);
 
