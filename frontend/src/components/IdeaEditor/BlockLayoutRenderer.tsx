@@ -142,21 +142,19 @@ export default function BlockLayoutRenderer({
         display: "grid",
         gridTemplateColumns: `${node.ratio}fr ${handleSize}px ${1 - node.ratio}fr`,
         gap: 0,
-        minHeight: 0,
         minWidth: 0,
-        alignItems: "stretch",
+        alignItems: "start",
       }
     : {
         display: "grid",
-        gridTemplateRows: `${node.ratio}fr ${handleSize}px ${1 - node.ratio}fr`,
+        gridTemplateRows: `auto ${handleSize}px auto`,
         gap: 0,
-        minHeight: 0,
         minWidth: 0,
       };
 
   return (
     <div style={gridStyle}>
-      <div style={{ minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+      <div style={{ minWidth: 0 }}>
         <BlockLayoutRenderer
           {...{
             node: node.first,
@@ -193,7 +191,7 @@ export default function BlockLayoutRenderer({
         onResizeStart={onResizeStart}
         isResizing={resizingPath === currentPathKey}
       />
-      <div style={{ minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+      <div style={{ minWidth: 0 }}>
         <BlockLayoutRenderer
           {...{
             node: node.second,
