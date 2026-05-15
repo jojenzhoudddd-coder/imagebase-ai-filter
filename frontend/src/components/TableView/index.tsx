@@ -370,12 +370,17 @@ function TextEditor({
   const committedRef = useRef(false);
   const isText = field.type === "Text" || field.type === "Url";
 
-  // Auto-resize textarea height
+  // Auto-resize textarea height — stay at 32px for single-line content
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "32px";
-    el.style.height = Math.max(32, el.scrollHeight) + "px";
+    el.style.overflowY = "hidden";
+    const needsExpand = el.scrollHeight > 32;
+    if (needsExpand) {
+      el.style.height = el.scrollHeight + "px";
+      el.style.overflowY = "auto";
+    }
   }, []);
 
   // Compute max height: artifact block height - 40px

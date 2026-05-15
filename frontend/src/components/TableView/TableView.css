@@ -76,16 +76,9 @@
   background: rgba(20, 86, 240, 0.10) !important;
 }
 
-/* Hover: border highlight on hovered row */
+/* Hover: light gray background on hovered row */
 .data-row.row-hovered td {
-  border-top: 1px solid var(--color-primary);
-  border-bottom: 1px solid var(--color-primary);
-}
-.data-row.row-hovered td:first-child {
-  border-left: 1px solid var(--color-primary);
-}
-.data-row.row-hovered td:last-child {
-  border-right: 1px solid var(--color-primary);
+  background: var(--surface-inset);
 }
 
 /* Selected rows: light blue highlight */
@@ -94,21 +87,12 @@
 }
 
 .data-row.row-selected.row-hovered td {
-  background: rgba(20, 86, 240, 0.04);
-  border-top: 1px solid var(--color-primary);
-  border-bottom: 1px solid var(--color-primary);
-}
-.data-row.row-selected.row-hovered td:first-child {
-  border-left: 1px solid var(--color-primary);
-}
-.data-row.row-selected.row-hovered td:last-child {
-  border-right: 1px solid var(--color-primary);
+  background: rgba(20, 86, 240, 0.08);
 }
 
 /* Hovered row + selected col intersection */
 .data-row.row-hovered td.col-selected {
-  border-top: 1px solid var(--color-primary);
-  border-bottom: 1px solid var(--color-primary);
+  background: rgba(20, 86, 240, 0.08);
 }
 
 .td-editing {
@@ -379,15 +363,16 @@
   left: 0;
   z-index: 10;
   min-height: 32px;
-  height: auto;
+  height: 32px;
   resize: none;
-  overflow-y: auto;
+  overflow-y: hidden;
   line-height: 1.5;
   padding: 5px 8px;
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-s);
   background: var(--surface-2);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-sizing: border-box;
 }
 
 /* ─── Select / User dropdown editor ─── */
