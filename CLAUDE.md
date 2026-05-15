@@ -362,8 +362,8 @@ MCP server 启动时会调用主 backend 的 `GET /api/_schemas` 端点，对比
 ## Important
 - Never commit `backend/.env` (contains API keys). Use `.env.example` as template.
 - The `thinking` mode in aiService.ts is set to `disabled` for the Volcano ARK API.
-- `max_output_tokens` is set to 4096 to avoid truncation.
-- Multi-model keys: `ARK_API_KEY` powers `doubao-2.0` via ARK; `ONEAPI_API_KEY` + `ONEAPI_BASE_URL` (default `https://oneapi.iline.work/v1`) power all Claude + GPT-5 models. Missing either key only downgrades the affected family — `doubao-2.0` stays available as the universal fallback.
+- `max_output_tokens` per model: doubao-2.0 = 32768, Claude Opus 4.7/4.6 = 65536, GPT-5.x = 8000. Agent loop auto-continues on `max_tokens` truncation.
+- Multi-model keys: `ARK_API_KEY` powers `doubao-2.0` via ARK; `ONEAPI_API_KEY` + `ONEAPI_BASE_URL` (default `https://oneapi.iline.work/v1`) power all Claude + GPT-5 models. `ONEAPI_CHANNELS` (optional) = comma-separated `baseUrl|apiKey` pairs for multi-channel load balancing. Missing either key only downgrades the affected family — `doubao-2.0` stays available as the universal fallback.
 - Analyst env vars (all optional, sensible defaults in `cleanupCron.ts` + `duckdbRuntime.ts`): `ANALYST_HOME` (override storage root, default `~/.imagebase/analyst`), `ANALYST_CLEANUP_INTERVAL_MS` (default 30 min), `ANALYST_IDLE_CLOSE_MS` (default 2h), `ANALYST_STALE_FILE_MS` (default 7d), `ANALYST_SNAPSHOT_MAX_AGE_MS` (default 30d).
 - Web tool env vars: `TAVILY_API_KEY` (required for `web_search`; free tier 1000/月 at https://tavily.com); `WEB_SEARCH_PROVIDER` (default `tavily`, currently the only adapter implemented). Missing `TAVILY_API_KEY` only disables `web_search` — `web_fetch` still works on any http(s) URL with full SSRF防护.
 - Content generation env vars: `ARK_SEEDREAM_API_KEY` + `ARK_SEEDREAM_MODEL` (Seedream 5.0 Lite image generation), `ARK_SEEDANCE_API_KEY` + `ARK_SEEDANCE_MODEL` (Seedance 2.0 video generation). Each has its own API key separate from the chat `ARK_API_KEY`.
