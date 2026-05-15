@@ -1,5 +1,5 @@
 import { Field, FieldConfig, FieldType, TableRecord, View, ViewFilter, ViewSort } from "./types";
-import type { IdeaBrief, IdeaDetail, MentionHit } from "./types";
+import type { IdeaBrief, IdeaDetail, MentionHit, ColumnRow } from "./types";
 
 const BASE = "/api";
 
@@ -2070,12 +2070,13 @@ export async function getKnowledgeEntry(
 export async function createIdea(
   name: string,
   workspaceId: string,
-  parentId?: string | null
+  parentId?: string | null,
+  lang?: string,
 ): Promise<IdeaBrief> {
   const res = await mutationFetch(`${BASE}/ideas`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, workspaceId, parentId: parentId || null }),
+    body: JSON.stringify({ name, workspaceId, parentId: parentId || null, lang }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -2124,6 +2125,17 @@ export async function renameIdea(ideaId: string, name: string): Promise<{ id: st
     body: JSON.stringify({ name }),
   });
   if (!res.ok) throw new Error("Failed to rename idea");
+  return res.json();
+}
+
+/** Save the block layout rows for an idea. Pass null to clear. */
+export async function saveIdeaLayout(ideaId: string, layout: ColumnRow[] | null): Promise<{ ok: boolean }> {
+  const res = await mutationFetch(`${BASE}/ideas/${ideaId}/layout`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ layout }),
+  });
+  if (!res.ok) throw new Error("Failed to save idea layout");
   return res.json();
 }
 
@@ -2426,18 +2438,95 @@ export interface BlockMutationResponse {
   id: string;
   version: number;
   content: string;
+  blockVersion?: number;
+}
+
+export interface PatchBlockBody {
+  content?: string;
+  transformTo?: string;
+  baseVersion?: number;
+  props?: Record<string, unknown>;
+}
+
+export interface PatchBlockResponse {
+  id: string;
+  version: number;
+  content: string;
+  blockVersion: number;
+}
+
+export interface CreateBlockBody {
+  type: string;
+  content: string;
+  afterBlockId?: string | null;
+}
+
+export interface CreateBlockResponse {
+  block: {
+    id: string;
+    ideaId: string;
+    parentId: string | null;
+    order: number;
+    type: string;
+    content: string;
+    props: Record<string, unknown>;
+    version: number;
+  };
+  ideaVersion: number;
+}
+
+export type BatchBlockOperation =
+  | { op: "update"; blockId: string; content?: string; transformTo?: string }
+  | { op: "delete"; blockId: string }
+  | { op: "create"; afterBlockId?: string; type: string; content: string }
+  | { op: "move"; blockId: string; toIndex: number };
+
+export interface BatchBlockResponse {
+  ideaVersion: number;
+  results: Array<{ op: string; blockId: string; ok: boolean; error?: string }>;
 }
 
 export async function patchIdeaBlock(
   ideaId: string,
   blockId: string,
-  body: { content?: string; transformTo?: string },
-): Promise<BlockMutationResponse> {
-  const res = await fetch(
+  body: PatchBlockBody,
+): Promise<PatchBlockResponse> {
+  const res = await mutationFetch(
     `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks/${encodeURIComponent(blockId)}`,
     { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
   );
+  if (res.status === 409) {
+    const err: any = new Error("Block version conflict");
+    (err as any).status = 409;
+    const data = await res.json();
+    (err as any).actualVersion = data.actualVersion;
+    throw err;
+  }
   if (!res.ok) throw new Error(`patchIdeaBlock failed (${res.status})`);
+  return res.json();
+}
+
+export async function createIdeaBlock(
+  ideaId: string,
+  body: CreateBlockBody,
+): Promise<CreateBlockResponse> {
+  const res = await mutationFetch(
+    `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  if (!res.ok) throw new Error(`createIdeaBlock failed (${res.status})`);
+  return res.json();
+}
+
+export async function batchUpdateIdeaBlocks(
+  ideaId: string,
+  operations: BatchBlockOperation[],
+): Promise<BatchBlockResponse> {
+  const res = await mutationFetch(
+    `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks/batch`,
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operations }) },
+  );
+  if (!res.ok) throw new Error(`batchUpdateIdeaBlocks failed (${res.status})`);
   return res.json();
 }
 
@@ -2445,7 +2534,7 @@ export async function deleteIdeaBlock(
   ideaId: string,
   blockId: string,
 ): Promise<BlockMutationResponse> {
-  const res = await fetch(
+  const res = await mutationFetch(
     `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks/${encodeURIComponent(blockId)}`,
     { method: "DELETE" },
   );
@@ -2458,7 +2547,7 @@ export async function moveIdeaBlock(
   blockId: string,
   toIndex: number,
 ): Promise<BlockMutationResponse> {
-  const res = await fetch(
+  const res = await mutationFetch(
     `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks/${encodeURIComponent(blockId)}/move`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ toIndex }) },
   );

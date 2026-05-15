@@ -212,6 +212,21 @@ export interface IdeaBrief {
 export interface IdeaDetail extends IdeaBrief {
   content: string;
   version: number;
+  layout?: ColumnRow[] | null;
+}
+
+// ─── Column Row layout (recursive alternating-direction model) ───
+// Adjacent layers MUST alternate direction: h → v → h → v …
+// Layer 0 (top-level) is always "h" (horizontal).
+export type ColumnCell =
+  | { type: "block"; blockId: string }
+  | { type: "row"; row: ColumnRow };
+
+export interface ColumnRow {
+  id: string;              // unique group id
+  direction: "h" | "v";   // "h" = side-by-side columns, "v" = stacked rows
+  columns: ColumnCell[];   // cells in order (left→right for h, top→bottom for v)
+  widths: number[];        // fractional sizes, same length as columns, sum ≈ 1
 }
 
 // ─── Mention system ───

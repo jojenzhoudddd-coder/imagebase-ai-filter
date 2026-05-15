@@ -24,19 +24,23 @@ export const ideaSkill: SkillDefinition = {
   name: "idea-skill",
   displayName: "灵感文档编辑",
   description:
-    "灵感（Idea）文档的创建、删改、按章节锚点插入 Markdown/HTML，以及整篇替换。激活后才能写入。",
+    "灵感（Idea）文档的 Block Tree 编辑。每篇 idea 由多个 block 组成（heading / paragraph / list / code / quote / divider），" +
+    "每个 block 有唯一 id + version。激活后可用 block 级工具精准编辑（create / update / delete / move / batch），" +
+    "也保留 append / insert / replace 等整篇级工具作为备选。",
   artifacts: ["idea"],
   when:
-    "当用户请求对灵感文档进行编辑——新建文档、改名、删除、在某章节追加/替换内容、整篇重写——时激活。只想读取文档内容（list_ideas / get_idea）不需要激活。",
+    "当用户请求对灵感文档进行编辑——新建文档、改名、删除、修改某段内容、添加/移动/删除段落、整篇重写——时激活。只想读取文档内容（list_ideas / get_idea）不需要激活。",
   triggers: [
-    // 中文：常见的写作动作词 + 灵感/文档/章节 组合
-    /(写|新增|新建|创建|追加|插入|补充|撰写|续写).*(灵感|文档|文稿|doc|idea|章节|段落)/i,
-    /(改|改写|重写|替换|更新|填).*(灵感|文档|文稿|doc|idea)/i,
-    /(删除|删掉|移除).*(灵感|文档|文稿|doc|idea)/i,
+    // 中文：常见的写作动作词 + 灵感/文档/章节/段落/块 组合
+    /(写|新增|新建|创建|追加|插入|补充|撰写|续写).*(灵感|文档|文稿|doc|idea|章节|段落|block|块)/i,
+    /(改|改写|重写|替换|更新|填|编辑|修改).*(灵感|文档|文稿|doc|idea|段落|块)/i,
+    /(删除|删掉|移除).*(灵感|文档|文稿|doc|idea|段落|块)/i,
+    /(移动|调整|排序).*(段落|块|章节|block)/i,
     // 英文
-    /\b(write|append|insert|add)\b.*\b(idea|doc|document|section|paragraph|heading)s?\b/i,
-    /\b(rewrite|replace|update|edit)\b.*\b(idea|doc|document)s?\b/i,
-    /\b(delete|remove|drop)\b.*\b(idea|doc|document)s?\b/i,
+    /\b(write|append|insert|add)\b.*\b(idea|doc|document|section|paragraph|heading|block)s?\b/i,
+    /\b(rewrite|replace|update|edit)\b.*\b(idea|doc|document|block|paragraph)s?\b/i,
+    /\b(delete|remove|drop)\b.*\b(idea|doc|document|block)s?\b/i,
+    /\b(move|reorder)\b.*\b(block|paragraph|section)s?\b/i,
     // 通用：显式提到 Markdown 正文编辑
     /\bmarkdown\b/i,
   ],

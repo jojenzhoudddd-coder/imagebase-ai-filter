@@ -22,10 +22,9 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { Markdown } from "tiptap-markdown";
-import { Extension, Mark } from "@tiptap/core";
+import { Extension } from "@tiptap/core";
 import Code from "@tiptap/extension-code";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Plugin } from "@tiptap/pm/state";
 import { createImageExtension } from "./extensions/ImageExtension";
 import type { ImageUploadResult } from "./extensions/ImageExtension";
 import { ChartCodeBlock } from "./extensions/ChartCodeBlockExtension";
@@ -249,174 +248,14 @@ interface Props {
   onDirty?: () => void;
   placeholder?: string;
   onUploadFile?: (file: File) => Promise<ImageUploadResult>;
-  /** Called when a top-level block is clicked in preview mode.
-   *  startLine/endLine are 0-based inclusive line numbers in the markdown source. */
-  onBlockClick?: (startLine: number, endLine: number, raw: string, domNode: HTMLElement) => void;
 }
 
-/**
- * BlockHoverClick — ProseMirror plugin.
- *
- * Hover: highlights top-level block under cursor.
- * Click: reads `data-md-start`/`data-md-end` from the DOM node (annotated
- * after each setContent by `annotateBlockSourceLines`) and fires callback
- * with exact source line range.
- */
-const blockHoverPluginKey = new PluginKey("blockHoverClick");
-
-type BlockClickCb = (startLine: number, endLine: number, raw: string, domNode: HTMLElement) => void;
-
-/** Walk up from a DOM element to find the direct child of the editor root. */
-function findTopBlockDom(el: HTMLElement, root: HTMLElement): HTMLElement | null {
-  let node: HTMLElement | null = el;
-  while (node && node.parentElement !== root) node = node.parentElement;
-  return node;
-}
-
-/** Resolve top-level ProseMirror node index from a mouse event. */
-function resolveTopIndex(
-  view: import("@tiptap/pm/view").EditorView,
-  event: MouseEvent,
-): number {
-  const target = event.target as HTMLElement;
-  if (target === view.dom) return -1;
-  const pos = view.posAtCoords({ left: event.clientX, top: event.clientY });
-  if (!pos) return -1;
-  const resolved = view.state.doc.resolve(pos.pos);
-  if (resolved.depth < 1) return -1;
-  return resolved.index(0);
-}
-
-/**
- * Find the Nth occurrence of `needle` in `haystack` (0-based).
- * Returns the character index or -1.
- */
-function findNthOccurrence(haystack: string, needle: string, n: number): number {
-  let idx = -1;
-  for (let i = 0; i <= n; i++) {
-    idx = haystack.indexOf(needle, idx + 1);
-    if (idx === -1) return -1;
-  }
-  return idx;
-}
-
-/**
- * Given a character offset in a string, return the 0-based line number.
- */
-function charOffsetToLine(text: string, offset: number): number {
-  let line = 0;
-  for (let i = 0; i < offset && i < text.length; i++) {
-    if (text[i] === "\n") line++;
-  }
-  return line;
-}
-
-function createBlockHoverClickPlugin(
-  onBlockClickRef: React.MutableRefObject<BlockClickCb | undefined>,
-  sourceRef: React.MutableRefObject<string>,
-  editorRef: React.MutableRefObject<import("@tiptap/core").Editor | null>,
-) {
-  return new Plugin({
-    key: blockHoverPluginKey,
-    state: {
-      init() { return { hoveredIndex: -1 }; },
-      apply(tr, value) {
-        const meta = tr.getMeta(blockHoverPluginKey);
-        if (meta !== undefined) return { hoveredIndex: meta.hoveredIndex };
-        return value;
-      },
-    },
-    props: {
-      decorations(state) {
-        const pluginState = blockHoverPluginKey.getState(state);
-        if (!pluginState || pluginState.hoveredIndex < 0) return DecorationSet.empty;
-        const idx = pluginState.hoveredIndex;
-        if (idx >= state.doc.childCount) return DecorationSet.empty;
-        let pos = 0;
-        for (let i = 0; i < idx; i++) pos += state.doc.child(i).nodeSize;
-        const node = state.doc.child(idx);
-        return DecorationSet.create(state.doc, [
-          Decoration.node(pos, pos + node.nodeSize, { class: "idea-block-hover" }),
-        ]);
-      },
-      handleDOMEvents: {
-        mousemove(view, event) {
-          const idx = resolveTopIndex(view, event);
-          const current = blockHoverPluginKey.getState(view.state)?.hoveredIndex ?? -1;
-          if (idx !== current) {
-            const tr = view.state.tr.setMeta(blockHoverPluginKey, { hoveredIndex: idx });
-            tr.setMeta("addToHistory", false);
-            view.dispatch(tr);
-          }
-          return false;
-        },
-        mouseleave(view) {
-          if ((blockHoverPluginKey.getState(view.state)?.hoveredIndex ?? -1) >= 0) {
-            const tr = view.state.tr.setMeta(blockHoverPluginKey, { hoveredIndex: -1 });
-            tr.setMeta("addToHistory", false);
-            view.dispatch(tr);
-          }
-          return false;
-        },
-        click(view, event) {
-          if (!onBlockClickRef.current) return false;
-          const target = event.target as HTMLElement;
-          if (target.closest("a[href]")) return false;
-          if (target === view.dom) return false;
-
-          const nodeIdx = resolveTopIndex(view, event);
-          if (nodeIdx < 0) return false;
-
-          // Get the ProseMirror node and serialize it to markdown
-          const topNode = view.state.doc.child(nodeIdx);
-          // Skip blank-line placeholders (single &nbsp; text)
-          if (topNode.textContent.trim() === "" || topNode.textContent === "\u00a0") return false;
-
-          const editor = editorRef.current;
-          if (!editor) return false;
-          const serializer = (editor.storage as any).markdown?.serializer;
-          if (!serializer) return false;
-
-          // Create a temp doc fragment containing just this node to serialize
-          const nodeMd = serializer.serialize(topNode).trim();
-          if (!nodeMd) return false;
-
-          // Count how many nodes before this one serialize to the same text
-          // (handles duplicate content)
-          let occurrence = 0;
-          for (let i = 0; i < nodeIdx; i++) {
-            const prevNode = view.state.doc.child(i);
-            const prevMd = serializer.serialize(prevNode).trim();
-            if (prevMd === nodeMd) occurrence++;
-          }
-
-          // Find the Nth occurrence of this markdown text in the source
-          const source = sourceRef.current;
-          const charIdx = findNthOccurrence(source, nodeMd, occurrence);
-          if (charIdx === -1) return false;
-
-          const startLine = charOffsetToLine(source, charIdx);
-          const endLine = charOffsetToLine(source, charIdx + nodeMd.length);
-          const raw = source.split("\n").slice(startLine, endLine + 1).join("\n");
-
-          const blockDom = findTopBlockDom(target, view.dom as HTMLElement);
-          if (!blockDom) return false;
-
-          onBlockClickRef.current(startLine, endLine, raw, blockDom);
-          return false;
-        },
-      },
-    },
-  });
-}
-
-// annotateBlockSourceLines removed — source block mapping now lives in
-// sourceBlocksRef and is looked up by the click handler at runtime,
-// avoiding ProseMirror decoration re-renders from stripping data attributes.
+// blockHoverClick plugin removed in PR-B — block editing now handled
+// by BlockItem component directly.
 
 const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
   function TiptapPreview(
-    { source, onMentionClick, editable = false, onDirty, placeholder, onUploadFile, onBlockClick },
+    { source, onMentionClick, editable = false, onDirty, placeholder, onUploadFile },
     ref,
   ) {
     const suppressRef = useRef(true);
@@ -425,8 +264,6 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
     useEffect(() => { onMentionClickRef.current = onMentionClick; }, [onMentionClick]);
     const onDirtyRef = useRef(onDirty);
     useEffect(() => { onDirtyRef.current = onDirty; }, [onDirty]);
-    const onBlockClickRef = useRef(onBlockClick);
-    useEffect(() => { onBlockClickRef.current = onBlockClick; }, [onBlockClick]);
     const sourceRef = useRef(source);
     useEffect(() => { sourceRef.current = source; }, [source]);
     const tiptapEditorRef = useRef<import("@tiptap/core").Editor | null>(null);
@@ -480,13 +317,6 @@ const TiptapPreview = forwardRef<TiptapPreviewHandle, Props>(
         // drop/paste. Must come AFTER createImageExtension so the image
         // plugin gets first shot at drop/paste events.
         ReadOnlyButDroppable,
-        // Block hover highlight + click handler for inline editing
-        Extension.create({
-          name: "blockHoverClick",
-          addProseMirrorPlugins() {
-            return [createBlockHoverClickPlugin(onBlockClickRef, sourceRef, tiptapEditorRef)];
-          },
-        }),
       ],
       content: preserveBlankLines(source),
       // Keep technically "editable" so ProseMirror plugins (image
