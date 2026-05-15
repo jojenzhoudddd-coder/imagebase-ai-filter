@@ -2522,7 +2522,7 @@ export async function deleteIdeaBlock(
   ideaId: string,
   blockId: string,
 ): Promise<BlockMutationResponse> {
-  const res = await fetch(
+  const res = await mutationFetch(
     `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks/${encodeURIComponent(blockId)}`,
     { method: "DELETE" },
   );
@@ -2535,7 +2535,7 @@ export async function moveIdeaBlock(
   blockId: string,
   toIndex: number,
 ): Promise<BlockMutationResponse> {
-  const res = await fetch(
+  const res = await mutationFetch(
     `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks/${encodeURIComponent(blockId)}/move`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ toIndex }) },
   );

@@ -591,7 +591,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     // API calls in background
     try {
       await patchIdeaBlock(ideaId, prevBlock.id, { content: mergedContent });
-      await deleteIdeaBlock(ideaId, blockId);
+      await deleteIdeaBlock(ideaId, blockId).catch(() => {}); // 404 OK — may already be gone
       // Sync version from server
       const bRes = await fetchIdeaBlocks(ideaId);
       versionRef.current = bRes.version;
