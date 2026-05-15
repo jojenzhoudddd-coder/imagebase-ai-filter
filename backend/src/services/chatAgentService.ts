@@ -1283,7 +1283,7 @@ async function assembleInput(
   availableSkillsByName: Record<string, SkillDefinition> = skillsByName,
   /** Vision: structured image attachments for the current user message. */
   attachments?: AgentContext["attachments"],
-): Promise<{ input: ArkInputItem[]; layers: PrebuiltSystemLayers }> {
+): Promise<{ input: ArkInputItem[]; layers: PrebuiltSystemLayers; summaryBlocked: boolean }> {
   const [identity, snapshot, recalled, recalledKnowledge, analystHandles] = await Promise.all([
     buildIdentityLayer(agentId),
     buildWorkspaceSnapshot(workspaceId, conversationId),
@@ -1302,35 +1302,73 @@ async function assembleInput(
   const systemText = buildSystemText(layers, activeSkillNames, availableSkills, availableSkillsByName);
 
   const { messages: history } = await convStore.getMessages(conversationId);
-  // Token-aware sliding window: walk backwards from newest, accumulate
-  // estimated token count, stop when budget is reached. This replaces the
-  // old fixed `slice(-20)` which could either waste budget (short messages)
-  // or blow it (long messages with large tool results).
   const HISTORY_TOKEN_BUDGET = 24_000;
+  const SUMMARY_THRESHOLD = 0.8; // trigger summary at 80% capacity
   const windowed = tokenAwareWindow(history, HISTORY_TOKEN_BUDGET);
   const droppedCount = history.length - windowed.length;
+  const windowedTokens = windowed.reduce((s, m) => s + messageTokenEstimate(m), 0);
   const conv = await convStore.getConversation(conversationId);
-  if (droppedCount > 0) {
+
+  // ── Proactive summary: trigger at 80% capacity, not at 100% ──────────
+  // At 80%+: fire-and-forget background summary so it's ready before
+  // actual truncation. At 100% (droppedCount > 0): if summary isn't
+  // ready yet (edge case on first truncation), block and wait.
+  const approaching = windowedTokens > HISTORY_TOKEN_BUDGET * SUMMARY_THRESHOLD;
+  const alreadyCovered = parseCoveredCount(conv?.summary);
+
+  // Determine messages that SHOULD be summarized:
+  // - If window is truncating (droppedCount > 0): the dropped prefix
+  // - If approaching capacity but not yet truncating: the oldest messages
+  //   in the window (first 30%) as a preemptive measure
+  let summaryPromise: Promise<void> | null = null;
+  if (droppedCount > 0 && alreadyCovered < droppedCount) {
+    // Window is actually truncated and summary doesn't cover all dropped msgs.
+    // Block on summary generation — the model NEEDS it this turn.
+    const droppedMessages = history.slice(0, droppedCount);
+    summaryPromise = generateConversationSummary(conversationId, agentId, droppedMessages, conv?.summary);
     logAgent({
       event: "history_window_truncated",
       conversationId,
       totalMessages: history.length,
       windowedMessages: windowed.length,
       droppedMessages: droppedCount,
-      estimatedWindowTokens: windowed.reduce((s, m) => s + messageTokenEstimate(m), 0),
+      estimatedWindowTokens: windowedTokens,
+      blocking: true,
     });
-    // Fire-and-forget: summarize the dropped portion so next turn has context.
-    // Only trigger if the dropped messages aren't already covered by an
-    // existing summary (avoid re-summarizing the same prefix repeatedly).
-    const droppedMessages = history.slice(0, droppedCount);
-    void generateConversationSummary(conversationId, agentId, droppedMessages, conv?.summary);
+  } else if (approaching && !droppedCount) {
+    // Window not yet truncated but approaching 80% — preemptive summary.
+    // Summarize the oldest 30% of windowed messages so next turn is ready.
+    const preemptCount = Math.ceil(windowed.length * 0.3);
+    const preemptMessages = windowed.slice(0, preemptCount);
+    if (preemptMessages.length > 0 && alreadyCovered < preemptMessages.length) {
+      void generateConversationSummary(conversationId, agentId, preemptMessages, conv?.summary);
+      logAgent({
+        event: "history_window_preemptive_summary",
+        conversationId,
+        totalMessages: history.length,
+        windowedTokens,
+        preemptCount,
+      });
+    }
   }
 
   const input: ArkInputItem[] = [
     { role: "system", content: [{ type: "input_text", text: systemText }] },
   ];
-  if (conv?.summary) {
-    // Strip the internal coverage marker before injecting into the prompt
+
+  // If we're blocking on summary, wait for it, then re-read conv.summary
+  if (summaryPromise) {
+    await summaryPromise;
+    const freshConv = await convStore.getConversation(conversationId);
+    if (freshConv?.summary) {
+      const cleanSummary = stripCoveredMarker(freshConv.summary);
+      input.push({
+        role: "system",
+        content: [{ type: "input_text", text: `# 此前对话摘要\n${cleanSummary}` }],
+      });
+    }
+  } else if (conv?.summary) {
+    // Non-blocking path: use existing summary
     const cleanSummary = stripCoveredMarker(conv.summary);
     input.push({
       role: "system",
@@ -1389,7 +1427,7 @@ async function assembleInput(
     }
   }
   input.push({ role: "user", content: newMsgBlocks });
-  return { input, layers };
+  return { input, layers, summaryBlocked: !!summaryPromise };
 }
 
 // ─── Incoming-refs pre-fetch for danger confirmation ────────────────────
@@ -2678,7 +2716,24 @@ async function* runAgentImpl(
   // tells the Agent exactly which LLM it's running on — without this the
   // model has no idea and either guesses or parrots OneAPI's injected
   // "Claude Code" identity.
-  const { input, layers: prebuiltLayers } = await assembleInput(
+  // Pre-check: will assembleInput need to block on summary generation?
+  // If so, emit a status event BEFORE blocking so the FE can show
+  // "compressing context" instead of an unexplained delay.
+  {
+    const { messages: preCheck } = await convStore.getMessages(conversationId);
+    const preWindowed = tokenAwareWindow(preCheck, 24_000);
+    const preDropped = preCheck.length - preWindowed.length;
+    const preConv = await convStore.getConversation(conversationId);
+    const preCovered = parseCoveredCount(preConv?.summary);
+    if (preDropped > 0 && preCovered < preDropped) {
+      yield {
+        event: "message",
+        data: { text: "> ⏳ 上下文窗口已满，正在压缩历史对话…\n> Context window full, compressing history…\n\n", delta: true },
+      };
+    }
+  }
+
+  const { input, layers: prebuiltLayers, summaryBlocked } = await assembleInput(
     conversationId,
     workspaceId,
     agentId,
