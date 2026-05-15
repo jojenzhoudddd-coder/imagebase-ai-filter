@@ -227,11 +227,11 @@ const BlockItem = memo(function BlockItem({
 
   const outlineStyle: React.CSSProperties = {
     borderRadius: 4,
+    padding: 2,  // always matches outlineOffset so selected bg aligns with hover outline
     outline: showHover ? "1px solid var(--primary)" : "1px solid transparent",
-    outlineOffset: 2,
+    outlineOffset: 0,  // outline sits right at the padding edge
     transition: "outline-color 0.12s ease, background 0.12s ease",
     background: selected ? "rgba(20, 86, 240, 0.10)" : "transparent",
-    padding: selected ? 2 : 0,
   };
 
   const viewStyle: React.CSSProperties = {
@@ -256,7 +256,7 @@ const BlockItem = memo(function BlockItem({
     resize: "none",
     overflow: "hidden",
     outline: "1px solid var(--primary)",
-    outlineOffset: 2,
+    outlineOffset: 0,
     boxSizing: "border-box" as const,
   };
 
