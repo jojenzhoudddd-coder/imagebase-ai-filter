@@ -75,6 +75,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const [mode, setMode] = useState<"source" | "preview">("preview");
   const [blocks, setBlocks] = useState<IdeaBlockBrief[]>([]);
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
+  const [autoEditBlockId, setAutoEditBlockId] = useState<string | null>(null);
 
   const cmRef = useRef<CodeMirrorSourceHandle>(null);
   const previewRef = useRef<TiptapPreviewHandle>(null);
@@ -492,6 +493,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       next.sort((a, b) => a.order - b.order);
       return next;
     });
+    setAutoEditBlockId(newBlock.id);
     setFocusBlockId(newBlock.id);
     // Refetch to sync content
     fetchIdeaBlocks(ideaId).then((bRes) => {
@@ -624,7 +626,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                 block={block}
                 ideaId={ideaId}
                 readOnly={streaming}
-                autoFocus={focusBlockId === block.id}
+                autoFocus={autoEditBlockId === block.id}
                 remoteUpdatePending={pendingRemoteBlockRef.current.has(block.id)}
                 onSaved={handleBlockSaved}
                 onDeleted={handleBlockDeleted}

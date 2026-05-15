@@ -232,8 +232,11 @@ const BlockItem = memo(function BlockItem({
 
   const viewStyle: React.CSSProperties = {
     lineHeight: 1.6,
-    padding: 0,       // override .idea-preview-body's 60px padding
-    minHeight: "auto", // override .idea-preview-body's min-height: 100%
+    padding: selected ? "2px 4px" : 0,  // slight padding when selected for breathing room
+    minHeight: "auto",
+    borderRadius: selected ? 4 : 0,
+    background: selected ? "var(--primary-bg)" : "transparent",
+    transition: "background 0.12s ease",
   };
 
   const textareaStyle: React.CSSProperties = {
@@ -319,7 +322,7 @@ const BlockItem = memo(function BlockItem({
       onPointerLeave={() => setHovered(false)}
       onClick={handleClick}
     >
-      <div style={{ ...outlineStyle, position: "relative" }}>
+      <div style={outlineStyle}>
         {isDivider ? (
           <hr style={{ border: "none", borderTop: "0.5px solid var(--border-light)", margin: "8px 0" }} />
         ) : (
@@ -328,15 +331,6 @@ const BlockItem = memo(function BlockItem({
             className="idea-preview-body block-item-view"
             dangerouslySetInnerHTML={{ __html: renderedHtml }}
           />
-        )}
-        {/* Selected state: light blue overlay — click again to enter edit */}
-        {selected && (
-          <div style={{
-            position: "absolute", inset: 0, borderRadius: 4,
-            background: "var(--primary-bg)",
-            border: "1px solid var(--primary)",
-            pointerEvents: "none",
-          }} />
         )}
       </div>
     </div>
