@@ -29,6 +29,59 @@
 
 import type { ProviderAdapter } from "./providers/types.js";
 
+// ─── Per-model concurrency control ─────────────────────────────────────
+//
+// AsyncSemaphore enforces the `parallelLimit` declared on each ModelEntry.
+// Without this, N concurrent users all hitting Claude Opus (parallelLimit=3)
+// fire N simultaneous requests to OneAPI → upstream 429/503/terminated.
+//
+// acquire() returns a promise that resolves when a slot is available.
+// The caller MUST call the returned release() when done (even on error).
+
+export class AsyncSemaphore {
+  private _current = 0;
+  private _queue: Array<() => void> = [];
+  constructor(readonly capacity: number) {}
+
+  get current() { return this._current; }
+  get waiting() { return this._queue.length; }
+
+  acquire(): Promise<() => void> {
+    if (this._current < this.capacity) {
+      this._current++;
+      return Promise.resolve(this._release.bind(this));
+    }
+    return new Promise<() => void>((resolve) => {
+      this._queue.push(() => {
+        this._current++;
+        resolve(this._release.bind(this));
+      });
+    });
+  }
+
+  private _release() {
+    this._current--;
+    if (this._queue.length > 0) {
+      const next = this._queue.shift()!;
+      next();
+    }
+  }
+}
+
+// One semaphore per model id, lazily created from parallelLimit.
+const _semaphores = new Map<string, AsyncSemaphore>();
+
+export function getModelSemaphore(modelId: string): AsyncSemaphore {
+  let sem = _semaphores.get(modelId);
+  if (!sem) {
+    const entry = MODELS.find((m) => m.id === modelId);
+    const cap = entry?.parallelLimit ?? 5; // safe default
+    sem = new AsyncSemaphore(cap);
+    _semaphores.set(modelId, sem);
+  }
+  return sem;
+}
+
 export type ModelGroup = "volcano" | "anthropic" | "openai";
 export type ModelProvider = "ark" | "oneapi" | "ark-image" | "ark-video";
 

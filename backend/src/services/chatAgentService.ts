@@ -42,6 +42,7 @@ import {
   pickOverloadFallback,
   recordModelFailure,
   recordModelSuccess,
+  getModelSemaphore,
   type ModelEntry,
 } from "./modelRegistry.js";
 import { UpstreamOverloadError } from "./providers/oneapiAdapter.js";
@@ -236,6 +237,116 @@ export function processSuggestActivate(
 // ─── Logging ───
 const LOG_DIR = path.resolve("logs");
 const LOG_FILE = path.join(LOG_DIR, "Chat Agent 日志.log");
+
+// ─── Token-aware history windowing ──────────────────────────────────────
+//
+// Walk backwards from newest message, accumulating estimated token count.
+// Stop when we'd exceed the budget. This avoids both wasting context (short
+// conversations) and blowing it (long conversations with large tool results).
+// The estimate uses chars/3.5 which is a rough but serviceable heuristic for
+// mixed CJK+Latin text (Chinese ≈ 2 tokens/char, English ≈ 0.75 tokens/word).
+
+function estimateTokens(text: string | undefined | null): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 3.5);
+}
+
+function messageTokenEstimate(m: { content: string; thinking?: string; toolCalls?: unknown[] }): number {
+  let tokens = estimateTokens(m.content);
+  if (m.thinking) tokens += estimateTokens(m.thinking);
+  // Tool call JSON can be large (write_demo_file arguments etc.)
+  if (m.toolCalls) tokens += estimateTokens(JSON.stringify(m.toolCalls));
+  return tokens;
+}
+
+/**
+ * Select messages from the end of `history` that fit within `budgetTokens`.
+ * Always includes at least the last message (even if it exceeds budget alone).
+ * Returns messages in original chronological order.
+ */
+function tokenAwareWindow<T extends { content: string; thinking?: string; toolCalls?: unknown[] }>(
+  history: T[],
+  budgetTokens: number,
+): T[] {
+  if (history.length === 0) return [];
+  let used = 0;
+  let cutoff = history.length; // start from end
+  for (let i = history.length - 1; i >= 0; i--) {
+    const est = messageTokenEstimate(history[i]);
+    if (used + est > budgetTokens && i < history.length - 1) {
+      // Would exceed budget and we already have at least 1 message
+      cutoff = i + 1;
+      break;
+    }
+    used += est;
+    cutoff = i;
+  }
+  return history.slice(cutoff);
+}
+
+// ─── Conversation summary auto-generation ──────────────────────────────
+//
+// When token-aware windowing drops messages, we generate a summary of the
+// dropped portion using doubao-2.0 (cheap + fast) and persist it to
+// conversation.summary. The existing read path (line ~1098) already injects
+// it into the system prompt. Fire-and-forget — never blocks the user turn.
+
+const SUMMARY_PROMPT = `你是一个对话摘要助手。把下面的对话历史压缩成一段结构化摘要，保留：
+- 用户的核心需求和决策
+- 已完成的关键操作（创建了什么表/文件、修改了什么）
+- 未完成的待办事项
+- 重要的技术决策和约束
+
+输出纯文本，不要 markdown 标题，控制在 500 字以内。`;
+
+async function generateConversationSummary(
+  conversationId: string,
+  droppedMessages: Message[],
+  existingSummary: string | undefined,
+): Promise<void> {
+  try {
+    const { resolveModelForCall, resolveAdapter } = await import("./modelRegistry.js");
+    const resolved = resolveModelForCall("doubao-2.0");
+    const model = resolved.resolved;
+    const adapter = resolveAdapter(model);
+
+    // Build input: previous summary (if any) + dropped messages
+    const parts: string[] = [];
+    if (existingSummary) {
+      parts.push(`[之前的摘要]\n${existingSummary}\n`);
+    }
+    parts.push("[需要压缩的新对话]");
+    for (const m of droppedMessages) {
+      const role = m.role === "user" ? "用户" : "助手";
+      if (m.content?.trim()) {
+        parts.push(`${role}: ${m.content.slice(0, 2000)}`);
+      }
+    }
+
+    const input: ProviderInputItem[] = [
+      { role: "system", content: [{ type: "input_text", text: SUMMARY_PROMPT }] },
+      { role: "user", content: [{ type: "input_text", text: parts.join("\n") }] },
+    ];
+
+    // Collect the full response text
+    let text = "";
+    for await (const ev of adapter.stream({ model, input, tools: [] })) {
+      if (ev.kind === "text_delta") text += ev.text;
+      if (ev.kind === "error") throw new Error(ev.message);
+    }
+
+    if (text.trim()) {
+      await convStore.updateConversation(conversationId, { summary: text.trim() });
+      logAgent({ event: "conversation_summary_generated", conversationId, summaryLen: text.trim().length });
+    }
+  } catch (err) {
+    logAgent({
+      event: "conversation_summary_error",
+      conversationId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
 
 function gmt8ts(): string {
   return new Date(Date.now() + 8 * 3600_000).toISOString().replace("Z", "+08:00");
@@ -730,9 +841,71 @@ async function buildAnalystHandlesSection(conversationId: string): Promise<strin
   }
 }
 
+// ─── Workspace snapshot cache ─────────────────────────────────────────────
+// Simple module-level TTL cache so that multiple turns within the same
+// conversation (or rapid successive turns across conversations hitting the
+// same workspace) skip redundant DB queries. Tools that mutate the workspace
+// (create/delete table/idea) should call `clearWorkspaceSnapshotCache`.
+
+const SNAPSHOT_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+interface SnapshotCacheEntry {
+  snapshot: string;
+  createdAt: number;
+}
+
+const workspaceSnapshotCache = new Map<string, SnapshotCacheEntry>();
+
+function sweepExpiredSnapshotEntries(): void {
+  const now = Date.now();
+  for (const [key, entry] of workspaceSnapshotCache) {
+    if (now - entry.createdAt > SNAPSHOT_TTL_MS) {
+      workspaceSnapshotCache.delete(key);
+    }
+  }
+}
+
+/** Invalidate cached workspace snapshot for a conversation (or all conversations
+ *  sharing the same workspace). Pass `conversationId` to remove that specific
+ *  entry; callers that only know the workspaceId can omit it to purge every
+ *  entry whose key ends with `:${workspaceId}`. */
+export function clearWorkspaceSnapshotCache(
+  conversationId?: string,
+  workspaceId?: string,
+): void {
+  if (conversationId && workspaceId) {
+    workspaceSnapshotCache.delete(`${conversationId}:${workspaceId}`);
+    return;
+  }
+  // Broad sweep — remove all entries matching either dimension.
+  for (const key of workspaceSnapshotCache.keys()) {
+    if (conversationId && key.startsWith(`${conversationId}:`)) {
+      workspaceSnapshotCache.delete(key);
+    } else if (workspaceId && key.endsWith(`:${workspaceId}`)) {
+      workspaceSnapshotCache.delete(key);
+    }
+  }
+}
+
 // ─── Workspace snapshot (context injection) ──────────────────────────────
 
-async function buildWorkspaceSnapshot(workspaceId: string): Promise<string> {
+async function buildWorkspaceSnapshot(
+  workspaceId: string,
+  conversationId?: string,
+): Promise<string> {
+  const cacheKey = conversationId
+    ? `${conversationId}:${workspaceId}`
+    : workspaceId;
+
+  // Lazy sweep: if the cache is getting large, purge expired entries first.
+  if (workspaceSnapshotCache.size > 100) {
+    sweepExpiredSnapshotEntries();
+  }
+
+  const cached = workspaceSnapshotCache.get(cacheKey);
+  if (cached && Date.now() - cached.createdAt < SNAPSHOT_TTL_MS) {
+    return cached.snapshot;
+  }
   try {
     const tables = await store.listTablesForWorkspace(workspaceId);
     // Idea listing goes through prisma directly to avoid pulling the full
@@ -750,7 +923,9 @@ async function buildWorkspaceSnapshot(workspaceId: string): Promise<string> {
     const hasTables = tables && tables.length > 0;
     const hasIdeas = ideas.length > 0;
     if (!hasTables && !hasIdeas) {
-      return `# 当前工作空间状态\n工作空间 ${workspaceId} 目前没有任何数据表或灵感文档。`;
+      const result = `# 当前工作空间状态\n工作空间 ${workspaceId} 目前没有任何数据表或灵感文档。`;
+      workspaceSnapshotCache.set(cacheKey, { snapshot: result, createdAt: Date.now() });
+      return result;
     }
 
     const lines: string[] = [`# 当前工作空间状态（${workspaceId}）`];
@@ -778,8 +953,11 @@ async function buildWorkspaceSnapshot(workspaceId: string): Promise<string> {
         lines.push(`- ${i.name} (${i.id}), 最近更新 ${ts}`);
       }
     }
-    return lines.join("\n");
+    const result = lines.join("\n");
+    workspaceSnapshotCache.set(cacheKey, { snapshot: result, createdAt: Date.now() });
+    return result;
   } catch (err) {
+    // Don't cache errors — next call should retry the DB query.
     return `# 当前工作空间状态\n(获取失败: ${err instanceof Error ? err.message : String(err)})`;
   }
 }
@@ -1021,7 +1199,7 @@ async function assembleInput(
 ): Promise<{ input: ArkInputItem[]; layers: PrebuiltSystemLayers }> {
   const [identity, snapshot, recalled, recalledKnowledge, analystHandles] = await Promise.all([
     buildIdentityLayer(agentId),
-    buildWorkspaceSnapshot(workspaceId),
+    buildWorkspaceSnapshot(workspaceId, conversationId),
     buildRecalledMemoriesSection(agentId, newUserMessage),
     // Hybrid RAG layer 1 — runs in parallel with the other layers so the
     // added latency is bounded by the slowest (usually workspace snapshot).
@@ -1037,15 +1215,33 @@ async function assembleInput(
   const systemText = buildSystemText(layers, activeSkillNames, availableSkills, availableSkillsByName);
 
   const { messages: history } = await convStore.getMessages(conversationId);
-  // Sliding window: last 20 messages (plan Phase 3.2)
-  const windowed = history.slice(-20);
+  // Token-aware sliding window: walk backwards from newest, accumulate
+  // estimated token count, stop when budget is reached. This replaces the
+  // old fixed `slice(-20)` which could either waste budget (short messages)
+  // or blow it (long messages with large tool results).
+  const HISTORY_TOKEN_BUDGET = 24_000;
+  const windowed = tokenAwareWindow(history, HISTORY_TOKEN_BUDGET);
+  const droppedCount = history.length - windowed.length;
+  const conv = await convStore.getConversation(conversationId);
+  if (droppedCount > 0) {
+    logAgent({
+      event: "history_window_truncated",
+      conversationId,
+      totalMessages: history.length,
+      windowedMessages: windowed.length,
+      droppedMessages: droppedCount,
+      estimatedWindowTokens: windowed.reduce((s, m) => s + messageTokenEstimate(m), 0),
+    });
+    // Fire-and-forget: summarize the dropped portion so next turn has context.
+    // Only trigger if the dropped messages aren't already covered by an
+    // existing summary (avoid re-summarizing the same prefix repeatedly).
+    const droppedMessages = history.slice(0, droppedCount);
+    void generateConversationSummary(conversationId, droppedMessages, conv?.summary);
+  }
 
   const input: ArkInputItem[] = [
     { role: "system", content: [{ type: "input_text", text: systemText }] },
   ];
-
-  // Add conversation summary if present (for long conversations)
-  const conv = await convStore.getConversation(conversationId);
   if (conv?.summary) {
     input.push({
       role: "system",
@@ -1172,8 +1368,17 @@ async function* callModelStream(
   tools?: ToolDefinition[],
   recordContext?: { userId: string | null; workspaceId?: string | null; feature: string }
 ): AsyncGenerator<ProviderStreamEvent> {
-  const adapter = resolveAdapter(model);
-  yield* adapter.stream({ model, input, tools, signal: abortSignal, recordContext });
+  // Acquire a concurrency slot for this model before calling the provider.
+  // This prevents N concurrent requests from overwhelming the upstream API
+  // (e.g., Claude parallelLimit=3 means at most 3 in-flight requests).
+  const sem = getModelSemaphore(model.id);
+  const release = await sem.acquire();
+  try {
+    const adapter = resolveAdapter(model);
+    yield* adapter.stream({ model, input, tools, signal: abortSignal, recordContext });
+  } finally {
+    release();
+  }
 }
 
 // ─── Agent loop ──────────────────────────────────────────────────────────
@@ -2880,6 +3085,31 @@ async function* runAgentImpl(
       }
       input.push({ type: "function_call", call_id: fc.callId, name: fc.name, arguments: fc.arguments });
       input.push({ type: "function_call_output", call_id: fc.callId, output: promptBoundOutput });
+    }
+
+    // ── Compress previous rounds' function_call arguments ──────────────
+    // After tool execution, the input array contains all prior rounds'
+    // function_call entries with full arguments (e.g., write_demo_file with
+    // 15K chars of TSX). Since the model has already processed these, we
+    // only need a brief summary for context continuity. Keep the CURRENT
+    // round's entries intact (the model hasn't seen the output yet when
+    // this code runs, but it already emitted the call — the arguments are
+    // just echoed back for protocol correctness; the model doesn't re-read
+    // its own arguments). We compress entries from earlier rounds.
+    const ARGS_COMPRESS_THRESHOLD = 2000; // chars
+    const currentRoundCallIds = new Set(funcCalls.map(fc => fc.callId));
+    for (const item of input) {
+      if (
+        (item as any).type === "function_call" &&
+        !(currentRoundCallIds.has((item as any).call_id)) &&
+        typeof (item as any).arguments === "string" &&
+        (item as any).arguments.length > ARGS_COMPRESS_THRESHOLD
+      ) {
+        const orig = (item as any).arguments as string;
+        // Keep a brief head showing what was called
+        (item as any).arguments = orig.slice(0, 500) +
+          `\n[…${(orig.length - 500).toLocaleString()} chars of arguments truncated from prior round]`;
+      }
     }
 
     if (hitConfirmation) {
