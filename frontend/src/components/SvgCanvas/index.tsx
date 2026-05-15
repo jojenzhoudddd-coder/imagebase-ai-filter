@@ -82,71 +82,90 @@ const RENAME_ICON = (
 interface LayoutResult {
   updates: Array<{ id: string; x: number; y: number }>;
   bounds: { width: number; height: number };
+  guides: SnapGuide[]; // alignment lines produced by the layout
 }
 
-// "Tidy up" layout: infer the user's row structure from current positions,
-// then align items within each row and equalize spacing — minimal rearrangement.
+// "Tidy up" layout: snap-align nodes to shared horizontal/vertical center lines
+// WITHOUT changing their relative positions. Nodes that are roughly aligned
+// (within ALIGN_THRESHOLD) get nudged to a common center line.
+const ALIGN_THRESHOLD = 40; // px — max distance to consider "nearly aligned"
+
 function computeGridLayout(tastes: TasteBrief[]): LayoutResult {
-  if (tastes.length === 0) return { updates: [], bounds: { width: 0, height: 0 } };
+  if (tastes.length === 0) return { updates: [], bounds: { width: 0, height: 0 }, guides: [] };
 
-  // 1. Cluster items into rows by Y proximity.
-  //    Two items are in the same row if their vertical centers are within
-  //    half the smaller item's height of each other.
-  const items = [...tastes].sort((a, b) => {
-    const dy = a.y - b.y;
-    return Math.abs(dy) > 20 ? dy : a.x - b.x; // primary: top-to-bottom, secondary: left-to-right
-  });
+  // Work on a mutable copy
+  const nodes = tastes.map((t) => ({ ...t }));
+  const guides: SnapGuide[] = [];
 
-  const rows: TasteBrief[][] = [];
-  for (const t of items) {
-    const cy = t.y + t.height / 2;
-    // Try to find an existing row whose vertical center is close
-    let placed = false;
-    for (const row of rows) {
-      const rowCy = row.reduce((s, r) => s + r.y + r.height / 2, 0) / row.length;
-      const threshold = Math.min(...row.map((r) => r.height), t.height) * 0.6;
-      if (Math.abs(cy - rowCy) < Math.max(threshold, 40)) {
-        row.push(t);
-        placed = true;
-        break;
+  // 1. Cluster by horizontal center (vertical alignment lines)
+  //    Nodes with similar cx snap to a shared vertical center line.
+  const hClusters = clusterByValue(nodes, (n) => n.x + n.width / 2, ALIGN_THRESHOLD);
+  for (const cluster of hClusters) {
+    if (cluster.length < 2) continue;
+    const avgCx = cluster.reduce((s, n) => s + n.x + n.width / 2, 0) / cluster.length;
+    for (const n of cluster) {
+      n.x = avgCx - n.width / 2;
+    }
+    guides.push({ axis: "x", pos: Math.round(avgCx) });
+  }
+
+  // 2. Cluster by vertical center (horizontal alignment lines)
+  //    Nodes with similar cy snap to a shared horizontal center line.
+  const vClusters = clusterByValue(nodes, (n) => n.y + n.height / 2, ALIGN_THRESHOLD);
+  for (const cluster of vClusters) {
+    if (cluster.length < 2) continue;
+    const avgCy = cluster.reduce((s, n) => s + n.y + n.height / 2, 0) / cluster.length;
+    for (const n of cluster) {
+      n.y = avgCy - n.height / 2;
+    }
+    guides.push({ axis: "y", pos: Math.round(avgCy) });
+  }
+
+  // Build updates + bounds
+  const updates: Array<{ id: string; x: number; y: number }> = nodes.map((n) => ({
+    id: n.id,
+    x: Math.round(n.x),
+    y: Math.round(n.y),
+  }));
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    minX = Math.min(minX, n.x);
+    minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + n.width);
+    maxY = Math.max(maxY, n.y + n.height);
+  }
+
+  return {
+    updates,
+    bounds: { width: maxX - minX, height: maxY - minY },
+    guides,
+  };
+}
+
+// Cluster items whose `valueFn` output is within `threshold` of each other.
+// Uses single-linkage clustering: two items join the same cluster if any
+// existing member is within threshold.
+function clusterByValue<T>(items: T[], valueFn: (item: T) => number, threshold: number): T[][] {
+  const sorted = [...items].sort((a, b) => valueFn(a) - valueFn(b));
+  const clusters: T[][] = [];
+  let current: T[] = [];
+
+  for (const item of sorted) {
+    if (current.length === 0) {
+      current.push(item);
+    } else {
+      const lastVal = valueFn(current[current.length - 1]);
+      if (Math.abs(valueFn(item) - lastVal) <= threshold) {
+        current.push(item);
+      } else {
+        clusters.push(current);
+        current = [item];
       }
     }
-    if (!placed) rows.push([t]);
   }
-
-  // Sort rows by average Y, and items within each row by X
-  rows.sort((a, b) => {
-    const ay = a.reduce((s, t) => s + t.y, 0) / a.length;
-    const by = b.reduce((s, t) => s + t.y, 0) / b.length;
-    return ay - by;
-  });
-  for (const row of rows) row.sort((a, b) => a.x - b.x);
-
-  // 2. Compute adaptive gap from average item size
-  const avgSize = items.reduce((s, t) => s + Math.max(t.width, t.height), 0) / items.length;
-  const gap = Math.round(Math.min(80, Math.max(16, avgSize * 0.06)));
-
-  // 3. Lay out: equalize horizontal spacing within each row, stack rows vertically
-  const updates: Array<{ id: string; x: number; y: number }> = [];
-  let currentY = 0;
-  let totalWidth = 0;
-
-  for (const row of rows) {
-    // Horizontal: distribute items left-to-right with uniform gap
-    let x = 0;
-    const rowH = Math.max(...row.map((t) => t.height));
-    for (const t of row) {
-      // Vertically center within the row
-      const y = currentY + (rowH - t.height) / 2;
-      updates.push({ id: t.id, x, y });
-      x += t.width + gap;
-    }
-    totalWidth = Math.max(totalWidth, x - gap);
-    currentY += rowH + gap;
-  }
-
-  const totalHeight = Math.max(0, currentY - gap);
-  return { updates, bounds: { width: totalWidth, height: totalHeight } };
+  if (current.length > 0) clusters.push(current);
+  return clusters;
 }
 
 // Compute bounding rect of a set of tastes at their current positions.
@@ -1043,7 +1062,7 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
 
   const handleAutoLayout = useCallback(async () => {
     if (tastes.length === 0) return;
-    const { updates, bounds } = computeGridLayout(tastes);
+    const { updates, guides } = computeGridLayout(tastes);
 
     // Check if any position actually changed
     const changed = updates.some((u) => {
@@ -1068,9 +1087,22 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
       }
     }
 
+    // Flash alignment guide lines for 1.2s so user sees what was aligned
+    if (guides.length > 0) {
+      setSnapGuides(guides);
+      setTimeout(() => setSnapGuides([]), 1200);
+    }
+
     // Always fit to view (re-center + auto-zoom), even if positions didn't change
     requestAnimationFrame(() => {
-      fitToView({ x: 0, y: 0, ...bounds });
+      const finalTastes = changed
+        ? tastes.map((t) => {
+            const u = updates.find((u) => u.id === t.id);
+            return u ? { ...t, x: u.x, y: u.y } : t;
+          })
+        : tastes;
+      const rect = computeBounds(finalTastes);
+      fitToView(rect);
     });
   }, [tastes, designId, fitToView]);
 
