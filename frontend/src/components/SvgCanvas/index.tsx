@@ -79,95 +79,6 @@ const RENAME_ICON = (
 // Arranges items in a grid starting at (0,0). Returns new positions + the
 // bounding rect of the entire laid-out content.
 
-interface LayoutResult {
-  updates: Array<{ id: string; x: number; y: number }>;
-  bounds: { width: number; height: number };
-  guides: SnapGuide[]; // alignment lines produced by the layout
-}
-
-// "Tidy up" layout: snap-align nodes to shared horizontal/vertical center lines
-// WITHOUT changing their relative positions. Nodes that are roughly aligned
-// (within ALIGN_THRESHOLD) get nudged to a common center line.
-const ALIGN_THRESHOLD = 40; // px — max distance to consider "nearly aligned"
-
-function computeGridLayout(tastes: TasteBrief[]): LayoutResult {
-  if (tastes.length === 0) return { updates: [], bounds: { width: 0, height: 0 }, guides: [] };
-
-  // Work on a mutable copy
-  const nodes = tastes.map((t) => ({ ...t }));
-  const guides: SnapGuide[] = [];
-
-  // 1. Cluster by horizontal center (vertical alignment lines)
-  //    Nodes with similar cx snap to a shared vertical center line.
-  const hClusters = clusterByValue(nodes, (n) => n.x + n.width / 2, ALIGN_THRESHOLD);
-  for (const cluster of hClusters) {
-    if (cluster.length < 2) continue;
-    const avgCx = cluster.reduce((s, n) => s + n.x + n.width / 2, 0) / cluster.length;
-    for (const n of cluster) {
-      n.x = avgCx - n.width / 2;
-    }
-    guides.push({ axis: "x", pos: Math.round(avgCx) });
-  }
-
-  // 2. Cluster by vertical center (horizontal alignment lines)
-  //    Nodes with similar cy snap to a shared horizontal center line.
-  const vClusters = clusterByValue(nodes, (n) => n.y + n.height / 2, ALIGN_THRESHOLD);
-  for (const cluster of vClusters) {
-    if (cluster.length < 2) continue;
-    const avgCy = cluster.reduce((s, n) => s + n.y + n.height / 2, 0) / cluster.length;
-    for (const n of cluster) {
-      n.y = avgCy - n.height / 2;
-    }
-    guides.push({ axis: "y", pos: Math.round(avgCy) });
-  }
-
-  // Build updates + bounds
-  const updates: Array<{ id: string; x: number; y: number }> = nodes.map((n) => ({
-    id: n.id,
-    x: Math.round(n.x),
-    y: Math.round(n.y),
-  }));
-
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const n of nodes) {
-    minX = Math.min(minX, n.x);
-    minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x + n.width);
-    maxY = Math.max(maxY, n.y + n.height);
-  }
-
-  return {
-    updates,
-    bounds: { width: maxX - minX, height: maxY - minY },
-    guides,
-  };
-}
-
-// Cluster items whose `valueFn` output is within `threshold` of each other.
-// Uses single-linkage clustering: two items join the same cluster if any
-// existing member is within threshold.
-function clusterByValue<T>(items: T[], valueFn: (item: T) => number, threshold: number): T[][] {
-  const sorted = [...items].sort((a, b) => valueFn(a) - valueFn(b));
-  const clusters: T[][] = [];
-  let current: T[] = [];
-
-  for (const item of sorted) {
-    if (current.length === 0) {
-      current.push(item);
-    } else {
-      const lastVal = valueFn(current[current.length - 1]);
-      if (Math.abs(valueFn(item) - lastVal) <= threshold) {
-        current.push(item);
-      } else {
-        clusters.push(current);
-        current = [item];
-      }
-    }
-  }
-  if (current.length > 0) clusters.push(current);
-  return clusters;
-}
-
 // Compute bounding rect of a set of tastes at their current positions.
 function computeBounds(tastes: TasteBrief[]): { x: number; y: number; width: number; height: number } {
   if (tastes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
@@ -528,7 +439,7 @@ function useCanvasTransform() {
     return () => ac.abort();
   }, []);
 
-  // ── fitToView: set scale & pan so contentBounds is centered-top in viewport ──
+  // ── fitToView: set scale & pan so contentBounds fits with 40px padding on top/left/right ──
   const fitToView = useCallback(
     (contentBounds: { x: number; y: number; width: number; height: number }) => {
       const el = elRef.current;
@@ -537,18 +448,16 @@ function useCanvasTransform() {
 
       const vw = el.clientWidth;
       const vh = el.clientHeight;
-      const pad = 40; // padding around content
-      const topPad = Math.max(32, vh * 0.06); // top margin: 6% of viewport, min 32px
+      const pad = 40; // fixed 40px padding on top, left, right
 
-      // Scale to fit content within viewport (with padding)
+      // Scale so content fits within (vw - 2*pad) horizontally and (vh - pad) vertically
       const scaleX = (vw - pad * 2) / contentBounds.width;
-      const scaleY = (vh - topPad - pad) / contentBounds.height;
-      const s = Math.min(scaleX, scaleY, 2); // cap at 200% to avoid over-enlarging small content
+      const scaleY = (vh - pad * 2) / contentBounds.height;
+      const s = Math.min(scaleX, scaleY, 2); // cap at 200%
 
-      // Center horizontally, align top with topPad
-      const scaledW = contentBounds.width * s;
-      const panX = (vw - scaledW) / 2 - contentBounds.x * s;
-      const panY = topPad - contentBounds.y * s;
+      // Position: left edge at pad, top edge at pad
+      const panX = pad - contentBounds.x * s;
+      const panY = pad - contentBounds.y * s;
 
       panRef.current = { x: panX, y: panY };
       scaleRef.current = Math.max(MIN_SCALE, s);
@@ -1060,51 +969,11 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
 
   // ─── Auto-layout ───
 
-  const handleAutoLayout = useCallback(async () => {
+  const handleAutoLayout = useCallback(() => {
     if (tastes.length === 0) return;
-    const { updates, guides } = computeGridLayout(tastes);
-
-    // Check if any position actually changed
-    const changed = updates.some((u) => {
-      const t = tastes.find((t) => t.id === u.id);
-      return t && (Math.round(t.x) !== Math.round(u.x) || Math.round(t.y) !== Math.round(u.y));
-    });
-
-    if (changed) {
-      // Apply new positions
-      setTastes((prev) => {
-        const map = new Map(updates.map((u) => [u.id, u]));
-        return prev.map((t) => {
-          const u = map.get(t.id);
-          return u ? { ...t, x: u.x, y: u.y } : t;
-        });
-      });
-      try {
-        await batchUpdateTastes(designId, updates);
-      } catch {
-        const fresh = await fetchTastes(designId);
-        setTastes(fresh);
-      }
-    }
-
-    // Flash alignment guide lines for 1.2s so user sees what was aligned
-    if (guides.length > 0) {
-      setSnapGuides(guides);
-      setTimeout(() => setSnapGuides([]), 1200);
-    }
-
-    // Always fit to view (re-center + auto-zoom), even if positions didn't change
-    requestAnimationFrame(() => {
-      const finalTastes = changed
-        ? tastes.map((t) => {
-            const u = updates.find((u) => u.id === t.id);
-            return u ? { ...t, x: u.x, y: u.y } : t;
-          })
-        : tastes;
-      const rect = computeBounds(finalTastes);
-      fitToView(rect);
-    });
-  }, [tastes, designId, fitToView]);
+    // No position changes — just fit the whole group into view with 40px padding
+    fitToView(computeBounds(tastes));
+  }, [tastes, fitToView]);
 
   // ─── Figma import ───
 

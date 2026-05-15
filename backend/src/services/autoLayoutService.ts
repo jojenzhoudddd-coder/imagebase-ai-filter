@@ -1,19 +1,12 @@
-// ─── Auto-layout service (ported from frontend/src/components/SvgCanvas/index.tsx) ───
+// ─── Auto-layout service ───
 //
 // Two primitives:
-//   1. computeGridLayout(tastes) — "tidy up" all tastes: infer row structure from
-//      current Y, align items within each row, equalize spacing. Used by:
-//        - User clicks "自动排列" in SvgCanvas (FE keeps its copy for UX latency)
-//        - MCP `auto_layout_design` tool (this backend copy, canonical)
+//   1. computeGridLayout(tastes) — returns current positions unchanged + bounding
+//      rect. The frontend handles viewport fitting (pan + zoom) client-side.
+//      No taste positions are modified.
 //
 //   2. findEmptyPosition(existing, newSize) — pick a (x, y) for a single newly-
-//      inserted taste that doesn't overlap existing ones. Used by MCP path of
-//      `create_taste_from_svg` so Agent-generated SVGs land in a sensible spot
-//      without invoking a full re-layout.
-//
-// Keep the FE copy (SvgCanvas) in sync for one release cycle. When we have
-// confirmation that MCP path reliably triggers BE auto-layout, we can reduce
-// FE's copy to just the interactive "reflow" button handler that hits REST.
+//      inserted taste that doesn't overlap existing ones.
 
 export interface TasteLike {
   id: string;
@@ -28,79 +21,27 @@ export interface LayoutResult {
   bounds: { width: number; height: number };
 }
 
-const ALIGN_THRESHOLD = 40; // px — max distance to consider "nearly aligned"
-
 /**
- * "Tidy up" layout: snap-align nodes to shared horizontal/vertical center lines
- * WITHOUT changing their relative positions. Nodes that are roughly aligned
- * (within ALIGN_THRESHOLD) get nudged to a common center line.
+ * "Fit to view" layout: returns all positions unchanged. The frontend adjusts
+ * canvas pan + zoom to fit the bounding rect with 40px padding on top/left/right.
  */
 export function computeGridLayout(tastes: TasteLike[]): LayoutResult {
   if (tastes.length === 0) return { updates: [], bounds: { width: 0, height: 0 } };
 
-  // Work on a mutable copy
-  const nodes = tastes.map((t) => ({ ...t }));
-
-  // 1. Cluster by horizontal center (vertical alignment lines)
-  const hClusters = clusterByValue(nodes, (n) => n.x + n.width / 2, ALIGN_THRESHOLD);
-  for (const cluster of hClusters) {
-    if (cluster.length < 2) continue;
-    const avgCx = cluster.reduce((s, n) => s + n.x + n.width / 2, 0) / cluster.length;
-    for (const n of cluster) {
-      n.x = avgCx - n.width / 2;
-    }
-  }
-
-  // 2. Cluster by vertical center (horizontal alignment lines)
-  const vClusters = clusterByValue(nodes, (n) => n.y + n.height / 2, ALIGN_THRESHOLD);
-  for (const cluster of vClusters) {
-    if (cluster.length < 2) continue;
-    const avgCy = cluster.reduce((s, n) => s + n.y + n.height / 2, 0) / cluster.length;
-    for (const n of cluster) {
-      n.y = avgCy - n.height / 2;
-    }
-  }
-
-  const updates: Array<{ id: string; x: number; y: number }> = nodes.map((n) => ({
-    id: n.id,
-    x: Math.round(n.x),
-    y: Math.round(n.y),
-  }));
+  const updates = tastes.map((t) => ({ id: t.id, x: t.x, y: t.y }));
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const n of nodes) {
-    minX = Math.min(minX, n.x);
-    minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x + n.width);
-    maxY = Math.max(maxY, n.y + n.height);
+  for (const t of tastes) {
+    minX = Math.min(minX, t.x);
+    minY = Math.min(minY, t.y);
+    maxX = Math.max(maxX, t.x + t.width);
+    maxY = Math.max(maxY, t.y + t.height);
   }
 
   return {
     updates,
     bounds: { width: maxX - minX, height: maxY - minY },
   };
-}
-
-function clusterByValue<T>(items: T[], valueFn: (item: T) => number, threshold: number): T[][] {
-  const sorted = [...items].sort((a, b) => valueFn(a) - valueFn(b));
-  const clusters: T[][] = [];
-  let current: T[] = [];
-
-  for (const item of sorted) {
-    if (current.length === 0) {
-      current.push(item);
-    } else {
-      const lastVal = valueFn(current[current.length - 1]);
-      if (Math.abs(valueFn(item) - lastVal) <= threshold) {
-        current.push(item);
-      } else {
-        clusters.push(current);
-        current = [item];
-      }
-    }
-  }
-  if (current.length > 0) clusters.push(current);
-  return clusters;
 }
 
 /**
