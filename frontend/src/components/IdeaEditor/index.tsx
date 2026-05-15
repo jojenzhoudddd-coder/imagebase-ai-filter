@@ -1183,7 +1183,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                     blockIdx += 2;
                     return (
                       <div key={groupId} style={{ display: "grid", gridTemplateColumns: `${ratio}fr 12px ${1 - ratio}fr`, gap: 0, alignItems: "start" }}>
-                        <div style={{ position: "relative" }}>
+                        <div style={{ position: "relative", minWidth: 0, overflow: "hidden" }}>
                           {dropTarget?.type === "column-left" && dropTarget.targetBlockId === left.id && (
                             <div style={{ position: "absolute", left: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
                           )}
@@ -1261,7 +1261,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                             }}
                           />
                         </div>
-                        <div style={{ position: "relative" }}>
+                        <div style={{ position: "relative", minWidth: 0, overflow: "hidden" }}>
                           {dropTarget?.type === "column-right" && dropTarget.targetBlockId === right.id && (
                             <div style={{ position: "absolute", right: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
                           )}
