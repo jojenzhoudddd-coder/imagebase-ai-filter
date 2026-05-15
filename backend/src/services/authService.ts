@@ -16,7 +16,7 @@ import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { ensureAgentFiles } from "./agentService.js";
-import { generateId } from "./idGenerator.js";
+import { generateId, generateIdSync } from "./idGenerator.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -292,8 +292,8 @@ export async function createUserWithWorkspace(input: {
     //   这样新用户首次看到的表与他们手动 "+ 新建表" 看到的一模一样。
     // 三种类型 order 分开 (Table=0, Design=1, Idea=2) 让 sidebar 混排时 Table
     // 稳定排第一,配合 App init 选 first artifact 的逻辑。
-    const defaultFieldId = `fld_${Date.now().toString(36)}_${randomBytes(2).toString("hex")}`;
-    const defaultViewId = `viw_${Date.now().toString(36)}`;
+    const defaultFieldId = generateIdSync("field");
+    const defaultViewId = generateIdSync("view");
     const defaultField = {
       id: defaultFieldId,
       tableId: "", // populated after table.create
@@ -313,6 +313,7 @@ export async function createUserWithWorkspace(input: {
     };
     const tableRow = await tx.table.create({
       data: {
+        id: await generateId("table"),
         workspaceId: ws.id,
         name: "Table",
         fields: [defaultField] as any,
@@ -321,22 +322,20 @@ export async function createUserWithWorkspace(input: {
         order: 0,
       },
     });
-    // tableId 回填(与 createTable 流程一致)
     defaultField.tableId = tableRow.id;
     defaultView.tableId = tableRow.id;
     await tx.table.update({
       where: { id: tableRow.id },
       data: { fields: [defaultField] as any, views: [defaultView] as any },
     });
-    // 5 行空记录 —— cells:{[fieldId]: null} 与 createTable 完全一致;循环
-    // 单条 create 让 createdAt 单调递增(Record 无 order 列,靠 createdAt 排序)。
     for (let i = 0; i < 5; i++) {
       await tx.record.create({
-        data: { tableId: tableRow.id, cells: { [defaultFieldId]: null } as any },
+        data: { id: await generateId("record"), tableId: tableRow.id, cells: { [defaultFieldId]: null } as any },
       });
     }
     await tx.design.create({
       data: {
+        id: await generateId("design"),
         workspaceId: ws.id,
         name: "Taste",
         order: 1,
@@ -344,6 +343,7 @@ export async function createUserWithWorkspace(input: {
     });
     await tx.idea.create({
       data: {
+        id: await generateId("idea"),
         workspaceId: ws.id,
         name: "Idea",
         order: 2,
