@@ -1058,6 +1058,23 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             newLayouts.push(newSplit);
           }
           persistLayouts(newLayouts);
+
+          // Move source block adjacent to target in document order so the tree
+          // renders at the target's position (not the source's original position)
+          const srcIdx = blocks.findIndex(b => b.id === blockId);
+          const tgtIdx = blocks.findIndex(b => b.id === targetBlockId);
+          if (srcIdx >= 0 && tgtIdx >= 0 && Math.abs(srcIdx - tgtIdx) > 1) {
+            const moveToIdx = direction === "right" || direction === "bottom" ? tgtIdx + 1 : tgtIdx;
+            const adjustedIdx = srcIdx < moveToIdx ? moveToIdx - 1 : moveToIdx;
+            void moveIdeaBlock(ideaId, blockId, adjustedIdx).then(() =>
+              fetchIdeaBlocks(ideaId).then((bRes) => {
+                setBlocks(bRes.blocks);
+                contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+                setContent(contentRef.current);
+                versionRef.current = bRes.version;
+              })
+            ).catch(() => {});
+          }
         }
   }, [blocks, ideaId, layouts, persistLayouts]);
   commitDropRef.current = commitDrop;
