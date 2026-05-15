@@ -572,10 +572,10 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
           });
         }
 
-        // Fetch SVG content for each taste in parallel
+        // Fetch SVG content for inline rendering (PNG/JPG use <img> fallback)
         const entries = await Promise.all(
           data
-            .filter((t) => t.filePath)
+            .filter((t) => t.filePath && t.filePath.toLowerCase().endsWith(".svg"))
             .map(async (t) => {
               try {
                 const res = await fetch(`/${t.filePath}`);
@@ -605,7 +605,7 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
   // Fetch SVG content for a taste that arrived through SSE (agent-created) so
   // it renders immediately instead of waiting for a full reload.
   const fetchSvgContentFor = useCallback(async (taste: TasteBrief) => {
-    if (!taste.filePath) return;
+    if (!taste.filePath || !taste.filePath.toLowerCase().endsWith(".svg")) return;
     try {
       const res = await fetch(`/${taste.filePath}`);
       const text = await res.text();
@@ -684,19 +684,22 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
 
   const handleFiles = useCallback(
     async (files: File[]) => {
-      const svgFiles = files.filter(
-        (f) => f.type === "image/svg+xml" || f.name.toLowerCase().endsWith(".svg"),
+      const imageExts = [".svg", ".png", ".jpg", ".jpeg"];
+      const imageMimes = ["image/svg+xml", "image/png", "image/jpeg"];
+      const imageFiles = files.filter(
+        (f) => imageMimes.includes(f.type) || imageExts.some((e) => f.name.toLowerCase().endsWith(e)),
       );
-      if (svgFiles.length === 0) return;
+      if (imageFiles.length === 0) return;
       try {
-        const created = await uploadTastes(designId, svgFiles);
+        const created = await uploadTastes(designId, imageFiles);
         setTastes((prev) => [...prev, ...created]);
-        // Read uploaded file contents for inline rendering
+        // Read uploaded SVG file contents for inline rendering (PNG/JPG use <img> fallback)
         const newContents: Record<string, string> = {};
         await Promise.all(
           created.map(async (t, i) => {
-            if (svgFiles[i]) {
-              const text = await svgFiles[i].text();
+            const file = imageFiles[i];
+            if (file && (file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg"))) {
+              const text = await file.text();
               newContents[t.id] = sanitizeSvg(text);
             }
           }),
@@ -1163,7 +1166,7 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
           <input
             ref={fileInputRef}
             type="file"
-            accept=".svg"
+            accept=".svg,.png,.jpg,.jpeg"
             multiple
             style={{ display: "none" }}
             onChange={handleFileInput}

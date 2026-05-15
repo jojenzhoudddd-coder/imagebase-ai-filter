@@ -22,6 +22,9 @@ const prisma = new PrismaClient({ adapter });
 
 const uploadsRoot = path.resolve(__dirname, "../../../uploads/svgs");
 
+const ALLOWED_MIME = new Set(["image/svg+xml", "image/png", "image/jpeg"]);
+const ALLOWED_EXT = new Set([".svg", ".png", ".jpg", ".jpeg"]);
+
 const storage = multer.diskStorage({
   destination: async (_req, _file, cb) => {
     const designId = _req.params.designId;
@@ -30,19 +33,18 @@ const storage = multer.diskStorage({
     cb(null, dir);
   },
   filename: (_req, file, cb) => {
-    // cuid-like unique name + original extension
     const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    cb(null, `${unique}.svg`);
+    const ext = path.extname(file.originalname).toLowerCase() || ".svg";
+    cb(null, `${unique}${ext}`);
   },
 });
 
 const upload = multer({
   storage,
   fileFilter: (_req, file, cb) => {
-    const isSvg =
-      file.mimetype === "image/svg+xml" ||
-      file.originalname.toLowerCase().endsWith(".svg");
-    cb(null, isSvg);
+    const ext = path.extname(file.originalname).toLowerCase();
+    const ok = ALLOWED_MIME.has(file.mimetype) || ALLOWED_EXT.has(ext);
+    cb(null, ok);
   },
   // 50MB per file. Figma exports ramp up fast — a single 1080×1080 design
   // with a few illustrations + embedded raster images routinely lands at
@@ -128,6 +130,21 @@ function findEmptyPosition(
   return { x: 0, y: maxBottom + gap };
 }
 
+/** Parse image dimensions from file buffer (PNG/JPG header) */
+function parseImageDimensions(buf: Buffer): { width: number; height: number } {
+  // PNG: bytes 16-23 contain width (4B BE) and height (4B BE)
+  if (buf[0] === 0x89 && buf[1] === 0x50) {
+    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  }
+  // JPEG: scan for SOF0/SOF2 marker (0xFF 0xC0 or 0xFF 0xC2)
+  for (let i = 0; i < buf.length - 9; i++) {
+    if (buf[i] === 0xff && (buf[i + 1] === 0xc0 || buf[i + 1] === 0xc2)) {
+      return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7) };
+    }
+  }
+  return { width: 200, height: 200 };
+}
+
 /** Parse SVG string to extract width/height from viewBox or explicit attrs. */
 function parseSvgDimensions(svgContent: string): { width: number; height: number } {
   // Try viewBox first: viewBox="minX minY width height"
@@ -208,12 +225,20 @@ router.post(
 
     const created = [];
     for (const file of files) {
-      const svgContent = await fs.readFile(file.path, "utf-8");
-      const dims = parseSvgDimensions(svgContent);
+      const ext = path.extname(file.filename).toLowerCase();
+      const isSvg = ext === ".svg";
+      let dims: { width: number; height: number };
+      if (isSvg) {
+        const svgContent = await fs.readFile(file.path, "utf-8");
+        dims = parseSvgDimensions(svgContent);
+      } else {
+        const buf = await fs.readFile(file.path);
+        dims = parseImageDimensions(buf);
+      }
       const relativePath = `uploads/svgs/${designId}/${file.filename}`;
 
       const decoded = decodeFileName(file.originalname);
-      const baseName = decoded.replace(/\.svg$/i, "");
+      const baseName = decoded.replace(/\.(svg|png|jpe?g)$/i, "");
       const name = await uniqueTasteName(designId, baseName);
 
       const pos = findEmptyPosition(obstacles, dims.width, dims.height);
