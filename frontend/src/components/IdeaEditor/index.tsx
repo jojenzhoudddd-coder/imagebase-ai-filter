@@ -722,34 +722,38 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // ── Mode toggle with cursor preservation ──
   const caretOffsetRef = useRef(0);
   const toggleMode = useCallback(() => {
-    // Save which block has focus — read from DOM (most reliable, covers direct clicks)
-    const activeEl = document.activeElement;
-    const currentFocusBlock = activeEl?.closest?.("[data-block-id]")?.getAttribute("data-block-id")
-      ?? focusBlockIdRef.current;
+    // Find the first visible block in the current viewport to restore scroll position
+    let visibleBlockId: string | null = null;
+    const container = blockListRef.current;
+    if (container) {
+      const blockEls = container.querySelectorAll<HTMLElement>("[data-block-id]");
+      const scrollParent = bodyRef.current;
+      const viewTop = scrollParent?.getBoundingClientRect().top ?? 0;
+      for (const el of blockEls) {
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom > viewTop) {
+          visibleBlockId = el.getAttribute("data-block-id");
+          break;
+        }
+      }
+    }
+
     setMode((m) => {
       if (m === "source") {
-        // Source → Preview: refetch blocks (may have changed via source edits)
         fetchIdeaBlocks(ideaId).then((res) => {
           setBlocks(res.blocks);
         }).catch(() => {});
       } else {
-        // Preview → Source: contentRef is already synced by block saves
         setContent(contentRef.current);
       }
-      // Restore focus/scroll to the same block after mode switch
-      if (currentFocusBlock) {
+      // Scroll to the same block after mode switch
+      if (visibleBlockId) {
         setTimeout(() => {
-          const container = blockListRef.current;
-          if (!container) return;
-          const blockEl = container.querySelector(`[data-block-id="${currentFocusBlock}"]`);
+          const c = blockListRef.current;
+          if (!c) return;
+          const blockEl = c.querySelector(`[data-block-id="${visibleBlockId}"]`);
           if (!blockEl) return;
-          blockEl.scrollIntoView({ block: "center", behavior: "instant" });
-          // In source mode, also focus the textarea
-          const ta = blockEl.querySelector("textarea") as HTMLTextAreaElement | null;
-          if (ta) {
-            ta.focus();
-            ta.selectionStart = ta.selectionEnd = 0;
-          }
+          blockEl.scrollIntoView({ block: "start", behavior: "instant" });
         }, 100);
       }
       return m === "source" ? "preview" : "source";
