@@ -286,12 +286,14 @@ const BlockItem = memo(function BlockItem({
     lineHeight: 1.6,
     padding: 0,
     minHeight: "auto",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
   };
 
   const textareaStyle: React.CSSProperties = {
     display: "block",
     width: "100%",
-    minHeight: sourceMode ? 20 : 32,
+    minHeight: sourceMode ? 16 : 32,
     padding: sourceMode ? "0" : "2px 0",
     margin: 0,
     border: "none",
