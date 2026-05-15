@@ -39,6 +39,14 @@ const md = new MarkdownIt({
   linkify: true,
 });
 
+// All links open in new tab
+const defaultRender = md.renderer.rules.link_open || ((tokens: any, idx: any, options: any, _env: any, self: any) => self.renderToken(tokens, idx, options));
+md.renderer.rules.link_open = (tokens: any, idx: any, options: any, env: any, self: any) => {
+  tokens[idx].attrSet("target", "_blank");
+  tokens[idx].attrSet("rel", "noopener noreferrer");
+  return defaultRender(tokens, idx, options, env, self);
+};
+
 export interface BlockItemProps {
   block: IdeaBlockBrief;
   ideaId: string;
@@ -130,8 +138,10 @@ const BlockItem = memo(function BlockItem({
     return () => document.removeEventListener("pointerdown", handler, true);
   }, [selected, block.id]);
 
-  const handleClick = useCallback(() => {
+  const handleClick = useCallback((e: React.MouseEvent) => {
     if (readOnly) return;
+    // Clicking a link → let it navigate, don't enter selected/edit
+    if ((e.target as HTMLElement).closest("a[href]")) return;
     // If user selected text (drag to select for copy), skip state transition
     const sel = window.getSelection();
     if (sel && sel.toString().length > 0) return;
