@@ -1,35 +1,46 @@
 /**
- * Application-side ID generator — returns IDs in the format `<prefix><12 digits>`.
+ * Application-side ID generator — unified format `{2-char prefix}{12 digits}`.
  *
- * Replaces Prisma's `@default(cuid())` for new entities declared since the
- * Vibe Demo plan (see docs/vibe-demo-plan.md §3.5). Legacy entities with
- * cuid ids remain supported by the router layer — the format of *new* IDs
- * is the only thing this changes.
+ * Every entity type gets a unique 2-letter prefix + 12 random digits = 14 chars
+ * total. Readable, URL-friendly, globally unique across all tables.
  *
- * Why digits and not base62:
- *   User-facing IDs (e.g. visible in URL `/workspace/.../table/tb123...`)
- *   are more readable as digits; base62 capacity isn't needed at 12
- *   positions. 10^12 ≈ 10^12 combos; at 1M live entities collision probability
- *   per insert is ~5×10^-7, and the retry loop handles the rare hit.
+ * 10^12 ≈ 1 trillion combos per prefix; at 1M live entities collision
+ * probability per insert is ~5×10^-7, and the retry loop handles the rare hit.
  *
- * Scoping:
- *   Callers pass an async `existsCheck(id)` so the generator can be reused
- *   across any Prisma model without this file importing the client. Keeps
- *   the module tiny and testable (mock existsCheck in unit tests).
+ * Migration note: legacy entities may still have cuid IDs or hardcoded strings
+ * (e.g. "user_default", "agent_default"). The router layer accepts both formats.
+ * Phase 2 migration will convert all legacy IDs to the new format.
  */
 
 export const ID_PREFIXES = {
-  table: "tb",
-  taste: "ts",
-  design: "dg",
-  demo: "dm",
-  idea: "ide",           // intentional 3-char — matches user's decision
-  workspace: "ws",
-  conversation: "cv",
-  agent: "ag",
-  record: "rc",
-  field: "fd",
-  view: "vw",
+  user:             "us",
+  agent:            "ag",
+  workspace:        "ws",
+  table:            "tb",
+  idea:             "ia",
+  design:           "ds",
+  taste:            "ts",
+  demo:             "dm",
+  conversation:     "cv",
+  folder:           "fd",
+  field:            "fl",
+  record:           "rc",
+  view:             "vw",
+  message:          "ms",
+  subagentRun:      "sr",
+  userSkill:        "sk",
+  knowledgeEntry:   "ke",
+  tokenUsage:       "tu",
+  ideaAttachment:   "at",
+  ideaBlock:        "ib",
+  mention:          "mn",
+  customModel:      "cm",
+  org:              "og",
+  orgMember:        "om",
+  workflowRun:      "wf",
+  agencySession:    "as",
+  agencyMilestone:  "am",
+  agencyCheckpoint: "ac",
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;
@@ -47,7 +58,7 @@ const MAX_RETRY = 5;
  */
 export async function generateId(
   kind: IdKind,
-  existsCheck: (id: string) => Promise<boolean>,
+  existsCheck: (id: string) => Promise<boolean> = async () => false,
 ): Promise<string> {
   const prefix = ID_PREFIXES[kind];
   for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
@@ -74,31 +85,17 @@ export function generateIdSync(kind: IdKind): string {
  * accepted as valid params — this regex is only for "is this a new-style
  * id" checks in places that care.
  */
-export const NEW_ID_PATTERNS: Record<IdKind, RegExp> = {
-  table:         /^tb\d{12}$/,
-  taste:         /^ts\d{12}$/,
-  design:        /^dg\d{12}$/,
-  demo:          /^dm\d{12}$/,
-  idea:          /^ide\d{12}$/,
-  workspace:     /^ws\d{12}$/,
-  conversation:  /^cv\d{12}$/,
-  agent:         /^ag\d{12}$/,
-  record:        /^rc\d{12}$/,
-  field:         /^fd\d{12}$/,
-  view:          /^vw\d{12}$/,
-};
+export function newIdPattern(kind: IdKind): RegExp {
+  return new RegExp(`^${ID_PREFIXES[kind]}\\d{${DIGITS_LEN}}$`);
+}
 
 export function isNewFormatId(kind: IdKind, id: string): boolean {
-  return NEW_ID_PATTERNS[kind].test(id);
+  return newIdPattern(kind).test(id);
 }
 
 // ─── internal ────────────────────────────────────────────────────────────
 
 function randomDigits(n: number): string {
-  // Build by hand to avoid Math.random rounding — use crypto for uniformity.
-  // Each iteration grabs one 32-bit value and converts to modulo 10 digits.
-  // Over 12 digits there's a marginal bias (2^32 % 10 ≠ 0) but it's
-  // immaterial for collision resistance at this scale.
   const out: string[] = [];
   for (let i = 0; i < n; i++) {
     const r = crypto.getRandomValues(new Uint32Array(1))[0]!;

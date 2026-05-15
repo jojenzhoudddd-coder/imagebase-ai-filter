@@ -13,6 +13,7 @@
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
+import { generateId } from "./idGenerator.js";
 
 export interface ToolCall {
   callId: string;
@@ -160,6 +161,7 @@ export async function createConversation(
 ): Promise<Conversation> {
   const row = await prisma.conversation.create({
     data: {
+      id: await generateId("conversation"),
       workspaceId,
       agentId: agentId ?? null,
       title: title || "新对话",
@@ -296,6 +298,7 @@ export async function appendMessage(
 
     const row = await tx.message.create({
       data: {
+        id: await generateId("message"),
         conversationId,
         role: msg.role,
         content: msg.content,

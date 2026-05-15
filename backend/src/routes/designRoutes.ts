@@ -5,6 +5,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { eventBus } from "../services/eventBus.js";
 import { parseFigmaUrl, extractNameFromUrl } from "../utils/figmaParser.js";
 import { DEFAULT_WORKSPACE_ID } from "../services/dbStore.js";
+import { generateId } from "../services/idGenerator.js";
 import path from "path";
 import fs from "fs/promises";
 
@@ -73,6 +74,7 @@ router.post("/", async (req: Request, res: Response) => {
 
   const design = await prisma.design.create({
     data: {
+      id: await generateId("design"),
       name: uniqueName,
       workspaceId: docId,
       parentId: parentId || null,

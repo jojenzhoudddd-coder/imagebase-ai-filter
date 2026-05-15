@@ -9,6 +9,7 @@ import {
   ViewFilter, FieldType, FieldConfig,
   AutoNumberRule, GeneratedField,
 } from "../types.js";
+import { generateId, generateIdSync } from "./idGenerator.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -186,7 +187,7 @@ export async function createTable(dto: CreateTableDTO): Promise<Table & { order:
 
   // Default text field
   const defaultField: Field = {
-    id: `fld_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    id: generateIdSync("field"),
     tableId: "",
     name: fieldName,
     type: "Text",
@@ -195,7 +196,7 @@ export async function createTable(dto: CreateTableDTO): Promise<Table & { order:
   };
 
   const defaultView: View = {
-    id: `viw_${Date.now().toString(36)}`,
+    id: generateIdSync("view"),
     tableId: "",
     name: "Grid",
     type: "grid",
@@ -206,6 +207,7 @@ export async function createTable(dto: CreateTableDTO): Promise<Table & { order:
 
   const row = await prisma.table.create({
     data: {
+      id: await generateId("table"),
       name: sanitizeName(dto.name),
       workspaceId: wsId,
       order: nextOrder,
@@ -228,6 +230,7 @@ export async function createTable(dto: CreateTableDTO): Promise<Table & { order:
   for (let i = 0; i < 5; i++) {
     const rec = await prisma.record.create({
       data: {
+        id: await generateId("record"),
         tableId: row.id,
         cells: { [defaultField.id]: null } as any,
       },
@@ -257,7 +260,7 @@ export async function resetTableWithFields(
 
   // Build new fields from AI-generated definitions
   const newFields: Field[] = generatedFields.map((gf, i) => ({
-    id: `fld_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}_${i}`,
+    id: generateIdSync("field"),
     tableId,
     name: gf.name.slice(0, 100),
     type: gf.type as FieldType,
@@ -280,7 +283,7 @@ export async function resetTableWithFields(
   // If no views exist, create a default Grid view
   if (newViews.length === 0) {
     newViews.push({
-      id: `viw_${Date.now().toString(36)}`,
+      id: generateIdSync("view"),
       tableId,
       name: "Grid",
       type: "grid",
@@ -300,7 +303,7 @@ export async function resetTableWithFields(
   const newRecords: TableRecord[] = [];
   for (let i = 0; i < 5; i++) {
     const rec = await prisma.record.create({
-      data: { tableId, cells: { ...emptyCells } as any },
+      data: { id: await generateId("record"), tableId, cells: { ...emptyCells } as any },
     });
     newRecords.push(toRecord(rec));
   }
@@ -390,7 +393,7 @@ export async function createField(tableId: string, dto: CreateFieldDTO): Promise
   const counters = (row.autoNumberCounters ?? {}) as Record<string, number>;
 
   const field: Field = {
-    id: `fld_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    id: generateIdSync("field"),
     tableId,
     name: dto.name.slice(0, 100),
     type: dto.type,
@@ -831,6 +834,7 @@ export async function createRecord(tableId: string, dto: CreateRecordDTO, userId
 
   const row = await prisma.record.create({
     data: {
+      id: await generateId("record"),
       tableId,
       cells: cells as any,
       createdAt: now,
@@ -937,7 +941,7 @@ export async function createView(tableId: string, dto: CreateViewDTO): Promise<V
   const views = (row.views ?? []) as View[];
   const fields = (row.fields ?? []) as Field[];
   const view: View = {
-    id: `viw_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    id: generateIdSync("view"),
     tableId,
     name,
     type: dto.type,

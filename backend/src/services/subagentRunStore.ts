@@ -18,6 +18,7 @@
  */
 
 import { PrismaClient } from "../generated/prisma/client.js";
+import { generateId } from "./idGenerator.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 
@@ -93,6 +94,7 @@ export interface SubagentRunRow {
 export async function createSubagentRun(input: SubagentRunCreate): Promise<SubagentRunRow> {
   const row = await prisma.subagentRun.create({
     data: {
+      id: await generateId("subagentRun"),
       parentMessageId: input.parentMessageId,
       parentConversationId: input.parentConversationId,
       hostAgentId: input.hostAgentId,

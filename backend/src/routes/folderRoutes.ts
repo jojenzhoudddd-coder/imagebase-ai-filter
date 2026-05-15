@@ -4,6 +4,7 @@ import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { eventBus } from "../services/eventBus.js";
 import { DEFAULT_WORKSPACE_ID } from "../services/dbStore.js";
+import { generateId } from "../services/idGenerator.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -63,6 +64,7 @@ router.post("/", async (req: Request, res: Response) => {
 
   const folder = await prisma.folder.create({
     data: {
+      id: await generateId("folder"),
       name: uniqueName,
       workspaceId: docId,
       parentId: parentId || null,

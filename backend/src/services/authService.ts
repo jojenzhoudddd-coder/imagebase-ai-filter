@@ -258,6 +258,7 @@ export async function createUserWithWorkspace(input: {
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
+        id: await generateId("user"),
         email: input.email,
         username: input.username.trim(),
         name,
@@ -266,10 +267,10 @@ export async function createUserWithWorkspace(input: {
       },
     });
     const org = await tx.org.create({
-      data: { name: `${name} 的空间` },
+      data: { id: await generateId("org"), name: `${name} 的空间` },
     });
     await tx.orgMember.create({
-      data: { orgId: org.id, userId: user.id, role: "owner" },
+      data: { id: await generateId("orgMember"), orgId: org.id, userId: user.id, role: "owner" },
     });
     const wsId = await generateId("workspace", async (id) => {
       const existing = await tx.workspace.findUnique({ where: { id } });

@@ -6,6 +6,7 @@
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
+import { generateId } from "./idGenerator.js";
 import { embed, cosineSimilarity } from "./embeddingService.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -92,9 +93,10 @@ async function _addKnowledgeImpl(input: KnowledgeCreateInput) {
     const parentId = existing.parentId ?? `ke_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
     const entries = await Promise.all(
-      chunks.map((chunk, i) =>
+      chunks.map(async (chunk, i) =>
         prisma.knowledgeEntry.create({
           data: {
+            id: await generateId("knowledgeEntry"),
             agentId: input.agentId, title: docTitle, content: chunk,
             sourceUrl: sourceUrl ?? null, sourceType: input.sourceType ?? existing.sourceType,
             tags: mergedTags, embedding: embeddings ? embeddings[i] : undefined,
@@ -111,9 +113,10 @@ async function _addKnowledgeImpl(input: KnowledgeCreateInput) {
   const parentId = `ke_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
   const entries = await Promise.all(
-    chunks.map((chunk, i) =>
+    chunks.map(async (chunk, i) =>
       prisma.knowledgeEntry.create({
         data: {
+          id: await generateId("knowledgeEntry"),
           agentId: input.agentId, title: input.title, content: chunk,
           sourceUrl: input.sourceUrl ?? null, sourceType: input.sourceType ?? "web",
           tags: (input.tags ?? []).slice(0, 5), embedding: embeddings ? embeddings[i] : undefined,

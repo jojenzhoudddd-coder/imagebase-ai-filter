@@ -23,6 +23,8 @@
  * the content. Keeps the "content + mentions" write atomic.
  */
 
+import { generateIdSync } from "./idGenerator.js";
+
 export type MentionTargetType =
   | "table"
   | "design"
@@ -233,6 +235,7 @@ export function buildMentionRows(
   sourceId: string,
   workspaceId: string
 ): Array<{
+  id: string;
   workspaceId: string;
   sourceType: string;
   sourceId: string;
@@ -245,6 +248,7 @@ export function buildMentionRows(
   const byKey = new Map<
     string,
     {
+      id: string;
       workspaceId: string;
       sourceType: string;
       sourceId: string;
@@ -263,6 +267,7 @@ export function buildMentionRows(
     });
     if (byKey.has(key)) continue; // first occurrence wins for excerpt
     byKey.set(key, {
+      id: generateIdSync("mention"),
       workspaceId,
       sourceType,
       sourceId,

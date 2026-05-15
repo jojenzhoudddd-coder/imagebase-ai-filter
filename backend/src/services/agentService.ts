@@ -17,6 +17,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import pg from "pg";
+import { generateId } from "./idGenerator.js";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 
@@ -1003,7 +1004,7 @@ export async function createAgent(input: {
 }): Promise<AgentMeta> {
   const agent = await prisma.agent.create({
     data: {
-      id: input.id, // allow fixed-id seeding (agent_default)
+      id: input.id ?? await generateId("agent"),
       userId: input.userId,
       name: input.name?.trim() || "Agent",
       avatarUrl: input.avatarUrl ?? null,
@@ -1051,8 +1052,10 @@ export async function deleteAgentRow(agentId: string): Promise<boolean> {
 
 // ─── Default agent ───
 
-const DEFAULT_USER_ID = "user_default";
-const DEFAULT_AGENT_ID = "agent_default";
+// Legacy hardcoded IDs — kept only for backward compat during migration.
+// After Phase 2 migration runs, these IDs no longer exist in DB.
+const LEGACY_DEFAULT_USER_ID = "user_default";
+const LEGACY_DEFAULT_AGENT_ID = "agent_default";
 
 /**
  * Owner name used to compose the default agent name.
@@ -1071,12 +1074,25 @@ export function getDefaultAgentName(): string {
 }
 
 export async function ensureDefaultAgent(): Promise<AgentMeta> {
-  const existing = await prisma.agent.findUnique({ where: { id: DEFAULT_AGENT_ID } });
+  // Try finding the seed user's agent by legacy ID first (pre-migration),
+  // then by userId (post-migration). This makes the function work both
+  // before and after the unified ID migration.
+  let existing = await prisma.agent.findUnique({ where: { id: LEGACY_DEFAULT_AGENT_ID } });
+  if (!existing) {
+    // Post-migration: look up by userId instead of hardcoded ID
+    const seedUser = await prisma.user.findUnique({ where: { id: LEGACY_DEFAULT_USER_ID } });
+    if (!seedUser) {
+      // Neither legacy user nor legacy agent exists — look for any user
+      // with the seed email (the user ID was migrated)
+      const userByEmail = await prisma.user.findFirst({ where: { email: "392594377@qq.com" } });
+      if (userByEmail) {
+        existing = await prisma.agent.findFirst({ where: { userId: userByEmail.id } });
+      }
+    } else {
+      existing = await prisma.agent.findFirst({ where: { userId: seedUser.id } });
+    }
+  }
   if (existing) {
-    // One-shot migration: rows seeded before the rename feature landed used
-    // the legacy "Claw" literal. If nobody has customized it since, bump it
-    // to the new `${USER_NAME}'s Agent` template so fresh UX matches spec.
-    // Any custom name (anything != "Claw") is left untouched.
     if (existing.name === "Claw" && DEFAULT_AGENT_NAME !== "Claw") {
       const migrated = await prisma.agent.update({
         where: { id: existing.id },
@@ -1085,13 +1101,13 @@ export async function ensureDefaultAgent(): Promise<AgentMeta> {
       await ensureAgentFiles(migrated.id);
       return migrated;
     }
-    // Make sure the filesystem is in sync even if DB row existed without it.
     await ensureAgentFiles(existing.id);
     return existing;
   }
+  // First boot: create seed agent (will get a generated ID)
+  const seedUser = await prisma.user.findFirst({ where: { email: "392594377@qq.com" } });
   return createAgent({
-    id: DEFAULT_AGENT_ID,
-    userId: DEFAULT_USER_ID,
+    userId: seedUser?.id ?? LEGACY_DEFAULT_USER_ID,
     name: DEFAULT_AGENT_NAME,
   });
 }

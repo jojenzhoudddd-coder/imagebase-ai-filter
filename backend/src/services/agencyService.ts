@@ -16,6 +16,7 @@ import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { v4 as uuidv4 } from "uuid";
+import { generateId } from "./idGenerator.js";
 import {
   planRoadmap as chaosMonkeyPlan,
   validateMilestone as chaosMonkeyValidate,
@@ -54,6 +55,7 @@ export interface CreateSessionInput {
 export async function createSession(input: CreateSessionInput) {
   const session = await prisma.agencySession.create({
     data: {
+      id: await generateId("agencySession"),
       userId: input.userId,
       agentId: input.agentId ?? "agent_default",
       workspaceId: input.workspaceId,
@@ -307,6 +309,7 @@ async function* executeMilestoneWithRetry(
       for (const art of artifactsChanged) {
         await prisma.agencyCheckpoint.create({
           data: {
+            id: await generateId("agencyCheckpoint"),
             sessionId: session.id,
             milestoneId: milestone.id,
             artifactType: art.type,
@@ -394,6 +397,7 @@ async function createMilestoneRows(sessionId: string, roadmap: AgencyRoadmap) {
       const ms = seg.milestones[mi];
       const row = await prisma.agencyMilestone.create({
         data: {
+          id: await generateId("agencyMilestone"),
           sessionId,
           segmentIndex: si,
           milestoneIndex: mi,

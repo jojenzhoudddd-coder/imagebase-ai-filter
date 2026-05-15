@@ -9,6 +9,7 @@ import express, { type Request, type Response } from "express";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
+import { generateId } from "../services/idGenerator.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -47,6 +48,7 @@ router.post("/", async (req: Request, res: Response) => {
     }
     const model = await prisma.customModel.create({
       data: {
+        id: await generateId("customModel"),
         userId: user.id,
         modelId,
         displayName,

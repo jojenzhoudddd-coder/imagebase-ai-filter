@@ -19,6 +19,7 @@ import { applyIdeaWrite } from "../services/ideaWriteService.js";
 import { withArtifactWriteLock } from "../services/artifactWriteQueue.js";
 import * as ideaStream from "../services/ideaStreamSessionService.js";
 import { DEFAULT_WORKSPACE_ID } from "../services/dbStore.js";
+import { generateId } from "../services/idGenerator.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -125,6 +126,7 @@ router.post("/", asyncHandler(async (req: Request, res: Response) => {
 
   const idea = await prisma.idea.create({
     data: {
+      id: await generateId("idea"),
       name: uniqueName,
       workspaceId: wsId,
       parentId: parentId || null,

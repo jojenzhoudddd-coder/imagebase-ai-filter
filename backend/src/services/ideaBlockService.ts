@@ -20,6 +20,7 @@
  */
 
 import type { Prisma, PrismaClient } from "../generated/prisma/client.js";
+import { generateId } from "./idGenerator.js";
 
 export type IdeaBlockType =
   | "heading"
@@ -436,6 +437,7 @@ export async function syncBlocksForIdea(
     } else {
       await tx.ideaBlock.create({
         data: {
+          id: await generateId("ideaBlock"),
           ideaId,
           order: i,
           type: pa.type,

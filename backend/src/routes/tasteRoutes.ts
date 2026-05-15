@@ -10,6 +10,7 @@ import { parseFigmaUrl } from "../utils/figmaParser.js";
 import { enqueueMetaGeneration, getMeta, regenerateMeta } from "../services/tasteMetaService.js";
 import { eventBus } from "../services/eventBus.js";
 import { computeGridLayout } from "../services/autoLayoutService.js";
+import { generateId } from "../services/idGenerator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -219,6 +220,7 @@ router.post(
 
       const taste = await prisma.taste.create({
         data: {
+          id: await generateId("taste"),
           designId,
           name,
           fileName: decoded,
@@ -311,6 +313,7 @@ router.post("/:designId/tastes/from-svg", async (req: Request, res: Response) =>
 
     const taste = await prisma.taste.create({
       data: {
+        id: await generateId("taste"),
         designId,
         name,
         fileName,
@@ -421,6 +424,7 @@ router.post("/:designId/tastes/from-figma", async (req: Request, res: Response) 
 
     const taste = await prisma.taste.create({
       data: {
+        id: await generateId("taste"),
         designId,
         name: await uniqueTasteName(designId, "Figma Import"),
         fileName,

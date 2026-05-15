@@ -13,6 +13,7 @@
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
+import { generateId } from "./idGenerator.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -56,6 +57,7 @@ export async function recordTokenUsage(
   try {
     await prisma.tokenUsage.create({
       data: {
+        id: await generateId("tokenUsage"),
         userId: ctx.userId,
         workspaceId: ctx.workspaceId ?? null,
         provider: ctx.provider,
