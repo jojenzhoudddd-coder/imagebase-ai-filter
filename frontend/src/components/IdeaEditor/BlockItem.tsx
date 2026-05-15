@@ -323,6 +323,24 @@ const BlockItem = memo(function BlockItem({
       onMergeIntoPrev?.(block.id, editValue);
       return;
     }
+
+    // ArrowUp at position 0 → focus previous block (cursor at end)
+    if (e.key === "ArrowUp" && ta.selectionStart === 0 && ta.selectionEnd === 0) {
+      e.preventDefault();
+      deletingRef.current = true; // suppress blur-save
+      void commitEdit();
+      onFocusPrev?.();
+      return;
+    }
+
+    // ArrowDown at end → focus next block (cursor at start)
+    if (e.key === "ArrowDown" && ta.selectionStart === editValue.length && ta.selectionEnd === editValue.length) {
+      e.preventDefault();
+      deletingRef.current = true;
+      void commitEdit();
+      onFocusNext?.();
+      return;
+    }
   }, [cancelEdit, commitEdit, sourceMode, editValue, ideaId, block.id, onCreatedAfter, onDeleted, onFocusPrev, onFocusNext]);
 
   const handleTextareaInput = useCallback(() => {

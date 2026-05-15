@@ -819,12 +819,14 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                   onFocusPrev={() => {
                     if (idx > 0) {
                       setFocusBlockId(blocks[idx - 1].id);
+                      setFocusCursorPos(Infinity); // end of previous block
                       setFocusTrigger(n => n + 1);
                     }
                   }}
                   onFocusNext={() => {
                     if (idx < blocks.length - 1) {
                       setFocusBlockId(blocks[idx + 1].id);
+                      setFocusCursorPos(0); // start of next block
                       setFocusTrigger(n => n + 1);
                     }
                   }}
