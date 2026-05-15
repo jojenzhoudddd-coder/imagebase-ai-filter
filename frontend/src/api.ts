@@ -2426,18 +2426,94 @@ export interface BlockMutationResponse {
   id: string;
   version: number;
   content: string;
+  blockVersion?: number;
+}
+
+export interface PatchBlockBody {
+  content?: string;
+  transformTo?: string;
+  baseVersion?: number;
+}
+
+export interface PatchBlockResponse {
+  id: string;
+  version: number;
+  content: string;
+  blockVersion: number;
+}
+
+export interface CreateBlockBody {
+  type: string;
+  content: string;
+  afterBlockId?: string | null;
+}
+
+export interface CreateBlockResponse {
+  block: {
+    id: string;
+    ideaId: string;
+    parentId: string | null;
+    order: number;
+    type: string;
+    content: string;
+    props: Record<string, unknown>;
+    version: number;
+  };
+  ideaVersion: number;
+}
+
+export type BatchBlockOperation =
+  | { op: "update"; blockId: string; content?: string; transformTo?: string }
+  | { op: "delete"; blockId: string }
+  | { op: "create"; afterBlockId?: string; type: string; content: string }
+  | { op: "move"; blockId: string; toIndex: number };
+
+export interface BatchBlockResponse {
+  ideaVersion: number;
+  results: Array<{ op: string; blockId: string; ok: boolean; error?: string }>;
 }
 
 export async function patchIdeaBlock(
   ideaId: string,
   blockId: string,
-  body: { content?: string; transformTo?: string },
-): Promise<BlockMutationResponse> {
-  const res = await fetch(
+  body: PatchBlockBody,
+): Promise<PatchBlockResponse> {
+  const res = await mutationFetch(
     `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks/${encodeURIComponent(blockId)}`,
     { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
   );
+  if (res.status === 409) {
+    const err: any = new Error("Block version conflict");
+    (err as any).status = 409;
+    const data = await res.json();
+    (err as any).actualVersion = data.actualVersion;
+    throw err;
+  }
   if (!res.ok) throw new Error(`patchIdeaBlock failed (${res.status})`);
+  return res.json();
+}
+
+export async function createIdeaBlock(
+  ideaId: string,
+  body: CreateBlockBody,
+): Promise<CreateBlockResponse> {
+  const res = await mutationFetch(
+    `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  if (!res.ok) throw new Error(`createIdeaBlock failed (${res.status})`);
+  return res.json();
+}
+
+export async function batchUpdateIdeaBlocks(
+  ideaId: string,
+  operations: BatchBlockOperation[],
+): Promise<BatchBlockResponse> {
+  const res = await mutationFetch(
+    `${BASE}/ideas/${encodeURIComponent(ideaId)}/blocks/batch`,
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operations }) },
+  );
+  if (!res.ok) throw new Error(`batchUpdateIdeaBlocks failed (${res.status})`);
   return res.json();
 }
 

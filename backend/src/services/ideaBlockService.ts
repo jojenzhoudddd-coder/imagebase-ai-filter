@@ -456,10 +456,12 @@ export async function syncBlocksForIdea(
 export interface IdeaBlockRow {
   id: string;
   ideaId: string;
+  parentId: string | null;
   order: number;
   type: IdeaBlockType;
   content: string;
   props: Record<string, unknown>;
+  version: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -706,4 +708,488 @@ export function transformBlockContent(
   // Fallback for last-block-no-trailing-newline case.
   void fromType;
   return next;
+}
+
+// ─── PR-A: block-level write primitives (tree-aware) ─────────────────────
+// These functions provide the block-level write API for the FE block editor
+// and the Agent MCP tools. All block writes go through `commitBlockMutation`
+// which reassembles content from blocks, rebuilds mentions and sections,
+// and increments idea.version — keeping Idea.content as source of truth.
+
+import { extractIdeaSections } from "./ideaSections.js";
+import { buildMentionRows } from "./mentionIndex.js";
+import { eventBus } from "./eventBus.js";
+import type { CreateBlockInput, PatchBlockInput, BatchOperation } from "../schemas/ideaBlock.js";
+
+export class BlockVersionConflictError extends Error {
+  actual: number;
+  constructor(blockId: string, expected: number, actual: number) {
+    super(`block ${blockId}: version conflict (expected ${expected}, actual ${actual})`);
+    this.name = "BlockVersionConflictError";
+    this.actual = actual;
+  }
+}
+
+/**
+ * Within a Prisma transaction: read all blocks ordered, reassemble content,
+ * rebuild sections + mentions, increment idea.version. Returns the updated
+ * idea row and emits SSE events.
+ *
+ * This is the single funnel for all block-level writes so that
+ * Idea.content, Idea.sections, Mention rows, and IdeaBlock rows stay
+ * atomically consistent.
+ */
+export async function commitBlockMutation(
+  tx: PrismaTxLike,
+  ideaId: string,
+  clientId: string,
+  options?: {
+    /** Extra SSE events to emit after the content-change event. */
+    blockEvents?: Array<{
+      type: "idea:block-update" | "idea:block-create" | "idea:block-delete" | "idea:block-move";
+      payload: Record<string, any>;
+    }>;
+  },
+): Promise<{ id: string; version: number; content: string; workspaceId: string }> {
+  // Read all blocks in order and reassemble content
+  const blocks = await tx.ideaBlock.findMany({
+    where: { ideaId },
+    orderBy: { order: "asc" },
+  });
+  const newContent = blocks.map((b: any) => b.content).join("");
+
+  // Rebuild sections and mentions
+  const idea = await tx.idea.findUnique({
+    where: { id: ideaId },
+    select: { id: true, workspaceId: true, version: true },
+  });
+  if (!idea) throw new Error(`idea not found: ${ideaId}`);
+
+  const sections = extractIdeaSections(newContent);
+  const mentionRows = buildMentionRows(newContent, "idea", ideaId, idea.workspaceId);
+
+  const updated = await tx.idea.update({
+    where: { id: ideaId },
+    data: {
+      content: newContent,
+      version: { increment: 1 },
+      sections: sections as unknown as any,
+    },
+  });
+
+  // Rebuild mention index
+  await tx.mention.deleteMany({ where: { sourceType: "idea", sourceId: ideaId } });
+  if (mentionRows.length > 0) {
+    await tx.mention.createMany({ data: mentionRows });
+  }
+
+  // Emit backward-compatible content-change event (existing FE still listens to this)
+  eventBus.emitIdeaChange({
+    type: "idea:content-change",
+    ideaId,
+    clientId,
+    timestamp: Date.now(),
+    payload: { content: updated.content, version: updated.version },
+  });
+
+  // Emit block-specific SSE events if provided.
+  // PR-C: enrich each event payload with full block data so remote FE clients
+  // can apply incremental updates without a full re-fetch.
+  if (options?.blockEvents) {
+    // Build a lookup of the committed blocks for enrichment.
+    const blockLookup = new Map<string, (typeof blocks)[0]>();
+    for (const b of blocks) blockLookup.set((b as any).id, b);
+
+    for (const evt of options.blockEvents) {
+      let enrichedPayload: Record<string, any> = { ...evt.payload, ideaVersion: updated.version };
+      const blk = evt.payload.blockId ? blockLookup.get(evt.payload.blockId) : undefined;
+      if (blk) {
+        if (evt.type === "idea:block-update") {
+          enrichedPayload = {
+            ...enrichedPayload,
+            content: (blk as any).content,
+            type: (blk as any).type,
+            props: (blk as any).props ?? {},
+            blockVersion: (blk as any).version ?? 0,
+          };
+        } else if (evt.type === "idea:block-move") {
+          enrichedPayload = {
+            ...enrichedPayload,
+            newOrder: (blk as any).order,
+          };
+        }
+      }
+      if (evt.type === "idea:block-create" && evt.payload.blockId) {
+        const created = blockLookup.get(evt.payload.blockId);
+        if (created) {
+          enrichedPayload = {
+            ...enrichedPayload,
+            block: {
+              id: (created as any).id,
+              order: (created as any).order,
+              type: (created as any).type,
+              content: (created as any).content,
+              props: (created as any).props ?? {},
+              version: (created as any).version ?? 0,
+            },
+            afterBlockId: evt.payload.afterBlockId ?? null,
+          };
+        }
+      }
+      eventBus.emitIdeaChange({
+        type: evt.type as any,
+        ideaId,
+        clientId,
+        timestamp: Date.now(),
+        payload: enrichedPayload,
+      });
+    }
+  }
+
+  return {
+    id: updated.id,
+    version: updated.version,
+    content: updated.content,
+    workspaceId: idea.workspaceId,
+  };
+}
+
+/**
+ * Compute the fractional order for inserting a block after `afterBlockId`
+ * within the given sibling set. If afterBlockId is null, appends to end.
+ */
+function computeInsertOrder(
+  siblings: Array<{ id: string; order: number }>,
+  afterBlockId: string | null | undefined,
+): number {
+  if (!afterBlockId) {
+    // Append to end
+    if (siblings.length === 0) return 0;
+    return Math.max(...siblings.map((s) => s.order)) + 1;
+  }
+  const afterIdx = siblings.findIndex((s) => s.id === afterBlockId);
+  if (afterIdx === -1) {
+    // afterBlockId not found in siblings; append to end
+    if (siblings.length === 0) return 0;
+    return Math.max(...siblings.map((s) => s.order)) + 1;
+  }
+  const afterOrder = siblings[afterIdx].order;
+  if (afterIdx === siblings.length - 1) {
+    // After the last sibling
+    return afterOrder + 1;
+  }
+  // Midpoint between afterBlock and the next sibling
+  const nextOrder = siblings[afterIdx + 1].order;
+  return (afterOrder + nextOrder) / 2;
+}
+
+/**
+ * Create a new block at a position within an idea, then commitBlockMutation
+ * to keep content + mentions + sections in sync. Returns the created block.
+ */
+export async function createBlock(
+  prisma: PrismaTxLike,
+  ideaId: string,
+  body: CreateBlockInput,
+  clientId: string,
+): Promise<{ block: IdeaBlockRow; idea: { id: string; version: number; content: string } }> {
+  return await (prisma as any).$transaction(async (tx: PrismaTxLike) => {
+    // Validate idea exists
+    const idea = await tx.idea.findUnique({
+      where: { id: ideaId },
+      select: { id: true, workspaceId: true },
+    });
+    if (!idea) throw new Error(`idea not found: ${ideaId}`);
+
+    // Find siblings (blocks with same parentId)
+    const parentId = body.parentId ?? null;
+    const siblings = await tx.ideaBlock.findMany({
+      where: { ideaId, parentId },
+      orderBy: { order: "asc" },
+      select: { id: true, order: true },
+    });
+
+    const order = computeInsertOrder(
+      siblings as Array<{ id: string; order: number }>,
+      body.afterBlockId,
+    );
+
+    const created = await tx.ideaBlock.create({
+      data: {
+        ideaId,
+        parentId,
+        order,
+        type: body.type || "paragraph",
+        content: body.content,
+        props: (body.props ?? {}) as any,
+        version: 0,
+      },
+    });
+
+    // Re-sync: re-read all blocks, reassemble content, rebuild mentions
+    const result = await commitBlockMutation(tx, ideaId, clientId, {
+      blockEvents: [{
+        type: "idea:block-create",
+        payload: { blockId: created.id, type: created.type, parentId, order, afterBlockId: body.afterBlockId ?? null },
+      }],
+    });
+
+    return {
+      block: created as unknown as IdeaBlockRow,
+      idea: { id: result.id, version: result.version, content: result.content },
+    };
+  });
+}
+
+/**
+ * Patch a single block's content/type with optional baseVersion optimistic
+ * concurrency. Returns 409-equivalent error if baseVersion doesn't match.
+ */
+export async function patchBlock(
+  prisma: PrismaTxLike,
+  ideaId: string,
+  blockId: string,
+  body: PatchBlockInput,
+  clientId: string,
+): Promise<{ block: IdeaBlockRow; idea: { id: string; version: number; content: string } }> {
+  return await (prisma as any).$transaction(async (tx: PrismaTxLike) => {
+    const existing = await tx.ideaBlock.findUnique({ where: { id: blockId } });
+    if (!existing) throw new IdeaBlockNotFoundError(blockId);
+    const block = existing as unknown as IdeaBlockRow;
+    if (block.ideaId !== ideaId) {
+      throw new Error(`block ${blockId} does not belong to idea ${ideaId}`);
+    }
+
+    // Optimistic concurrency check
+    if (typeof body.baseVersion === "number" && body.baseVersion !== block.version) {
+      throw new BlockVersionConflictError(blockId, body.baseVersion, block.version);
+    }
+
+    // Compute new content
+    let newBlockContent: string;
+    if (typeof body.transformTo === "string") {
+      newBlockContent = transformBlockContent(block.content, block.type, body.transformTo);
+    } else if (typeof body.content === "string") {
+      newBlockContent = body.content;
+    } else {
+      // No actual change
+      const idea = await tx.idea.findUnique({
+        where: { id: ideaId },
+        select: { id: true, version: true, content: true },
+      });
+      return { block, idea: idea! };
+    }
+
+    // Determine new type from transformTo or re-parse
+    let newType = block.type;
+    let newProps = block.props;
+    if (typeof body.transformTo === "string") {
+      // Parse the transformed content to get proper type/props
+      const parsed = parseToBlocks(newBlockContent);
+      if (parsed.length > 0) {
+        newType = parsed[0].type;
+        newProps = parsed[0].props;
+      }
+    } else if (typeof body.content === "string") {
+      // Re-parse to detect type changes (e.g. user typed "# " at start)
+      const parsed = parseToBlocks(newBlockContent);
+      if (parsed.length > 0) {
+        newType = parsed[0].type;
+        newProps = parsed[0].props;
+      }
+    }
+
+    const updated = await tx.ideaBlock.update({
+      where: { id: blockId },
+      data: {
+        content: newBlockContent,
+        type: newType,
+        props: newProps as any,
+        version: { increment: 1 },
+      },
+    });
+
+    const result = await commitBlockMutation(tx, ideaId, clientId, {
+      blockEvents: [{
+        type: "idea:block-update",
+        payload: { blockId, version: (updated as any).version },
+      }],
+    });
+
+    return {
+      block: updated as unknown as IdeaBlockRow,
+      idea: { id: result.id, version: result.version, content: result.content },
+    };
+  });
+}
+
+/**
+ * Execute multiple block operations in one transaction. Each operation is
+ * processed sequentially. After all ops, commitBlockMutation runs once.
+ * Returns per-op results (created block IDs, etc.) and the final idea state.
+ */
+export async function batchBlockUpdate(
+  prisma: PrismaTxLike,
+  ideaId: string,
+  operations: BatchOperation[],
+  clientId: string,
+): Promise<{
+  results: Array<{ op: string; blockId?: string; tempId?: string; error?: string }>;
+  idea: { id: string; version: number; content: string };
+}> {
+  return await (prisma as any).$transaction(async (tx: PrismaTxLike) => {
+    const idea = await tx.idea.findUnique({
+      where: { id: ideaId },
+      select: { id: true, workspaceId: true },
+    });
+    if (!idea) throw new Error(`idea not found: ${ideaId}`);
+
+    const results: Array<{ op: string; blockId?: string; tempId?: string; error?: string }> = [];
+    const blockEvents: Array<{
+      type: "idea:block-update" | "idea:block-create" | "idea:block-delete" | "idea:block-move";
+      payload: Record<string, any>;
+    }> = [];
+
+    for (const operation of operations) {
+      try {
+        switch (operation.op) {
+          case "create": {
+            const parentId = operation.parentId ?? null;
+            const siblings = await tx.ideaBlock.findMany({
+              where: { ideaId, parentId },
+              orderBy: { order: "asc" },
+              select: { id: true, order: true },
+            });
+            const order = computeInsertOrder(
+              siblings as Array<{ id: string; order: number }>,
+              operation.afterBlockId,
+            );
+            const created = await tx.ideaBlock.create({
+              data: {
+                ideaId,
+                parentId,
+                order,
+                type: operation.type || "paragraph",
+                content: operation.content,
+                props: (operation.props ?? {}) as any,
+                version: 0,
+              },
+            });
+            results.push({
+              op: "create",
+              blockId: created.id,
+              tempId: operation.tempId || undefined,
+            });
+            blockEvents.push({
+              type: "idea:block-create",
+              payload: { blockId: created.id, type: created.type, parentId, order },
+            });
+            break;
+          }
+          case "update": {
+            const existing = await tx.ideaBlock.findUnique({ where: { id: operation.blockId } });
+            if (!existing) {
+              results.push({ op: "update", blockId: operation.blockId, error: "not found" });
+              continue;
+            }
+            const block = existing as unknown as IdeaBlockRow;
+            if (block.ideaId !== ideaId) {
+              results.push({ op: "update", blockId: operation.blockId, error: "wrong idea" });
+              continue;
+            }
+            if (typeof operation.baseVersion === "number" && operation.baseVersion !== block.version) {
+              results.push({
+                op: "update",
+                blockId: operation.blockId,
+                error: `version conflict: expected ${operation.baseVersion}, actual ${block.version}`,
+              });
+              continue;
+            }
+            let newContent: string;
+            let newType = block.type;
+            let newProps = block.props;
+            if (typeof operation.transformTo === "string") {
+              newContent = transformBlockContent(block.content, block.type, operation.transformTo);
+              const parsed = parseToBlocks(newContent);
+              if (parsed.length > 0) { newType = parsed[0].type; newProps = parsed[0].props; }
+            } else if (typeof operation.content === "string") {
+              newContent = operation.content;
+              const parsed = parseToBlocks(newContent);
+              if (parsed.length > 0) { newType = parsed[0].type; newProps = parsed[0].props; }
+            } else {
+              results.push({ op: "update", blockId: operation.blockId });
+              continue;
+            }
+            await tx.ideaBlock.update({
+              where: { id: operation.blockId },
+              data: { content: newContent, type: newType, props: newProps as any, version: { increment: 1 } },
+            });
+            results.push({ op: "update", blockId: operation.blockId });
+            blockEvents.push({
+              type: "idea:block-update",
+              payload: { blockId: operation.blockId },
+            });
+            break;
+          }
+          case "delete": {
+            const toDelete = await tx.ideaBlock.findUnique({ where: { id: operation.blockId } });
+            if (!toDelete) {
+              results.push({ op: "delete", blockId: operation.blockId, error: "not found" });
+              continue;
+            }
+            if ((toDelete as any).ideaId !== ideaId) {
+              results.push({ op: "delete", blockId: operation.blockId, error: "wrong idea" });
+              continue;
+            }
+            await tx.ideaBlock.delete({ where: { id: operation.blockId } });
+            results.push({ op: "delete", blockId: operation.blockId });
+            blockEvents.push({
+              type: "idea:block-delete",
+              payload: { blockId: operation.blockId },
+            });
+            break;
+          }
+          case "move": {
+            const toMove = await tx.ideaBlock.findUnique({ where: { id: operation.blockId } });
+            if (!toMove) {
+              results.push({ op: "move", blockId: operation.blockId, error: "not found" });
+              continue;
+            }
+            if ((toMove as any).ideaId !== ideaId) {
+              results.push({ op: "move", blockId: operation.blockId, error: "wrong idea" });
+              continue;
+            }
+            // For move, we use the existing splice logic via content manipulation
+            const ctx = await getBlockWithContext(tx, operation.blockId);
+            const newFullContent = spliceBlockMove(ctx, operation.toIndex);
+            if (newFullContent !== ctx.idea.content) {
+              // Re-sync blocks from new content
+              await syncBlocksForIdea(tx, ideaId, newFullContent);
+              // Update idea content directly (commitBlockMutation will re-read)
+              await tx.idea.update({
+                where: { id: ideaId },
+                data: { content: newFullContent },
+              });
+            }
+            results.push({ op: "move", blockId: operation.blockId });
+            blockEvents.push({
+              type: "idea:block-move",
+              payload: { blockId: operation.blockId, toIndex: operation.toIndex },
+            });
+            break;
+          }
+        }
+      } catch (err: any) {
+        results.push({ op: operation.op, blockId: (operation as any).blockId, error: err.message });
+      }
+    }
+
+    // Final commit: re-read blocks, reassemble, rebuild mentions + sections
+    const finalResult = await commitBlockMutation(tx, ideaId, clientId, { blockEvents });
+
+    return {
+      results,
+      idea: { id: finalResult.id, version: finalResult.version, content: finalResult.content },
+    };
+  });
 }

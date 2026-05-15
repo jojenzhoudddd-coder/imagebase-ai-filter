@@ -549,6 +549,9 @@ model Idea {
 model IdeaBlock {
   id            String   @id @default(cuid())
   ideaId        String
+  /// Optional parent block id for tree structure (PR-A block tree).
+  /// null = top-level block; non-null = child of another block.
+  parentId      String?
   /// fractional indexing: 0, 1, 2, ... 之间允许 0.5 / 0.25 等插入。Float 让
   /// 拖动重排只改一个 block 的 order 而不必重写整个序列。V1 写入时按整数
   /// 0,1,2...,后续 PR8 拖动重排开始用小数。
@@ -566,12 +569,19 @@ model IdeaBlock {
   ///   table:   { columns: number, hasHeader: bool }
   ///   image:   不在 V1,内嵌图片仍在 paragraph 里,PR10 时单拆
   props         Json     @default("{}")
+  /// Per-block version counter for optimistic concurrency (PR-A).
+  /// Incremented on every mutation to this block; clients send
+  /// baseVersion to detect conflicts (409 on mismatch).
+  version       Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  idea Idea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  idea   Idea       @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  parent IdeaBlock? @relation("BlockTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children IdeaBlock[] @relation("BlockTree")
 
   @@index([ideaId, order])
+  @@index([parentId, order])
   @@map("idea_blocks")
 }
 

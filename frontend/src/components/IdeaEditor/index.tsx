@@ -1,16 +1,24 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "../../i18n/index";
 import { useToast } from "../Toast/index";
 import InlineEdit from "../InlineEdit";
 import SidebarExpandButton from "../SidebarExpandButton";
 import BlockCloseButton from "../BlockCloseButton";
-import { fetchIdea, saveIdeaContent, uploadIdeaAttachment } from "../../api";
+import { fetchIdea, saveIdeaContent, uploadIdeaAttachment, fetchIdeaBlocks } from "../../api";
+import type { IdeaBlockBrief } from "../../api";
 import { useIdeaSync } from "../../hooks/useIdeaSync";
+import type {
+  BlockUpdatePayload,
+  BlockCreatePayload,
+  BlockDeletePayload,
+  BlockMovePayload,
+} from "../../hooks/useIdeaSync";
 import TiptapPreview from "./TiptapPreview";
 import type { TiptapPreviewHandle } from "./TiptapPreview";
 import CodeMirrorSource from "./CodeMirrorSource";
 import type { CodeMirrorSourceHandle } from "./CodeMirrorSource";
-// mdBlockSplitter now only exports extractSourceBlocks (used by TiptapPreview)
+import BlockItem from "./BlockItem";
+import type { PatchBlockResponse } from "../../api";
 import "./IdeaEditor.css";
 
 interface Props {
@@ -65,21 +73,20 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [streaming, setStreaming] = useState(false);
   const [mode, setMode] = useState<"source" | "preview">("preview");
-  const [editingBlock, setEditingBlock] = useState<{
-    startLine: number;
-    endLine: number;  // inclusive
-    raw: string;
-    domNode: HTMLElement;
-    isMultiLine: boolean;
-  } | null>(null);
+  const [blocks, setBlocks] = useState<IdeaBlockBrief[]>([]);
+  const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
 
   const cmRef = useRef<CodeMirrorSourceHandle>(null);
   const previewRef = useRef<TiptapPreviewHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef(content);
   useEffect(() => { contentRef.current = content; }, [content]);
+
+  // PR-C: track focused block + pending remote updates for conflict resolution
+  const focusBlockIdRef = useRef<string | null>(null);
+  useEffect(() => { focusBlockIdRef.current = focusBlockId; }, [focusBlockId]);
+  const pendingRemoteBlockRef = useRef<Set<string>>(new Set());
 
   const versionRef = useRef(0);
   const dirtyRef = useRef(false);
@@ -109,18 +116,25 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     return contentRef.current;
   }, []);
 
-  // ── Load idea ──
+  // ── Load idea + blocks ──
   useEffect(() => {
     let alive = true;
     setLoaded(false);
     setContent("");
+    setBlocks([]);
     setSaveStatus("idle");
     versionRef.current = 0;
-    fetchIdea(ideaId)
-      .then((idea) => {
+    Promise.all([
+      fetchIdea(ideaId),
+      fetchIdeaBlocks(ideaId).catch(() => null),
+    ])
+      .then(([idea, blocksRes]) => {
         if (!alive) return;
         setContent(idea.content || "");
         versionRef.current = idea.version ?? 0;
+        if (blocksRes?.blocks) {
+          setBlocks(blocksRes.blocks);
+        }
         if (!idea.content) setMode("source");
         setLoaded(true);
       })
@@ -242,7 +256,107 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       requestAnimationFrame(() => {
         previewRef.current?.reload();
       });
+      // After stream finalize, refetch blocks for preview mode
+      fetchIdeaBlocks(ideaId).then((res) => {
+        setBlocks(res.blocks);
+      }).catch(() => {});
+    }, [ideaId]),
+    // ── Block-level SSE events (PR-B + PR-C) ──
+    onBlockUpdate: useCallback((p: BlockUpdatePayload) => {
+      // PR-C: if the updated block is currently being edited by the user,
+      // do NOT overwrite — set a pending flag. The server version will be
+      // applied when the user exits edit mode (via handleBlockConflict).
+      if (focusBlockIdRef.current === p.blockId) {
+        pendingRemoteBlockRef.current.add(p.blockId);
+        // Still update version so next save uses correct baseVersion
+        versionRef.current = p.ideaVersion;
+        return;
+      }
+      setBlocks((prev) => {
+        const next = prev.map((b) =>
+          b.id === p.blockId
+            ? { ...b, content: p.content, type: p.type, props: p.props }
+            : b,
+        );
+        contentRef.current = next.map((b) => b.content).join("");
+        setContent(contentRef.current);
+        versionRef.current = p.ideaVersion;
+        return next;
+      });
     }, []),
+    onBlockCreate: useCallback((p: BlockCreatePayload) => {
+      setBlocks((prev) => {
+        const newBlock: IdeaBlockBrief = {
+          id: p.block.id,
+          order: p.block.order,
+          type: p.block.type,
+          content: p.block.content,
+          props: p.block.props as Record<string, unknown>,
+        };
+        if (p.afterBlockId === null) {
+          // afterBlockId null means prepend (insert at beginning)
+          const next = [newBlock, ...prev];
+          contentRef.current = next.map((b) => b.content).join("");
+          setContent(contentRef.current);
+          versionRef.current = p.ideaVersion;
+          return next;
+        }
+        const idx = prev.findIndex((b) => b.id === p.afterBlockId);
+        const next = [...prev];
+        if (idx === -1) {
+          next.push(newBlock);
+        } else {
+          next.splice(idx + 1, 0, newBlock);
+        }
+        contentRef.current = next.map((b) => b.content).join("");
+        setContent(contentRef.current);
+        versionRef.current = p.ideaVersion;
+        return next;
+      });
+    }, []),
+    onBlockDelete: useCallback((p: BlockDeletePayload) => {
+      // PR-C: if the deleted block is being edited, exit edit mode and toast
+      if (focusBlockIdRef.current === p.blockId) {
+        setFocusBlockId(null);
+        toast.info(t("toast.ideaConflict"));
+      }
+      pendingRemoteBlockRef.current.delete(p.blockId);
+      setBlocks((prev) => {
+        const next = prev.filter((b) => b.id !== p.blockId);
+        contentRef.current = next.map((b) => b.content).join("");
+        setContent(contentRef.current);
+        versionRef.current = p.ideaVersion;
+        return next;
+      });
+    }, [toast, t]),
+    onBlockMove: useCallback((p: BlockMovePayload) => {
+      setBlocks((prev) => {
+        const next = prev.map((b) =>
+          b.id === p.blockId ? { ...b, order: p.newOrder } : b,
+        );
+        next.sort((a, b) => a.order - b.order);
+        contentRef.current = next.map((b) => b.content).join("");
+        setContent(contentRef.current);
+        versionRef.current = p.ideaVersion;
+        return next;
+      });
+    }, []),
+    // PR-C: on SSE reconnect, re-fetch blocks and content to catch up
+    onReconnect: useCallback(() => {
+      Promise.all([
+        fetchIdea(ideaId),
+        fetchIdeaBlocks(ideaId).catch(() => null),
+      ]).then(([idea, blocksRes]) => {
+        setContent(idea.content || "");
+        contentRef.current = idea.content || "";
+        versionRef.current = idea.version ?? 0;
+        if (blocksRes?.blocks) {
+          setBlocks(blocksRes.blocks);
+        }
+      }).catch((err) => {
+        console.warn("[IdeaEditor] reconnect re-fetch failed:", err);
+      });
+    }, [ideaId]),
   });
 
   // ── Source mode change ──
@@ -317,93 +431,89 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     return { url: att.url, mime: att.mime, originalName: att.originalName };
   }, [ideaId]);
 
-  // ── Inline block editing ──
+  // ── Block edit callbacks (PR-B + PR-C) ──
 
-  const handleBlockClick = useCallback((startLine: number, endLine: number, raw: string, domNode: HTMLElement) => {
-    if (streaming || editingBlock) return;
-    const firstLine = raw.trimStart();
-    const isMultiLine = endLine > startLine
-      || /^(`{3,}|~{3,})/.test(firstLine)
-      || /^\|/.test(firstLine)
-      || /^>/.test(firstLine)
-      || /^(\d+\.\s|[-*+]\s)/.test(firstLine);
-    setEditingBlock({ startLine, endLine, raw, domNode, isMultiLine });
-  }, [streaming, editingBlock]);
-
-  // Use ref for commit so click-outside handler doesn't get stale closures
-  const commitRef = useRef<() => void>(() => {});
-  commitRef.current = () => {
-    if (!editingBlock) return;
-    const textarea = editTextareaRef.current;
-    if (!textarea) { setEditingBlock(null); return; }
-    const newRaw = textarea.value;
-    if (newRaw === editingBlock.raw) { setEditingBlock(null); return; }
-    const lines = contentRef.current.split("\n");
-    const before = lines.slice(0, editingBlock.startLine);
-    const after = lines.slice(editingBlock.endLine + 1);
-    const newContent = [...before, ...newRaw.split("\n"), ...after].join("\n");
-    setContent(newContent);
-    setEditingBlock(null);
-    scheduleSave();
-    requestAnimationFrame(() => { previewRef.current?.reload(); });
-  };
-
-  const handleEditTextareaInput = useCallback(() => {
-    const ta = editTextareaRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = ta.scrollHeight + "px";
-  }, []);
-
-  const handleEditKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      setEditingBlock(null);
-      return;
-    }
-    if (!editingBlock) return;
-    if (editingBlock.isMultiLine) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-        e.preventDefault();
-        commitRef.current();
-      }
+  // PR-C: track block focus for conflict resolution
+  const handleBlockFocusChange = useCallback((blockId: string, focused: boolean) => {
+    if (focused) {
+      setFocusBlockId(blockId);
     } else {
-      if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault();
-        commitRef.current();
+      setFocusBlockId((prev) => (prev === blockId ? null : prev));
+      // When user exits edit mode on a block with pending remote updates,
+      // reload blocks from server to apply the remote version
+      if (pendingRemoteBlockRef.current.has(blockId)) {
+        pendingRemoteBlockRef.current.delete(blockId);
+        fetchIdeaBlocks(ideaId).then((bRes) => {
+          setBlocks(bRes.blocks);
+          const newContent = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+          contentRef.current = newContent;
+          setContent(newContent);
+          versionRef.current = bRes.version;
+        }).catch(() => {});
       }
     }
-  }, [editingBlock]);
+  }, [ideaId]);
 
-  // Click outside to commit — use pointerdown for reliability + capture phase
-  useEffect(() => {
-    if (!editingBlock) return;
-    const handler = (e: PointerEvent) => {
-      const ta = editTextareaRef.current;
-      if (ta && !ta.contains(e.target as Node)) {
-        commitRef.current();
-      }
-    };
-    // requestAnimationFrame to skip the same click that opened the editor
-    const raf = requestAnimationFrame(() => {
-      document.addEventListener("pointerdown", handler, true);
+  const handleBlockSaved = useCallback((res: PatchBlockResponse) => {
+    // Update contentRef and content state from the server response
+    contentRef.current = res.content;
+    setContent(res.content);
+    versionRef.current = res.version;
+    // Clear any pending remote flag for this block since we just saved
+    pendingRemoteBlockRef.current.clear();
+    // Refetch blocks to stay in sync
+    fetchIdeaBlocks(ideaId).then((bRes) => {
+      setBlocks(bRes.blocks);
+    }).catch(() => {});
+  }, [ideaId]);
+
+  const handleBlockDeleted = useCallback((_blockId: string) => {
+    // Refetch blocks and content after delete
+    fetchIdeaBlocks(ideaId).then((bRes) => {
+      setBlocks(bRes.blocks);
+      const newContent = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+      contentRef.current = newContent;
+      setContent(newContent);
+      versionRef.current = bRes.version;
+    }).catch(() => {});
+  }, [ideaId]);
+
+  const handleBlockCreatedAfter = useCallback((newBlock: { id: string; order: number; type: string; content: string; props: Record<string, unknown>; version: number }) => {
+    // Add the new block to state and focus it
+    setBlocks((prev) => {
+      const inserted: IdeaBlockBrief = {
+        id: newBlock.id,
+        order: newBlock.order,
+        type: newBlock.type,
+        content: newBlock.content,
+        props: newBlock.props,
+      };
+      const next = [...prev, inserted];
+      next.sort((a, b) => a.order - b.order);
+      return next;
     });
-    return () => {
-      cancelAnimationFrame(raf);
-      document.removeEventListener("pointerdown", handler, true);
-    };
-  }, [editingBlock]);
+    setFocusBlockId(newBlock.id);
+    // Refetch to sync content
+    fetchIdeaBlocks(ideaId).then((bRes) => {
+      setBlocks(bRes.blocks);
+      const newContent = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+      contentRef.current = newContent;
+      setContent(newContent);
+      versionRef.current = bRes.version;
+    }).catch(() => {});
+  }, [ideaId]);
 
-  // Auto-focus and auto-grow on mount
-  useEffect(() => {
-    if (!editingBlock) return;
-    const ta = editTextareaRef.current;
-    if (!ta) return;
-    ta.focus();
-    ta.style.height = "auto";
-    ta.style.height = ta.scrollHeight + "px";
-    ta.selectionStart = ta.selectionEnd = ta.value.length;
-  }, [editingBlock]);
+  const handleBlockConflict = useCallback(() => {
+    toast.info(t("toast.ideaConflict"));
+    // Reload blocks from server on conflict
+    fetchIdeaBlocks(ideaId).then((bRes) => {
+      setBlocks(bRes.blocks);
+      const newContent = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+      contentRef.current = newContent;
+      setContent(newContent);
+      versionRef.current = bRes.version;
+    }).catch(() => {});
+  }, [ideaId, toast, t]);
 
   // ── Status label ──
   const statusLabel = (() => {
@@ -422,24 +532,19 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     setMode((m) => {
       if (m === "source") {
         caretOffsetRef.current = cmRef.current?.getCaret() ?? 0;
+        // Source → Preview: refetch blocks (may have changed via source edits)
+        fetchIdeaBlocks(ideaId).then((res) => {
+          setBlocks(res.blocks);
+        }).catch(() => {});
       } else {
-        // preview → source: sync any changes made in preview (e.g. image drop)
-        caretOffsetRef.current = previewRef.current?.getCaretSourceOffset() ?? 0;
-        if (previewRef.current?.isDirty()) {
-          const tiptapMd = previewRef.current.getMarkdown();
-          // Update contentRef so source mode sees the latest
-          contentRef.current = tiptapMd;
-          previewRef.current.clearDirty();
-        }
-        // Always sync content state from contentRef. This covers two cases:
-        // 1. Tiptap was dirty (image drop) → contentRef just updated above
-        // 2. Autosave already ran → contentRef was updated by flushSave
-        //    but content state was stale
+        // Preview → Source: contentRef is already synced by block saves
+        caretOffsetRef.current = 0;
+        // Always sync content state from contentRef
         setContent(contentRef.current);
       }
       return m === "source" ? "preview" : "source";
     });
-  }, []);
+  }, [ideaId]);
 
   useEffect(() => {
     const offset = caretOffsetRef.current;
@@ -491,8 +596,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             multiple style={{ display: "none" }} onChange={handleFileInputChange}
           />
           <button
-            className={`idea-editor-topbar-btn${editingBlock ? " disabled" : ""}`}
-            onClick={toggleMode} disabled={!!editingBlock}
+            className="idea-editor-topbar-btn"
+            onClick={toggleMode}
             title={t("idea.toggleHint")}
           >
             {mode === "source" ? PREVIEW_ICON : SOURCE_ICON}
@@ -511,37 +616,37 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             placeholder={t("idea.empty")} onChange={handleSourceChange}
             onPasteFiles={handleSourcePasteFiles} onDropFiles={handleSourceDropFiles}
           />
+        ) : blocks.length > 0 ? (
+          <div style={{ padding: "0 60px" }}>
+            {blocks.map((block, idx) => (
+              <BlockItem
+                key={block.id}
+                block={block}
+                ideaId={ideaId}
+                readOnly={streaming}
+                autoFocus={focusBlockId === block.id}
+                remoteUpdatePending={pendingRemoteBlockRef.current.has(block.id)}
+                onSaved={handleBlockSaved}
+                onDeleted={handleBlockDeleted}
+                onCreatedAfter={handleBlockCreatedAfter}
+                onConflict={handleBlockConflict}
+                onFocusChange={handleBlockFocusChange}
+                onFocusPrev={() => {
+                  if (idx > 0) setFocusBlockId(blocks[idx - 1].id);
+                }}
+                onFocusNext={() => {
+                  if (idx < blocks.length - 1) setFocusBlockId(blocks[idx + 1].id);
+                }}
+              />
+            ))}
+          </div>
         ) : (
           <TiptapPreview
             ref={previewRef} source={content}
             onDirty={handlePreviewDirty} placeholder={t("idea.previewEmpty")}
             onUploadFile={handleImageUpload} onMentionClick={() => {}}
-            onBlockClick={handleBlockClick}
           />
         )}
-        {editingBlock && mode === "preview" && (() => {
-          const bodyEl = bodyRef.current;
-          const node = editingBlock.domNode;
-          if (!bodyEl || !node) return null;
-          const nodeRect = node.getBoundingClientRect();
-          const bodyRect = bodyEl.getBoundingClientRect();
-          const style: CSSProperties = {
-            top: nodeRect.top - bodyRect.top + bodyEl.scrollTop,
-            left: nodeRect.left - bodyRect.left + bodyEl.scrollLeft,
-            width: nodeRect.width,
-            minHeight: nodeRect.height,
-          };
-          return (
-            <textarea
-              ref={editTextareaRef}
-              className="idea-block-edit-overlay"
-              defaultValue={editingBlock.raw}
-              style={style}
-              onInput={handleEditTextareaInput}
-              onKeyDown={handleEditKeyDown}
-            />
-          );
-        })()}
       </div>
     </div>
   );

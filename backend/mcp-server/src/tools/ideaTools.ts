@@ -502,6 +502,136 @@ export const ideaWriteTools: ToolDefinition[] = [
       }
     },
   },
+
+
+  // PR-A: block-level create tool — create a new block at a position within an idea
+  {
+    name: "create_idea_block",
+    description:
+      "在 idea 中创建一个新 block（段落、标题、列表等），插入到指定位置。" +
+      "afterBlockId 指定插在哪个 block 后面（null 或省略则追加到末尾）。" +
+      "parentId 指定父 block（null 或省略则为顶层 block）。" +
+      "返回新 block 的 id + idea 的新 version。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ideaId: { type: "string", description: "目标 idea id" },
+        type: {
+          type: "string",
+          enum: ["heading", "paragraph", "list", "code", "quote", "divider", "html", "table"],
+          description: "block 类型，默认 paragraph",
+        },
+        content: { type: "string", description: "block 的 Markdown 原文" },
+        props: {
+          type: "object",
+          description: "类型特有元数据（如 heading: {level, slug}）",
+        },
+        parentId: {
+          type: "string",
+          description: "父 block id（可选；null = 顶层 block）",
+        },
+        afterBlockId: {
+          type: "string",
+          description: "插在此 block 之后（可选；null = 追加到末尾）",
+        },
+      },
+      required: ["ideaId", "content"],
+    },
+    handler: async (args): Promise<string> => {
+      const ideaId = String(args.ideaId ?? "").trim();
+      if (!ideaId) return JSON.stringify({ error: "ideaId required" });
+      const body: Record<string, unknown> = {
+        content: String(args.content ?? ""),
+      };
+      if (args.type) body.type = String(args.type);
+      if (args.props) body.props = args.props;
+      if (args.parentId) body.parentId = String(args.parentId);
+      if (args.afterBlockId) body.afterBlockId = String(args.afterBlockId);
+      try {
+        const r = await apiRequest<any>(
+          `/api/ideas/${ideaId}/blocks`,
+          { method: "POST", body },
+        );
+        return toolResult({
+          blockId: r.block?.id,
+          ideaVersion: r.ideaVersion,
+          type: r.block?.type,
+          order: r.block?.order,
+          parentId: r.block?.parentId,
+          blockVersion: r.block?.version,
+        });
+      } catch (err) {
+        return JSON.stringify({
+          error: `create_idea_block failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    },
+  },
+
+  // PR-A: batch block operations — execute multiple block ops in one transaction
+  {
+    name: "batch_update_idea_blocks",
+    description:
+      "在一个事务中对 idea 执行多个 block 操作（create / update / delete / move）。" +
+      "所有操作原子执行,要么全部成功要么全部回滚。返回每个 op 的结果 + idea 新 version。" +
+      "适合一次性完成多步改动（如 '删掉第 3 段 + 在第 1 段后插入新标题 + 把第 5 段改成引用'）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ideaId: { type: "string", description: "目标 idea id" },
+        operations: {
+          type: "array",
+          description: "操作列表，按顺序执行",
+          items: {
+            type: "object",
+            properties: {
+              op: {
+                type: "string",
+                enum: ["create", "update", "delete", "move"],
+                description: "操作类型",
+              },
+              // create fields
+              tempId: { type: "string", description: "（create 专用）临时 ID，响应会映射到真实 ID" },
+              type: { type: "string", description: "（create 专用）block 类型" },
+              content: { type: "string", description: "（create/update 专用）Markdown 内容" },
+              props: { type: "object", description: "（create 专用）类型元数据" },
+              parentId: { type: "string", description: "（create 专用）父 block id" },
+              afterBlockId: { type: "string", description: "（create 专用）插在此 block 之后" },
+              // update fields
+              blockId: { type: "string", description: "（update/delete/move 专用）目标 block id" },
+              transformTo: { type: "string", description: "（update 专用）转换类型" },
+              baseVersion: { type: "number", description: "（update 专用）乐观并发版本号" },
+              // move fields
+              toIndex: { type: "number", description: "（move 专用）目标位置 0-based index" },
+            },
+            required: ["op"],
+          },
+        },
+      },
+      required: ["ideaId", "operations"],
+    },
+    handler: async (args): Promise<string> => {
+      const ideaId = String(args.ideaId ?? "").trim();
+      if (!ideaId) return JSON.stringify({ error: "ideaId required" });
+      if (!Array.isArray(args.operations) || args.operations.length === 0) {
+        return JSON.stringify({ error: "operations array required" });
+      }
+      try {
+        const r = await apiRequest<any>(
+          `/api/ideas/${ideaId}/blocks/batch`,
+          { method: "PUT", body: { operations: args.operations } },
+        );
+        return toolResult({
+          results: r.results,
+          ideaVersion: r.ideaVersion,
+        });
+      } catch (err) {
+        return JSON.stringify({
+          error: `batch_update_idea_blocks failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    },
+  },
 ];
 
 // ── Tier 2 (idea-skill): streaming writes (V2) ────────────────────────────
@@ -561,9 +691,6 @@ export const ideaStreamTools: ToolDefinition[] = [
       const body = {
         baseVersion: Number(args.baseVersion),
         anchor: args.anchor,
-        // conversationId + clientId are injected by chatAgentService after the
-        // tool returns (it wraps the call to add them server-side); the MCP
-        // tool just carries the user-level payload.
         clientId: "agent-mcp",
       };
       const result = await apiRequest<any>(`/api/ideas/${id}/stream/begin`, {
@@ -574,8 +701,6 @@ export const ideaStreamTools: ToolDefinition[] = [
         sessionId: result.sessionId,
         startOffset: result.startOffset,
         baseVersion: result.baseVersion,
-        // Include a machine-readable hint so chatAgentService can detect this
-        // result and enter streaming mode without parsing the tool name.
         _stream: { mode: "begin", sessionId: result.sessionId, ideaId: id },
       });
     },

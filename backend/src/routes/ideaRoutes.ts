@@ -14,7 +14,16 @@ import {
   spliceBlockMove,
   transformBlockContent,
   IdeaBlockNotFoundError,
+  BlockVersionConflictError,
+  createBlock,
+  patchBlock,
+  batchBlockUpdate,
 } from "../services/ideaBlockService.js";
+import {
+  CreateBlockSchema,
+  PatchBlockSchema,
+  BatchBlockUpdateSchema,
+} from "../schemas/ideaBlock.js";
 import { applyIdeaWrite } from "../services/ideaWriteService.js";
 import { withArtifactWriteLock } from "../services/artifactWriteQueue.js";
 import * as ideaStream from "../services/ideaStreamSessionService.js";
@@ -228,26 +237,29 @@ router.get("/:ideaId/blocks", asyncHandler(async (req: Request, res: Response) =
     version: idea.version,
     blocks: rows.map((r) => ({
       id: r.id,
+      parentId: r.parentId ?? null,
       order: r.order,
       type: r.type,
       content: r.content,
       props: r.props,
+      version: r.version ?? 0,
     })),
   });
 }));
 
-// ─── PR8: block-level mutations ───────────────────────────────────────────
-// All three routes below share the same shape:
-//   1. resolve block context (block + idea + byte position)
-//   2. compute new full content via splice helper
-//   3. one $transaction:idea.update + mention rebuild + syncBlocksForIdea
-//   4. broadcast idea:content-change so clients (incl. our own BlockList)
-//      pick up the new structure
+// ─── PR8 + PR-A: block-level mutations ───────────────────────────────────
+// All block write routes follow the same pattern:
+//   1. resolve block context
+//   2. apply mutation
+//   3. commitBlockMutation (or commitContentMutation for legacy paths)
+//      to keep content + mentions + sections + blocks in sync
+//   4. broadcast SSE events (content-change for backward compat + block-specific)
 //
 // Auth: parent /api/ideas mount already enforces workspace access.
 
 /** Helper that runs the standard write transaction given new content.
- *  Returns the updated idea row + emits SSE. Mirrors the PUT /content path. */
+ *  Returns the updated idea row + emits SSE. Mirrors the PUT /content path.
+ *  Used by legacy splice-based routes (delete, move). */
 async function commitContentMutation(
   ideaId: string,
   newContent: string,
@@ -256,6 +268,8 @@ async function commitContentMutation(
 ): Promise<{ id: string; version: number; content: string }> {
   const sections = extractIdeaSections(newContent);
   const mentionRows = buildMentionRows(newContent, "idea", ideaId, workspaceId);
+  // PR-C: snapshot blocks before sync to compute diff for block-level SSE events
+  const blocksBefore = await listBlocksForIdea(prisma as any, ideaId);
   const updated = await prisma.$transaction(async (tx) => {
     const u = await tx.idea.update({
       where: { id: ideaId },
@@ -268,6 +282,9 @@ async function commitContentMutation(
     await syncBlocksForIdea(tx, ideaId, newContent);
     return u;
   });
+  const blocksAfter = await listBlocksForIdea(prisma as any, ideaId);
+
+  // Backward-compatible content-change event
   eventBus.emitIdeaChange({
     type: "idea:content-change",
     ideaId,
@@ -275,62 +292,202 @@ async function commitContentMutation(
     timestamp: Date.now(),
     payload: { content: updated.content, version: updated.version },
   });
+
+  // PR-C: emit block-level events for Preview mode consumers
+  const beforeById = new Map(blocksBefore.map((b) => [b.id, b]));
+  const afterById = new Map(blocksAfter.map((b) => [b.id, b]));
+  const now = Date.now();
+  for (const [id] of beforeById) {
+    if (!afterById.has(id)) {
+      eventBus.emitIdeaChange({
+        type: "idea:block-delete",
+        ideaId,
+        clientId,
+        timestamp: now,
+        payload: { blockId: id, ideaVersion: updated.version },
+      });
+    }
+  }
+  for (const [id, blk] of afterById) {
+    if (!beforeById.has(id)) {
+      const idx = blocksAfter.findIndex((b) => b.id === id);
+      const afterBlockId = idx > 0 ? blocksAfter[idx - 1].id : null;
+      eventBus.emitIdeaChange({
+        type: "idea:block-create",
+        ideaId,
+        clientId,
+        timestamp: now,
+        payload: {
+          blockId: blk.id,
+          afterBlockId,
+          ideaVersion: updated.version,
+          block: {
+            id: blk.id,
+            order: blk.order,
+            type: blk.type,
+            content: blk.content,
+            props: blk.props ?? {},
+            version: blk.version ?? 0,
+          },
+        },
+      });
+    }
+  }
+  for (const [id, after] of afterById) {
+    const before = beforeById.get(id);
+    if (!before) continue;
+    if (
+      before.content !== after.content ||
+      before.type !== after.type ||
+      JSON.stringify(before.props ?? {}) !== JSON.stringify(after.props ?? {})
+    ) {
+      eventBus.emitIdeaChange({
+        type: "idea:block-update",
+        ideaId,
+        clientId,
+        timestamp: now,
+        payload: {
+          blockId: after.id,
+          content: after.content,
+          type: after.type,
+          props: after.props ?? {},
+          blockVersion: after.version ?? 0,
+          ideaVersion: updated.version,
+        },
+      });
+    } else if (before.order !== after.order) {
+      eventBus.emitIdeaChange({
+        type: "idea:block-move",
+        ideaId,
+        clientId,
+        timestamp: now,
+        payload: {
+          blockId: after.id,
+          newOrder: after.order,
+          ideaVersion: updated.version,
+        },
+      });
+    }
+  }
+
   return { id: updated.id, version: updated.version, content: updated.content };
 }
 
-// PATCH /api/ideas/:ideaId/blocks/:blockId
-// body: { content?: string, transformTo?: "paragraph"|"heading-1..6"|"quote"|"list-bullet"|"divider" }
-// Both fields are optional but at least one required. transformTo wins if both given.
-router.patch(
-  "/:ideaId/blocks/:blockId",
+// POST /api/ideas/:ideaId/blocks — create a new block at a position
+// body: { type?, content, props?, parentId?, afterBlockId? }
+router.post(
+  "/:ideaId/blocks",
   asyncHandler(async (req: Request, res: Response) => {
-    const { ideaId, blockId } = req.params;
-    const { content, transformTo } = req.body ?? {};
-    if (typeof content !== "string" && typeof transformTo !== "string") {
-      res.status(400).json({ error: "either `content` or `transformTo` required" });
+    const { ideaId } = req.params;
+    const parseResult = CreateBlockSchema.safeParse(req.body ?? {});
+    if (!parseResult.success) {
+      res.status(400).json({ error: parseResult.error.issues[0]?.message || "invalid body" });
       return;
     }
-    let ctx;
     try {
-      ctx = await getBlockWithContext(prisma as any, blockId);
-    } catch (err) {
-      if (err instanceof IdeaBlockNotFoundError) {
+      const result = await createBlock(prisma as any, ideaId, parseResult.data, getClientId(req));
+      res.status(201).json({
+        block: {
+          id: result.block.id,
+          ideaId: result.block.ideaId,
+          parentId: (result.block as any).parentId ?? null,
+          order: result.block.order,
+          type: result.block.type,
+          content: result.block.content,
+          props: result.block.props,
+          version: (result.block as any).version ?? 0,
+        },
+        ideaVersion: result.idea.version,
+      });
+    } catch (err: any) {
+      if (err.message?.includes("not found")) {
         res.status(404).json({ error: err.message });
         return;
       }
       throw err;
     }
-    if (ctx.idea.id !== ideaId) {
-      res.status(400).json({ error: "blockId does not belong to ideaId" });
+  }),
+);
+
+// PUT /api/ideas/:ideaId/blocks/batch — batch block operations
+// body: { operations: Array<BatchOperation> }
+router.put(
+  "/:ideaId/blocks/batch",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { ideaId } = req.params;
+    const parseResult = BatchBlockUpdateSchema.safeParse(req.body ?? {});
+    if (!parseResult.success) {
+      res.status(400).json({ error: parseResult.error.issues[0]?.message || "invalid body" });
       return;
     }
-    let newBlockContent: string;
-    if (typeof transformTo === "string") {
-      const allowed = new Set([
-        "paragraph", "heading-1", "heading-2", "heading-3",
-        "heading-4", "heading-5", "heading-6", "quote",
-        "list-bullet", "divider",
-      ]);
-      if (!allowed.has(transformTo)) {
-        res.status(400).json({ error: `invalid transformTo: ${transformTo}` });
+    try {
+      const result = await batchBlockUpdate(
+        prisma as any,
+        ideaId,
+        parseResult.data.operations,
+        getClientId(req),
+      );
+      res.json({
+        results: result.results,
+        ideaVersion: result.idea.version,
+      });
+    } catch (err: any) {
+      if (err.message?.includes("not found")) {
+        res.status(404).json({ error: err.message });
         return;
       }
-      newBlockContent = transformBlockContent(
-        ctx.block.content,
-        ctx.block.type,
-        transformTo as any,
-      );
-    } else {
-      newBlockContent = String(content);
+      throw err;
     }
-    const newFullContent = spliceBlockContent(ctx, newBlockContent);
-    const result = await commitContentMutation(
-      ctx.idea.id,
-      newFullContent,
-      ctx.idea.workspaceId,
-      getClientId(req),
-    );
-    res.json(result);
+  }),
+);
+
+// PATCH /api/ideas/:ideaId/blocks/:blockId
+// body: { content?: string, transformTo?: string, baseVersion?: number }
+// Both content and transformTo are optional but at least one required.
+// transformTo wins if both given. baseVersion enables optimistic concurrency (409 on mismatch).
+router.patch(
+  "/:ideaId/blocks/:blockId",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { ideaId, blockId } = req.params;
+    const { content, transformTo, baseVersion } = req.body ?? {};
+    if (typeof content !== "string" && typeof transformTo !== "string") {
+      res.status(400).json({ error: "either `content` or `transformTo` required" });
+      return;
+    }
+
+    // Use the new patchBlock service which supports baseVersion
+    try {
+      const patchBody: any = {};
+      if (typeof content === "string") patchBody.content = content;
+      if (typeof transformTo === "string") patchBody.transformTo = transformTo;
+      if (typeof baseVersion === "number") patchBody.baseVersion = baseVersion;
+
+      const result = await patchBlock(prisma as any, ideaId, blockId, patchBody, getClientId(req));
+      res.json({
+        id: result.idea.id,
+        version: result.idea.version,
+        content: result.idea.content,
+        blockVersion: result.block.version,
+      });
+    } catch (err) {
+      if (err instanceof IdeaBlockNotFoundError) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      if (err instanceof BlockVersionConflictError) {
+        res.status(409).json({
+          conflict: true,
+          error: err.message,
+          actualVersion: err.actual,
+        });
+        return;
+      }
+      if (err instanceof Error && err.message.includes("does not belong")) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
   }),
 );
 
@@ -462,6 +619,8 @@ router.put("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
   // content payload is already bounded. Wrapped in a transaction with the
   // content update so readers never see a half-updated state.
   const mentionRows = buildMentionRows(content, "idea", existing.id, existing.workspaceId);
+  // PR-C: snapshot blocks before sync so we can diff and emit block-level events
+  const blocksBefore = await listBlocksForIdea(prisma as any, existing.id);
   const updated = await prisma.$transaction(async (tx) => {
     const u = await tx.idea.update({
       where: { id: existing.id },
@@ -477,14 +636,103 @@ router.put("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
     await syncBlocksForIdea(tx, existing.id, content);
     return u;
   });
+  // PR-C: read blocks after sync to compute diff for block-level SSE events
+  const blocksAfter = await listBlocksForIdea(prisma as any, existing.id);
 
+  const cid = getClientId(req);
+
+  // Backward-compatible content-change event (Source mode listeners use this)
   eventBus.emitIdeaChange({
     type: "idea:content-change",
     ideaId: updated.id,
-    clientId: getClientId(req),
+    clientId: cid,
     timestamp: Date.now(),
     payload: { content: updated.content, version: updated.version },
   });
+
+  // PR-C: emit block-level events so Preview mode users get incremental updates.
+  // Diff blocksBefore vs blocksAfter by id.
+  const beforeById = new Map(blocksBefore.map((b) => [b.id, b]));
+  const afterById = new Map(blocksAfter.map((b) => [b.id, b]));
+  const now = Date.now();
+
+  // Deleted blocks: in before but not in after
+  for (const [id] of beforeById) {
+    if (!afterById.has(id)) {
+      eventBus.emitIdeaChange({
+        type: "idea:block-delete",
+        ideaId: updated.id,
+        clientId: cid,
+        timestamp: now,
+        payload: { blockId: id, ideaVersion: updated.version },
+      });
+    }
+  }
+  // Created blocks: in after but not in before
+  for (const [id, blk] of afterById) {
+    if (!beforeById.has(id)) {
+      // Find the preceding block for afterBlockId
+      const idx = blocksAfter.findIndex((b) => b.id === id);
+      const afterBlockId = idx > 0 ? blocksAfter[idx - 1].id : null;
+      eventBus.emitIdeaChange({
+        type: "idea:block-create",
+        ideaId: updated.id,
+        clientId: cid,
+        timestamp: now,
+        payload: {
+          blockId: blk.id,
+          afterBlockId,
+          ideaVersion: updated.version,
+          block: {
+            id: blk.id,
+            order: blk.order,
+            type: blk.type,
+            content: blk.content,
+            props: blk.props ?? {},
+            version: blk.version ?? 0,
+          },
+        },
+      });
+    }
+  }
+  // Updated blocks: in both, but content/type/props changed
+  for (const [id, after] of afterById) {
+    const before = beforeById.get(id);
+    if (!before) continue;
+    if (
+      before.content !== after.content ||
+      before.type !== after.type ||
+      JSON.stringify(before.props ?? {}) !== JSON.stringify(after.props ?? {})
+    ) {
+      eventBus.emitIdeaChange({
+        type: "idea:block-update",
+        ideaId: updated.id,
+        clientId: cid,
+        timestamp: now,
+        payload: {
+          blockId: after.id,
+          content: after.content,
+          type: after.type,
+          props: after.props ?? {},
+          blockVersion: after.version ?? 0,
+          ideaVersion: updated.version,
+        },
+      });
+    } else if (before.order !== after.order) {
+      // Order changed (block moved)
+      eventBus.emitIdeaChange({
+        type: "idea:block-move",
+        ideaId: updated.id,
+        clientId: cid,
+        timestamp: now,
+        payload: {
+          blockId: after.id,
+          newOrder: after.order,
+          ideaVersion: updated.version,
+        },
+      });
+    }
+  }
 
   res.json({ id: updated.id, version: updated.version, updatedAt: updated.updatedAt.toISOString() });
 }));

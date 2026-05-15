@@ -50,7 +50,13 @@ export interface IdeaChangeEvent {
     // - finalize: replace local buffer with authoritative content + new version, resume autosave.
     | "idea:stream-begin"
     | "idea:stream-delta"
-    | "idea:stream-finalize";
+    | "idea:stream-finalize"
+    // PR-A block tree: granular block-level events (FE block editor listens to these).
+    // All block writes also emit "idea:content-change" for backward compatibility.
+    | "idea:block-update"
+    | "idea:block-create"
+    | "idea:block-delete"
+    | "idea:block-move";
   ideaId: string;
   clientId: string;
   timestamp: number;
