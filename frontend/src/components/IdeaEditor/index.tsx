@@ -777,24 +777,40 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           const relY = e.clientY - rect.top;
           const width = rect.width;
           const height = rect.height;
-          // 20% edge zones for layout splits (top/bottom/left/right)
           const xFrac = relX / width;
           const yFrac = relY / height;
-          if (yFrac < 0.2) {
-            foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "top" };
-          } else if (yFrac > 0.8) {
-            foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "bottom" };
-          } else if (xFrac < 0.2) {
-            foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "left" };
-          } else if (xFrac > 0.8) {
-            foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "right" };
-          }
-          // Center 60% → reorder (not split)
-          if (!foundTarget) {
-            const idx = blocks.findIndex(b => b.id === elBlockId);
-            if (idx >= 0) {
-              foundTarget = { type: "reorder", insertIdx: yFrac < 0.5 ? idx : idx + 1 };
+          const idx = blocks.findIndex(b => b.id === elBlockId);
+          // Check if target block is inside the layout tree
+          const treeIds = layout ? new Set(collectLeafIds(layout)) : new Set<string>();
+          const inTree = treeIds.has(elBlockId!);
+
+          if (inTree) {
+            // Blocks in the tree: all 4 sides create layout-splits
+            if (yFrac < 0.2) {
+              foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "top" };
+            } else if (yFrac > 0.8) {
+              foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "bottom" };
+            } else if (xFrac < 0.2) {
+              foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "left" };
+            } else if (xFrac > 0.8) {
+              foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "right" };
             }
+          } else {
+            // Blocks NOT in tree: top/bottom = reorder, left/right = layout-split
+            const yEdge = Math.min(24, height * 0.3);
+            if (relY < yEdge && idx >= 0) {
+              foundTarget = { type: "reorder", insertIdx: idx };
+            } else if (relY > height - yEdge && idx >= 0) {
+              foundTarget = { type: "reorder", insertIdx: idx + 1 };
+            } else if (xFrac < 0.2) {
+              foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "left" };
+            } else if (xFrac > 0.8) {
+              foundTarget = { type: "layout-split", targetBlockId: elBlockId!, side: "right" };
+            }
+          }
+          // Center zone with no target yet → reorder
+          if (!foundTarget && idx >= 0) {
+            foundTarget = { type: "reorder", insertIdx: yFrac < 0.5 ? idx : idx + 1 };
           }
           break;
         }
@@ -1393,10 +1409,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                       {/* Blocks not in the layout tree render vertically below */}
                       {remainingBlocks.map((block) => {
                         const idx = blocks.findIndex((b) => b.id === block.id);
-                        const hasLayoutSplit = dropTarget?.type === "layout-split" && dragBlockId;
-                        const showReorderLine = !hasLayoutSplit && dropTarget?.type === "reorder" && dropTarget.insertIdx === idx && dragBlockId;
-                        const showSplitTop = dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "top" && dragBlockId;
-                        const showSplitBottom = dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "bottom" && dragBlockId;
+                        const showReorderLine = dropTarget?.type === "reorder" && dropTarget.insertIdx === idx && dragBlockId;
+                        // Remaining blocks (not in tree): only show left/right split indicators, not top/bottom
+                        const showSplitTop = false;
+                        const showSplitBottom = false;
                         const showSplitLeft = dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "left" && dragBlockId;
                         const showSplitRight = dropTarget?.type === "layout-split" && dropTarget.targetBlockId === block.id && dropTarget.side === "right" && dragBlockId;
                         return (
@@ -1466,10 +1482,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                     const block = item.block;
                     const idx = blocks.findIndex(b => b.id === block.id);
                     blockIdx++;
-                    // Don't show reorder line if a layout-split indicator is active on this or adjacent block
-                    const hasLayoutSplit = dropTarget?.type === "layout-split" && dragBlockId;
-                    const showReorderLine = !hasLayoutSplit && dropTarget?.type === "reorder" && dropTarget.insertIdx === idx && dragBlockId;
-                    const showReorderLineAfter = !hasLayoutSplit && dropTarget?.type === "reorder" && dropTarget.insertIdx === idx + 1 && dragBlockId && layoutIdx === blockLayout.length - 1;
+                    const showReorderLine = dropTarget?.type === "reorder" && dropTarget.insertIdx === idx && dragBlockId;
+                    const showReorderLineAfter = dropTarget?.type === "reorder" && dropTarget.insertIdx === idx + 1 && dragBlockId && layoutIdx === blockLayout.length - 1;
                     return (
                       <React.Fragment key={block.id}>
                         {showReorderLine && (
