@@ -300,10 +300,30 @@ const BlockItem = memo(function BlockItem({
       return;
     }
 
-    if (!sourceMode) return; // remaining shortcuts are source-mode only
-
     const ta = textareaRef.current;
     if (!ta) return;
+
+    // ArrowUp at first line → focus previous block
+    if (e.key === "ArrowUp") {
+      // Check if cursor is on the first line (no \n before cursor)
+      if (!editValue.slice(0, ta.selectionStart).includes("\n")) {
+        e.preventDefault();
+        onFocusPrev?.();
+      }
+      return;
+    }
+
+    // ArrowDown at last line → focus next block
+    if (e.key === "ArrowDown") {
+      // Check if cursor is on the last line (no \n after cursor)
+      if (!editValue.slice(ta.selectionEnd).includes("\n")) {
+        e.preventDefault();
+        onFocusNext?.();
+      }
+      return;
+    }
+
+    if (!sourceMode) return; // remaining shortcuts are source-mode only
 
     // Enter → split block at cursor position
     if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -324,29 +344,6 @@ const BlockItem = memo(function BlockItem({
       return;
     }
 
-    // ArrowUp: let browser handle, then check if cursor didn't move (= first line)
-    if (e.key === "ArrowUp") {
-      const posBefore = ta.selectionStart;
-      requestAnimationFrame(() => {
-        if (ta.selectionStart === 0 || ta.selectionStart === posBefore) {
-          // Cursor didn't move or is at start → jump to prev block
-          onFocusPrev?.();
-        }
-      });
-      return;
-    }
-
-    // ArrowDown: let browser handle, then check if cursor didn't move (= last line)
-    if (e.key === "ArrowDown") {
-      const posBefore = ta.selectionStart;
-      requestAnimationFrame(() => {
-        if (ta.selectionStart === posBefore) {
-          // Cursor didn't move → already on last line → jump to next block
-          onFocusNext?.();
-        }
-      });
-      return;
-    }
   }, [cancelEdit, commitEdit, sourceMode, editValue, ideaId, block.id, onCreatedAfter, onDeleted, onFocusPrev, onFocusNext]);
 
   const handleTextareaInput = useCallback(() => {

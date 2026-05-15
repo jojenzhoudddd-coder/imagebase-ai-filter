@@ -818,16 +818,31 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                   onMergeIntoPrev={handleMergeIntoPrev}
                   onFocusPrev={() => {
                     if (idx > 0) {
+                      // Direct DOM focus for immediate response
+                      const container = blockListRef.current;
+                      if (container) {
+                        const allTas = container.querySelectorAll('textarea');
+                        const prevTa = allTas[idx - 1];
+                        if (prevTa) {
+                          prevTa.focus();
+                          prevTa.selectionStart = prevTa.selectionEnd = prevTa.value.length;
+                        }
+                      }
                       setFocusBlockId(blocks[idx - 1].id);
-                      setFocusCursorPos(Infinity); // end of previous block
-                      setFocusTrigger(n => n + 1);
                     }
                   }}
                   onFocusNext={() => {
                     if (idx < blocks.length - 1) {
+                      const container = blockListRef.current;
+                      if (container) {
+                        const allTas = container.querySelectorAll('textarea');
+                        const nextTa = allTas[idx + 1];
+                        if (nextTa) {
+                          nextTa.focus();
+                          nextTa.selectionStart = nextTa.selectionEnd = 0;
+                        }
+                      }
                       setFocusBlockId(blocks[idx + 1].id);
-                      setFocusCursorPos(0); // start of next block
-                      setFocusTrigger(n => n + 1);
                     }
                   }}
                 />
