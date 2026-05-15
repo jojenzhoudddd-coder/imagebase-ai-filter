@@ -489,36 +489,32 @@ const BlockItem = memo(function BlockItem({
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
     >
-      {/* Drag handle column — fixed 36px wide, holds the grip icon */}
-      {!sourceMode && (
-        <div style={{
-          position: "absolute", left: 0, top: 0, bottom: 0, width: 36,
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          {showDragHandle && (
-            <div
-              onPointerDown={handleDragHandleDown}
-              style={{
-                width: 28, height: 28,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "grab", borderRadius: 6,
-                color: "var(--text-muted)",
-                background: "transparent",
-                transition: "color 0.12s, background 0.12s",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--surface-3)"; (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <circle cx="5" cy="3" r="1.2" fill="currentColor"/>
-                <circle cx="9" cy="3" r="1.2" fill="currentColor"/>
-                <circle cx="5" cy="7" r="1.2" fill="currentColor"/>
-                <circle cx="9" cy="7" r="1.2" fill="currentColor"/>
-                <circle cx="5" cy="11" r="1.2" fill="currentColor"/>
-                <circle cx="9" cy="11" r="1.2" fill="currentColor"/>
-              </svg>
-            </div>
-          )}
+      {/* Drag handle — 8px left of hover outline, aligned to top */}
+      {!sourceMode && showDragHandle && (
+        <div
+          onPointerDown={handleDragHandleDown}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: 28, height: 28,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "grab", borderRadius: 6,
+            color: "var(--text-muted)",
+            background: "transparent",
+            transition: "color 0.12s, background 0.12s",
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--surface-3)"; (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="5" cy="3" r="1.2" fill="currentColor"/>
+            <circle cx="9" cy="3" r="1.2" fill="currentColor"/>
+            <circle cx="5" cy="7" r="1.2" fill="currentColor"/>
+            <circle cx="9" cy="7" r="1.2" fill="currentColor"/>
+            <circle cx="5" cy="11" r="1.2" fill="currentColor"/>
+            <circle cx="9" cy="11" r="1.2" fill="currentColor"/>
+          </svg>
         </div>
       )}
       {/* Block content area */}
