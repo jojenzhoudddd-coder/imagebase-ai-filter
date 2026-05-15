@@ -786,34 +786,24 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         setDropTarget(null);
 
         if (target.type === "reorder") {
-          // Remove column props if dragged block was in a column
           const draggedBlock = blocks.find(b => b.id === blockId);
           const groupId = (draggedBlock?.props as any)?.columnGroupId;
-          if (groupId) {
-            // Break column: remove group props from both blocks
-            const partner = blocks.find(b => b.id !== blockId && (b.props as any)?.columnGroupId === groupId);
-            void (async () => {
+          void (async () => {
+            // Only break column if the dragged block is IN a column
+            if (groupId) {
+              const partner = blocks.find(b => b.id !== blockId && (b.props as any)?.columnGroupId === groupId);
               await patchIdeaBlock(ideaId, blockId, { props: { columnGroupId: null, columnPosition: null, columnRatio: null } });
               if (partner) {
                 await patchIdeaBlock(ideaId, partner.id, { props: { columnGroupId: null, columnPosition: null, columnRatio: null } });
               }
-              await moveIdeaBlock(ideaId, blockId, target.insertIdx);
-              const bRes = await fetchIdeaBlocks(ideaId);
-              setBlocks(bRes.blocks);
-              contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
-              setContent(contentRef.current);
-              versionRef.current = bRes.version;
-            })();
-          } else {
-            void (async () => {
-              await moveIdeaBlock(ideaId, blockId, target.insertIdx);
-              const bRes = await fetchIdeaBlocks(ideaId);
-              setBlocks(bRes.blocks);
-              contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
-              setContent(contentRef.current);
-              versionRef.current = bRes.version;
-            })();
-          }
+            }
+            await moveIdeaBlock(ideaId, blockId, target.insertIdx);
+            const bRes = await fetchIdeaBlocks(ideaId);
+            setBlocks(bRes.blocks);
+            contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+            setContent(contentRef.current);
+            versionRef.current = bRes.version;
+          })();
         } else if (target.type === "column-left" || target.type === "column-right") {
           const targetBlockId = target.targetBlockId;
           const targetBlock = blocks.find(b => b.id === targetBlockId);
