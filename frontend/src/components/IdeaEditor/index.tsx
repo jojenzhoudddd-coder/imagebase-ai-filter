@@ -1372,45 +1372,59 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                 // ── Layout tree rendering ──
                 if (layout) {
                   const treeBlockIds = new Set(collectLeafIds(layout));
-                  const remainingBlocks = blocks.filter((b) => !treeBlockIds.has(b.id));
 
-                  // Convert drag drop target to layout drop target format
                   const activeLayoutDrop: LayoutDropTarget | null =
                     dropTarget?.type === "layout-split"
                       ? { type: "layout-side", targetBlockId: dropTarget.targetBlockId, side: dropTarget.side }
                       : null;
 
+                  // Build render sequence: iterate blocks in order, inject tree at first tree member
+                  type RenderItem = { kind: "tree" } | { kind: "block"; block: IdeaBlockBrief; idx: number };
+                  const renderItems: RenderItem[] = [];
+                  let treeInserted = false;
+                  blocks.forEach((b, i) => {
+                    if (treeBlockIds.has(b.id)) {
+                      if (!treeInserted) { renderItems.push({ kind: "tree" }); treeInserted = true; }
+                    } else {
+                      renderItems.push({ kind: "block", block: b, idx: i });
+                    }
+                  });
+
                   return (
                     <>
-                      <BlockLayoutRenderer
-                        node={layout}
-                        blocks={blocks}
-                        ideaId={ideaId}
-                        streaming={streaming}
-                        autoEditBlockId={autoEditBlockId}
-                        focusBlockId={focusBlockId}
-                        focusTrigger={focusTrigger}
-                        focusCursorPos={focusCursorPos}
-                        pendingRemoteBlocks={pendingRemoteBlockRef.current}
-                        dragBlockId={dragBlockId}
-                        dropTarget={activeLayoutDrop}
-                        onSaved={handleBlockSaved}
-                        onDeleted={handleBlockDeleted}
-                        onCreatedAfter={handleBlockCreatedAfter}
-                        onConflict={handleBlockConflict}
-                        onFocusChange={handleBlockFocusChange}
-                        onEditBlocked={() => toast.info(t("idea.editLocked"))}
-                        onSplit={handleSplit}
-                        onMergeIntoPrev={handleMergeIntoPrev}
-                        onDragStart={handleBlockDragStart}
-                        onFocusPrev={handleLayoutFocusPrev}
-                        onFocusNext={handleLayoutFocusNext}
-                        onResizeStart={handleLayoutResizeStart}
-                        resizingPath={resizingLayoutPath}
-                      />
-                      {/* Blocks not in the layout tree render vertically below */}
-                      {remainingBlocks.map((block) => {
-                        const idx = blocks.findIndex((b) => b.id === block.id);
+                      {renderItems.map((item) => {
+                        if (item.kind === "tree") {
+                          return (
+                            <BlockLayoutRenderer
+                              key="__layout_tree__"
+                              node={layout}
+                              blocks={blocks}
+                              ideaId={ideaId}
+                              streaming={streaming}
+                              autoEditBlockId={autoEditBlockId}
+                              focusBlockId={focusBlockId}
+                              focusTrigger={focusTrigger}
+                              focusCursorPos={focusCursorPos}
+                              pendingRemoteBlocks={pendingRemoteBlockRef.current}
+                              dragBlockId={dragBlockId}
+                              dropTarget={activeLayoutDrop}
+                              onSaved={handleBlockSaved}
+                              onDeleted={handleBlockDeleted}
+                              onCreatedAfter={handleBlockCreatedAfter}
+                              onConflict={handleBlockConflict}
+                              onFocusChange={handleBlockFocusChange}
+                              onEditBlocked={() => toast.info(t("idea.editLocked"))}
+                              onSplit={handleSplit}
+                              onMergeIntoPrev={handleMergeIntoPrev}
+                              onDragStart={handleBlockDragStart}
+                              onFocusPrev={handleLayoutFocusPrev}
+                              onFocusNext={handleLayoutFocusNext}
+                              onResizeStart={handleLayoutResizeStart}
+                              resizingPath={resizingLayoutPath}
+                            />
+                          );
+                        }
+                        const { block, idx } = item;
                         const showReorderLine = dropTarget?.type === "reorder" && dropTarget.insertIdx === idx && dragBlockId;
                         // Remaining blocks (not in tree): only show left/right split indicators, not top/bottom
                         const showSplitTop = false;
