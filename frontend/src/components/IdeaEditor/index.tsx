@@ -674,13 +674,14 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
 
   const handleBlockDragStart = useCallback((blockId: string) => {
     if (mode === "source" || streaming) return;
+    console.log("[drag] START blockId:", blockId);
     setDragBlockId(blockId);
     dragActive.current = false;
     const handler = (e: PointerEvent) => {
       if (!dragActive.current) {
-        // Start drag after slight movement
         dragActive.current = true;
         dragStartPos.current = { x: e.clientX, y: e.clientY };
+        console.log("[drag] ACTIVE");
       }
       setGhostPos({ x: e.clientX, y: e.clientY });
       // Calculate drop target
