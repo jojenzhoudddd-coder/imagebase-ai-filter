@@ -70,6 +70,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const [blocks, setBlocks] = useState<IdeaBlockBrief[]>([]);
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
   const [autoEditBlockId, setAutoEditBlockId] = useState<string | null>(null);
+  const [focusTrigger, setFocusTrigger] = useState(0);
 
   const cmRef = useRef<CodeMirrorSourceHandle>(null);
   const previewRef = useRef<TiptapPreviewHandle>(null);
@@ -481,6 +482,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     });
     setAutoEditBlockId(newBlock.id);
     setFocusBlockId(newBlock.id);
+    setFocusTrigger(n => n + 1);
     // Refetch to sync content
     fetchIdeaBlocks(ideaId).then((bRes) => {
       setBlocks(bRes.blocks);
@@ -697,6 +699,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                   readOnly={streaming}
                   sourceMode={mode === "source"}
                   autoFocus={autoEditBlockId === block.id}
+                  focusTrigger={focusBlockId === block.id ? focusTrigger : 0}
                   remoteUpdatePending={pendingRemoteBlockRef.current.has(block.id)}
                   onSaved={handleBlockSaved}
                   onDeleted={handleBlockDeleted}
@@ -706,10 +709,16 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                   editLocked={mode !== "source" && !!focusBlockId && focusBlockId !== block.id}
                   onEditBlocked={() => toast.info(t("idea.editLocked"))}
                   onFocusPrev={() => {
-                    if (idx > 0) setFocusBlockId(blocks[idx - 1].id);
+                    if (idx > 0) {
+                      setFocusBlockId(blocks[idx - 1].id);
+                      setFocusTrigger(n => n + 1);
+                    }
                   }}
                   onFocusNext={() => {
-                    if (idx < blocks.length - 1) setFocusBlockId(blocks[idx + 1].id);
+                    if (idx < blocks.length - 1) {
+                      setFocusBlockId(blocks[idx + 1].id);
+                      setFocusTrigger(n => n + 1);
+                    }
                   }}
                 />
               </React.Fragment>

@@ -54,6 +54,8 @@ export interface BlockItemProps {
   readOnly?: boolean;
   /** Focus this block on mount (e.g. just created). */
   autoFocus?: boolean;
+  /** Increment to request focus (source mode: focus existing textarea). */
+  focusTrigger?: number;
   /** PR-C: another user updated this block while we're editing it. */
   remoteUpdatePending?: boolean;
   onSaved?: (res: PatchBlockResponse) => void;
@@ -91,6 +93,7 @@ const BlockItem = memo(function BlockItem({
   onEditBlocked,
   editLocked = false,
   sourceMode = false,
+  focusTrigger = 0,
 }: BlockItemProps) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<"view" | "selected" | "editing">(sourceMode ? "editing" : "view");
@@ -110,6 +113,7 @@ const BlockItem = memo(function BlockItem({
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const blockVersionRef = useRef<number>((block as any).version ?? 0);
+  const deletingRef = useRef(false);
   const editing = mode === "editing";
   const selected = mode === "selected";
 
@@ -135,11 +139,18 @@ const BlockItem = memo(function BlockItem({
     }
   }, [autoFocus]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Source mode: focus textarea when focusTrigger increments
+  useEffect(() => {
+    if (!sourceMode || focusTrigger === 0 || !textareaRef.current) return;
+    const ta = textareaRef.current;
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+  }, [focusTrigger, sourceMode]);
+
   // Auto-grow textarea (and focus only in non-source mode)
   useEffect(() => {
     if (!editing || !textareaRef.current) return;
     const ta = textareaRef.current;
-    // Use rAF to ensure DOM has rendered before measuring
     requestAnimationFrame(() => {
       ta.style.height = "auto";
       ta.style.height = ta.scrollHeight + "px";
@@ -234,8 +245,9 @@ const BlockItem = memo(function BlockItem({
     }
   }, [editing, saving, editValue, block.content, block.id, ideaId, onSaved, onConflict, onFocusChange]);
 
-  // Source mode: auto-save on blur
+  // Source mode: auto-save on blur (unless block is being deleted/navigated away)
   const handleBlur = useCallback(() => {
+    if (deletingRef.current) return;
     if (sourceMode && editing) void commitEdit();
   }, [sourceMode, editing, commitEdit]);
 
@@ -286,17 +298,19 @@ const BlockItem = memo(function BlockItem({
     // Backspace at start of empty block → delete and focus previous
     if (e.key === "Backspace" && ta.selectionStart === 0 && ta.selectionEnd === 0 && editValue.trim() === "") {
       e.preventDefault();
+      deletingRef.current = true; // suppress blur-save
       void deleteIdeaBlock(ideaId, block.id).then(() => {
         onDeleted?.(block.id);
         onFocusPrev?.();
-      }).catch(() => {});
+      }).catch(() => { deletingRef.current = false; });
       return;
     }
 
     // ArrowUp at start → focus previous block
     if (e.key === "ArrowUp" && ta.selectionStart === 0 && ta.selectionEnd === 0) {
       e.preventDefault();
-      void commitEdit();
+      deletingRef.current = true; // suppress blur-save (commitEdit already called)
+      void commitEdit().then(() => { deletingRef.current = false; });
       onFocusPrev?.();
       return;
     }
@@ -304,7 +318,8 @@ const BlockItem = memo(function BlockItem({
     // ArrowDown at end → focus next block
     if (e.key === "ArrowDown" && ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length) {
       e.preventDefault();
-      void commitEdit();
+      deletingRef.current = true;
+      void commitEdit().then(() => { deletingRef.current = false; });
       onFocusNext?.();
       return;
     }
