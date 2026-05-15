@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "../../i18n/index";
 import { useToast } from "../Toast/index";
 import InlineEdit from "../InlineEdit";
 import SidebarExpandButton from "../SidebarExpandButton";
 import BlockCloseButton from "../BlockCloseButton";
-import { fetchIdea, saveIdeaContent, uploadIdeaAttachment, fetchIdeaBlocks } from "../../api";
+import { fetchIdea, saveIdeaContent, uploadIdeaAttachment, fetchIdeaBlocks, createIdeaBlock } from "../../api";
 import type { IdeaBlockBrief } from "../../api";
 import { useIdeaSync } from "../../hooks/useIdeaSync";
 import type {
@@ -47,12 +47,6 @@ const PREVIEW_ICON = (
     <circle cx="8" cy="8" r="2" fill="currentColor"/>
   </svg>
 );
-const UPLOAD_ICON = (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-    <path d="M12 4v12m0-12 4 4m-4-4-4 4M4 18v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-);
-
 const AUTOSAVE_DEBOUNCE_MS = 600;
 type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "offline";
 
@@ -79,8 +73,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
 
   const cmRef = useRef<CodeMirrorSourceHandle>(null);
   const previewRef = useRef<TiptapPreviewHandle>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const blockListRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef(content);
   useEffect(() => { contentRef.current = content; }, [content]);
 
@@ -419,14 +413,6 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     void uploadAndInsert(files);
   }, [uploadAndInsert]);
 
-  const handleUploadClick = useCallback(() => { fileInputRef.current?.click(); }, []);
-  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    if (files.length === 0) return;
-    void uploadAndInsert(files);
-    e.target.value = "";
-  }, [uploadAndInsert]);
-
   const handleImageUpload = useCallback(async (file: File) => {
     const att = await uploadIdeaAttachment(ideaId, file);
     return { url: att.url, mime: att.mime, originalName: att.originalName };
@@ -517,6 +503,86 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     }).catch(() => {});
   }, [ideaId, toast, t]);
 
+  // ── Block list drag-drop for images ──
+  const [dragInsertIdx, setDragInsertIdx] = useState<number | null>(null);
+
+  const isImageFile = useCallback((file: File) => {
+    return /^image\/(png|jpeg|jpg|gif|svg\+xml|webp)$/.test(file.type);
+  }, []);
+
+  const getDragInsertIndex = useCallback((clientY: number): number => {
+    const container = blockListRef.current;
+    if (!container || blocks.length === 0) return 0;
+    const children = container.querySelectorAll<HTMLElement>("[data-block-id]");
+    for (let i = 0; i < children.length; i++) {
+      const rect = children[i].getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (clientY < midY) return i;
+    }
+    return blocks.length;
+  }, [blocks.length]);
+
+  const handleBlockListDragOver = useCallback((e: React.DragEvent) => {
+    if (streaming || !e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDragInsertIdx(getDragInsertIndex(e.clientY));
+  }, [streaming, getDragInsertIndex]);
+
+  const handleBlockListDragLeave = useCallback((e: React.DragEvent) => {
+    // Only clear if actually leaving the container (not entering a child)
+    if (blockListRef.current && !blockListRef.current.contains(e.relatedTarget as Node)) {
+      setDragInsertIdx(null);
+    }
+  }, []);
+
+  const handleBlockListDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    const insertIdx = dragInsertIdx;
+    setDragInsertIdx(null);
+    if (insertIdx === null || streaming) return;
+
+    const files = Array.from(e.dataTransfer.files).filter(isImageFile);
+    if (files.length === 0) return;
+
+    for (const file of files) {
+      try {
+        const att = await uploadIdeaAttachment(ideaId, file);
+        const alt = (att.originalName || "image").replace(/[\[\]]/g, "");
+        const mdContent = `![${alt}](${att.url})\n`;
+        const afterBlockId = insertIdx > 0 ? blocks[insertIdx - 1]?.id ?? null : null;
+        const res = await createIdeaBlock(ideaId, {
+          type: "paragraph",
+          content: mdContent,
+          afterBlockId,
+        });
+        // Update local state with the new block
+        setBlocks((prev) => {
+          const newBlock: IdeaBlockBrief = {
+            id: res.block.id,
+            order: res.block.order,
+            type: res.block.type,
+            content: res.block.content,
+            props: (res.block.props ?? {}) as Record<string, unknown>,
+          };
+          const next = [...prev];
+          next.splice(insertIdx, 0, newBlock);
+          return next;
+        });
+        // Sync content
+        const bRes = await fetchIdeaBlocks(ideaId);
+        setBlocks(bRes.blocks);
+        const newContent = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+        contentRef.current = newContent;
+        setContent(newContent);
+        versionRef.current = bRes.version;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(t("idea.uploadFailed") + `: ${msg}`);
+      }
+    }
+  }, [dragInsertIdx, streaming, isImageFile, ideaId, blocks, toast, t]);
+
   // ── Status label ──
   const statusLabel = (() => {
     if (!loaded) return t("idea.loading");
@@ -587,17 +653,6 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           {statusLabel && <span className="idea-editor-status">{statusLabel}</span>}
           {statusLabel && <span className="idea-editor-topbar-sep" aria-hidden="true" />}
           <button
-            className={`idea-editor-topbar-btn${streaming ? " disabled" : ""}`}
-            onClick={handleUploadClick} disabled={streaming}
-            title={t("idea.uploadAttachment")}
-          >
-            {UPLOAD_ICON}{t("idea.uploadAttachment")}
-          </button>
-          <input ref={fileInputRef} type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/svg+xml,application/pdf,video/mp4,video/webm"
-            multiple style={{ display: "none" }} onChange={handleFileInputChange}
-          />
-          <button
             className="idea-editor-topbar-btn"
             onClick={toggleMode}
             title={t("idea.toggleHint")}
@@ -619,30 +674,55 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             onPasteFiles={handleSourcePasteFiles} onDropFiles={handleSourceDropFiles}
           />
         ) : blocks.length > 0 ? (
-          <div style={{ padding: "60px 60px 80px 60px" }}>
+          <div
+            ref={blockListRef}
+            style={{ padding: "60px 60px 80px 60px", position: "relative" }}
+            onDragOver={handleBlockListDragOver}
+            onDragLeave={handleBlockListDragLeave}
+            onDrop={handleBlockListDrop}
+          >
             {blocks.map((block, idx) => (
-              <BlockItem
-                key={block.id}
-                block={block}
-                ideaId={ideaId}
-                readOnly={streaming}
-                autoFocus={autoEditBlockId === block.id}
-                remoteUpdatePending={pendingRemoteBlockRef.current.has(block.id)}
-                onSaved={handleBlockSaved}
-                onDeleted={handleBlockDeleted}
-                onCreatedAfter={handleBlockCreatedAfter}
-                onConflict={handleBlockConflict}
-                onFocusChange={handleBlockFocusChange}
-                editLocked={!!focusBlockId && focusBlockId !== block.id}
-                onEditBlocked={() => toast.info(t("idea.editLocked"))}
-                onFocusPrev={() => {
-                  if (idx > 0) setFocusBlockId(blocks[idx - 1].id);
-                }}
-                onFocusNext={() => {
-                  if (idx < blocks.length - 1) setFocusBlockId(blocks[idx + 1].id);
-                }}
-              />
+              <React.Fragment key={block.id}>
+                {dragInsertIdx === idx && (
+                  <div style={{
+                    height: 2,
+                    background: "var(--primary, #1456F0)",
+                    borderRadius: 1,
+                    margin: "2px 0",
+                    pointerEvents: "none",
+                  }} />
+                )}
+                <BlockItem
+                  block={block}
+                  ideaId={ideaId}
+                  readOnly={streaming}
+                  autoFocus={autoEditBlockId === block.id}
+                  remoteUpdatePending={pendingRemoteBlockRef.current.has(block.id)}
+                  onSaved={handleBlockSaved}
+                  onDeleted={handleBlockDeleted}
+                  onCreatedAfter={handleBlockCreatedAfter}
+                  onConflict={handleBlockConflict}
+                  onFocusChange={handleBlockFocusChange}
+                  editLocked={!!focusBlockId && focusBlockId !== block.id}
+                  onEditBlocked={() => toast.info(t("idea.editLocked"))}
+                  onFocusPrev={() => {
+                    if (idx > 0) setFocusBlockId(blocks[idx - 1].id);
+                  }}
+                  onFocusNext={() => {
+                    if (idx < blocks.length - 1) setFocusBlockId(blocks[idx + 1].id);
+                  }}
+                />
+              </React.Fragment>
             ))}
+            {dragInsertIdx === blocks.length && (
+              <div style={{
+                height: 2,
+                background: "var(--primary, #1456F0)",
+                borderRadius: 1,
+                margin: "2px 0",
+                pointerEvents: "none",
+              }} />
+            )}
           </div>
         ) : (
           <TiptapPreview
