@@ -381,7 +381,7 @@ const BlockItem = memo(function BlockItem({
   const showHover = hovered && !editing && !selected && !readOnly;
   const containerStyle: React.CSSProperties = {
     position: "relative",
-    cursor: readOnly ? "default" : editing ? "text" : selected ? "grab" : "pointer",
+    cursor: readOnly ? "default" : editing ? "text" : (selected && hovered) ? "grab" : selected ? "default" : "pointer",
     minHeight: isDivider ? 20 : 24,
     opacity: isDragging ? 0.3 : 1,
     transition: "opacity 0.15s ease",
