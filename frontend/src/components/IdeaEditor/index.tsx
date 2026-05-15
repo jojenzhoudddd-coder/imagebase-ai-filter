@@ -694,12 +694,19 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const handleBlockDragStart = useCallback((blockId: string) => {
     if (mode === "source" || streaming) return;
     dragActive.current = false;
-    const dragId = blockId; // capture in closure
+    const dragId = blockId;
+    const startX = 0, startY = 0;
+    let initX = 0, initY = 0, initCaptured = false;
+    const MIN_DRAG_DISTANCE = 5;
     const handler = (e: PointerEvent) => {
+      if (!initCaptured) { initX = e.clientX; initY = e.clientY; initCaptured = true; }
+      // Don't activate until mouse has moved at least MIN_DRAG_DISTANCE
       if (!dragActive.current) {
+        const dx = e.clientX - initX;
+        const dy = e.clientY - initY;
+        if (Math.abs(dx) < MIN_DRAG_DISTANCE && Math.abs(dy) < MIN_DRAG_DISTANCE) return;
         dragActive.current = true;
         setDragBlockId(dragId);
-        // Capture offset: mouse position relative to block's top-left
         const contentEl = blockListRef.current?.querySelector(`[data-block-content="${dragId}"]`);
         if (contentEl) {
           const r = contentEl.getBoundingClientRect();
