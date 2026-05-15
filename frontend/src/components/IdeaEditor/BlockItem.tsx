@@ -12,6 +12,15 @@
 import { useCallback, useEffect, useRef, useState, memo } from "react";
 import MarkdownIt from "markdown-it";
 
+// Inject a scoped style to remove bottom margin from the last child in each
+// block view — avoids double spacing between blocks. Done once at module load.
+if (typeof document !== "undefined" && !document.getElementById("block-item-style")) {
+  const s = document.createElement("style");
+  s.id = "block-item-style";
+  s.textContent = ".block-item-view > *:last-child { margin-bottom: 0 !important; }";
+  document.head.appendChild(s);
+}
+
 import type { IdeaBlockBrief, PatchBlockResponse } from "../../api";
 import { patchIdeaBlock, createIdeaBlock, deleteIdeaBlock } from "../../api";
 
@@ -138,11 +147,7 @@ const BlockItem = memo(function BlockItem({
     }
   }, [editing, saving, editValue, block.content, block.id, ideaId, onSaved, onConflict, onFocusChange]);
 
-  const handleBlur = useCallback(() => {
-    if (editing) {
-      void commitEdit();
-    }
-  }, [editing, commitEdit]);
+  // No blur-to-commit — editing is a stable state with explicit commit/cancel buttons
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Escape") {
@@ -150,73 +155,14 @@ const BlockItem = memo(function BlockItem({
       cancelEdit();
       return;
     }
-
-    const isMultiLine = block.type === "code" || block.type === "list" ||
-      block.type === "quote" || block.type === "table" || block.type === "html";
-
-    if (isMultiLine) {
-      // Cmd/Ctrl+Enter to save multi-line blocks
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-        e.preventDefault();
-        void commitEdit();
-      }
-    } else {
-      // Enter to save single-line blocks (headings, paragraphs, dividers)
-      if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault();
-        void commitEdit();
-        // After committing a single-line block, create a new paragraph after it
-        if (editValue.trim() !== "") {
-          void createIdeaBlock(ideaId, {
-            type: "paragraph",
-            content: "\n",
-            afterBlockId: block.id,
-          }).then((res) => {
-            onCreatedAfter?.({
-              id: res.block.id,
-              order: res.block.order,
-              type: res.block.type,
-              content: res.block.content,
-              props: res.block.props as Record<string, unknown>,
-              version: res.block.version,
-            });
-          }).catch((err) => {
-            console.error("[BlockItem] create after failed:", err);
-          });
-        }
-      }
-    }
-
-    // Arrow up at start → focus previous block
-    if (e.key === "ArrowUp") {
-      const ta = textareaRef.current;
-      if (ta && ta.selectionStart === 0 && ta.selectionEnd === 0) {
-        e.preventDefault();
-        void commitEdit();
-        onFocusPrev?.();
-      }
-    }
-    // Arrow down at end → focus next block
-    if (e.key === "ArrowDown") {
-      const ta = textareaRef.current;
-      if (ta && ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length) {
-        e.preventDefault();
-        void commitEdit();
-        onFocusNext?.();
-      }
-    }
-    // Backspace on empty → delete block
-    if (e.key === "Backspace" && editValue.trim() === "") {
+    // Alt+Enter → commit (all block types)
+    if (e.altKey && e.key === "Enter") {
       e.preventDefault();
-      setEditing(false);
-      void deleteIdeaBlock(ideaId, block.id).then(() => {
-        onDeleted?.(block.id);
-        onFocusPrev?.();
-      }).catch((err) => {
-        console.error("[BlockItem] delete failed:", err);
-      });
+      void commitEdit();
+      return;
     }
-  }, [block.type, block.id, editValue, ideaId, cancelEdit, commitEdit, onFocusPrev, onFocusNext, onDeleted, onCreatedAfter]);
+    // Enter is always newline (default textarea behavior) — no interception
+  }, [cancelEdit, commitEdit]);
 
   const handleTextareaInput = useCallback(() => {
     const ta = textareaRef.current;
@@ -225,8 +171,9 @@ const BlockItem = memo(function BlockItem({
     ta.style.height = ta.scrollHeight + "px";
   }, []);
 
-  // Render markdown to HTML for view mode. Trim trailing newlines for cleaner render.
-  const renderedHtml = md.render(block.content.replace(/\n+$/, "").trim() || " ");
+  // Render markdown to HTML. Strip trailing newlines + empty <p> tags.
+  const renderedHtml = md.render(block.content.replace(/\n+$/, "").trim() || " ")
+    .replace(/(<p>\s*<\/p>\s*)+$/, "");
 
   // Determine if this is a divider (just render <hr>)
   const isDivider = block.type === "divider";
@@ -272,6 +219,16 @@ const BlockItem = memo(function BlockItem({
     boxSizing: "border-box" as const,
   };
 
+  const btnBase: React.CSSProperties = {
+    padding: "3px 10px",
+    borderRadius: 4,
+    fontSize: 11,
+    fontWeight: 500,
+    cursor: "pointer",
+    border: "none",
+    lineHeight: "18px",
+  };
+
   if (editing) {
     return (
       <div style={containerStyle}>
@@ -289,12 +246,28 @@ const BlockItem = memo(function BlockItem({
           ref={textareaRef}
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
-          onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           onInput={handleTextareaInput}
           style={textareaStyle}
           spellCheck={false}
         />
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, padding: "6px 0 2px" }}>
+          <span style={{ flex: 1, fontSize: 11, color: "var(--text-muted, #8f959e)", lineHeight: "24px" }}>
+            Alt+Enter 提交 · Esc 取消
+          </span>
+          <button
+            type="button"
+            style={{ ...btnBase, background: "var(--surface-3, #f0f1f3)", color: "var(--text-secondary, #646a73)" }}
+            onClick={(e) => { e.stopPropagation(); cancelEdit(); }}
+            disabled={saving}
+          >取消</button>
+          <button
+            type="button"
+            style={{ ...btnBase, background: "var(--color-primary, #3778FB)", color: "#fff" }}
+            onClick={(e) => { e.stopPropagation(); void commitEdit(); }}
+            disabled={saving}
+          >{saving ? "保存中…" : "提交"}</button>
+        </div>
       </div>
     );
   }
@@ -312,7 +285,7 @@ const BlockItem = memo(function BlockItem({
         ) : (
           <div
             style={viewStyle}
-            className="idea-preview-body"
+            className="idea-preview-body block-item-view"
             dangerouslySetInnerHTML={{ __html: renderedHtml }}
           />
         )}
