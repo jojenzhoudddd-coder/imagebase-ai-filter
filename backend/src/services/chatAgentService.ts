@@ -1302,7 +1302,28 @@ async function assembleInput(
   const systemText = buildSystemText(layers, activeSkillNames, availableSkills, availableSkillsByName);
 
   const { messages: history } = await convStore.getMessages(conversationId);
-  const HISTORY_TOKEN_BUDGET = 24_000;
+  // Dynamic history budget: derived from the model's context window minus
+  // estimated overheads for system prompt, tools, thinking, and output.
+  const model = runtime?.model;
+  const ctxWindow = model?.capabilities.contextWindow ?? 128_000;
+  const thinkingBudget = model?.capabilities.thinkingBudget ?? 0;
+  const maxOutput = model?.defaults.maxOutputTokens ?? 32_768;
+  const SYSTEM_TOOLS_OVERHEAD = 18_000; // system prompt + tool definitions
+  const SAFETY_MARGIN = 8_000;
+  const HISTORY_TOKEN_BUDGET = Math.max(
+    8_000, // floor: never go below 8K even for tiny models
+    ctxWindow - SYSTEM_TOOLS_OVERHEAD - thinkingBudget - maxOutput - SAFETY_MARGIN,
+  );
+  logAgent({
+    event: "history_budget_computed",
+    conversationId,
+    modelId: model?.id ?? "unknown",
+    contextWindow: ctxWindow,
+    thinkingBudget,
+    maxOutput,
+    historyBudget: HISTORY_TOKEN_BUDGET,
+    totalMessages: history.length,
+  });
   const SUMMARY_THRESHOLD = 0.8; // trigger summary at 80% capacity
   const windowed = tokenAwareWindow(history, HISTORY_TOKEN_BUDGET);
   const droppedCount = history.length - windowed.length;
@@ -2721,7 +2742,12 @@ async function* runAgentImpl(
   // "compressing context" instead of an unexplained delay.
   {
     const { messages: preCheck } = await convStore.getMessages(conversationId);
-    const preWindowed = tokenAwareWindow(preCheck, 24_000);
+    // Use the same dynamic budget formula as assembleInput
+    const preCtx = model.capabilities.contextWindow ?? 128_000;
+    const preThink = model.capabilities.thinkingBudget ?? 0;
+    const preMaxOut = model.defaults.maxOutputTokens ?? 32_768;
+    const preBudget = Math.max(8_000, preCtx - 18_000 - preThink - preMaxOut - 8_000);
+    const preWindowed = tokenAwareWindow(preCheck, preBudget);
     const preDropped = preCheck.length - preWindowed.length;
     const preConv = await convStore.getConversation(conversationId);
     const preCovered = parseCoveredCount(preConv?.summary);
