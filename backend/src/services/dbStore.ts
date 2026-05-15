@@ -1054,8 +1054,6 @@ export async function clearAll(): Promise<void> {
 
 // ─── Default scaffold ───
 
-const DEFAULT_USER_ID = "user_default";
-const DEFAULT_ORG_ID = "org_default";
 export const DEFAULT_WORKSPACE_ID = "ws000000000001";
 
 let defaultsEnsured = false;
@@ -1063,31 +1061,32 @@ let defaultsEnsured = false;
 export async function ensureDefaults(): Promise<void> {
   if (defaultsEnsured) return;
 
-  await prisma.user.upsert({
-    where: { id: DEFAULT_USER_ID },
-    update: {},
-    create: { id: DEFAULT_USER_ID, email: "default@local", name: "Default User" },
-  });
+  // Post-migration: real users exist with new-format IDs. The legacy
+  // "user_default" / "org_default" scaffold is only needed on first-ever
+  // boot (empty DB). Skip if any user already exists.
+  const userCount = await prisma.user.count();
+  if (userCount > 0) {
+    defaultsEnsured = true;
+    return;
+  }
 
-  await prisma.org.upsert({
-    where: { id: DEFAULT_ORG_ID },
-    update: {},
-    create: { id: DEFAULT_ORG_ID, name: "Default Org" },
+  // First-ever boot on empty DB: create scaffold user/org/workspace
+  const seedUserId = await generateId("user");
+  const seedOrgId = await generateId("org");
+  await prisma.user.create({
+    data: { id: seedUserId, email: "default@local", name: "Default User" },
   });
-
-  await prisma.orgMember.upsert({
-    where: { orgId_userId: { orgId: DEFAULT_ORG_ID, userId: DEFAULT_USER_ID } },
-    update: {},
-    create: { orgId: DEFAULT_ORG_ID, userId: DEFAULT_USER_ID, role: "owner" },
+  await prisma.org.create({
+    data: { id: seedOrgId, name: "Default Org" },
   });
-
-  await prisma.workspace.upsert({
-    where: { id: DEFAULT_WORKSPACE_ID },
-    update: {},
-    create: {
+  await prisma.orgMember.create({
+    data: { id: await generateId("orgMember"), orgId: seedOrgId, userId: seedUserId, role: "owner" },
+  });
+  await prisma.workspace.create({
+    data: {
       id: DEFAULT_WORKSPACE_ID,
-      orgId: DEFAULT_ORG_ID,
-      createdById: DEFAULT_USER_ID,
+      orgId: seedOrgId,
+      createdById: seedUserId,
       name: "Default Workspace",
     },
   });
@@ -1114,7 +1113,7 @@ export async function backfillUserFields(): Promise<void> {
       let dirty = false;
 
       // Back-fill createdBy column if null
-      const createdBy = rec.createdBy || DEFAULT_USER_ID;
+      const createdBy = rec.createdBy || "unknown";
       if (!rec.createdBy) {
         await prisma.record.update({ where: { id: rec.id }, data: { createdBy, modifiedBy: rec.modifiedBy || createdBy } });
       }

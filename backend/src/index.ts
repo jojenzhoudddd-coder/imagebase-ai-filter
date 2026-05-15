@@ -353,18 +353,23 @@ async function start() {
     console.error("Failed to ensure default agent:", err);
   }
 
-  // One-shot seed: make sure `user_default` (the legacy seed user) is
-  // login-capable as quan / 12345qwert so existing deployments can sign
-  // in right after the user-system lands. Idempotent — only stamps fields
-  // that are missing (never overwrites a user-set password).
+  // Seed credentials: find the admin user (by email, not hardcoded ID) and
+  // ensure login credentials exist. Idempotent — only stamps fields that
+  // are missing (never overwrites a user-set password).
   try {
-    await ensureSeedUserCredentials({
-      userId: "user_default",
-      defaultUsername: "quan",
-      defaultPassword: "12345qwert",
-      defaultEmail: "quan@imagebase.local",
-      defaultName: "Quan",
+    const seedUser = await prismaForStats.user.findFirst({
+      where: { email: "392594377@qq.com" },
+      select: { id: true },
     });
+    if (seedUser) {
+      await ensureSeedUserCredentials({
+        userId: seedUser.id,
+        defaultUsername: "quan",
+        defaultPassword: "12345qwert",
+        defaultEmail: "quan@imagebase.local",
+        defaultName: "Quan",
+      });
+    }
   } catch (err) {
     console.warn("Failed to seed user credentials (non-fatal):", err);
   }
