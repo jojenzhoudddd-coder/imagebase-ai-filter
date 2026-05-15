@@ -98,6 +98,7 @@ const BlockItem = memo(function BlockItem({
   const cancelEdit = useCallback(() => {
     setEditing(false);
     setEditValue("");
+    setHovered(false);
     onFocusChange?.(block.id, false);
   }, [block.id, onFocusChange]);
 
@@ -107,6 +108,7 @@ const BlockItem = memo(function BlockItem({
     // No change → just close
     if (trimmed === block.content) {
       setEditing(false);
+      setHovered(false);
       onFocusChange?.(block.id, false);
       return;
     }
@@ -118,12 +120,13 @@ const BlockItem = memo(function BlockItem({
       });
       blockVersionRef.current = res.blockVersion;
       setEditing(false);
+      setHovered(false);
       onFocusChange?.(block.id, false);
       onSaved?.(res);
     } catch (err: any) {
       if (err?.status === 409) {
-        // Version conflict — notify parent to reload
         setEditing(false);
+        setHovered(false);
         onFocusChange?.(block.id, false);
         onConflict?.();
       } else {
