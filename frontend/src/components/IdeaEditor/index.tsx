@@ -990,27 +990,40 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           const directionMap = { top: "top", bottom: "bottom", left: "left", right: "right" } as const;
           const direction = directionMap[target.side];
           const targetBlockId = target.targetBlockId;
-          console.log("[commitDrop] layout-split", { blockId, targetBlockId, direction, hasLayout: !!layout });
+          const treeIds = layout ? new Set(collectLeafIds(layout)) : new Set<string>();
+          const sourceInTree = treeIds.has(blockId);
+          const targetInTree = treeIds.has(targetBlockId);
 
-          if (layout) {
-            const newLayout = moveBlockInLayout(layout, blockId, targetBlockId, direction);
-            if (newLayout && newLayout !== layout) {
-              persistLayout(newLayout);
-            } else {
-              // Source wasn't in tree — insert it
-              const withInsert = insertIntoLayout(layout, targetBlockId, blockId, direction);
-              persistLayout(withInsert);
-            }
+          let newLayout: BlockLayoutNode;
+          if (sourceInTree && targetInTree && layout) {
+            // Both in tree → move within tree
+            newLayout = moveBlockInLayout(layout, blockId, targetBlockId, direction) ?? layout;
+          } else if (targetInTree && layout) {
+            // Target in tree, source not → insert source next to target
+            newLayout = insertIntoLayout(layout, targetBlockId, blockId, direction);
           } else {
-            // No layout yet — create one with these two blocks
-            const newLayout = insertIntoLayout(
-              { kind: "leaf", blockId: targetBlockId },
-              targetBlockId,
-              blockId,
-              direction,
-            );
-            persistLayout(newLayout);
+            // Target not in tree → create a fresh split with these two blocks
+            const orientation: "h" | "v" = direction === "left" || direction === "right" ? "h" : "v";
+            const isFirst = direction === "left" || direction === "top";
+            const sourceLeaf: BlockLayoutNode = { kind: "leaf", blockId };
+            const targetLeaf: BlockLayoutNode = { kind: "leaf", blockId: targetBlockId };
+            const newSplit: BlockLayoutNode = {
+              kind: "split", orientation, ratio: 0.5,
+              first: isFirst ? sourceLeaf : targetLeaf,
+              second: isFirst ? targetLeaf : sourceLeaf,
+            };
+            // If source was in tree, remove it first
+            if (sourceInTree && layout) {
+              const without = removeFromLayout(layout, blockId);
+              // Compose: put existing tree + new split in a vertical split
+              newLayout = without
+                ? { kind: "split", orientation: "v", ratio: 0.5, first: without, second: newSplit }
+                : newSplit;
+            } else {
+              newLayout = newSplit;
+            }
           }
+          persistLayout(newLayout);
         }
   }, [blocks, ideaId, layout, persistLayout]);
   commitDropRef.current = commitDrop;
