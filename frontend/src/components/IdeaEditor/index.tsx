@@ -675,7 +675,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         ) : blocks.length > 0 ? (
           <div
             ref={blockListRef}
-            style={{ padding: "60px 60px 80px 60px", position: "relative", display: "flex", flexDirection: "column", gap: 8 }}
+            style={{ padding: "60px 60px 80px 60px", position: "relative", display: "flex", flexDirection: "column", gap: mode === "source" ? 12 : 8 }}
             onDragOver={handleBlockListDragOver}
             onDragLeave={handleBlockListDragLeave}
             onDrop={handleBlockListDrop}
