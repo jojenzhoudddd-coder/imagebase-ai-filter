@@ -65,6 +65,10 @@ export interface BlockItemProps {
   onFocusPrev?: () => void;
   /** Navigate to next block. */
   onFocusNext?: () => void;
+  /** Source mode: split block at cursor — contentBefore stays, contentAfter goes to new block. */
+  onSplit?: (blockId: string, contentBefore: string, contentAfter: string) => void;
+  /** Source mode: merge this block's content into the previous block, then delete this one. */
+  onMergeIntoPrev?: (blockId: string, contentToAppend: string) => void;
   /** Notify parent of conflict (409) so it can reload blocks. */
   onConflict?: () => void;
   /** PR-C: notify parent when this block gains/loses focus. */
@@ -88,6 +92,8 @@ const BlockItem = memo(function BlockItem({
   onCreatedAfter,
   onFocusPrev,
   onFocusNext,
+  onSplit,
+  onMergeIntoPrev,
   onConflict,
   onFocusChange,
   onEditBlocked,
@@ -269,72 +275,23 @@ const BlockItem = memo(function BlockItem({
     const ta = textareaRef.current;
     if (!ta) return;
 
-    // Enter at the very end of a block → create new block below
+    // Enter → split block at cursor position
     if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      const atEnd = ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length;
-      if (atEnd) {
-        e.preventDefault();
-        // Save current block first, then create new one
-        void commitEdit().then(() => {
-          void createIdeaBlock(ideaId, {
-            type: "paragraph",
-            content: "\n",
-            afterBlockId: block.id,
-          }).then((res) => {
-            onCreatedAfter?.({
-              id: res.block.id,
-              order: res.block.order,
-              type: res.block.type,
-              content: res.block.content,
-              props: (res.block.props ?? {}) as Record<string, unknown>,
-              version: res.block.version,
-            });
-          }).catch(() => {});
-        });
-        return;
-      }
-    }
-
-    // Backspace at start of empty block → delete and focus previous
-    if (e.key === "Backspace" && ta.selectionStart === 0 && ta.selectionEnd === 0 && editValue.trim() === "") {
       e.preventDefault();
-      deletingRef.current = true; // suppress blur-save
-      void deleteIdeaBlock(ideaId, block.id).then(() => {
-        onDeleted?.(block.id);
-        onFocusPrev?.();
-      }).catch(() => { deletingRef.current = false; });
+      const pos = ta.selectionStart;
+      const before = editValue.slice(0, pos);
+      const after = editValue.slice(ta.selectionEnd);
+      deletingRef.current = true;
+      onSplit?.(block.id, before, after);
       return;
     }
 
-    // ArrowUp at very first position → focus previous block
-    if (e.key === "ArrowUp" && ta.selectionStart === 0 && ta.selectionEnd === 0) {
-      // Only jump if cursor is on the first visual line (no line above)
-      const textBefore = ta.value.slice(0, ta.selectionStart);
-      if (!textBefore.includes("\n")) {
-        e.preventDefault();
-        deletingRef.current = true;
-        void commitEdit().then(() => { deletingRef.current = false; });
-        onFocusPrev?.();
-        return;
-      }
-    }
-
-    // ArrowDown at very last position → focus next block
-    if (e.key === "ArrowDown") {
-      const textAfter = ta.value.slice(ta.selectionEnd);
-      // Only jump if cursor is on the last visual line (no line below)
-      if (!textAfter.includes("\n") || textAfter.trim() === "") {
-        // Let the browser handle the keydown first, then check if cursor moved
-        const posBefore = ta.selectionStart;
-        requestAnimationFrame(() => {
-          if (ta.selectionStart === posBefore && ta.selectionStart >= ta.value.trimEnd().length) {
-            deletingRef.current = true;
-            void commitEdit().then(() => { deletingRef.current = false; });
-            onFocusNext?.();
-          }
-        });
-        return;
-      }
+    // Backspace at start → merge into previous block
+    if (e.key === "Backspace" && ta.selectionStart === 0 && ta.selectionEnd === 0) {
+      e.preventDefault();
+      deletingRef.current = true;
+      onMergeIntoPrev?.(block.id, editValue);
+      return;
     }
   }, [cancelEdit, commitEdit, sourceMode, editValue, ideaId, block.id, onCreatedAfter, onDeleted, onFocusPrev, onFocusNext]);
 

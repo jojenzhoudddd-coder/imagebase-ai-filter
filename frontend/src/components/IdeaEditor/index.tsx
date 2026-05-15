@@ -4,7 +4,7 @@ import { useToast } from "../Toast/index";
 import InlineEdit from "../InlineEdit";
 import SidebarExpandButton from "../SidebarExpandButton";
 import BlockCloseButton from "../BlockCloseButton";
-import { fetchIdea, saveIdeaContent, uploadIdeaAttachment, fetchIdeaBlocks, createIdeaBlock } from "../../api";
+import { fetchIdea, saveIdeaContent, uploadIdeaAttachment, fetchIdeaBlocks, createIdeaBlock, patchIdeaBlock, deleteIdeaBlock } from "../../api";
 import type { IdeaBlockBrief } from "../../api";
 import { useIdeaSync } from "../../hooks/useIdeaSync";
 import type {
@@ -505,6 +505,54 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     }).catch(() => {});
   }, [ideaId, toast, t]);
 
+  // ── Source mode: split and merge blocks ──
+
+  const handleSplit = useCallback(async (blockId: string, contentBefore: string, contentAfter: string) => {
+    try {
+      // 1. Update current block with contentBefore
+      await patchIdeaBlock(ideaId, blockId, { content: contentBefore + "\n" });
+      // 2. Create new block after with contentAfter
+      const res = await createIdeaBlock(ideaId, {
+        type: "paragraph",
+        content: (contentAfter || "") + "\n",
+        afterBlockId: blockId,
+      });
+      // 3. Refetch and focus the new block
+      const bRes = await fetchIdeaBlocks(ideaId);
+      setBlocks(bRes.blocks);
+      contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+      setContent(contentRef.current);
+      versionRef.current = bRes.version;
+      setFocusBlockId(res.block.id);
+      setFocusTrigger(n => n + 1);
+    } catch (err) {
+      console.error("[IdeaEditor] split failed:", err);
+    }
+  }, [ideaId]);
+
+  const handleMergeIntoPrev = useCallback(async (blockId: string, contentToAppend: string) => {
+    const idx = blocks.findIndex(b => b.id === blockId);
+    if (idx <= 0) return; // no previous block to merge into
+    const prevBlock = blocks[idx - 1];
+    try {
+      // 1. Append content to previous block
+      const mergedContent = prevBlock.content.replace(/\n$/, "") + contentToAppend;
+      await patchIdeaBlock(ideaId, prevBlock.id, { content: mergedContent + "\n" });
+      // 2. Delete current block
+      await deleteIdeaBlock(ideaId, blockId);
+      // 3. Refetch and focus previous block
+      const bRes = await fetchIdeaBlocks(ideaId);
+      setBlocks(bRes.blocks);
+      contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+      setContent(contentRef.current);
+      versionRef.current = bRes.version;
+      setFocusBlockId(prevBlock.id);
+      setFocusTrigger(n => n + 1);
+    } catch (err) {
+      console.error("[IdeaEditor] merge failed:", err);
+    }
+  }, [ideaId, blocks]);
+
   // ── Drag-drop for images (both modes) ──
   const [dragInsertIdx, setDragInsertIdx] = useState<number | null>(null);
   // (sourceDragLine removed — source mode now uses same block list as preview)
@@ -708,6 +756,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                   onFocusChange={handleBlockFocusChange}
                   editLocked={mode !== "source" && !!focusBlockId && focusBlockId !== block.id}
                   onEditBlocked={() => toast.info(t("idea.editLocked"))}
+                  onSplit={handleSplit}
+                  onMergeIntoPrev={handleMergeIntoPrev}
                   onFocusPrev={() => {
                     if (idx > 0) {
                       setFocusBlockId(blocks[idx - 1].id);
