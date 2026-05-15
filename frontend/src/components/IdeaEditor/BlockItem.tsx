@@ -19,6 +19,7 @@ if (typeof document !== "undefined" && !document.getElementById("block-item-styl
   const s = document.createElement("style");
   s.id = "block-item-style";
   s.textContent = [
+    ".block-item-view > *:first-child { margin-top: 0 !important; }",
     ".block-item-view > *:last-child { margin-bottom: 0 !important; }",
     ".block-edit-btn-cancel { background: var(--surface-3); color: var(--text-secondary); transition: background 0.12s, color 0.12s; }",
     ".block-edit-btn-cancel:hover { background: var(--border-default); color: var(--text-primary); }",
