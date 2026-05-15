@@ -136,11 +136,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         if (blocksRes?.blocks) {
           setBlocks(blocksRes.blocks);
         }
-        // New ideas with template placeholder content → default to preview
-        const TEMPLATE_WORDS = ["Untitled", "Section 1", "Section 2", "Start writing here..."];
-        const stripped = (idea.content ?? "").replace(/^#{1,6}\s*/gm, "").trim();
-        const isTemplate = !stripped || TEMPLATE_WORDS.some(w => stripped.includes(w));
-        if (isTemplate) setMode("preview");
+        if (!idea.content) setMode("source");
         setLoaded(true);
       })
       .catch((err) => {

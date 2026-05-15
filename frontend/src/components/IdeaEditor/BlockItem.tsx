@@ -222,23 +222,9 @@ const BlockItem = memo(function BlockItem({
     ta.style.height = ta.scrollHeight + "px";
   }, []);
 
-  // Known template placeholder patterns — rendered in muted color
-  const PLACEHOLDER_TEXTS = new Set([
-    "Untitled", "Section 1", "Section 2",
-    "Start writing here...",
-  ]);
-  const textOnly = block.content.replace(/^#{1,6}\s*/gm, "").trim();
-  const isPlaceholder = PLACEHOLDER_TEXTS.has(textOnly);
-
   // Render markdown to HTML. Strip trailing newlines + empty <p> tags.
-  let renderedHtml = md.render(block.content.replace(/\n+$/, "").trim() || " ")
+  const renderedHtml = md.render(block.content.replace(/\n+$/, "").trim() || " ")
     .replace(/(<p>\s*<\/p>\s*)+$/, "");
-  // Mute placeholder text
-  if (isPlaceholder) {
-    renderedHtml = renderedHtml.replace(/>([^<]+)</g, (_, text) =>
-      `><span style="color:var(--text-placeholder)">${text}</span><`
-    );
-  }
 
   // Determine if this is a divider (just render <hr>)
   const isDivider = block.type === "divider";
