@@ -56,6 +56,8 @@ export interface BlockItemProps {
   autoFocus?: boolean;
   /** Increment to request focus (source mode: focus existing textarea). */
   focusTrigger?: number;
+  /** Cursor position to set when focus is triggered. null = start (default). */
+  focusCursorPos?: number | null;
   /** PR-C: another user updated this block while we're editing it. */
   remoteUpdatePending?: boolean;
   onSaved?: (res: PatchBlockResponse) => void;
@@ -100,6 +102,7 @@ const BlockItem = memo(function BlockItem({
   editLocked = false,
   sourceMode = false,
   focusTrigger = 0,
+  focusCursorPos = null,
 }: BlockItemProps) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<"view" | "selected" | "editing">(sourceMode ? "editing" : "view");
@@ -150,9 +153,9 @@ const BlockItem = memo(function BlockItem({
     if (!sourceMode || focusTrigger === 0 || !textareaRef.current) return;
     const ta = textareaRef.current;
     ta.focus();
-    // Cursor at start (e.g. after Enter creates new block)
-    ta.selectionStart = ta.selectionEnd = 0;
-  }, [focusTrigger, sourceMode]);
+    const pos = focusCursorPos != null ? Math.min(focusCursorPos, ta.value.length) : 0;
+    ta.selectionStart = ta.selectionEnd = pos;
+  }, [focusTrigger, sourceMode, focusCursorPos]);
 
   // Auto-grow textarea height to fit content
   useEffect(() => {

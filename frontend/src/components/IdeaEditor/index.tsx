@@ -71,6 +71,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
   const [autoEditBlockId, setAutoEditBlockId] = useState<string | null>(null);
   const [focusTrigger, setFocusTrigger] = useState(0);
+  const [focusCursorPos, setFocusCursorPos] = useState<number | null>(null);
 
   const cmRef = useRef<CodeMirrorSourceHandle>(null);
   const previewRef = useRef<TiptapPreviewHandle>(null);
@@ -524,6 +525,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       setContent(contentRef.current);
       versionRef.current = bRes.version;
       setFocusBlockId(res.block.id);
+      setFocusCursorPos(0);
       setFocusTrigger(n => n + 1);
     } catch (err) {
       console.error("[IdeaEditor] split failed:", err);
@@ -534,19 +536,22 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     const idx = blocks.findIndex(b => b.id === blockId);
     if (idx <= 0) return; // no previous block to merge into
     const prevBlock = blocks[idx - 1];
+    // Cursor should land at the join point: end of prev block's original content (minus trailing \n)
+    const prevContentTrimmed = prevBlock.content.replace(/\n$/, "");
+    const cursorPos = prevContentTrimmed.length;
+    // Update focus BEFORE API calls so SSE delete event won't match the deleted block
+    setFocusBlockId(prevBlock.id);
+    focusBlockIdRef.current = prevBlock.id;
     try {
-      // 1. Append content to previous block
-      const mergedContent = prevBlock.content.replace(/\n$/, "") + contentToAppend;
+      const mergedContent = prevContentTrimmed + contentToAppend;
       await patchIdeaBlock(ideaId, prevBlock.id, { content: mergedContent + "\n" });
-      // 2. Delete current block
       await deleteIdeaBlock(ideaId, blockId);
-      // 3. Refetch and focus previous block
       const bRes = await fetchIdeaBlocks(ideaId);
       setBlocks(bRes.blocks);
       contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
       setContent(contentRef.current);
       versionRef.current = bRes.version;
-      setFocusBlockId(prevBlock.id);
+      setFocusCursorPos(cursorPos);
       setFocusTrigger(n => n + 1);
     } catch (err) {
       console.error("[IdeaEditor] merge failed:", err);
@@ -748,6 +753,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                   sourceMode={mode === "source"}
                   autoFocus={autoEditBlockId === block.id}
                   focusTrigger={focusBlockId === block.id ? focusTrigger : 0}
+                  focusCursorPos={focusBlockId === block.id ? focusCursorPos : null}
                   remoteUpdatePending={pendingRemoteBlockRef.current.has(block.id)}
                   onSaved={handleBlockSaved}
                   onDeleted={handleBlockDeleted}
