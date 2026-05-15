@@ -18,6 +18,7 @@ import {
   createBlock,
   patchBlock,
   batchBlockUpdate,
+  commitBlockMutation,
 } from "../services/ideaBlockService.js";
 import {
   CreateBlockSchema,
@@ -516,28 +517,23 @@ router.delete(
   "/:ideaId/blocks/:blockId",
   asyncHandler(async (req: Request, res: Response) => {
     const { ideaId, blockId } = req.params;
-    let ctx;
-    try {
-      ctx = await getBlockWithContext(prisma as any, blockId);
-    } catch (err) {
-      if (err instanceof IdeaBlockNotFoundError) {
-        res.status(404).json({ error: err.message });
-        return;
-      }
-      throw err;
+    const clientId = getClientId(req);
+    const block = await prisma.ideaBlock.findUnique({ where: { id: blockId } });
+    if (!block) {
+      res.status(404).json({ error: `block not found: ${blockId}` });
+      return;
     }
-    if (ctx.idea.id !== ideaId) {
+    if (block.ideaId !== ideaId) {
       res.status(400).json({ error: "blockId does not belong to ideaId" });
       return;
     }
-    const newFullContent = spliceBlockDelete(ctx);
-    const result = await commitContentMutation(
-      ctx.idea.id,
-      newFullContent,
-      ctx.idea.workspaceId,
-      getClientId(req),
-    );
-    res.json(result);
+    const result = await prisma.$transaction(async (tx: any) => {
+      await tx.ideaBlock.delete({ where: { id: blockId } });
+      return commitBlockMutation(tx, ideaId, clientId, {
+        blockEvents: [{ type: "idea:block-delete", payload: { blockId } }],
+      });
+    });
+    res.json({ id: result.id, version: result.version, content: result.content });
   }),
 );
 
