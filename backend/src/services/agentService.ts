@@ -449,6 +449,35 @@ export async function appendEpisodicMemory(
   return { path: full, filename };
 }
 
+/**
+ * Upsert a single episodic memory file per conversation. Uses a deterministic
+ * filename `conv-summary-<convId-last12>.md` so repeated calls overwrite
+ * instead of creating duplicates. Called by generateConversationSummary.
+ */
+export async function upsertConversationEpisodic(
+  agentId: string,
+  conversationId: string,
+  mem: EpisodicMemoryInput,
+): Promise<{ path: string; filename: string }> {
+  await ensureAgentFiles(agentId);
+  const convSlug = conversationId.slice(-12);
+  const filename = `conv-summary-${convSlug}.md`;
+  const full = path.join(agentDir(agentId), "memory", "episodic", filename);
+  const body = [
+    `# ${mem.title}`,
+    "",
+    `Tags: ${[...(mem.tags || []), `conv:${convSlug}`].map(t => `#${t}`).join(" ")}`,
+    `Timestamp: ${new Date().toISOString()}`,
+    `Conversation: ${conversationId}`,
+    "",
+    mem.body.trim(),
+    "",
+  ].join("\n");
+  assertSize(body, `memory/episodic/${filename}`);
+  await fs.writeFile(full, body, "utf8"); // overwrite if exists
+  return { path: full, filename };
+}
+
 // ─── Working memory (turn-by-turn log, gets compressed into episodic) ───
 
 /**
