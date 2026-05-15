@@ -880,18 +880,19 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     if (container) {
       resizeContainerRect.current = container.getBoundingClientRect();
     }
+    let lastX = e.clientX;
+    let lastRatio = resizeStartRatio.current;
     const moveHandler = (ev: PointerEvent) => {
+      lastX = ev.clientX;
       const containerWidth = resizeContainerRect.current?.width ?? 600;
       const dx = ev.clientX - resizeStartX.current;
-      const deltaRatio = dx / (containerWidth - 6); // subtract divider width
-      let newRatio = resizeStartRatio.current + deltaRatio;
-      newRatio = Math.max(0.2, Math.min(0.8, newRatio));
-      // Optimistic local update
+      const deltaRatio = dx / (containerWidth - 12); // subtract divider width
+      lastRatio = Math.max(0.2, Math.min(0.8, resizeStartRatio.current + deltaRatio));
       setBlocks(prev => prev.map(b => {
         if ((b.props as any)?.columnGroupId !== groupId) return b;
         const pos = (b.props as any)?.columnPosition;
-        if (pos === "left") return { ...b, props: { ...b.props, columnRatio: newRatio } };
-        if (pos === "right") return { ...b, props: { ...b.props, columnRatio: 1 - newRatio } };
+        if (pos === "left") return { ...b, props: { ...b.props, columnRatio: lastRatio } };
+        if (pos === "right") return { ...b, props: { ...b.props, columnRatio: 1 - lastRatio } };
         return b;
       }));
     };
@@ -899,28 +900,13 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       document.removeEventListener("pointermove", moveHandler);
       document.removeEventListener("pointerup", upHandler);
       setResizingGroup(null);
-      // Persist final ratio
       const leftBlock = blocks.find(b => (b.props as any)?.columnGroupId === groupId && (b.props as any)?.columnPosition === "left");
       const rightBlock = blocks.find(b => (b.props as any)?.columnGroupId === groupId && (b.props as any)?.columnPosition === "right");
-      // Read current ratio from state
-      // We need to get the latest ratio from the DOM or recalculate
-      const containerWidth = resizeContainerRect.current?.width ?? 600;
-      const dx = (document as any).__lastResizeX - resizeStartX.current;
-      const deltaRatio = dx / (containerWidth - 6);
-      let finalRatio = resizeStartRatio.current + deltaRatio;
-      finalRatio = Math.max(0.2, Math.min(0.8, finalRatio));
-      if (leftBlock) void patchIdeaBlock(ideaId, leftBlock.id, { props: { columnGroupId: groupId, columnPosition: "left", columnRatio: finalRatio } });
-      if (rightBlock) void patchIdeaBlock(ideaId, rightBlock.id, { props: { columnGroupId: groupId, columnPosition: "right", columnRatio: 1 - finalRatio } });
+      if (leftBlock) void patchIdeaBlock(ideaId, leftBlock.id, { props: { columnGroupId: groupId, columnPosition: "left", columnRatio: lastRatio } });
+      if (rightBlock) void patchIdeaBlock(ideaId, rightBlock.id, { props: { columnGroupId: groupId, columnPosition: "right", columnRatio: 1 - lastRatio } });
     };
-    // Track last X for upHandler
-    const trackMove = (ev: PointerEvent) => { (document as any).__lastResizeX = ev.clientX; };
-    (document as any).__lastResizeX = e.clientX;
     document.addEventListener("pointermove", moveHandler);
-    document.addEventListener("pointermove", trackMove);
-    document.addEventListener("pointerup", () => {
-      document.removeEventListener("pointermove", trackMove);
-      upHandler();
-    }, { once: true });
+    document.addEventListener("pointerup", upHandler, { once: true });
   }, [blocks, ideaId]);
 
   // ── Drag-drop for images (both modes) ──
@@ -1144,10 +1130,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                         <div style={{ position: "relative" }}>
                           {/* Vertical anchor lines for column drop */}
                           {dropTarget?.type === "column-left" && dropTarget.targetBlockId === block.id && (
-                            <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
+                            <div style={{ position: "absolute", left: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
                           )}
                           {dropTarget?.type === "column-right" && dropTarget.targetBlockId === block.id && (
-                            <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
+                            <div style={{ position: "absolute", right: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
                           )}
                           <BlockItem
                             block={block}
@@ -1206,10 +1192,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                     const rightIdx = blocks.findIndex(b => b.id === right.id);
                     blockIdx += 2;
                     return (
-                      <div key={groupId} style={{ display: "grid", gridTemplateColumns: `${ratio}fr 6px ${1 - ratio}fr`, gap: 0, alignItems: "start" }}>
+                      <div key={groupId} style={{ display: "grid", gridTemplateColumns: `${ratio}fr 12px ${1 - ratio}fr`, gap: 0, alignItems: "start" }}>
                         <div style={{ position: "relative" }}>
                           {dropTarget?.type === "column-left" && dropTarget.targetBlockId === left.id && (
-                            <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
+                            <div style={{ position: "absolute", left: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
                           )}
                           <BlockItem
                             block={left}
@@ -1242,24 +1228,44 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                             }}
                           />
                         </div>
-                        {/* Column resize handle */}
+                        {/* Column resize handle — 12px wide, 2px visible bar in center */}
                         <div
                           style={{
-                            width: 6,
+                            width: 12,
                             cursor: "col-resize",
-                            background: resizingGroup === groupId ? "var(--primary, #1456F0)" : "transparent",
-                            borderRadius: 3,
                             alignSelf: "stretch",
-                            transition: "background 0.12s",
                             minHeight: 24,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            position: "relative",
                           }}
-                          onPointerEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--border-default, #e0e0e0)"; }}
-                          onPointerLeave={(e) => { if (resizingGroup !== groupId) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                          onPointerEnter={(e) => {
+                            const bar = e.currentTarget.querySelector("[data-resize-bar]") as HTMLElement;
+                            if (bar) bar.style.background = "var(--border-strong)";
+                          }}
+                          onPointerLeave={(e) => {
+                            if (resizingGroup !== groupId) {
+                              const bar = e.currentTarget.querySelector("[data-resize-bar]") as HTMLElement;
+                              if (bar) bar.style.background = "var(--border-light)";
+                            }
+                          }}
                           onPointerDown={(e) => handleColumnResizeStart(groupId, e)}
-                        />
+                        >
+                          <div
+                            data-resize-bar=""
+                            style={{
+                              width: 2,
+                              height: "100%",
+                              borderRadius: 1,
+                              background: resizingGroup === groupId ? "var(--primary)" : "var(--border-light)",
+                              transition: "background 0.12s",
+                            }}
+                          />
+                        </div>
                         <div style={{ position: "relative" }}>
                           {dropTarget?.type === "column-right" && dropTarget.targetBlockId === right.id && (
-                            <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
+                            <div style={{ position: "absolute", right: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
                           )}
                           <BlockItem
                             block={right}
