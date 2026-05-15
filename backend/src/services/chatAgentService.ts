@@ -297,11 +297,22 @@ const SUMMARY_PROMPT = `你是一个对话摘要助手。把下面的对话历�
 - 已完成的关键操作（创建了什么表/文件、修改了什么）
 - 未完成的待办事项
 - 重要的技术决策和约束
+- 关键的技术细节（字段名、文件名、ID、架构选择）
 
-输出纯文本，不要 markdown 标题，控制在 500 字以内。`;
+输出纯文本，不要 markdown 标题，控制在 800 字以内。`;
 
+/**
+ * Generate conversation summary AND episodic memory in one LLM call.
+ *
+ * Triggered when token-aware windowing drops messages. Does two things:
+ * 1. Updates conv.summary (serves current conversation — injected into system prompt)
+ * 2. Writes an episodic .md file (serves future conversations — recalled by keyword match)
+ *
+ * Replaces the old deterministic compressWorkingMemory which only did char-truncation.
+ */
 async function generateConversationSummary(
   conversationId: string,
+  agentId: string,
   droppedMessages: Message[],
   existingSummary: string | undefined,
 ): Promise<void> {
@@ -336,9 +347,50 @@ async function generateConversationSummary(
       if (ev.kind === "error") throw new Error(ev.message);
     }
 
-    if (text.trim()) {
-      await convStore.updateConversation(conversationId, { summary: text.trim() });
-      logAgent({ event: "conversation_summary_generated", conversationId, summaryLen: text.trim().length });
+    if (!text.trim()) return;
+
+    // 1. Update conversation summary (current conversation)
+    await convStore.updateConversation(conversationId, { summary: text.trim() });
+    logAgent({ event: "conversation_summary_generated", conversationId, summaryLen: text.trim().length });
+
+    // 2. Write episodic memory (future conversations) — reuses the same
+    //    LLM-generated summary instead of the old deterministic truncation.
+    //    Also clear the working memory entries that were just summarized.
+    try {
+      const { appendEpisodicMemory, clearWorkingMemory } = await import("./agentService.js");
+
+      // Extract keywords for tags (same logic as old compressWorkingMemory)
+      const freq = new Map<string, number>();
+      for (const m of droppedMessages) {
+        const toks = (m.content || "").toLowerCase().match(/[a-z0-9_]+|[\u4e00-\u9fa5]+/g) || [];
+        for (const t of toks) {
+          if (t.length < 2) continue;
+          freq.set(t, (freq.get(t) ?? 0) + 1);
+        }
+      }
+      const topKeywords = [...freq.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([t]) => t);
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const title = topKeywords.length
+        ? `${dateStr} 对话摘要（${topKeywords.slice(0, 3).join(" / ")}）`
+        : `${dateStr} 对话摘要（${droppedMessages.length} 条消息）`;
+
+      const tags = ["conversation-summary", ...topKeywords.slice(0, 3)];
+      tags.push(`conv:${conversationId.slice(-12)}`);
+
+      await appendEpisodicMemory(agentId, { title, body: text.trim(), tags });
+      await clearWorkingMemory(agentId, conversationId);
+      logAgent({ event: "episodic_memory_from_summary", conversationId, agentId, titleLen: title.length });
+    } catch (epErr) {
+      // Non-fatal — summary was already saved, episodic is best-effort
+      logAgent({
+        event: "episodic_memory_error",
+        conversationId,
+        error: epErr instanceof Error ? epErr.message : String(epErr),
+      });
     }
   } catch (err) {
     logAgent({
@@ -1237,7 +1289,7 @@ async function assembleInput(
     // Only trigger if the dropped messages aren't already covered by an
     // existing summary (avoid re-summarizing the same prefix repeatedly).
     const droppedMessages = history.slice(0, droppedCount);
-    void generateConversationSummary(conversationId, droppedMessages, conv?.summary);
+    void generateConversationSummary(conversationId, agentId, droppedMessages, conv?.summary);
   }
 
   const input: ArkInputItem[] = [
@@ -3276,9 +3328,12 @@ async function* runAgentImpl(
   // compression pass if the buffer is big enough. Compression is
   // deterministic (no LLM call) so it's cheap; we still detach it so slow
   // filesystems can't delay the user's `done` event.
+  // Append this turn to working memory (for keyword-based recall).
+  // Compression into episodic memory is now handled by generateConversationSummary
+  // when the token window truncates, rather than on a fixed 10-turn interval.
   agentSvc
     .migrateLegacyWorkingMemory(agentId)
-    .catch(() => undefined) // 幂等,失败不阻塞 append
+    .catch(() => undefined)
     .then(() =>
       agentSvc.appendWorkingMemory(agentId, {
         timestamp: new Date().toISOString(),
@@ -3288,21 +3343,6 @@ async function* runAgentImpl(
         toolCalls: accumulatedToolCalls.map((c) => c.tool),
       })
     )
-    .then(async () => {
-      // V3.0 PR2: per-conv compaction
-      const result = await agentSvc.compressWorkingMemory(agentId, {
-        minTurns: WORKING_MEMORY_COMPRESS_THRESHOLD,
-        conversationId,
-      });
-      if (result.compressed) {
-        logAgent({
-          event: "working_memory_compressed",
-          agentId,
-          turns: result.turns,
-          filename: result.filename,
-        });
-      }
-    })
     .catch((err) => {
       logAgent({
         event: "working_memory_error",

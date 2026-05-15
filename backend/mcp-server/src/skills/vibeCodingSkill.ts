@@ -126,11 +126,41 @@ function App() {
 
 复杂 Demo（≥3 个模块/页面）**必须先 plan，再用 subagent 并发写文件**。
 
-#### 阶段 1：Plan（host 自己做，不调工具）
+#### 阶段 1：Plan + 维护 _plan.md（关键！防止长对话丢失上下文）
 
-1. 如果改已有 Demo → \`read_demo_file\` 看现有代码结构
-2. 列出要写/改的文件清单 + 每个文件的职责 + 依赖关系
-3. 把文件分为：**可并行写的组件文件** vs **需要等组件完成后再写的入口文件**
+1. **首次开始 Demo 开发**时，\`write_demo_file(demoId, "_plan.md", ...)\` 创建工作状态文件
+2. **每次继续 Demo 开发**时，先 \`read_demo_file(demoId, "_plan.md")\` 恢复上下文
+3. **每完成一个阶段**后，\`write_demo_file(demoId, "_plan.md", ...)\` 更新状态
+
+\`_plan.md\` 内容模板：
+\`\`\`markdown
+# Demo Plan: [名称]
+## 架构决策
+- 模板: react-spa
+- 路由: sidebar 三项（仪表盘/需求/缺陷）
+- 主题: CSS variables, 支持 LM/DM 切换
+## 数据源
+- tbl_requirements (fld_name, fld_assignee, fld_priority, fld_status, ...)
+- tbl_bugs (fld_title, fld_severity, ...)
+## 文件清单
+- [x] lib/types.ts — 常量 + 类型定义
+- [x] lib/hooks.ts — useSchema, useLabel, 主题 hook
+- [x] components/Dashboard.tsx — KPI 卡片 + 4 个图表
+- [ ] components/BugsView.tsx — 缺陷列表 + CRUD
+- [x] app.tsx — 路由 + 布局
+## 当前状态
+Build 成功，Dashboard 和 RequirementsView 已完成。BugsView 待实现。
+## 待办
+- 实现 BugsView
+- Dark mode 配色微调
+\`\`\`
+
+这个文件**不参与 build**（esbuild 忽略 .md），纯粹是 Agent 的工作记忆。
+好处：不管对话多长、上下文窗口怎么截断，Agent 读这个文件就能完整恢复"做到哪了、还差什么"。
+
+4. 如果改已有 Demo → \`read_demo_file\` 看现有代码结构
+5. 列出要写/改的文件清单 + 每个文件的职责 + 依赖关系
+6. 把文件分为：**可并行写的组件文件** vs **需要等组件完成后再写的入口文件**
 
 #### 阶段 2：并发写组件文件（spawn_subagent）
 

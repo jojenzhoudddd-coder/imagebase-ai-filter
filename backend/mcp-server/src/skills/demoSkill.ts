@@ -217,12 +217,12 @@ const label = (fid: string, v: any) => {
 ## 分步实现（防止输出截断 + 并发加速）
 
 复杂 Demo（≥3 个独立模块）先 plan，再用 \`compose_workflow\` 并发写组件文件，最后 host 串 app.tsx + build。
+- **维护 \`_plan.md\`**：每次开始/继续 Demo 开发，用 \`write_demo_file\` 维护一个 \`_plan.md\` 记录架构、文件清单、完成状态、待办。继续开发时先 \`read_demo_file(demoId, "_plan.md")\` 恢复上下文。详见 vibe-coding-skill。
 - 每个逻辑模块一个文件：\`components/Dashboard.tsx\`、\`components/BugList.tsx\` 等
 - app.tsx 只做 import + 路由，不堆业务逻辑
 - 并发分支的 subagent prompt 要自包含（demoId + 字段 schema + 数据契约），不要让 subagent 再查
 - ≤2 个文件直接串行写，不值得起 workflow
 - 修改已有 Demo 时先 read_demo_file 看结构，增量改而非整体重写
-- 详见 vibe-coding-skill 的"分步实现策略"
 
 ## 硬规则
 
