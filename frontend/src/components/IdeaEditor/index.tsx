@@ -674,14 +674,13 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
 
   const handleBlockDragStart = useCallback((blockId: string) => {
     if (mode === "source" || streaming) return;
-    console.log("[drag] START blockId:", blockId);
-    setDragBlockId(blockId);
     dragActive.current = false;
+    const dragId = blockId; // capture in closure
     const handler = (e: PointerEvent) => {
       if (!dragActive.current) {
         dragActive.current = true;
         dragStartPos.current = { x: e.clientX, y: e.clientY };
-        console.log("[drag] ACTIVE");
+        setDragBlockId(dragId); // set on first move, not on pointerdown
       }
       setGhostPos({ x: e.clientX, y: e.clientY });
       // Calculate drop target
@@ -724,25 +723,19 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           foundTarget = { type: "reorder", insertIdx: 0 };
         }
       }
-      if (foundTarget) console.log("[drag] dropTarget:", foundTarget);
       setDropTarget(foundTarget);
     };
     const upHandler = () => {
       document.removeEventListener("pointermove", handler);
       document.removeEventListener("pointerup", upHandler);
       document.removeEventListener("keydown", escHandler);
-      if (dragActive.current && dropTarget) {
-        // Will be handled by the effect below
-      }
-      // Commit happens via the dragBlockId + dropTarget effect
-      // Just mark inactive; the state update will trigger commit
       if (!dragActive.current) {
-        // No real drag happened — just deselect
+        // No real drag happened
         setDragBlockId(null);
         setDropTarget(null);
         setGhostPos(null);
       } else {
-        // Drop will be handled in effect
+        // Drop: clear ghost, keep dragBlockId+dropTarget for commit effect
         setGhostPos(null);
         dragActive.current = false;
       }
@@ -1344,7 +1337,6 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             )}
           </div>
           {/* Drag ghost */}
-          {console.log("[drag] RENDER dragBlockId:", dragBlockId, "ghostPos:", ghostPos)}
           {dragBlockId && ghostPos && createPortal(
             <div style={{
               position: "fixed",
