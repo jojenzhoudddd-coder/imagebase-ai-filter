@@ -837,7 +837,12 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                 }
               }
             }
-            await moveIdeaBlock(ideaId, blockId, target.insertIdx);
+            // Adjust insertIdx for the "remove then insert" semantics:
+            // if the dragged block is before the target, removing it shifts target down by 1
+            const dragIdx = blocks.findIndex(b => b.id === blockId);
+            let adjustedIdx = target.insertIdx;
+            if (dragIdx >= 0 && dragIdx < target.insertIdx) adjustedIdx--;
+            await moveIdeaBlock(ideaId, blockId, adjustedIdx);
             const bRes = await fetchIdeaBlocks(ideaId);
             setBlocks(bRes.blocks);
             contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
