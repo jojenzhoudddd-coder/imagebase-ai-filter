@@ -157,7 +157,7 @@
 /* Drop indicator: highlight the cursor line when dragging files over */
 .idea-editor-source .cm-editor.cm-drop-target .cm-cursor {
   border-left-color: var(--primary, #3b82f6);
-  border-left-width: 2px;
+  border-left-width: 1px;
 }
 .idea-editor-source .cm-editor.cm-drop-target .cm-activeLine {
   background: rgba(59, 130, 246, 0.08);

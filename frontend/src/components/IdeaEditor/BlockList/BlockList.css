@@ -91,7 +91,7 @@
   opacity: 0.45;
 }
 
-/* Drop indicator — 2px line above/below target, aligned to content edge
+/* Drop indicator — 1px line above/below target, aligned to content edge
  * (matches .idea-block padding-left: 36px). */
 .idea-block.drop-indicator-above::before,
 .idea-block.drop-indicator-below::after {
@@ -99,7 +99,7 @@
   position: absolute;
   left: 36px;
   right: 0;
-  height: 2px;
+  height: 1px;
   background: var(--color-primary, #1456f0);
   border-radius: 1px;
   pointer-events: none;
@@ -201,7 +201,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 1px;
   background: var(--color-primary, #1456f0);
   border-radius: 1px;
   pointer-events: none;
