@@ -227,13 +227,13 @@ router.get("/:ideaId", asyncHandler(async (req: Request, res: Response) => {
   });
 }));
 
-// PUT /api/ideas/:ideaId/layout — update block layout tree
-// body: { layout: BlockLayoutNode | null }
+// PUT /api/ideas/:ideaId/layout — update block layout tree(s)
+// body: { layout: BlockLayoutNode[] | BlockLayoutNode | null }
 router.put("/:ideaId/layout", asyncHandler(async (req: Request, res: Response) => {
   const { layout } = req.body;
-  // layout can be null (clear) or a JSON object
+  // layout can be null (clear), a JSON array, or a single JSON object (backward compat)
   if (layout !== null && typeof layout !== "object") {
-    res.status(400).json({ error: "layout must be a JSON object or null" });
+    res.status(400).json({ error: "layout must be a JSON object, array, or null" });
     return;
   }
   const existing = await prisma.idea.findUnique({ where: { id: req.params.ideaId } });

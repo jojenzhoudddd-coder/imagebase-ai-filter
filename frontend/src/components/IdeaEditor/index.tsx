@@ -28,6 +28,10 @@ import {
   moveBlockInLayout,
   updateRatioAtPath,
   migrateColumnPropsToLayout,
+  findTreeForBlock,
+  allTreeBlockIds,
+  updateTreeInLayouts,
+  removeTreeFromLayouts,
 } from "./blockLayoutUtils";
 import type { BlockLayoutNode } from "../../types";
 import type { PatchBlockResponse } from "../../api";
@@ -85,7 +89,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const [autoEditBlockId, setAutoEditBlockId] = useState<string | null>(null);
   const [focusTrigger, setFocusTrigger] = useState(0);
   const [focusCursorPos, setFocusCursorPos] = useState<number | null>(null);
-  const [layout, setLayout] = useState<BlockLayoutNode | null>(null);
+  const [layouts, setLayouts] = useState<BlockLayoutNode[]>([]);
   const [layoutDropTarget, setLayoutDropTarget] = useState<LayoutDropTarget | null>(null);
   const [resizingLayoutPath, setResizingLayoutPath] = useState<string | null>(null);
 
@@ -150,7 +154,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     setLoaded(false);
     setContent("");
     setBlocks([]);
-    setLayout(null);
+    setLayouts([]);
     setSaveStatus("idle");
     versionRef.current = 0;
     Promise.all([
@@ -165,9 +169,13 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         if (loadedBlocks.length > 0) {
           setBlocks(loadedBlocks);
         }
-        // Load layout from idea or migrate from old column props
+        // Load layout from idea — backward compat: single tree or array
         if (idea.layout) {
-          setLayout(idea.layout as BlockLayoutNode);
+          if (Array.isArray(idea.layout)) {
+            setLayouts(idea.layout as BlockLayoutNode[]);
+          } else {
+            setLayouts([idea.layout as BlockLayoutNode]);
+          }
         }
         // Old column-group auto-migration disabled — layout tree is the only system now
         if (!idea.content) setMode("source");
@@ -494,14 +502,18 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   }, [ideaId]);
 
   const handleBlockDeleted = useCallback((_blockId: string) => {
-    // Remove block from layout tree if present
-    setLayout((prev) => {
-      if (!prev) return prev;
-      const newLayout = removeFromLayout(prev, _blockId);
-      if (newLayout !== prev) {
-        void saveIdeaLayout(ideaId, newLayout);
+    // Remove block from whichever layout tree contains it
+    setLayouts((prev) => {
+      const tree = findTreeForBlock(prev, _blockId);
+      if (!tree) return prev;
+      const newTree = removeFromLayout(tree, _blockId);
+      const newLayouts = newTree
+        ? updateTreeInLayouts(prev, tree, newTree)
+        : removeTreeFromLayouts(prev, tree);
+      if (newLayouts !== prev) {
+        void saveIdeaLayout(ideaId, newLayouts.length > 0 ? newLayouts : null);
       }
-      return newLayout;
+      return newLayouts;
     });
     // Refetch blocks and content after delete
     fetchIdeaBlocks(ideaId).then((bRes) => {
@@ -768,8 +780,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           const xFrac = relX / width;
           const yFrac = relY / height;
           const idx = blocks.findIndex(b => b.id === elBlockId);
-          // Check if target block is inside the layout tree
-          const treeIds = layout ? new Set(collectLeafIds(layout)) : new Set<string>();
+          // Check if target block is inside any layout tree
+          const treeIds = allTreeBlockIds(layouts);
           const inTree = treeIds.has(elBlockId!);
 
           if (inTree) {
@@ -862,16 +874,16 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     document.addEventListener("pointermove", handler);
     document.addEventListener("pointerup", upHandler);
     document.addEventListener("keydown", escHandler);
-  }, [mode, streaming, blocks]);
+  }, [mode, streaming, blocks, layouts]);
 
   // ── Layout tree persistence (debounced) ──
   const layoutSaveTimerRef = useRef<number | null>(null);
-  const persistLayout = useCallback((newLayout: BlockLayoutNode | null) => {
-    setLayout(newLayout);
+  const persistLayouts = useCallback((newLayouts: BlockLayoutNode[]) => {
+    setLayouts(newLayouts);
     if (layoutSaveTimerRef.current) window.clearTimeout(layoutSaveTimerRef.current);
     layoutSaveTimerRef.current = window.setTimeout(() => {
       layoutSaveTimerRef.current = null;
-      void saveIdeaLayout(ideaId, newLayout);
+      void saveIdeaLayout(ideaId, newLayouts.length > 0 ? newLayouts : null);
     }, 800);
   }, [ideaId]);
 
@@ -879,14 +891,18 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const commitDropRef = useRef<(blockId: string, target: DropTarget) => void>(() => {});
   const commitDrop = useCallback((blockId: string, target: DropTarget) => {
         if (target.type === "reorder") {
-          // If the block is in the layout tree, remove it from there first
-          setLayout((prev) => {
-            if (!prev) return prev;
-            const newLayout = removeFromLayout(prev, blockId);
-            if (newLayout !== prev) {
-              void saveIdeaLayout(ideaId, newLayout);
+          // If the block is in any layout tree, remove it from there first
+          setLayouts((prev) => {
+            const tree = findTreeForBlock(prev, blockId);
+            if (!tree) return prev;
+            const newTree = removeFromLayout(tree, blockId);
+            const newLayouts = newTree
+              ? updateTreeInLayouts(prev, tree, newTree)
+              : removeTreeFromLayouts(prev, tree);
+            if (newLayouts !== prev) {
+              void saveIdeaLayout(ideaId, newLayouts.length > 0 ? newLayouts : null);
             }
-            return newLayout;
+            return newLayouts;
           });
           const draggedBlock = blocks.find(b => b.id === blockId);
           const groupId = (draggedBlock?.props as any)?.columnGroupId;
@@ -990,19 +1006,34 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           const directionMap = { top: "top", bottom: "bottom", left: "left", right: "right" } as const;
           const direction = directionMap[target.side];
           const targetBlockId = target.targetBlockId;
-          const treeIds = layout ? new Set(collectLeafIds(layout)) : new Set<string>();
-          const sourceInTree = treeIds.has(blockId);
-          const targetInTree = treeIds.has(targetBlockId);
+          const sourceTree = findTreeForBlock(layouts, blockId);
+          const targetTree = findTreeForBlock(layouts, targetBlockId);
 
-          let newLayout: BlockLayoutNode;
-          if (sourceInTree && targetInTree && layout) {
-            // Both in tree → move within tree
-            newLayout = moveBlockInLayout(layout, blockId, targetBlockId, direction) ?? layout;
-          } else if (targetInTree && layout) {
-            // Target in tree, source not → insert source next to target
-            newLayout = insertIntoLayout(layout, targetBlockId, blockId, direction);
-          } else {
-            // Target not in tree → create a fresh split with these two blocks
+          let newLayouts = [...layouts];
+
+          if (sourceTree && targetTree && sourceTree === targetTree) {
+            // Both in same tree → move within that tree
+            const moved = moveBlockInLayout(sourceTree, blockId, targetBlockId, direction) ?? sourceTree;
+            newLayouts = updateTreeInLayouts(newLayouts, sourceTree, moved);
+          } else if (sourceTree && targetTree && sourceTree !== targetTree) {
+            // Source in one tree, target in another → remove from source, insert in target
+            const withoutSource = removeFromLayout(sourceTree, blockId);
+            newLayouts = withoutSource
+              ? updateTreeInLayouts(newLayouts, sourceTree, withoutSource)
+              : removeTreeFromLayouts(newLayouts, sourceTree);
+            const targetTreeRef = newLayouts.find((t) => t === targetTree) ?? targetTree;
+            const withInserted = insertIntoLayout(targetTreeRef, targetBlockId, blockId, direction);
+            newLayouts = updateTreeInLayouts(newLayouts, targetTreeRef, withInserted);
+          } else if (targetTree && !sourceTree) {
+            // Target in tree, source not → insert source next to target in that tree
+            const withInserted = insertIntoLayout(targetTree, targetBlockId, blockId, direction);
+            newLayouts = updateTreeInLayouts(newLayouts, targetTree, withInserted);
+          } else if (sourceTree && !targetTree) {
+            // Source in a tree, target not → remove from source, create new tree with source+target
+            const withoutSource = removeFromLayout(sourceTree, blockId);
+            newLayouts = withoutSource
+              ? updateTreeInLayouts(newLayouts, sourceTree, withoutSource)
+              : removeTreeFromLayouts(newLayouts, sourceTree);
             const orientation: "h" | "v" = direction === "left" || direction === "right" ? "h" : "v";
             const isFirst = direction === "left" || direction === "top";
             const sourceLeaf: BlockLayoutNode = { kind: "leaf", blockId };
@@ -1012,20 +1043,23 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
               first: isFirst ? sourceLeaf : targetLeaf,
               second: isFirst ? targetLeaf : sourceLeaf,
             };
-            // If source was in tree, remove it first
-            if (sourceInTree && layout) {
-              const without = removeFromLayout(layout, blockId);
-              // Compose: put existing tree + new split in a vertical split
-              newLayout = without
-                ? { kind: "split", orientation: "v", ratio: 0.5, first: without, second: newSplit }
-                : newSplit;
-            } else {
-              newLayout = newSplit;
-            }
+            newLayouts.push(newSplit);
+          } else {
+            // Neither in a tree → create new tree and push to layouts
+            const orientation: "h" | "v" = direction === "left" || direction === "right" ? "h" : "v";
+            const isFirst = direction === "left" || direction === "top";
+            const sourceLeaf: BlockLayoutNode = { kind: "leaf", blockId };
+            const targetLeaf: BlockLayoutNode = { kind: "leaf", blockId: targetBlockId };
+            const newSplit: BlockLayoutNode = {
+              kind: "split", orientation, ratio: 0.5,
+              first: isFirst ? sourceLeaf : targetLeaf,
+              second: isFirst ? targetLeaf : sourceLeaf,
+            };
+            newLayouts.push(newSplit);
           }
-          persistLayout(newLayout);
+          persistLayouts(newLayouts);
         }
-  }, [blocks, ideaId, layout, persistLayout]);
+  }, [blocks, ideaId, layouts, persistLayouts]);
   commitDropRef.current = commitDrop;
 
   // Column resize handler — key format: "groupId:dividerIndex"
@@ -1085,15 +1119,17 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   }, [blocks, ideaId]);
 
   // ── Layout tree resize handler ──
-  const handleLayoutResizeStart = useCallback((path: ("first" | "second")[], e: React.PointerEvent) => {
-    if (!layout || layout.kind !== "split") return;
+  // treeIndex identifies which tree in layouts[] to resize
+  const handleLayoutResizeStart = useCallback((treeIndex: number, path: ("first" | "second")[], e: React.PointerEvent) => {
+    const tree = layouts[treeIndex];
+    if (!tree || tree.kind !== "split") return;
     e.preventDefault();
     e.stopPropagation();
-    const pathStr = path.join(".");
+    const pathStr = `${treeIndex}:${path.join(".")}`;
     setResizingLayoutPath(pathStr);
 
     // Navigate to the split node at the given path
-    let splitNode: BlockLayoutNode = layout;
+    let splitNode: BlockLayoutNode = tree;
     for (const step of path) {
       if (splitNode.kind !== "split") return;
       splitNode = step === "first" ? splitNode.first : splitNode.second;
@@ -1118,7 +1154,14 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       const delta = isH ? ev.clientX - startX : ev.clientY - startY;
       const deltaRatio = delta / (containerSize - 12);
       lastRatio = Math.max(0.15, Math.min(0.85, startRatio + deltaRatio));
-      setLayout((prev) => prev ? updateRatioAtPath(prev, path, lastRatio) : prev);
+      setLayouts((prev) => {
+        const t = prev[treeIndex];
+        if (!t) return prev;
+        const updated = updateRatioAtPath(t, path, lastRatio);
+        const next = [...prev];
+        next[treeIndex] = updated;
+        return next;
+      });
     };
 
     const upHandler = () => {
@@ -1126,40 +1169,46 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       document.removeEventListener("pointerup", upHandler);
       setResizingLayoutPath(null);
       // Persist
-      setLayout((prev) => {
-        if (prev) {
-          const final = updateRatioAtPath(prev, path, lastRatio);
-          void saveIdeaLayout(ideaId, final);
-          return final;
-        }
-        return prev;
+      setLayouts((prev) => {
+        const t = prev[treeIndex];
+        if (!t) return prev;
+        const updated = updateRatioAtPath(t, path, lastRatio);
+        const next = [...prev];
+        next[treeIndex] = updated;
+        void saveIdeaLayout(ideaId, next.length > 0 ? next : null);
+        return next;
       });
     };
 
     document.addEventListener("pointermove", moveHandler);
     document.addEventListener("pointerup", upHandler, { once: true });
-  }, [layout, ideaId]);
+  }, [layouts, ideaId]);
 
-  // ── Layout-aware focus navigation ──
+  // ── Layout-aware focus navigation (across all trees) ──
   const handleLayoutFocusPrev = useCallback((blockId: string) => {
-    if (!layout) return;
-    const leafIds = collectLeafIds(layout);
-    const idx = leafIds.indexOf(blockId);
+    // Collect leaves across all trees
+    const allLeaves: string[] = [];
+    for (const tree of layouts) {
+      allLeaves.push(...collectLeafIds(tree));
+    }
+    const idx = allLeaves.indexOf(blockId);
     if (idx > 0) {
-      setFocusBlockId(leafIds[idx - 1]);
+      setFocusBlockId(allLeaves[idx - 1]);
       setFocusTrigger((n) => n + 1);
     }
-  }, [layout]);
+  }, [layouts]);
 
   const handleLayoutFocusNext = useCallback((blockId: string) => {
-    if (!layout) return;
-    const leafIds = collectLeafIds(layout);
-    const idx = leafIds.indexOf(blockId);
-    if (idx >= 0 && idx < leafIds.length - 1) {
-      setFocusBlockId(leafIds[idx + 1]);
+    const allLeaves: string[] = [];
+    for (const tree of layouts) {
+      allLeaves.push(...collectLeafIds(tree));
+    }
+    const idx = allLeaves.indexOf(blockId);
+    if (idx >= 0 && idx < allLeaves.length - 1) {
+      setFocusBlockId(allLeaves[idx + 1]);
       setFocusTrigger((n) => n + 1);
     }
-  }, [layout]);
+  }, [layouts]);
 
   // ── Drag-drop for images (both modes) ──
   const [dragInsertIdx, setDragInsertIdx] = useState<number | null>(null);
@@ -1367,24 +1416,35 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             onDrop={handleBlockListDrop}
           >
             {(() => {
-              // Render using layout tree or column groups in preview mode
+              // Render using layout trees or column groups in preview mode
               if (mode === "preview") {
-                // ── Layout tree rendering ──
-                if (layout) {
-                  const treeBlockIds = new Set(collectLeafIds(layout));
+                // ── Layout tree rendering (multi-tree) ──
+                if (layouts.length > 0) {
+                  const allIds = allTreeBlockIds(layouts);
+                  // Build a map: blockId → treeIndex for quick lookup
+                  const blockToTreeIdx = new Map<string, number>();
+                  layouts.forEach((tree, ti) => {
+                    for (const id of collectLeafIds(tree)) {
+                      blockToTreeIdx.set(id, ti);
+                    }
+                  });
 
                   const activeLayoutDrop: LayoutDropTarget | null =
                     dropTarget?.type === "layout-split"
                       ? { type: "layout-side", targetBlockId: dropTarget.targetBlockId, side: dropTarget.side }
                       : null;
 
-                  // Build render sequence: iterate blocks in order, inject tree at first tree member
-                  type RenderItem = { kind: "tree" } | { kind: "block"; block: IdeaBlockBrief; idx: number };
+                  // Build render sequence: iterate blocks in order, inject each tree at its first member
+                  type RenderItem = { kind: "tree"; treeIndex: number } | { kind: "block"; block: IdeaBlockBrief; idx: number };
                   const renderItems: RenderItem[] = [];
-                  let treeInserted = false;
+                  const treesInserted = new Set<number>();
                   blocks.forEach((b, i) => {
-                    if (treeBlockIds.has(b.id)) {
-                      if (!treeInserted) { renderItems.push({ kind: "tree" }); treeInserted = true; }
+                    const ti = blockToTreeIdx.get(b.id);
+                    if (ti !== undefined) {
+                      if (!treesInserted.has(ti)) {
+                        renderItems.push({ kind: "tree", treeIndex: ti });
+                        treesInserted.add(ti);
+                      }
                     } else {
                       renderItems.push({ kind: "block", block: b, idx: i });
                     }
@@ -1394,10 +1454,13 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                     <>
                       {renderItems.map((item) => {
                         if (item.kind === "tree") {
+                          const ti = item.treeIndex;
+                          const treeNode = layouts[ti];
+                          const resizingPrefix = `${ti}:`;
                           return (
                             <BlockLayoutRenderer
-                              key="__layout_tree__"
-                              node={layout}
+                              key={`__layout_tree_${ti}__`}
+                              node={treeNode}
                               blocks={blocks}
                               ideaId={ideaId}
                               streaming={streaming}
@@ -1419,8 +1482,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                               onDragStart={handleBlockDragStart}
                               onFocusPrev={handleLayoutFocusPrev}
                               onFocusNext={handleLayoutFocusNext}
-                              onResizeStart={handleLayoutResizeStart}
-                              resizingPath={resizingLayoutPath}
+                              onResizeStart={(path, e) => handleLayoutResizeStart(ti, path, e)}
+                              resizingPath={resizingLayoutPath?.startsWith(resizingPrefix) ? resizingLayoutPath.slice(resizingPrefix.length) : null}
                             />
                           );
                         }

@@ -2128,8 +2128,8 @@ export async function renameIdea(ideaId: string, name: string): Promise<{ id: st
   return res.json();
 }
 
-/** Save the block layout tree for an idea. Pass null to clear. */
-export async function saveIdeaLayout(ideaId: string, layout: BlockLayoutNode | null): Promise<{ ok: boolean }> {
+/** Save the block layout tree(s) for an idea. Pass null to clear. */
+export async function saveIdeaLayout(ideaId: string, layout: BlockLayoutNode[] | null): Promise<{ ok: boolean }> {
   const res = await mutationFetch(`${BASE}/ideas/${ideaId}/layout`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

@@ -212,7 +212,7 @@ export interface IdeaBrief {
 export interface IdeaDetail extends IdeaBrief {
   content: string;
   version: number;
-  layout?: BlockLayoutNode | null;
+  layout?: BlockLayoutNode | BlockLayoutNode[] | null;
 }
 
 // ─── Block Layout Tree (recursive binary split tree for idea blocks) ───

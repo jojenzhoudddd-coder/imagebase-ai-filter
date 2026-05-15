@@ -215,6 +215,50 @@ export function migrateColumnPropsToLayout(
   return root;
 }
 
+// ─── Multi-tree (layouts: BlockLayoutNode[]) helpers ───────────────────
+
+/** Find the tree in `layouts` that contains `blockId`, or null. */
+export function findTreeForBlock(
+  layouts: BlockLayoutNode[],
+  blockId: string,
+): BlockLayoutNode | null {
+  for (const tree of layouts) {
+    if (hasBlock(tree, blockId)) return tree;
+  }
+  return null;
+}
+
+/** Collect all block IDs across all trees in the array. */
+export function allTreeBlockIds(layouts: BlockLayoutNode[]): Set<string> {
+  const ids = new Set<string>();
+  for (const tree of layouts) {
+    for (const id of collectLeafIds(tree)) {
+      ids.add(id);
+    }
+  }
+  return ids;
+}
+
+/** Replace `oldTree` with `newTree` in the layouts array (by reference). */
+export function updateTreeInLayouts(
+  layouts: BlockLayoutNode[],
+  oldTree: BlockLayoutNode,
+  newTree: BlockLayoutNode | null,
+): BlockLayoutNode[] {
+  if (newTree === null) {
+    return layouts.filter((t) => t !== oldTree);
+  }
+  return layouts.map((t) => (t === oldTree ? newTree : t));
+}
+
+/** Remove a tree from the layouts array (by reference). */
+export function removeTreeFromLayouts(
+  layouts: BlockLayoutNode[],
+  tree: BlockLayoutNode,
+): BlockLayoutNode[] {
+  return layouts.filter((t) => t !== tree);
+}
+
 // ─── Internal helpers ───────────────────────────────────────────────────
 
 function replaceLeaf(
