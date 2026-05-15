@@ -444,7 +444,10 @@ function useCanvasTransform() {
     (contentBounds: { x: number; y: number; width: number; height: number }) => {
       const el = elRef.current;
       if (!el || contentBounds.width <= 0 || contentBounds.height <= 0) return;
+      // Ensure surface ref is populated
       if (!surfaceRef.current) surfaceRef.current = el.querySelector<HTMLDivElement>(".svg-canvas-surface");
+      const surface = surfaceRef.current;
+      if (!surface) return;
 
       const vw = el.clientWidth;
       const vh = el.clientHeight;
@@ -453,17 +456,18 @@ function useCanvasTransform() {
       // Determine scale so that content * scale = available space
       const availW = vw - pad * 2;  // left + right padding
       const availH = vh - pad * 2;  // top + bottom padding
-      const s = Math.min(availW / contentBounds.width, availH / contentBounds.height, 2);
+      const s = Math.max(MIN_SCALE, Math.min(availW / contentBounds.width, availH / contentBounds.height, 2));
 
       // Pan so that content's top-left lands at (pad, pad) in screen space
-      // screen_x = content_x * scale + panX  =>  panX = pad - content_x * scale
       const panX = pad - contentBounds.x * s;
       const panY = pad - contentBounds.y * s;
 
-      scaleRef.current = Math.max(MIN_SCALE, s);
+      scaleRef.current = s;
       panRef.current = { x: panX, y: panY };
-      applyTransform();
-      setZoomPercent(Math.round(scaleRef.current * 100));
+      // Apply directly to DOM — don't rely on applyTransform() closure
+      surface.style.transform = `translate(${panX}px,${panY}px) scale(${s})`;
+      surface.style.setProperty("--inv-scale", String(1 / s));
+      setZoomPercent(Math.round(s * 100));
     },
     [],
   );
