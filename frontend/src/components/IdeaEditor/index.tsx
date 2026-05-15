@@ -1169,6 +1169,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                             onMergeIntoPrev={handleMergeIntoPrev}
                             onDragStart={handleBlockDragStart}
                             isDragging={dragBlockId === block.id}
+                            dragInProgress={!!dragBlockId}
                             onFocusPrev={() => {
                               if (idx > 0) {
                                 const container = blockListRef.current;
@@ -1230,6 +1231,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                             onMergeIntoPrev={handleMergeIntoPrev}
                             onDragStart={handleBlockDragStart}
                             isDragging={dragBlockId === left.id}
+                            dragInProgress={!!dragBlockId}
                             onFocusPrev={() => {
                               if (leftIdx > 0) {
                                 setFocusBlockId(blocks[leftIdx - 1].id);
@@ -1279,6 +1281,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                             onMergeIntoPrev={handleMergeIntoPrev}
                             onDragStart={handleBlockDragStart}
                             isDragging={dragBlockId === right.id}
+                            dragInProgress={!!dragBlockId}
                             onFocusPrev={() => {
                               setFocusBlockId(left.id);
                             }}

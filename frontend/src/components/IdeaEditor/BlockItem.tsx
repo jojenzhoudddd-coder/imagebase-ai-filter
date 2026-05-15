@@ -85,6 +85,8 @@ export interface BlockItemProps {
   onDragStart?: (blockId: string) => void;
   /** Whether this block is currently being dragged (hide it). */
   isDragging?: boolean;
+  /** True when any block is being dragged — suppresses hover on all blocks. */
+  dragInProgress?: boolean;
 }
 
 const BlockItem = memo(function BlockItem({
@@ -109,6 +111,7 @@ const BlockItem = memo(function BlockItem({
   focusCursorPos = null,
   onDragStart,
   isDragging = false,
+  dragInProgress = false,
 }: BlockItemProps) {
   const { t } = useTranslation();
   /** Strip the trailing \n that blocks store for markdown concatenation —
@@ -378,7 +381,7 @@ const BlockItem = memo(function BlockItem({
   // Determine if this is a divider (just render <hr>)
   const isDivider = block.type === "divider";
 
-  const showHover = hovered && !editing && !selected && !readOnly;
+  const showHover = hovered && !editing && !selected && !readOnly && !dragInProgress;
   const containerStyle: React.CSSProperties = {
     position: "relative",
     cursor: readOnly ? "default" : editing ? "text" : "pointer",
@@ -480,7 +483,7 @@ const BlockItem = memo(function BlockItem({
     );
   }
 
-  const showDragHandle = hovered && !editing && !sourceMode && !readOnly && !isDragging;
+  const showDragHandle = hovered && !editing && !sourceMode && !readOnly && !isDragging && !dragInProgress;
 
   return (
     <div
