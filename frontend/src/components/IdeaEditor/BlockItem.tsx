@@ -107,7 +107,7 @@ const BlockItem = memo(function BlockItem({
   const { t } = useTranslation();
   /** Strip the trailing \n that blocks store for markdown concatenation —
    *  it shows as an empty line in the textarea. Re-added on save. */
-  const displayContent = (s: string) => s.replace(/\n$/, "");
+  const displayContent = (s: string) => s.replace(/\n+$/, "");
 
   const [mode, setMode] = useState<"view" | "selected" | "editing">(sourceMode ? "editing" : "view");
   const [editValue, setEditValue] = useState(sourceMode ? displayContent(block.content) : "");
