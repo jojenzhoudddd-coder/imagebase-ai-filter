@@ -1270,7 +1270,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                                   }} />
                                 </div>
                               )}
-                              <div style={{ position: "relative", minWidth: 0, overflow: "hidden" }}>
+                              <div style={{ position: "relative", minWidth: 0 }}>
                                 {dropTarget?.type === "column-left" && dropTarget.targetBlockId === col.id && (
                                   <div style={{ position: "absolute", left: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
                                 )}
