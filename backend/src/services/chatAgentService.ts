@@ -2754,7 +2754,7 @@ async function* runAgentImpl(
     if (preDropped > 0 && preCovered < preDropped) {
       yield {
         event: "message",
-        data: { text: "> ⏳ 上下文窗口已满，正在压缩历史对话…\n> Context window full, compressing history…\n\n", delta: true },
+        data: { text: "> 上下文窗口已满，正在压缩历史对话…\n> Context window full, compressing history…\n\n", delta: true },
       };
     }
   }
