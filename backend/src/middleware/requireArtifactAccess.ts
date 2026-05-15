@@ -130,6 +130,12 @@ export async function requireArtifactAccess(
     next();
     return;
   }
+  // Demo preview: static dist/ files served for iframe + headless screenshot.
+  // No sensitive data — data access goes through /api/demo-runtime/ (above).
+  if (/^\/api\/demos\/[^/]+\/preview(\/|$)/.test(fullPath)) {
+    next();
+    return;
+  }
 
   // 豁免：MCP 内部 loopback 请求（habit / agency headless 场景无 cookie）
   if (isTrustedMcpLoopback(req)) {
