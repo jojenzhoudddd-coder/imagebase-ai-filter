@@ -242,7 +242,7 @@ const BlockItem = memo(function BlockItem({
   const outlineStyle: React.CSSProperties = {
     borderRadius: 4,
     outline: showHover ? "1px solid var(--color-primary, #3778FB)" : "1px solid transparent",
-    outlineOffset: 4,
+    outlineOffset: 2,
     transition: "outline-color 0.12s ease",
   };
 
@@ -268,7 +268,7 @@ const BlockItem = memo(function BlockItem({
     resize: "none",
     overflow: "hidden",
     outline: "1px solid var(--color-primary, #3778FB)",
-    outlineOffset: 4,
+    outlineOffset: 2,
     boxSizing: "border-box" as const,
   };
 
