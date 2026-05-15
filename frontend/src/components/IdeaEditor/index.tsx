@@ -694,11 +694,12 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       // Calculate drop target
       const container = blockListRef.current;
       if (!container) return;
-      const blockEls = container.querySelectorAll<HTMLElement>("[data-block-id]");
+      // Use content areas (not outer wrappers with handle) for hit testing
+      const blockEls = container.querySelectorAll<HTMLElement>("[data-block-content]");
       let foundTarget: DropTarget | null = null;
       for (let i = 0; i < blockEls.length; i++) {
         const el = blockEls[i];
-        const elBlockId = el.getAttribute("data-block-id");
+        const elBlockId = el.getAttribute("data-block-content");
         if (elBlockId === blockId) continue;
         const rect = el.getBoundingClientRect();
         if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
@@ -720,15 +721,24 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           break;
         }
       }
-      // If no block hit, check if below all blocks
+      // If no block was hit (cursor in gap between blocks, or above/below all)
       if (!foundTarget && blockEls.length > 0) {
-        const lastRect = blockEls[blockEls.length - 1].getBoundingClientRect();
-        if (e.clientY > lastRect.bottom) {
-          foundTarget = { type: "reorder", insertIdx: blocks.length };
+        // Check gaps between consecutive blocks
+        for (let i = 0; i < blockEls.length; i++) {
+          const r = blockEls[i].getBoundingClientRect();
+          if (e.clientY < r.top) {
+            // Cursor above this block → insert before it
+            const bId = blockEls[i].getAttribute("data-block-content");
+            const idx = blocks.findIndex(b => b.id === bId);
+            if (idx >= 0) foundTarget = { type: "reorder", insertIdx: idx };
+            break;
+          }
         }
-        const firstRect = blockEls[0].getBoundingClientRect();
-        if (e.clientY < firstRect.top) {
-          foundTarget = { type: "reorder", insertIdx: 0 };
+        if (!foundTarget) {
+          const lastRect = blockEls[blockEls.length - 1].getBoundingClientRect();
+          if (e.clientY > lastRect.bottom) {
+            foundTarget = { type: "reorder", insertIdx: blocks.length };
+          }
         }
       }
       setDropTarget(foundTarget);
