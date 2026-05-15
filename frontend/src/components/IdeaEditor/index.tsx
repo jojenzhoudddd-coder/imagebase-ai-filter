@@ -632,7 +632,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
 
   const [dragBlockId, setDragBlockId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
-  const [ghostPos, setGhostPos] = useState<{ x: number; y: number } | null>(null);
+  const [ghostRect, setGhostRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const dragStartPos = useRef<{ x: number; y: number } | null>(null);
   const dragGhostRef = useRef<HTMLDivElement | null>(null);
   const dragActive = useRef(false);
@@ -680,9 +680,14 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       if (!dragActive.current) {
         dragActive.current = true;
         dragStartPos.current = { x: e.clientX, y: e.clientY };
-        setDragBlockId(dragId); // set on first move, not on pointerdown
+        setDragBlockId(dragId);
+        // Capture the block content area's fixed position for the ghost
+        const contentEl = blockListRef.current?.querySelector(`[data-block-content="${dragId}"]`);
+        if (contentEl) {
+          const r = contentEl.getBoundingClientRect();
+          setGhostRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+        }
       }
-      setGhostPos({ x: e.clientX, y: e.clientY });
       // Calculate drop target
       const container = blockListRef.current;
       if (!container) return;
@@ -730,13 +735,11 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       document.removeEventListener("pointerup", upHandler);
       document.removeEventListener("keydown", escHandler);
       if (!dragActive.current) {
-        // No real drag happened
         setDragBlockId(null);
         setDropTarget(null);
-        setGhostPos(null);
+        setGhostRect(null);
       } else {
-        // Drop: clear ghost, keep dragBlockId+dropTarget for commit effect
-        setGhostPos(null);
+        setGhostRect(null);
         dragActive.current = false;
       }
     };
@@ -747,7 +750,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         document.removeEventListener("keydown", escHandler);
         setDragBlockId(null);
         setDropTarget(null);
-        setGhostPos(null);
+        setGhostRect(null);
         dragActive.current = false;
       }
     };
@@ -760,9 +763,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const dropTargetRef = useRef<DropTarget | null>(null);
   useEffect(() => { dropTargetRef.current = dropTarget; }, [dropTarget]);
 
-  // Commit on pointerup (ghostPos becomes null while dragBlockId is set)
+  // Commit on pointerup (ghostRect becomes null while dragBlockId is set)
   useEffect(() => {
-    if (dragBlockId && ghostPos === null && dragActive.current === false) {
+    if (dragBlockId && ghostRect === null && dragActive.current === false) {
       const target = dropTargetRef.current;
       if (target && dragBlockId) {
         const blockId = dragBlockId;
@@ -848,7 +851,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         setDropTarget(null);
       }
     }
-  }, [dragBlockId, ghostPos, blocks, ideaId]);
+  }, [dragBlockId, ghostRect, blocks, ideaId]);
 
   // Column resize handler
   const handleColumnResizeStart = useCallback((groupId: string, e: React.PointerEvent) => {
@@ -1337,27 +1340,21 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             )}
           </div>
           {/* Drag ghost */}
-          {dragBlockId && ghostPos && (() => {
-            const el = blockListRef.current?.querySelector(`[data-block-content="${dragBlockId}"]`);
-            const rect = el?.getBoundingClientRect();
-            const w = rect?.width ?? 200;
-            const h = rect?.height ?? 40;
-            return createPortal(
-              <div style={{
-                position: "fixed",
-                left: ghostPos.x - 20,
-                top: ghostPos.y - 12,
-                width: w,
-                height: h,
-                border: "2px dashed var(--primary, #4080FF)",
-                borderRadius: 6,
-                background: "rgba(20, 86, 240, 0.06)",
-                pointerEvents: "none",
-                zIndex: 99999,
-              }} />,
-              document.body,
-            );
-          })()}
+          {dragBlockId && ghostRect && createPortal(
+            <div style={{
+              position: "fixed",
+              top: ghostRect.top,
+              left: ghostRect.left,
+              width: ghostRect.width,
+              height: ghostRect.height,
+              border: "2px dashed var(--primary, #4080FF)",
+              borderRadius: 6,
+              background: "rgba(20, 86, 240, 0.06)",
+              pointerEvents: "none",
+              zIndex: 99999,
+            }} />,
+            document.body,
+          )}
           </>
         ) : (
           <TiptapPreview
