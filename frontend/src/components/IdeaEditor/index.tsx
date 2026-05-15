@@ -510,12 +510,14 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
 
   const handleSplit = useCallback(async (blockId: string, contentBefore: string, contentAfter: string) => {
     try {
-      // 1. Update current block with contentBefore
-      await patchIdeaBlock(ideaId, blockId, { content: contentBefore + "\n" });
-      // 2. Create new block after with contentAfter
+      // 1. Update current block with contentBefore (ensure single trailing \n)
+      const before = contentBefore.replace(/\n+$/, "") + "\n";
+      await patchIdeaBlock(ideaId, blockId, { content: before });
+      // 2. Create new block after with contentAfter (ensure single trailing \n)
+      const after = (contentAfter.replace(/^\n+/, "").replace(/\n+$/, "") || "") + "\n";
       const res = await createIdeaBlock(ideaId, {
         type: "paragraph",
-        content: (contentAfter || "") + "\n",
+        content: after,
         afterBlockId: blockId,
       });
       // 3. Refetch and focus the new block
@@ -536,15 +538,17 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     const idx = blocks.findIndex(b => b.id === blockId);
     if (idx <= 0) return; // no previous block to merge into
     const prevBlock = blocks[idx - 1];
-    // Cursor should land at the join point: end of prev block's original content (minus trailing \n)
-    const prevContentTrimmed = prevBlock.content.replace(/\n$/, "");
-    const cursorPos = prevContentTrimmed.length;
+    // Strip trailing newlines to find the real content boundary
+    const prevText = prevBlock.content.replace(/\n+$/, "");
+    const appendText = contentToAppend.replace(/\n+$/, "");
+    // Cursor at the join point
+    const cursorPos = prevText.length;
     // Update focus BEFORE API calls so SSE delete event won't match the deleted block
     setFocusBlockId(prevBlock.id);
     focusBlockIdRef.current = prevBlock.id;
     try {
-      const mergedContent = prevContentTrimmed + contentToAppend;
-      await patchIdeaBlock(ideaId, prevBlock.id, { content: mergedContent + "\n" });
+      const mergedContent = prevText + appendText + "\n";
+      await patchIdeaBlock(ideaId, prevBlock.id, { content: mergedContent });
       await deleteIdeaBlock(ideaId, blockId);
       const bRes = await fetchIdeaBlocks(ideaId);
       setBlocks(bRes.blocks);
