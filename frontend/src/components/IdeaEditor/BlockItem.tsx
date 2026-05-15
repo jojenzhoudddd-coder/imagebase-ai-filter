@@ -227,11 +227,10 @@ const BlockItem = memo(function BlockItem({
 
   const outlineStyle: React.CSSProperties = {
     borderRadius: 4,
-    padding: 2,  // always matches outlineOffset so selected bg aligns with hover outline
+    position: "relative",
     outline: showHover ? "1px solid var(--primary)" : "1px solid transparent",
-    outlineOffset: 0,  // outline sits right at the padding edge
-    transition: "outline-color 0.12s ease, background 0.12s ease",
-    background: selected ? "rgba(20, 86, 240, 0.10)" : "transparent",
+    outlineOffset: 2,
+    transition: "outline-color 0.12s ease",
   };
 
   const viewStyle: React.CSSProperties = {
@@ -256,7 +255,7 @@ const BlockItem = memo(function BlockItem({
     resize: "none",
     overflow: "hidden",
     outline: "1px solid var(--primary)",
-    outlineOffset: 0,
+    outlineOffset: 2,
     boxSizing: "border-box" as const,
   };
 
@@ -324,6 +323,12 @@ const BlockItem = memo(function BlockItem({
       onClick={handleClick}
     >
       <div style={outlineStyle}>
+        {selected && <div style={{
+          position: "absolute", inset: -2, borderRadius: 4,
+          backgroundColor: "rgba(20, 86, 240, 0.10)",
+          pointerEvents: "none",
+          transition: "background-color 0.12s ease",
+        }} />}
         {isDivider ? (
           <hr style={{ border: "none", borderTop: "0.5px solid var(--border-light)", margin: "8px 0" }} />
         ) : (
