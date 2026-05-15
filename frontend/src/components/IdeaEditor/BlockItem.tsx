@@ -238,20 +238,23 @@ const BlockItem = memo(function BlockItem({
     minHeight: isDivider ? 20 : 24,
   };
 
-  const viewStyle: React.CSSProperties = {
-    padding: "2px 4px",
-    lineHeight: 1.6,
+  // Outline wraps the content div tightly, outlineOffset adds 4px breathing room
+  const outlineStyle: React.CSSProperties = {
     borderRadius: 4,
     outline: showHover ? "1px solid var(--color-primary, #3778FB)" : "1px solid transparent",
     outlineOffset: 4,
     transition: "outline-color 0.12s ease",
   };
 
+  const viewStyle: React.CSSProperties = {
+    lineHeight: 1.6,
+  };
+
   const textareaStyle: React.CSSProperties = {
     display: "block",
     width: "100%",
     minHeight: 32,
-    padding: "2px 4px",
+    padding: "2px 0",
     margin: 0,
     border: "none",
     borderRadius: 4,
@@ -301,20 +304,17 @@ const BlockItem = memo(function BlockItem({
       onPointerLeave={() => setHovered(false)}
       onClick={enterEdit}
     >
-      {isDivider ? (
-        <hr style={{
-          border: "none", borderTop: "1px solid var(--border-divider, #dee0e3)", margin: "8px 0",
-          borderRadius: 4,
-          outline: showHover ? "1px solid var(--color-primary, #3778FB)" : "1px solid transparent",
-          outlineOffset: 4, transition: "outline-color 0.12s ease",
-        }} />
-      ) : (
-        <div
-          style={viewStyle}
-          className="idea-preview-body"
-          dangerouslySetInnerHTML={{ __html: renderedHtml }}
-        />
-      )}
+      <div style={outlineStyle}>
+        {isDivider ? (
+          <hr style={{ border: "none", borderTop: "1px solid var(--border-divider, #dee0e3)", margin: "8px 0" }} />
+        ) : (
+          <div
+            style={viewStyle}
+            className="idea-preview-body"
+            dangerouslySetInnerHTML={{ __html: renderedHtml }}
+          />
+        )}
+      </div>
     </div>
   );
 });
