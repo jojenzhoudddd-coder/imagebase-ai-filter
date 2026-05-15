@@ -456,7 +456,7 @@ function useCanvasTransform() {
       // Determine scale so that content * scale = available space
       const availW = vw - pad * 2;  // left + right padding
       const availH = vh - pad * 2;  // top + bottom padding
-      const s = Math.max(MIN_SCALE, Math.min(availW / contentBounds.width, availH / contentBounds.height, 2));
+      const s = Math.max(MIN_SCALE, Math.min(availW / contentBounds.width, availH / contentBounds.height));
 
       // Pan so that content's top-left lands at (pad, pad) in screen space
       const panX = pad - contentBounds.x * s;
