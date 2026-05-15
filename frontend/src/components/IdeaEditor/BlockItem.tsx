@@ -9,12 +9,17 @@
  * Hover → subtle blue outline.
  */
 
-import { useCallback, useEffect, useRef, useState, memo } from "react";
+import { useCallback, useEffect, useRef, useState, memo, lazy, Suspense, useMemo } from "react";
 import { createPortal } from "react-dom";
 import MarkdownIt from "markdown-it";
 import { useTranslation } from "../../i18n";
 import { useToast } from "../Toast/index";
 import SwipeDelete from "../SwipeDelete/index";
+
+// Lazy-load vega-lite chart renderer (same as MarkdownPreview)
+const ChatChartBlock = lazy(
+  () => import("../ChatSidebar/ChatMessage/ChatChartBlock"),
+);
 
 // Inject a scoped style to remove bottom margin from the last child in each
 // block view — avoids double spacing between blocks. Done once at module load.
@@ -441,6 +446,14 @@ const BlockItem = memo(function BlockItem({
   // Determine if this is a divider (just render <hr>)
   const isDivider = block.type === "divider";
 
+  // Detect vega-lite chart blocks: ```vega-lite\n{...}\n```
+  const chartSpec = useMemo(() => {
+    if (block.type !== "code") return null;
+    const m = trimmedContent.match(/^```vega(?:-lite)?\s*\n([\s\S]*?)```$/);
+    if (!m) return null;
+    try { return JSON.parse(m[1]); } catch { return null; }
+  }, [block.type, trimmedContent]);
+
   const showHover = hovered && !editing && !selected && !readOnly && !dragInProgress;
   const containerStyle: React.CSSProperties = {
     position: "relative",
@@ -598,6 +611,12 @@ const BlockItem = memo(function BlockItem({
         }} />}
         {isDivider ? (
           <hr style={{ border: "none", borderTop: "0.5px solid var(--border-light)", margin: "8px 0" }} />
+        ) : chartSpec ? (
+          <div className="idea-chart-embed" style={{ minHeight: 200 }}>
+            <Suspense fallback={<div style={{ padding: 12, color: "var(--text-muted)", fontSize: 13 }}>Loading chart…</div>}>
+              <ChatChartBlock spec={chartSpec} />
+            </Suspense>
+          </div>
         ) : (
           <div
             style={viewStyle}
