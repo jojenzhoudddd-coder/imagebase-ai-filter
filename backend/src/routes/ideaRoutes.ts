@@ -549,35 +549,32 @@ router.post(
       res.status(400).json({ error: "toIndex (number) required" });
       return;
     }
-    let ctx;
-    try {
-      ctx = await getBlockWithContext(prisma as any, blockId);
-    } catch (err) {
-      if (err instanceof IdeaBlockNotFoundError) {
-        res.status(404).json({ error: err.message });
-        return;
+    const clientId = getClientId(req);
+    const result = await prisma.$transaction(async (tx: any) => {
+      // Get all blocks ordered
+      const allBlocks = await tx.ideaBlock.findMany({
+        where: { ideaId },
+        orderBy: { order: "asc" },
+      });
+      const block = allBlocks.find((b: any) => b.id === blockId);
+      if (!block) throw new Error(`block not found: ${blockId}`);
+      // Remove the block from its current position
+      const others = allBlocks.filter((b: any) => b.id !== blockId);
+      // Insert at toIndex (clamped)
+      const idx = Math.max(0, Math.min(toIndex, others.length));
+      others.splice(idx, 0, block);
+      // Reassign fractional order values
+      for (let i = 0; i < others.length; i++) {
+        await tx.ideaBlock.update({ where: { id: others[i].id }, data: { order: i } });
       }
-      throw err;
-    }
-    if (ctx.idea.id !== ideaId) {
-      res.status(400).json({ error: "blockId does not belong to ideaId" });
-      return;
-    }
-    const newFullContent = spliceBlockMove(ctx, toIndex);
-    if (newFullContent === ctx.idea.content) {
-      // No-op move (already at target). Return current state without bumping version.
-      res.json({ id: ctx.idea.id, version: ctx.idea.version, content: ctx.idea.content });
-      return;
-    }
-    const result = await commitContentMutation(
-      ctx.idea.id,
-      newFullContent,
-      ctx.idea.workspaceId,
-      getClientId(req),
-    );
-    res.json(result);
+      return commitBlockMutation(tx, ideaId, clientId, {
+        blockEvents: [{ type: "idea:block-move", payload: { blockId, newOrder: idx } }],
+      });
+    });
+    res.json({ id: result.id, version: result.version, content: result.content });
   }),
 );
+
 
 // PUT /api/ideas/:ideaId — save content (optimistic versioning)
 // body: { content: string, baseVersion: number }
