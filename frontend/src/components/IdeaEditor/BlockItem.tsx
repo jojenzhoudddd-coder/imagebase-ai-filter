@@ -132,13 +132,15 @@ const BlockItem = memo(function BlockItem({
 
   const handleClick = useCallback(() => {
     if (readOnly) return;
-    if (editLocked) { onEditBlocked?.(); return; }
     if (mode === "view") {
+      // Selected = preview highlight, does NOT lock other blocks
       setMode("selected");
-      onFocusChange?.(block.id, true);
     } else if (mode === "selected") {
+      // Second click: enter editing — this locks other blocks
+      if (editLocked) { onEditBlocked?.(); return; }
       setEditValue(block.content);
       setMode("editing");
+      onFocusChange?.(block.id, true);
     }
   }, [readOnly, editLocked, mode, block.content, block.id, onFocusChange, onEditBlocked]);
 
@@ -227,16 +229,15 @@ const BlockItem = memo(function BlockItem({
     borderRadius: 4,
     outline: showHover ? "1px solid var(--primary)" : "1px solid transparent",
     outlineOffset: 2,
-    transition: "outline-color 0.12s ease",
+    transition: "outline-color 0.12s ease, background 0.12s ease",
+    background: selected ? "rgba(20, 86, 240, 0.10)" : "transparent",
+    padding: selected ? 2 : 0,
   };
 
   const viewStyle: React.CSSProperties = {
     lineHeight: 1.6,
-    padding: selected ? "2px 4px" : 0,  // slight padding when selected for breathing room
+    padding: 0,
     minHeight: "auto",
-    borderRadius: selected ? 4 : 0,
-    background: selected ? "var(--primary-bg)" : "transparent",
-    transition: "background 0.12s ease",
   };
 
   const textareaStyle: React.CSSProperties = {
