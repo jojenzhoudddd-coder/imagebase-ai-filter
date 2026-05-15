@@ -1218,22 +1218,24 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                             }}
                           />
                         </div>
-                        {/* Column resize handle — invisible by default, blue line on hover/drag */}
+                        {/* Column resize handle — invisible by default, full-height blue line on hover/drag */}
                         <div
                           style={{
-                            width: 12,
+                            width: 24,
+                            marginLeft: -6,
+                            marginRight: -6,
                             cursor: "col-resize",
                             alignSelf: "stretch",
-                            minHeight: 24,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
                             position: "relative",
+                            zIndex: 5,
                             background: "transparent",
                           }}
                           onPointerEnter={(e) => {
                             const bar = e.currentTarget.querySelector("[data-resize-bar]") as HTMLElement;
-                            if (bar) { bar.style.opacity = "1"; bar.style.background = "var(--primary)"; }
+                            if (bar) { bar.style.opacity = "1"; }
                           }}
                           onPointerLeave={(e) => {
                             if (resizingGroup !== groupId) {
@@ -1249,9 +1251,9 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                               width: 2,
                               borderRadius: 2,
                               position: "absolute",
-                              top: 8,
-                              bottom: 8,
-                              left: 5,
+                              top: 0,
+                              bottom: 0,
+                              left: 11,
                               opacity: resizingGroup === groupId ? 1 : 0,
                               background: "var(--primary)",
                               transition: "opacity 0.15s",
