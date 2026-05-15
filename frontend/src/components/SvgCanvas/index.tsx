@@ -902,6 +902,45 @@ export default function SvgCanvas({ designId, designName, onRename, hidden = fal
     };
   }, [itemDragging, tastes, designId, scaleRef]);
 
+  // ─── Arrow key movement for selected taste ───
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!selectedId) return;
+      const t = e.target as Element | null;
+      if (
+        t instanceof HTMLInputElement ||
+        t instanceof HTMLTextAreaElement ||
+        (t instanceof HTMLElement && t.isContentEditable) ||
+        (t && t.closest("[contenteditable='true'], [contenteditable='']"))
+      ) return;
+
+      let dx = 0, dy = 0;
+      if (e.key === "ArrowLeft") dx = -1;
+      else if (e.key === "ArrowRight") dx = 1;
+      else if (e.key === "ArrowUp") dy = -1;
+      else if (e.key === "ArrowDown") dy = 1;
+      else return;
+
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+      dx *= step;
+      dy *= step;
+
+      setTastes((prev) =>
+        prev.map((t) => (t.id === selectedId ? { ...t, x: t.x + dx, y: t.y + dy } : t)),
+      );
+      // Debounced persist
+      clearTimeout(arrowMoveTimer.current);
+      arrowMoveTimer.current = window.setTimeout(() => {
+        const taste = tastesRef.current.find((t) => t.id === selectedId);
+        if (taste) updateTaste(designId, taste.id, { x: taste.x, y: taste.y }).catch(() => {});
+      }, 300);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedId, designId]);
+  const arrowMoveTimer = useRef<number>(0);
+
   // ─── Context menu ───
 
   const handleContextMenu = useCallback(
