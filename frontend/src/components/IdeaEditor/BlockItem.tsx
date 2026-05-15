@@ -95,6 +95,17 @@ const BlockItem = memo(function BlockItem({
   const { t } = useTranslation();
   const [mode, setMode] = useState<"view" | "selected" | "editing">(sourceMode ? "editing" : "view");
   const [editValue, setEditValue] = useState(sourceMode ? block.content : "");
+
+  // Sync mode when sourceMode prop changes (e.g. toggle source ↔ preview)
+  useEffect(() => {
+    if (sourceMode) {
+      setMode("editing");
+      setEditValue(block.content);
+    } else {
+      setMode("view");
+      setEditValue("");
+    }
+  }, [sourceMode]); // eslint-disable-line react-hooks/exhaustive-deps
   const [hovered, setHovered] = useState(false);
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
