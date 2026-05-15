@@ -985,26 +985,26 @@ export async function patchBlock(
 
     // Determine new type from transformTo or re-parse
     let newType = block.type;
-    let newProps: any = block.props;
+    // Start with existing props (preserves column layout metadata etc.)
+    let newProps: any = { ...(block.props as any ?? {}) };
     if (typeof body.transformTo === "string") {
-      // Parse the transformed content to get proper type/props
       const parsed = parseToBlocks(newBlockContent);
       if (parsed.length > 0) {
         newType = parsed[0].type;
-        newProps = parsed[0].props;
+        // Merge parsed props into existing (don't replace)
+        newProps = { ...newProps, ...(parsed[0].props as any ?? {}) };
       }
     } else if (typeof body.content === "string") {
-      // Re-parse to detect type changes (e.g. user typed "# " at start)
       const parsed = parseToBlocks(newBlockContent);
       if (parsed.length > 0) {
         newType = parsed[0].type;
-        newProps = parsed[0].props;
+        newProps = { ...newProps, ...(parsed[0].props as any ?? {}) };
       }
     }
 
     // Merge explicit props from client (e.g. column layout metadata)
     if (body.props && typeof body.props === "object") {
-      newProps = { ...(newProps as any ?? {}), ...body.props };
+      newProps = { ...newProps, ...body.props };
     }
 
     const updated = await tx.ideaBlock.update({
