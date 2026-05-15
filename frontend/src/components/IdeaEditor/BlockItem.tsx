@@ -105,14 +105,18 @@ const BlockItem = memo(function BlockItem({
   focusCursorPos = null,
 }: BlockItemProps) {
   const { t } = useTranslation();
+  /** Strip the trailing \n that blocks store for markdown concatenation —
+   *  it shows as an empty line in the textarea. Re-added on save. */
+  const displayContent = (s: string) => s.replace(/\n$/, "");
+
   const [mode, setMode] = useState<"view" | "selected" | "editing">(sourceMode ? "editing" : "view");
-  const [editValue, setEditValue] = useState(sourceMode ? block.content : "");
+  const [editValue, setEditValue] = useState(sourceMode ? displayContent(block.content) : "");
 
   // Sync mode when sourceMode prop changes (e.g. toggle source ↔ preview)
   useEffect(() => {
     if (sourceMode) {
       setMode("editing");
-      setEditValue(block.content);
+      setEditValue(displayContent(block.content));
     } else {
       setMode("view");
       setEditValue("");
@@ -133,7 +137,7 @@ const BlockItem = memo(function BlockItem({
 
   // Source mode: sync editValue when block content changes externally
   useEffect(() => {
-    if (sourceMode && !saving) setEditValue(block.content);
+    if (sourceMode && !saving) setEditValue(displayContent(block.content));
   }, [sourceMode, block.content, saving]);
 
   // Auto-focus: only for newly created blocks (autoFocus=true on first mount).
@@ -142,7 +146,7 @@ const BlockItem = memo(function BlockItem({
   useEffect(() => {
     if (autoFocus && !didAutoFocus.current && !readOnly && !editLocked) {
       didAutoFocus.current = true;
-      setEditValue(block.content);
+      setEditValue(displayContent(block.content));
       setMode("editing");
       onFocusChange?.(block.id, true);
     }
@@ -197,7 +201,7 @@ const BlockItem = memo(function BlockItem({
       setMode("selected");
     } else if (mode === "selected") {
       if (editLocked) { onEditBlocked?.(); return; }
-      setEditValue(block.content);
+      setEditValue(displayContent(block.content));
       setMode("editing");
       onFocusChange?.(block.id, true);
     }
@@ -206,7 +210,7 @@ const BlockItem = memo(function BlockItem({
   const cancelEdit = useCallback(() => {
     if (sourceMode) {
       // Source mode: revert content but stay in editing
-      setEditValue(block.content);
+      setEditValue(displayContent(block.content));
       return;
     }
     setMode("view");
@@ -217,9 +221,10 @@ const BlockItem = memo(function BlockItem({
 
   const commitEdit = useCallback(async () => {
     if (!editing || saving) return;
-    const trimmed = editValue;
+    // Re-add the trailing \n that was stripped for display
+    const contentToSave = editValue.replace(/\n+$/, "") + "\n";
     // No change → just close (or stay in source mode)
-    if (trimmed === block.content) {
+    if (contentToSave === block.content) {
       if (!sourceMode) {
         setMode("view");
         setHovered(false);
@@ -230,7 +235,7 @@ const BlockItem = memo(function BlockItem({
     setSaving(true);
     try {
       const res = await patchIdeaBlock(ideaId, block.id, {
-        content: trimmed,
+        content: contentToSave,
         baseVersion: blockVersionRef.current,
       });
       blockVersionRef.current = res.blockVersion;
