@@ -484,45 +484,45 @@ const BlockItem = memo(function BlockItem({
 
   return (
     <div
-      style={containerStyle}
+      style={{ position: "relative", marginLeft: sourceMode ? 0 : -36 }}
       data-block-id={block.id}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
-      onClick={handleClick}
     >
-      {/* Drag handle — appears on hover, 8px to the left */}
-      {showDragHandle && (
-        <div
-          onPointerDown={handleDragHandleDown}
-          style={{
-            position: "absolute",
-            left: -28,
-            top: "50%",
-            transform: "translateY(-50%)",
-            width: 20,
-            height: 20,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "grab",
-            borderRadius: 4,
-            color: "var(--text-muted)",
-            transition: "color 0.12s, background 0.12s",
-            zIndex: 5,
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--surface-3)"; (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <circle cx="4" cy="2.5" r="1" fill="currentColor"/>
-            <circle cx="8" cy="2.5" r="1" fill="currentColor"/>
-            <circle cx="4" cy="6" r="1" fill="currentColor"/>
-            <circle cx="8" cy="6" r="1" fill="currentColor"/>
-            <circle cx="4" cy="9.5" r="1" fill="currentColor"/>
-            <circle cx="8" cy="9.5" r="1" fill="currentColor"/>
-          </svg>
+      {/* Drag handle column — fixed 36px wide, holds the grip icon */}
+      {!sourceMode && (
+        <div style={{
+          position: "absolute", left: 0, top: 0, bottom: 0, width: 36,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          {showDragHandle && (
+            <div
+              onPointerDown={handleDragHandleDown}
+              style={{
+                width: 28, height: 28,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "grab", borderRadius: 6,
+                color: "var(--text-muted)",
+                background: "transparent",
+                transition: "color 0.12s, background 0.12s",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--surface-3)"; (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="5" cy="3" r="1.2" fill="currentColor"/>
+                <circle cx="9" cy="3" r="1.2" fill="currentColor"/>
+                <circle cx="5" cy="7" r="1.2" fill="currentColor"/>
+                <circle cx="9" cy="7" r="1.2" fill="currentColor"/>
+                <circle cx="5" cy="11" r="1.2" fill="currentColor"/>
+                <circle cx="9" cy="11" r="1.2" fill="currentColor"/>
+              </svg>
+            </div>
+          )}
         </div>
       )}
+      {/* Block content area */}
+      <div style={{ ...containerStyle, marginLeft: sourceMode ? 0 : 36 }} onClick={handleClick}>
       <div style={outlineStyle}>
         {selected && <div style={{
           position: "absolute", inset: -2, borderRadius: 4,
@@ -539,6 +539,7 @@ const BlockItem = memo(function BlockItem({
             dangerouslySetInnerHTML={{ __html: renderedHtml }}
           />
         )}
+      </div>
       </div>
     </div>
   );
