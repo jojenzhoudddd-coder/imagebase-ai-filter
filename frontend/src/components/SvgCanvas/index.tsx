@@ -106,7 +106,7 @@ interface AltDistance {
   at: number; // cross-axis position for label
 }
 
-const SNAP_THRESHOLD = 5; // px in canvas space
+const SNAP_THRESHOLD = 1; // px in canvas space
 
 function computeSnap(
   dragged: { x: number; y: number; width: number; height: number },
