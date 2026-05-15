@@ -324,26 +324,28 @@ const BlockItem = memo(function BlockItem({
       return;
     }
 
-    // ArrowUp at position 0 → focus previous block (cursor at end)
+    // ArrowUp: let browser handle, then check if cursor didn't move (= first line)
     if (e.key === "ArrowUp") {
-      console.log("[BlockItem] ArrowUp", { selStart: ta.selectionStart, selEnd: ta.selectionEnd, blockId: block.id });
-      if (ta.selectionStart === 0 && ta.selectionEnd === 0) {
-        e.preventDefault();
-        console.log("[BlockItem] → onFocusPrev");
-        onFocusPrev?.();
-        return;
-      }
+      const posBefore = ta.selectionStart;
+      requestAnimationFrame(() => {
+        if (ta.selectionStart === 0 || ta.selectionStart === posBefore) {
+          // Cursor didn't move or is at start → jump to prev block
+          onFocusPrev?.();
+        }
+      });
+      return;
     }
 
-    // ArrowDown at end → focus next block (cursor at start)
+    // ArrowDown: let browser handle, then check if cursor didn't move (= last line)
     if (e.key === "ArrowDown") {
-      console.log("[BlockItem] ArrowDown", { selStart: ta.selectionStart, selEnd: ta.selectionEnd, len: editValue.length, blockId: block.id });
-      if (ta.selectionStart === editValue.length && ta.selectionEnd === editValue.length) {
-        e.preventDefault();
-        console.log("[BlockItem] → onFocusNext");
-        onFocusNext?.();
-        return;
-      }
+      const posBefore = ta.selectionStart;
+      requestAnimationFrame(() => {
+        if (ta.selectionStart === posBefore) {
+          // Cursor didn't move → already on last line → jump to next block
+          onFocusNext?.();
+        }
+      });
+      return;
     }
   }, [cancelEdit, commitEdit, sourceMode, editValue, ideaId, block.id, onCreatedAfter, onDeleted, onFocusPrev, onFocusNext]);
 
