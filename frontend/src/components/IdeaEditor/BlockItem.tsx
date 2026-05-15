@@ -220,13 +220,13 @@ const BlockItem = memo(function BlockItem({
   };
 
   const btnBase: React.CSSProperties = {
-    padding: "3px 10px",
-    borderRadius: 4,
-    fontSize: 11,
+    padding: "6px 16px",
+    borderRadius: 6,
+    fontSize: 13,
     fontWeight: 500,
     cursor: "pointer",
     border: "none",
-    lineHeight: "18px",
+    lineHeight: "20px",
   };
 
   if (editing) {
@@ -251,8 +251,8 @@ const BlockItem = memo(function BlockItem({
           style={textareaStyle}
           spellCheck={false}
         />
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, padding: "6px 0 2px" }}>
-          <span style={{ flex: 1, fontSize: 11, color: "var(--text-muted, #8f959e)", lineHeight: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+          <span style={{ flex: 1, fontSize: 12, color: "var(--text-muted, #8f959e)", lineHeight: "32px" }}>
             Alt+Enter 提交 · Esc 取消
           </span>
           <button
