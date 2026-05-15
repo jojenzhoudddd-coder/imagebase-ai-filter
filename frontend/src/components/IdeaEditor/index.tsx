@@ -643,26 +643,45 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const resizeStartRatio = useRef(0.5);
   const resizeContainerRect = useRef<DOMRect | null>(null);
 
-  /** Group blocks by columnGroupId for rendering */
+  /** Helper: get columnIndex from props (backward compat with "left"/"right") */
+  const getColumnIndex = (props: any): number => {
+    if (typeof props?.columnIndex === "number") return props.columnIndex;
+    if (props?.columnPosition === "left") return 0;
+    if (props?.columnPosition === "right") return 1;
+    return 0;
+  };
+  const getColumnWidth = (props: any): number => {
+    return props?.columnWidth ?? props?.columnRatio ?? 0.5;
+  };
+
+  /** Group blocks by columnGroupId for rendering — supports N columns */
   const blockLayout = useMemo(() => {
-    const layout: Array<{ type: "single"; block: IdeaBlockBrief } | { type: "column"; groupId: string; left: IdeaBlockBrief; right: IdeaBlockBrief; ratio: number }> = [];
+    type ColumnGroup = { type: "column"; groupId: string; columns: IdeaBlockBrief[]; widths: number[] };
+    const layout: Array<{ type: "single"; block: IdeaBlockBrief } | ColumnGroup> = [];
     const visited = new Set<string>();
+    const groupMap = new Map<string, IdeaBlockBrief[]>();
+
+    // Collect groups
+    for (const b of blocks) {
+      const groupId = (b.props as any)?.columnGroupId as string | undefined;
+      if (groupId) {
+        if (!groupMap.has(groupId)) groupMap.set(groupId, []);
+        groupMap.get(groupId)!.push(b);
+      }
+    }
+
     for (let i = 0; i < blocks.length; i++) {
       if (visited.has(blocks[i].id)) continue;
       const b = blocks[i];
       const groupId = (b.props as any)?.columnGroupId as string | undefined;
-      if (groupId) {
-        // Find the partner
-        const partner = blocks.find((ob, j) => j !== i && !visited.has(ob.id) && (ob.props as any)?.columnGroupId === groupId);
-        if (partner) {
-          visited.add(b.id);
-          visited.add(partner.id);
-          const bPos = (b.props as any)?.columnPosition;
-          const partnerPos = (partner.props as any)?.columnPosition;
-          const left = bPos === "left" ? b : partnerPos === "left" ? partner : b;
-          const right = left === b ? partner : b;
-          const ratio = (left.props as any)?.columnRatio ?? 0.5;
-          layout.push({ type: "column", groupId, left, right, ratio });
+      if (groupId && groupMap.has(groupId)) {
+        const members = groupMap.get(groupId)!;
+        if (members.length >= 2) {
+          members.forEach(m => visited.add(m.id));
+          // Sort by columnIndex
+          members.sort((a, b) => getColumnIndex(a.props) - getColumnIndex(b.props));
+          const widths = members.map(m => getColumnWidth(m.props));
+          layout.push({ type: "column", groupId, columns: members, widths });
           continue;
         }
       }
@@ -810,38 +829,58 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           const draggedBlock = blocks.find(b => b.id === blockId);
           if (!targetBlock || !draggedBlock) return;
 
-          // Check if target is already in a column (max 2 columns)
-          const targetGroupId = (targetBlock.props as any)?.columnGroupId;
-          if (targetGroupId) {
-            // Target already in a column, can't add more
-            return;
-          }
-
-          // Break dragged block's existing column if any
-          const draggedGroupId = (draggedBlock.props as any)?.columnGroupId;
-
-          const newGroupId = `col_${Date.now()}`;
-          const leftId = target.type === "column-left" ? blockId : targetBlockId;
-          const rightId = target.type === "column-left" ? targetBlockId : blockId;
+          const targetGroupId = (targetBlock.props as any)?.columnGroupId as string | undefined;
+          const draggedGroupId = (draggedBlock.props as any)?.columnGroupId as string | undefined;
 
           void (async () => {
-            // If dragged block was in a column, break it first
-            if (draggedGroupId) {
-              const partner = blocks.find(b => b.id !== blockId && (b.props as any)?.columnGroupId === draggedGroupId);
-              if (partner) {
-                await patchIdeaBlock(ideaId, partner.id, { props: { columnGroupId: null, columnPosition: null, columnRatio: null } });
+            // Break dragged block's existing column if needed
+            if (draggedGroupId && draggedGroupId !== targetGroupId) {
+              const oldMembers = blocks.filter(b => b.id !== blockId && (b.props as any)?.columnGroupId === draggedGroupId);
+              if (oldMembers.length === 1) {
+                // Only 1 left → dissolve group
+                await patchIdeaBlock(ideaId, oldMembers[0].id, { props: { columnGroupId: null, columnIndex: null, columnWidth: null, columnPosition: null, columnRatio: null } });
+              } else {
+                // Redistribute widths among remaining
+                const removedWidth = getColumnWidth(draggedBlock.props);
+                const remaining = oldMembers.length;
+                for (const m of oldMembers) {
+                  const oldW = getColumnWidth(m.props);
+                  const newIdx = getColumnIndex(m.props);
+                  await patchIdeaBlock(ideaId, m.id, { props: { ...m.props, columnWidth: oldW + removedWidth / remaining, columnIndex: newIdx } });
+                }
               }
             }
-            await patchIdeaBlock(ideaId, leftId, { props: { columnGroupId: newGroupId, columnPosition: "left", columnRatio: 0.5 } });
-            await patchIdeaBlock(ideaId, rightId, { props: { columnGroupId: newGroupId, columnPosition: "right", columnRatio: 0.5 } });
-            // Move dragged block adjacent to target
-            const targetIdx = blocks.findIndex(b => b.id === targetBlockId);
-            const dragIdx = blocks.findIndex(b => b.id === blockId);
-            if (dragIdx !== targetIdx + 1 && dragIdx !== targetIdx - 1) {
-              // Move next to the target
-              const newIdx = target.type === "column-right" ? targetIdx + 1 : targetIdx;
+
+            if (targetGroupId) {
+              // Add to existing group
+              const members = blocks.filter(b => (b.props as any)?.columnGroupId === targetGroupId);
+              const targetIdx = getColumnIndex(targetBlock.props);
+              const insertIdx = target.type === "column-left" ? targetIdx : targetIdx + 1;
+              // Shift existing members' indices
+              const newWidth = 1 / (members.length + 1);
+              for (const m of members) {
+                let idx = getColumnIndex(m.props);
+                if (idx >= insertIdx) idx++;
+                await patchIdeaBlock(ideaId, m.id, { props: { ...m.props, columnGroupId: targetGroupId, columnIndex: idx, columnWidth: newWidth } });
+              }
+              await patchIdeaBlock(ideaId, blockId, { props: { columnGroupId: targetGroupId, columnIndex: insertIdx, columnWidth: newWidth, columnPosition: null, columnRatio: null } });
+            } else {
+              // Create new 2-column group
+              const newGroupId = `col_${Date.now()}`;
+              const leftId = target.type === "column-left" ? blockId : targetBlockId;
+              const rightId = target.type === "column-left" ? targetBlockId : blockId;
+              await patchIdeaBlock(ideaId, leftId, { props: { columnGroupId: newGroupId, columnIndex: 0, columnWidth: 0.5 } });
+              await patchIdeaBlock(ideaId, rightId, { props: { columnGroupId: newGroupId, columnIndex: 1, columnWidth: 0.5 } });
+            }
+
+            // Move dragged block adjacent to target in document order
+            const targetDocIdx = blocks.findIndex(b => b.id === targetBlockId);
+            const dragDocIdx = blocks.findIndex(b => b.id === blockId);
+            if (Math.abs(dragDocIdx - targetDocIdx) > 1) {
+              const newIdx = target.type === "column-right" ? targetDocIdx + 1 : targetDocIdx;
               await moveIdeaBlock(ideaId, blockId, newIdx);
             }
+
             const bRes = await fetchIdeaBlocks(ideaId);
             setBlocks(bRes.blocks);
             contentRef.current = bRes.blocks.map((b: IdeaBlockBrief) => b.content).join("");
@@ -856,16 +895,27 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     }
   }, [dragBlockId, ghostState, blocks, ideaId]);
 
-  // Column resize handler
-  const handleColumnResizeStart = useCallback((groupId: string, e: React.PointerEvent) => {
+  // Column resize handler — key format: "groupId:dividerIndex"
+  const handleColumnResizeStart = useCallback((resizeKey: string, e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setResizingGroup(groupId);
+    const [groupId, divIdxStr] = resizeKey.split(":");
+    const divIdx = parseInt(divIdxStr, 10);
+    setResizingGroup(resizeKey);
     resizeStartX.current = e.clientX;
-    // Find current ratio
-    const groupBlock = blocks.find(b => (b.props as any)?.columnGroupId === groupId && (b.props as any)?.columnPosition === "left");
-    resizeStartRatio.current = (groupBlock?.props as any)?.columnRatio ?? 0.5;
-    // Get container rect
+
+    // Find the two adjacent columns
+    const members = blocks.filter(b => (b.props as any)?.columnGroupId === groupId);
+    members.sort((a, b) => getColumnIndex(a.props) - getColumnIndex(b.props));
+    const leftCol = members[divIdx];
+    const rightCol = members[divIdx + 1];
+    if (!leftCol || !rightCol) return;
+
+    const leftW = getColumnWidth(leftCol.props);
+    const rightW = getColumnWidth(rightCol.props);
+    const totalW = leftW + rightW;
+    resizeStartRatio.current = leftW / totalW;
+
     const container = blockListRef.current;
     if (container) {
       resizeContainerRect.current = container.getBoundingClientRect();
@@ -877,12 +927,14 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       const containerWidth = resizeContainerRect.current?.width ?? 600;
       const dx = ev.clientX - resizeStartX.current;
       const deltaRatio = dx / (containerWidth - 12); // subtract divider width
-      lastRatio = Math.max(0.2, Math.min(0.8, resizeStartRatio.current + deltaRatio));
+      const newLocalRatio = Math.max(0.15, Math.min(0.85, resizeStartRatio.current + deltaRatio));
+      lastRatio = newLocalRatio;
+      // Update only the two adjacent columns' widths
+      const newLeftW = totalW * newLocalRatio;
+      const newRightW = totalW * (1 - newLocalRatio);
       setBlocks(prev => prev.map(b => {
-        if ((b.props as any)?.columnGroupId !== groupId) return b;
-        const pos = (b.props as any)?.columnPosition;
-        if (pos === "left") return { ...b, props: { ...b.props, columnRatio: lastRatio } };
-        if (pos === "right") return { ...b, props: { ...b.props, columnRatio: 1 - lastRatio } };
+        if (b.id === leftCol.id) return { ...b, props: { ...b.props, columnWidth: newLeftW } };
+        if (b.id === rightCol.id) return { ...b, props: { ...b.props, columnWidth: newRightW } };
         return b;
       }));
     };
@@ -890,10 +942,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       document.removeEventListener("pointermove", moveHandler);
       document.removeEventListener("pointerup", upHandler);
       setResizingGroup(null);
-      const leftBlock = blocks.find(b => (b.props as any)?.columnGroupId === groupId && (b.props as any)?.columnPosition === "left");
-      const rightBlock = blocks.find(b => (b.props as any)?.columnGroupId === groupId && (b.props as any)?.columnPosition === "right");
-      if (leftBlock) void patchIdeaBlock(ideaId, leftBlock.id, { props: { columnGroupId: groupId, columnPosition: "left", columnRatio: lastRatio } });
-      if (rightBlock) void patchIdeaBlock(ideaId, rightBlock.id, { props: { columnGroupId: groupId, columnPosition: "right", columnRatio: 1 - lastRatio } });
+      const finalLeftW = totalW * lastRatio;
+      const finalRightW = totalW * (1 - lastRatio);
+      void patchIdeaBlock(ideaId, leftCol.id, { props: { ...leftCol.props, columnWidth: finalLeftW } });
+      void patchIdeaBlock(ideaId, rightCol.id, { props: { ...rightCol.props, columnWidth: finalRightW } });
     };
     document.addEventListener("pointermove", moveHandler);
     document.addEventListener("pointerup", upHandler, { once: true });
@@ -1176,126 +1228,89 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                       </React.Fragment>
                     );
                   } else {
-                    // Column group
-                    const { groupId, left, right, ratio } = item;
-                    const leftIdx = blocks.findIndex(b => b.id === left.id);
-                    const rightIdx = blocks.findIndex(b => b.id === right.id);
-                    blockIdx += 2;
+                    // N-column group
+                    const { groupId, columns, widths } = item;
+                    blockIdx += columns.length;
+                    // Build grid template: w1fr 12px w2fr 12px w3fr ...
+                    const gridCols = widths.map(w => `${w}fr`).join(" 12px ");
                     return (
-                      <div key={groupId} style={{ display: "grid", gridTemplateColumns: `${ratio}fr 12px ${1 - ratio}fr`, gap: 0, alignItems: "start" }}>
-                        <div style={{ position: "relative", minWidth: 0, overflow: "hidden" }}>
-                          {dropTarget?.type === "column-left" && dropTarget.targetBlockId === left.id && (
-                            <div style={{ position: "absolute", left: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-                          )}
-                          <BlockItem
-                            block={left}
-                            ideaId={ideaId}
-                            readOnly={streaming}
-                            sourceMode={false}
-                            autoFocus={autoEditBlockId === left.id}
-                            focusTrigger={focusBlockId === left.id ? focusTrigger : 0}
-                            focusCursorPos={focusBlockId === left.id ? focusCursorPos : null}
-                            remoteUpdatePending={pendingRemoteBlockRef.current.has(left.id)}
-                            onSaved={handleBlockSaved}
-                            onDeleted={handleBlockDeleted}
-                            onCreatedAfter={handleBlockCreatedAfter}
-                            onConflict={handleBlockConflict}
-                            onFocusChange={handleBlockFocusChange}
-                            editLocked={!!focusBlockId && focusBlockId !== left.id}
-                            onEditBlocked={() => toast.info(t("idea.editLocked"))}
-                            onSplit={handleSplit}
-                            onMergeIntoPrev={handleMergeIntoPrev}
-                            onDragStart={handleBlockDragStart}
-                            isDragging={dragBlockId === left.id}
-                            dragInProgress={!!dragBlockId}
-                            onFocusPrev={() => {
-                              if (leftIdx > 0) {
-                                setFocusBlockId(blocks[leftIdx - 1].id);
-                              }
-                            }}
-                            onFocusNext={() => {
-                              setFocusBlockId(right.id);
-                            }}
-                          />
-                        </div>
-                        {/* Column resize handle — invisible by default, full-height blue line on hover/drag */}
-                        <div
-                          style={{
-                            width: 24,
-                            marginLeft: -6,
-                            marginRight: -6,
-                            cursor: "col-resize",
-                            alignSelf: "stretch",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            position: "relative",
-                            zIndex: 5,
-                            background: "transparent",
-                          }}
-                          onPointerEnter={(e) => {
-                            const bar = e.currentTarget.querySelector("[data-resize-bar]") as HTMLElement;
-                            if (bar) { bar.style.opacity = "1"; }
-                          }}
-                          onPointerLeave={(e) => {
-                            if (resizingGroup !== groupId) {
-                              const bar = e.currentTarget.querySelector("[data-resize-bar]") as HTMLElement;
-                              if (bar) { bar.style.opacity = "0"; }
-                            }
-                          }}
-                          onPointerDown={(e) => handleColumnResizeStart(groupId, e)}
-                        >
-                          <div
-                            data-resize-bar=""
-                            style={{
-                              width: 2,
-                              borderRadius: 2,
-                              position: "absolute",
-                              top: 0,
-                              bottom: 0,
-                              left: 11,
-                              opacity: resizingGroup === groupId ? 1 : 0,
-                              background: "var(--primary)",
-                              transition: "opacity 0.15s",
-                              pointerEvents: "none",
-                            }}
-                          />
-                        </div>
-                        <div style={{ position: "relative", minWidth: 0, overflow: "hidden" }}>
-                          {dropTarget?.type === "column-right" && dropTarget.targetBlockId === right.id && (
-                            <div style={{ position: "absolute", right: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
-                          )}
-                          <BlockItem
-                            block={right}
-                            ideaId={ideaId}
-                            readOnly={streaming}
-                            sourceMode={false}
-                            autoFocus={autoEditBlockId === right.id}
-                            focusTrigger={focusBlockId === right.id ? focusTrigger : 0}
-                            focusCursorPos={focusBlockId === right.id ? focusCursorPos : null}
-                            remoteUpdatePending={pendingRemoteBlockRef.current.has(right.id)}
-                            onSaved={handleBlockSaved}
-                            onDeleted={handleBlockDeleted}
-                            onCreatedAfter={handleBlockCreatedAfter}
-                            onConflict={handleBlockConflict}
-                            onFocusChange={handleBlockFocusChange}
-                            editLocked={!!focusBlockId && focusBlockId !== right.id}
-                            onEditBlocked={() => toast.info(t("idea.editLocked"))}
-                            onSplit={handleSplit}
-                            onMergeIntoPrev={handleMergeIntoPrev}
-                            onDragStart={handleBlockDragStart}
-                            isDragging={dragBlockId === right.id}
-                            dragInProgress={!!dragBlockId}
-                            onFocusPrev={() => {
-                              setFocusBlockId(left.id);
-                            }}
-                            onFocusNext={() => {
-                              if (rightIdx < blocks.length - 1) {
-                                setFocusBlockId(blocks[rightIdx + 1].id);
-                              }
-                            }}
-                          />
-                        </div>
+                      <div key={groupId} style={{ display: "grid", gridTemplateColumns: gridCols, gap: 0, alignItems: "start" }}>
+                        {columns.map((col, colIdx) => {
+                          const bIdx = blocks.findIndex(b => b.id === col.id);
+                          const isFirst = colIdx === 0;
+                          const isLast = colIdx === columns.length - 1;
+                          return (
+                            <React.Fragment key={col.id}>
+                              {/* Resize handle before this column (except first) */}
+                              {!isFirst && (
+                                <div
+                                  style={{
+                                    width: 24, marginLeft: -6, marginRight: -6,
+                                    cursor: "col-resize", alignSelf: "stretch",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    position: "relative", zIndex: 5, background: "transparent",
+                                  }}
+                                  onPointerEnter={(e) => {
+                                    const bar = e.currentTarget.querySelector("[data-resize-bar]") as HTMLElement;
+                                    if (bar) bar.style.opacity = "1";
+                                  }}
+                                  onPointerLeave={(e) => {
+                                    if (resizingGroup !== `${groupId}:${colIdx - 1}`) {
+                                      const bar = e.currentTarget.querySelector("[data-resize-bar]") as HTMLElement;
+                                      if (bar) bar.style.opacity = "0";
+                                    }
+                                  }}
+                                  onPointerDown={(e) => handleColumnResizeStart(`${groupId}:${colIdx - 1}`, e)}
+                                >
+                                  <div data-resize-bar="" style={{
+                                    width: 2, borderRadius: 2, position: "absolute",
+                                    top: 0, bottom: 0, left: 11,
+                                    opacity: resizingGroup === `${groupId}:${colIdx - 1}` ? 1 : 0,
+                                    background: "var(--primary)", transition: "opacity 0.15s", pointerEvents: "none",
+                                  }} />
+                                </div>
+                              )}
+                              <div style={{ position: "relative", minWidth: 0, overflow: "hidden" }}>
+                                {dropTarget?.type === "column-left" && dropTarget.targetBlockId === col.id && (
+                                  <div style={{ position: "absolute", left: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
+                                )}
+                                {dropTarget?.type === "column-right" && dropTarget.targetBlockId === col.id && (
+                                  <div style={{ position: "absolute", right: -6, top: 0, bottom: 0, width: 2, background: "var(--primary, #1456F0)", borderRadius: 1, zIndex: 10, pointerEvents: "none" }} />
+                                )}
+                                <BlockItem
+                                  block={col}
+                                  ideaId={ideaId}
+                                  readOnly={streaming}
+                                  sourceMode={false}
+                                  autoFocus={autoEditBlockId === col.id}
+                                  focusTrigger={focusBlockId === col.id ? focusTrigger : 0}
+                                  focusCursorPos={focusBlockId === col.id ? focusCursorPos : null}
+                                  remoteUpdatePending={pendingRemoteBlockRef.current.has(col.id)}
+                                  onSaved={handleBlockSaved}
+                                  onDeleted={handleBlockDeleted}
+                                  onCreatedAfter={handleBlockCreatedAfter}
+                                  onConflict={handleBlockConflict}
+                                  onFocusChange={handleBlockFocusChange}
+                                  editLocked={!!focusBlockId && focusBlockId !== col.id}
+                                  onEditBlocked={() => toast.info(t("idea.editLocked"))}
+                                  onSplit={handleSplit}
+                                  onMergeIntoPrev={handleMergeIntoPrev}
+                                  onDragStart={handleBlockDragStart}
+                                  isDragging={dragBlockId === col.id}
+                                  dragInProgress={!!dragBlockId}
+                                  onFocusPrev={() => {
+                                    if (colIdx > 0) setFocusBlockId(columns[colIdx - 1].id);
+                                    else if (bIdx > 0) setFocusBlockId(blocks[bIdx - 1].id);
+                                  }}
+                                  onFocusNext={() => {
+                                    if (colIdx < columns.length - 1) setFocusBlockId(columns[colIdx + 1].id);
+                                    else if (bIdx < blocks.length - 1) setFocusBlockId(blocks[bIdx + 1].id);
+                                  }}
+                                />
+                              </div>
+                            </React.Fragment>
+                          );
+                        })}
                       </div>
                     );
                   }
