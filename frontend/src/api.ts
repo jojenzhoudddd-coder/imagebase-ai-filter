@@ -2434,6 +2434,7 @@ export interface PatchBlockBody {
   content?: string;
   transformTo?: string;
   baseVersion?: number;
+  props?: Record<string, unknown>;
 }
 
 export interface PatchBlockResponse {

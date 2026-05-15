@@ -971,6 +971,9 @@ export async function patchBlock(
       newBlockContent = transformBlockContent(block.content, block.type, body.transformTo);
     } else if (typeof body.content === "string") {
       newBlockContent = body.content;
+    } else if (body.props) {
+      // Props-only patch — no content change
+      newBlockContent = block.content;
     } else {
       // No actual change
       const idea = await tx.idea.findUnique({
@@ -982,7 +985,7 @@ export async function patchBlock(
 
     // Determine new type from transformTo or re-parse
     let newType = block.type;
-    let newProps = block.props;
+    let newProps: any = block.props;
     if (typeof body.transformTo === "string") {
       // Parse the transformed content to get proper type/props
       const parsed = parseToBlocks(newBlockContent);
@@ -997,6 +1000,11 @@ export async function patchBlock(
         newType = parsed[0].type;
         newProps = parsed[0].props;
       }
+    }
+
+    // Merge explicit props from client (e.g. column layout metadata)
+    if (body.props && typeof body.props === "object") {
+      newProps = { ...(newProps as any ?? {}), ...body.props };
     }
 
     const updated = await tx.ideaBlock.update({

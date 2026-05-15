@@ -78,6 +78,8 @@ export const PatchBlockSchema = z.object({
   /** Optimistic concurrency: client sends its known block version.
    *  Server returns 409 if it doesn't match. */
   baseVersion: z.number().int().min(0).optional(),
+  /** Arbitrary props to merge into the block's existing props (e.g. column layout). */
+  props: z.record(z.unknown()).optional(),
 });
 export type PatchBlockInput = z.infer<typeof PatchBlockSchema>;
 

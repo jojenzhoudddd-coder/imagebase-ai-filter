@@ -81,6 +81,10 @@ export interface BlockItemProps {
   editLocked?: boolean;
   /** Source mode: always show raw markdown, click to focus (no two-click flow). */
   sourceMode?: boolean;
+  /** Callback when user initiates drag from selected state. */
+  onDragStart?: (blockId: string) => void;
+  /** Whether this block is currently being dragged (hide it). */
+  isDragging?: boolean;
 }
 
 const BlockItem = memo(function BlockItem({
@@ -103,6 +107,8 @@ const BlockItem = memo(function BlockItem({
   sourceMode = false,
   focusTrigger = 0,
   focusCursorPos = null,
+  onDragStart,
+  isDragging = false,
 }: BlockItemProps) {
   const { t } = useTranslation();
   /** Strip the trailing \n that blocks store for markdown concatenation —
@@ -367,8 +373,10 @@ const BlockItem = memo(function BlockItem({
   const showHover = hovered && !editing && !selected && !readOnly;
   const containerStyle: React.CSSProperties = {
     position: "relative",
-    cursor: readOnly ? "default" : editing ? "text" : "pointer",
+    cursor: readOnly ? "default" : editing ? "text" : selected ? "grab" : "pointer",
     minHeight: isDivider ? 20 : 24,
+    opacity: isDragging ? 0.3 : 1,
+    transition: "opacity 0.15s ease",
   };
 
   const outlineStyle: React.CSSProperties = {
@@ -464,6 +472,14 @@ const BlockItem = memo(function BlockItem({
     );
   }
 
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (selected && !sourceMode && onDragStart) {
+      // Initiate drag from selected state
+      e.preventDefault();
+      onDragStart(block.id);
+    }
+  }, [selected, sourceMode, onDragStart, block.id]);
+
   return (
     <div
       style={containerStyle}
@@ -471,6 +487,7 @@ const BlockItem = memo(function BlockItem({
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       onClick={handleClick}
+      onPointerDown={handlePointerDown}
     >
       <div style={outlineStyle}>
         {selected && <div style={{

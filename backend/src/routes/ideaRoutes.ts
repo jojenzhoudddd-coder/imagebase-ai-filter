@@ -470,9 +470,9 @@ router.patch(
   "/:ideaId/blocks/:blockId",
   asyncHandler(async (req: Request, res: Response) => {
     const { ideaId, blockId } = req.params;
-    const { content, transformTo, baseVersion } = req.body ?? {};
-    if (typeof content !== "string" && typeof transformTo !== "string") {
-      res.status(400).json({ error: "either `content` or `transformTo` required" });
+    const { content, transformTo, baseVersion, props } = req.body ?? {};
+    if (typeof content !== "string" && typeof transformTo !== "string" && !props) {
+      res.status(400).json({ error: "either `content`, `transformTo`, or `props` required" });
       return;
     }
 
@@ -482,6 +482,7 @@ router.patch(
       if (typeof content === "string") patchBody.content = content;
       if (typeof transformTo === "string") patchBody.transformTo = transformTo;
       if (typeof baseVersion === "number") patchBody.baseVersion = baseVersion;
+      if (props && typeof props === "object") patchBody.props = props;
 
       const result = await patchBlock(prisma as any, ideaId, blockId, patchBody, getClientId(req));
       res.json({
