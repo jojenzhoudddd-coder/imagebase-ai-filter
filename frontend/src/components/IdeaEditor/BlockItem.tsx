@@ -135,10 +135,39 @@ const BlockItem = memo(function BlockItem({
     blockVersionRef.current = (block as any).version ?? 0;
   }, [block]);
 
-  // Source mode: sync editValue when block content changes externally
+  // Pending cursor: set by focusTrigger, consumed by content sync or layout effect
+  const pendingCursorRef = useRef<{ pos: number; trigger: number } | null>(null);
+
+  // When focusTrigger increments, record desired cursor position
+  const prevFocusTrigger = useRef(focusTrigger);
+  if (focusTrigger !== prevFocusTrigger.current) {
+    prevFocusTrigger.current = focusTrigger;
+    if (sourceMode && focusTrigger > 0) {
+      pendingCursorRef.current = { pos: focusCursorPos ?? 0, trigger: focusTrigger };
+    }
+  }
+
+  // Source mode: sync editValue when block content changes externally,
+  // then apply pending cursor in the same commit
   useEffect(() => {
-    if (sourceMode && !saving) setEditValue(displayContent(block.content));
+    if (!sourceMode || saving) return;
+    setEditValue(displayContent(block.content));
   }, [sourceMode, block.content, saving]);
+
+  // Apply pending cursor after React has committed the new editValue to DOM
+  useEffect(() => {
+    if (!sourceMode || !pendingCursorRef.current) return;
+    const pending = pendingCursorRef.current;
+    pendingCursorRef.current = null;
+    const ta = textareaRef.current;
+    if (!ta) return;
+    // Use microtask to run after React's DOM flush for this commit
+    queueMicrotask(() => {
+      ta.focus();
+      const pos = Math.min(pending.pos, ta.value.length);
+      ta.selectionStart = ta.selectionEnd = pos;
+    });
+  }, [sourceMode, editValue]); // fires after editValue changes from content sync
 
   // Auto-focus: only for newly created blocks (autoFocus=true on first mount).
   const didAutoFocus = useRef(false);
@@ -150,21 +179,6 @@ const BlockItem = memo(function BlockItem({
       onFocusChange?.(block.id, true);
     }
   }, [autoFocus]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Source mode: focus + set cursor AFTER content sync (use rAF to run after React commit)
-  const prevFocusTrigger = useRef(focusTrigger);
-  useEffect(() => {
-    if (!sourceMode || focusTrigger === 0 || focusTrigger === prevFocusTrigger.current) return;
-    prevFocusTrigger.current = focusTrigger;
-    // Delay to ensure editValue sync effect has committed and DOM is updated
-    requestAnimationFrame(() => {
-      const ta = textareaRef.current;
-      if (!ta) return;
-      ta.focus();
-      const pos = focusCursorPos != null ? Math.min(focusCursorPos, ta.value.length) : 0;
-      ta.selectionStart = ta.selectionEnd = pos;
-    });
-  }, [focusTrigger, sourceMode, focusCursorPos]);
 
   // Auto-grow textarea height to fit content
   useEffect(() => {
