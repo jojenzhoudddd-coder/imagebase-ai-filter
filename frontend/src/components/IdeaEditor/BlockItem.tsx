@@ -251,8 +251,64 @@ const BlockItem = memo(function BlockItem({
       void commitEdit();
       return;
     }
-    // Enter is always newline (default textarea behavior) — no interception
-  }, [cancelEdit, commitEdit]);
+
+    if (!sourceMode) return; // remaining shortcuts are source-mode only
+
+    const ta = textareaRef.current;
+    if (!ta) return;
+
+    // Enter at the very end of a block → create new block below
+    if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const atEnd = ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length;
+      if (atEnd) {
+        e.preventDefault();
+        // Save current block first, then create new one
+        void commitEdit().then(() => {
+          void createIdeaBlock(ideaId, {
+            type: "paragraph",
+            content: "\n",
+            afterBlockId: block.id,
+          }).then((res) => {
+            onCreatedAfter?.({
+              id: res.block.id,
+              order: res.block.order,
+              type: res.block.type,
+              content: res.block.content,
+              props: (res.block.props ?? {}) as Record<string, unknown>,
+              version: res.block.version,
+            });
+          }).catch(() => {});
+        });
+        return;
+      }
+    }
+
+    // Backspace at start of empty block → delete and focus previous
+    if (e.key === "Backspace" && ta.selectionStart === 0 && ta.selectionEnd === 0 && editValue.trim() === "") {
+      e.preventDefault();
+      void deleteIdeaBlock(ideaId, block.id).then(() => {
+        onDeleted?.(block.id);
+        onFocusPrev?.();
+      }).catch(() => {});
+      return;
+    }
+
+    // ArrowUp at start → focus previous block
+    if (e.key === "ArrowUp" && ta.selectionStart === 0 && ta.selectionEnd === 0) {
+      e.preventDefault();
+      void commitEdit();
+      onFocusPrev?.();
+      return;
+    }
+
+    // ArrowDown at end → focus next block
+    if (e.key === "ArrowDown" && ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length) {
+      e.preventDefault();
+      void commitEdit();
+      onFocusNext?.();
+      return;
+    }
+  }, [cancelEdit, commitEdit, sourceMode, editValue, ideaId, block.id, onCreatedAfter, onDeleted, onFocusPrev, onFocusNext]);
 
   const handleTextareaInput = useCallback(() => {
     const ta = textareaRef.current;
