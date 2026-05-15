@@ -362,7 +362,7 @@ const BlockItem = memo(function BlockItem({
   if (editing) {
     return (
       <div style={containerStyle} data-block-id={block.id}>
-        {remoteUpdatePending && (
+        {remoteUpdatePending && !sourceMode && (
           <div style={{
             fontSize: 11,
             color: "var(--color-warning, #f59e0b)",
