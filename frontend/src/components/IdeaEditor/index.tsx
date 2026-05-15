@@ -723,20 +723,24 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         const rect = el.getBoundingClientRect();
         if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
           const relX = e.clientX - rect.left;
+          const relY = e.clientY - rect.top;
           const width = rect.width;
-          const edgeZone = 40; // px from edge for column drop
-          if (relX < edgeZone) {
+          const height = rect.height;
+          const xEdge = 40; // px from left/right for column drop
+          const yEdge = Math.min(24, height * 0.3); // px from top/bottom for reorder
+          const idx = blocks.findIndex(b => b.id === elBlockId);
+          if (relY < yEdge && idx >= 0) {
+            // Top edge → insert before
+            foundTarget = { type: "reorder", insertIdx: idx };
+          } else if (relY > height - yEdge && idx >= 0) {
+            // Bottom edge → insert after
+            foundTarget = { type: "reorder", insertIdx: idx + 1 };
+          } else if (relX < xEdge) {
             foundTarget = { type: "column-left", targetBlockId: elBlockId! };
-          } else if (relX > width - edgeZone) {
+          } else if (relX > width - xEdge) {
             foundTarget = { type: "column-right", targetBlockId: elBlockId! };
-          } else {
-            // Middle → reorder
-            const midY = rect.top + rect.height / 2;
-            const idx = blocks.findIndex(b => b.id === elBlockId);
-            if (idx >= 0) {
-              foundTarget = { type: "reorder", insertIdx: e.clientY < midY ? idx : idx + 1 };
-            }
           }
+          // else: in the middle zone — no drop target (avoids ambiguity)
           break;
         }
       }
@@ -1061,17 +1065,19 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // ── Mode toggle with cursor preservation ──
   const caretOffsetRef = useRef(0);
   const toggleMode = useCallback(() => {
-    // Find the first visible block in the current viewport to restore scroll position
+    // Save scroll state: first visible block + its offset from viewport top
     let visibleBlockId: string | null = null;
+    let blockOffsetFromViewTop = 0;
     const container = blockListRef.current;
-    if (container) {
+    const scrollParent = bodyRef.current;
+    if (container && scrollParent) {
       const blockEls = container.querySelectorAll<HTMLElement>("[data-block-id]");
-      const scrollParent = bodyRef.current;
-      const viewTop = scrollParent?.getBoundingClientRect().top ?? 0;
+      const viewTop = scrollParent.getBoundingClientRect().top;
       for (const el of blockEls) {
         const rect = el.getBoundingClientRect();
         if (rect.bottom > viewTop) {
           visibleBlockId = el.getAttribute("data-block-id");
+          blockOffsetFromViewTop = rect.top - viewTop;
           break;
         }
       }
@@ -1085,14 +1091,18 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       } else {
         setContent(contentRef.current);
       }
-      // Scroll to the same block after mode switch
+      // Restore scroll: position the same block at the same offset from viewport top
       if (visibleBlockId) {
         setTimeout(() => {
           const c = blockListRef.current;
-          if (!c) return;
+          const sp = bodyRef.current;
+          if (!c || !sp) return;
           const blockEl = c.querySelector(`[data-block-id="${visibleBlockId}"]`);
           if (!blockEl) return;
-          blockEl.scrollIntoView({ block: "start", behavior: "instant" });
+          const newRect = blockEl.getBoundingClientRect();
+          const viewTop = sp.getBoundingClientRect().top;
+          const currentOffset = newRect.top - viewTop;
+          sp.scrollTop += currentOffset - blockOffsetFromViewTop;
         }, 100);
       }
       return m === "source" ? "preview" : "source";
