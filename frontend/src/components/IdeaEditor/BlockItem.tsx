@@ -248,6 +248,8 @@ const BlockItem = memo(function BlockItem({
 
   const viewStyle: React.CSSProperties = {
     lineHeight: 1.6,
+    padding: 0,       // override .idea-preview-body's 60px padding
+    minHeight: "auto", // override .idea-preview-body's min-height: 100%
   };
 
   const textareaStyle: React.CSSProperties = {

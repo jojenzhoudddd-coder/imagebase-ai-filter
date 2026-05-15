@@ -617,7 +617,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             onPasteFiles={handleSourcePasteFiles} onDropFiles={handleSourceDropFiles}
           />
         ) : blocks.length > 0 ? (
-          <div style={{ padding: "40px 60px" }}>
+          <div style={{ padding: "60px 60px 80px 60px" }}>
             {blocks.map((block, idx) => (
               <BlockItem
                 key={block.id}
