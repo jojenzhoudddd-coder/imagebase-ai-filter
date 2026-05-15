@@ -844,7 +844,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         setDropTarget(null);
         dragActive.current = false;
         if (finalTarget) {
-          commitDrop(finalBlockId, finalTarget);
+          commitDropRef.current(finalBlockId, finalTarget);
         }
       }
     };
@@ -875,7 +875,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
     }, 800);
   }, [ideaId]);
 
-  // Commit a drop operation directly (called from upHandler closure)
+  // Commit a drop operation directly (called from upHandler closure via ref)
+  const commitDropRef = useRef<(blockId: string, target: DropTarget) => void>(() => {});
   const commitDrop = useCallback((blockId: string, target: DropTarget) => {
         if (target.type === "reorder") {
           // If the block is in the layout tree, remove it from there first
@@ -1013,6 +1014,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           }
         }
   }, [blocks, ideaId, layout, persistLayout]);
+  commitDropRef.current = commitDrop;
 
   // Column resize handler — key format: "groupId:dividerIndex"
   const handleColumnResizeStart = useCallback((resizeKey: string, e: React.PointerEvent) => {
