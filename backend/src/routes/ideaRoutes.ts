@@ -132,12 +132,31 @@ router.post("/", asyncHandler(async (req: Request, res: Response) => {
 
   const uniqueName = await generateUniqueIdeaName(wsId, baseName);
 
+  // Create idea with default template blocks
+  const templateBlocks = [
+    { order: 0, type: "heading",   content: "# \n",  props: { level: 1, slug: "", text: "" } },
+    { order: 1, type: "heading",   content: "## \n",  props: { level: 2, slug: "", text: "" } },
+    { order: 2, type: "paragraph", content: "\n",     props: {} },
+    { order: 3, type: "heading",   content: "## \n",  props: { level: 2, slug: "", text: "" } },
+    { order: 4, type: "paragraph", content: "\n",     props: {} },
+  ];
+  const templateContent = templateBlocks.map(b => b.content).join("\n");
+
   const idea = await prisma.idea.create({
     data: {
       name: uniqueName,
       workspaceId: wsId,
       parentId: parentId || null,
       order: maxOrder + 1,
+      content: templateContent,
+      blocks: {
+        create: templateBlocks.map(b => ({
+          order: b.order,
+          type: b.type,
+          content: b.content,
+          props: b.props,
+        })),
+      },
     },
   });
 

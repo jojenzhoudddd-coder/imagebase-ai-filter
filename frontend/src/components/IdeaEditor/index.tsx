@@ -136,7 +136,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         if (blocksRes?.blocks) {
           setBlocks(blocksRes.blocks);
         }
-        if (!idea.content) setMode("source");
+        // New ideas with only template markers → default to preview to show placeholders
+        if (!idea.content?.replace(/^#{1,6}\s*/gm, "").trim()) setMode("preview");
         setLoaded(true);
       })
       .catch((err) => {

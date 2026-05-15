@@ -222,9 +222,34 @@ const BlockItem = memo(function BlockItem({
     ta.style.height = ta.scrollHeight + "px";
   }, []);
 
+  // Check if block content is effectively empty (only markers, no real text)
+  const strippedContent = block.content.replace(/^#{1,6}\s*/gm, "").trim();
+  const isEmpty = strippedContent.length === 0;
+
+  // Placeholder text for empty blocks (by type)
+  const placeholderMap: Record<string, string> = {
+    heading: block.content.startsWith("# ")
+      ? t("idea.block.ph.title")
+      : t("idea.block.ph.section"),
+    paragraph: t("idea.block.ph.paragraph"),
+    code: t("idea.block.ph.code"),
+    list: t("idea.block.ph.list"),
+    quote: t("idea.block.ph.quote"),
+  };
+  const placeholder = isEmpty ? (placeholderMap[block.type] ?? "") : "";
+
   // Render markdown to HTML. Strip trailing newlines + empty <p> tags.
-  const renderedHtml = md.render(block.content.replace(/\n+$/, "").trim() || " ")
-    .replace(/(<p>\s*<\/p>\s*)+$/, "");
+  let renderedHtml: string;
+  if (isEmpty && placeholder) {
+    // Render placeholder as muted styled tag matching the block type
+    const tag = block.type === "heading"
+      ? (block.content.startsWith("# ") ? "h1" : "h2")
+      : "p";
+    renderedHtml = `<${tag} style="color:var(--text-placeholder);font-style:italic">${placeholder}</${tag}>`;
+  } else {
+    renderedHtml = md.render(block.content.replace(/\n+$/, "").trim() || " ")
+      .replace(/(<p>\s*<\/p>\s*)+$/, "");
+  }
 
   // Determine if this is a divider (just render <hr>)
   const isDivider = block.type === "divider";
