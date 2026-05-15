@@ -325,8 +325,9 @@ const BlockItem = memo(function BlockItem({
 
     if (!sourceMode) return; // remaining shortcuts are source-mode only
 
-    // Enter → split block at cursor position
+    // Enter → split block at cursor position (except lists — Enter adds new list item)
     if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (block.type === "list") return; // default textarea behavior = new line = new list item
       e.preventDefault();
       const pos = ta.selectionStart;
       const before = editValue.slice(0, pos);
