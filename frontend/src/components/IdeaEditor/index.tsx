@@ -697,11 +697,10 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
         if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
           const relX = e.clientX - rect.left;
           const width = rect.width;
-          if (relX < width * 0.2) {
-            // Left edge → column-left
+          const edgeZone = 40; // px from edge for column drop
+          if (relX < edgeZone) {
             foundTarget = { type: "column-left", targetBlockId: elBlockId! };
-          } else if (relX > width * 0.8) {
-            // Right edge → column-right
+          } else if (relX > width - edgeZone) {
             foundTarget = { type: "column-right", targetBlockId: elBlockId! };
           } else {
             // Middle → reorder
@@ -1345,6 +1344,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             )}
           </div>
           {/* Drag ghost */}
+          {dragBlockId && ghostPos && console.log("[drag] GHOST rendering", dragBlockId, ghostPos)}
           {dragBlockId && ghostPos && createPortal(
             <div style={{
               position: "fixed",
