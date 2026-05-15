@@ -722,18 +722,26 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // ── Mode toggle with cursor preservation ──
   const caretOffsetRef = useRef(0);
   const toggleMode = useCallback(() => {
+    // Save which block has focus so we can restore after mode switch
+    const currentFocusBlock = focusBlockIdRef.current;
     setMode((m) => {
       if (m === "source") {
-        caretOffsetRef.current = cmRef.current?.getCaret() ?? 0;
         // Source → Preview: refetch blocks (may have changed via source edits)
         fetchIdeaBlocks(ideaId).then((res) => {
           setBlocks(res.blocks);
         }).catch(() => {});
       } else {
         // Preview → Source: contentRef is already synced by block saves
-        caretOffsetRef.current = 0;
-        // Always sync content state from contentRef
         setContent(contentRef.current);
+      }
+      // Restore focus to the same block after mode switch
+      if (currentFocusBlock) {
+        // Use setTimeout to run after React commits the new mode's DOM
+        setTimeout(() => {
+          setFocusBlockId(currentFocusBlock);
+          setFocusCursorPos(0);
+          setFocusTrigger(n => n + 1);
+        }, 50);
       }
       return m === "source" ? "preview" : "source";
     });
