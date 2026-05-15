@@ -476,6 +476,7 @@ export const en = {
   "idea.streaming": "Agent writing…",
   "idea.empty": "Start writing your idea. Supports Markdown, @ mentions, and inline SVG / HTML.",
   "idea.previewEmpty": "Preview mode — press ⌘/ to switch to source mode for editing.",
+  "idea.editLocked": "Please finish editing the current block first",
   "idea.mentionEmpty": "No matches",
   "idea.mentionView": "Table",
   "idea.mentionTable": "Table",

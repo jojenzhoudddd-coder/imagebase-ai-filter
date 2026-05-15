@@ -631,6 +631,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                 onCreatedAfter={handleBlockCreatedAfter}
                 onConflict={handleBlockConflict}
                 onFocusChange={handleBlockFocusChange}
+                editLocked={!!focusBlockId && focusBlockId !== block.id}
+                onEditBlocked={() => toast.info(t("idea.editLocked"))}
                 onFocusPrev={() => {
                   if (idx > 0) setFocusBlockId(blocks[idx - 1].id);
                 }}

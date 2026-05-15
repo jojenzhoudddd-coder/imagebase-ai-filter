@@ -478,6 +478,7 @@ export const zh: TranslationKeys = {
   "idea.streaming": "智能体正在写入…",
   "idea.empty": "在这里记录你的灵感。支持 Markdown、@ 提及和内嵌 SVG / HTML。",
   "idea.previewEmpty": "当前为渲染模式 — 按 ⌘/ 切换到源码模式编辑内容。",
+  "idea.editLocked": "请先完成当前编辑再切换到其他段落",
   "idea.mentionEmpty": "未找到匹配项",
   "idea.mentionView": "Table",
   "idea.mentionTable": "Table",

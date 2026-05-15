@@ -50,6 +50,10 @@ export interface BlockItemProps {
   onConflict?: () => void;
   /** PR-C: notify parent when this block gains/loses focus. */
   onFocusChange?: (blockId: string, focused: boolean) => void;
+  /** When another block is being edited, show toast on click instead of entering edit. */
+  onEditBlocked?: () => void;
+  /** True if another block is currently being edited. */
+  editLocked?: boolean;
 }
 
 const BlockItem = memo(function BlockItem({
@@ -65,6 +69,8 @@ const BlockItem = memo(function BlockItem({
   onFocusNext,
   onConflict,
   onFocusChange,
+  onEditBlocked,
+  editLocked = false,
 }: BlockItemProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
@@ -99,6 +105,7 @@ const BlockItem = memo(function BlockItem({
 
   const enterEdit = useCallback(() => {
     if (readOnly || editing) return;
+    if (editLocked) { onEditBlocked?.(); return; }
     setEditValue(block.content);
     setEditing(true);
     onFocusChange?.(block.id, true);
