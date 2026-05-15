@@ -72,25 +72,28 @@ const BlockItem = memo(function BlockItem({
   onEditBlocked,
   editLocked = false,
 }: BlockItemProps) {
-  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState<"view" | "selected" | "editing">("view");
   const [editValue, setEditValue] = useState("");
   const [hovered, setHovered] = useState(false);
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const blockVersionRef = useRef<number>((block as any).version ?? 0);
+  const editing = mode === "editing";
+  const selected = mode === "selected";
 
   // Keep blockVersion ref in sync with block prop
   useEffect(() => {
     blockVersionRef.current = (block as any).version ?? 0;
   }, [block]);
 
-  // Auto-focus on mount if requested
+  // Auto-focus on mount if requested (skip selected state)
   useEffect(() => {
-    if (autoFocus && !readOnly) {
-      setEditing(true);
+    if (autoFocus && !readOnly && !editLocked) {
       setEditValue(block.content);
+      setMode("editing");
+      onFocusChange?.(block.id, true);
     }
-  }, [autoFocus, readOnly, block.content]);
+  }, [autoFocus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-grow textarea and focus
   useEffect(() => {
@@ -99,20 +102,36 @@ const BlockItem = memo(function BlockItem({
     ta.focus();
     ta.style.height = "auto";
     ta.style.height = ta.scrollHeight + "px";
-    // Place cursor at end
     ta.selectionStart = ta.selectionEnd = ta.value.length;
   }, [editing]);
 
-  const enterEdit = useCallback(() => {
-    if (readOnly || editing) return;
+  // Click outside selected block → deselect
+  useEffect(() => {
+    if (!selected) return;
+    const handler = (e: PointerEvent) => {
+      const el = (e.target as HTMLElement).closest("[data-block-id]");
+      if (!el || el.getAttribute("data-block-id") !== block.id) {
+        setMode("view");
+      }
+    };
+    document.addEventListener("pointerdown", handler, true);
+    return () => document.removeEventListener("pointerdown", handler, true);
+  }, [selected, block.id]);
+
+  const handleClick = useCallback(() => {
+    if (readOnly) return;
     if (editLocked) { onEditBlocked?.(); return; }
-    setEditValue(block.content);
-    setEditing(true);
-    onFocusChange?.(block.id, true);
-  }, [readOnly, editing, block.content, block.id, onFocusChange]);
+    if (mode === "view") {
+      setMode("selected");
+      onFocusChange?.(block.id, true);
+    } else if (mode === "selected") {
+      setEditValue(block.content);
+      setMode("editing");
+    }
+  }, [readOnly, editLocked, mode, block.content, block.id, onFocusChange, onEditBlocked]);
 
   const cancelEdit = useCallback(() => {
-    setEditing(false);
+    setMode("view");
     setEditValue("");
     setHovered(false);
     onFocusChange?.(block.id, false);
@@ -123,7 +142,7 @@ const BlockItem = memo(function BlockItem({
     const trimmed = editValue;
     // No change → just close
     if (trimmed === block.content) {
-      setEditing(false);
+      setMode("view");
       setHovered(false);
       onFocusChange?.(block.id, false);
       return;
@@ -135,13 +154,13 @@ const BlockItem = memo(function BlockItem({
         baseVersion: blockVersionRef.current,
       });
       blockVersionRef.current = res.blockVersion;
-      setEditing(false);
+      setMode("view");
       setHovered(false);
       onFocusChange?.(block.id, false);
       onSaved?.(res);
     } catch (err: any) {
       if (err?.status === 409) {
-        setEditing(false);
+        setMode("view");
         setHovered(false);
         onFocusChange?.(block.id, false);
         onConflict?.();
@@ -185,14 +204,13 @@ const BlockItem = memo(function BlockItem({
   // Determine if this is a divider (just render <hr>)
   const isDivider = block.type === "divider";
 
-  const showHover = hovered && !editing && !readOnly;
+  const showHover = hovered && !editing && !selected && !readOnly;
   const containerStyle: React.CSSProperties = {
     position: "relative",
-    cursor: readOnly ? "default" : "text",
+    cursor: readOnly ? "default" : editing ? "text" : "pointer",
     minHeight: isDivider ? 20 : 24,
   };
 
-  // Outline wraps the content div tightly, outlineOffset adds 4px breathing room
   const outlineStyle: React.CSSProperties = {
     borderRadius: 4,
     outline: showHover ? "1px solid var(--color-primary, #3778FB)" : "1px solid transparent",
@@ -282,11 +300,12 @@ const BlockItem = memo(function BlockItem({
   return (
     <div
       style={containerStyle}
+      data-block-id={block.id}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
-      onClick={enterEdit}
+      onClick={handleClick}
     >
-      <div style={outlineStyle}>
+      <div style={{ ...outlineStyle, position: "relative" }}>
         {isDivider ? (
           <hr style={{ border: "none", borderTop: "1px solid var(--border-divider, #dee0e3)", margin: "8px 0" }} />
         ) : (
@@ -295,6 +314,15 @@ const BlockItem = memo(function BlockItem({
             className="idea-preview-body block-item-view"
             dangerouslySetInnerHTML={{ __html: renderedHtml }}
           />
+        )}
+        {/* Selected state: light blue overlay — click again to enter edit */}
+        {selected && (
+          <div style={{
+            position: "absolute", inset: 0, borderRadius: 4,
+            background: "rgba(55, 120, 251, 0.08)",
+            border: "1px solid var(--color-primary, #3778FB)",
+            pointerEvents: "none",
+          }} />
         )}
       </div>
     </div>
