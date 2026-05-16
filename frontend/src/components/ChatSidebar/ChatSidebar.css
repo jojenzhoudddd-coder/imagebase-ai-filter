@@ -2982,13 +2982,13 @@
   flex: 1;
   min-height: 0;
   scrollbar-width: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 .conv-list-scroll::-webkit-scrollbar { display: none; }
 
 /* Individual conversation item */
+.conv-list-item + .conv-list-item {
+  margin-top: 4px;
+}
 .conv-list-item {
   display: flex;
   align-items: center;
