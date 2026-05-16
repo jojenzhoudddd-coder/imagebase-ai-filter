@@ -153,6 +153,49 @@ export async function listConversations(
   return rows.map(toConversation);
 }
 
+/**
+ * Search conversations by matching query against title + message content.
+ * Returns conversations (with summary/title match first, then message-content match).
+ */
+export async function searchConversations(
+  workspaceId: string,
+  query: string,
+): Promise<Conversation[]> {
+  const q = query.toLowerCase();
+
+  // Find conversations whose title or summary contain the query
+  const allConvs = await prisma.conversation.findMany({
+    where: {
+      workspaceId,
+      OR: [
+        { attachedToType: null },
+        { attachedToType: { not: "agency" } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  // Also search message content — find conversations that have matching messages
+  const msgHits = await prisma.message.findMany({
+    where: {
+      content: { contains: q, mode: "insensitive" },
+      conversation: { workspaceId },
+    },
+    select: { conversationId: true },
+    distinct: ["conversationId"],
+  });
+  const msgConvIds = new Set(msgHits.map(m => m.conversationId));
+
+  // Merge: conversations matching by title/summary OR by message content
+  const results = allConvs.filter(row => {
+    const title = (row.title ?? "").toLowerCase();
+    const summary = (row.summary ?? "").toLowerCase();
+    return title.includes(q) || summary.includes(q) || msgConvIds.has(row.id);
+  });
+
+  return results.map(toConversation);
+}
+
 export async function createConversation(
   workspaceId: string,
   title?: string,

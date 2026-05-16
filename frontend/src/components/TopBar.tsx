@@ -406,12 +406,6 @@ export default function TopBar({ tableName, documentName, workspaceId, onRenameT
         </div>
         {/* 老的 group-1 / group-2 之间的 divider 删除，因为 group-1 已经隐藏 */}
         <div className="topbar-icon-group">
-          <button className="topbar-icon-btn" title={t("topbar.search")}>
-            {/* Figma: Search — line 764 */}
-            <svg width="20" height="20" viewBox="1263.5 21.5 20 20" fill="none">
-              <path d="M1277.35 36.4156C1276.13 37.4065 1274.57 38 1272.88 38C1268.94 38 1265.75 34.81 1265.75 30.875C1265.75 26.94 1268.94 23.75 1272.88 23.75C1276.81 23.75 1280 26.94 1280 30.875C1280 32.5724 1279.41 34.1311 1278.42 35.355L1281.25 38.1844C1281.54 38.4755 1281.53 38.9485 1281.24 39.2396C1280.95 39.5307 1280.48 39.5362 1280.18 39.2451L1277.35 36.4156ZM1278.5 30.875C1278.5 27.7684 1275.98 25.25 1272.88 25.25C1269.77 25.25 1267.25 27.7684 1267.25 30.875C1267.25 33.9816 1269.77 36.5 1272.88 36.5C1275.98 36.5 1278.5 33.9816 1278.5 30.875Z" fill="#2B2F36"/>
-            </svg>
-          </button>
           <button className="topbar-icon-btn" title={t("topbar.add")} ref={addBtnRef}>
             {/* Figma: Plus — line 765. Click 触发 Magic Canvas 新增 block 菜单. */}
             <svg width="20" height="20" viewBox="1298 22 20 20" fill="none">

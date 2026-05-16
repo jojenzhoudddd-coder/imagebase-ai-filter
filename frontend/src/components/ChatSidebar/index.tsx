@@ -53,6 +53,7 @@ import {
   type PendingConfirm,
   createConversation,
   listConversations,
+  searchConversations,
   deleteConversation as apiDeleteConversation,
   clearConversationMessages,
   getConversationMessages,
@@ -66,6 +67,7 @@ import {
 import { useAuth } from "../../auth/AuthContext";
 import { extractMentionPayloads } from "../Mention/mentionSyntax";
 import { useToast } from "../Toast/index";
+import { pinyinMatch } from "../../utils/pinyinMatch";
 import { listenChatShared } from "./listenHub";
 import { AnimatedCharacters } from "../../auth/AnimatedCharacters";
 
@@ -438,6 +440,12 @@ export default function ChatSidebar({
   const [convList, setConvList] = useState<ChatConversation[]>([]);
   const [convListLoading, setConvListLoading] = useState(false);
   const convListBtnRef = useRef<HTMLButtonElement>(null);
+  const convListPanelRef = useRef<HTMLDivElement>(null);
+  const convSearchInputRef = useRef<HTMLInputElement>(null);
+  const [convSearchQuery, setConvSearchQuery] = useState("");
+  const [convSearchResults, setConvSearchResults] = useState<ChatConversation[] | null>(null);
+  const [convSearchLoading, setConvSearchLoading] = useState(false);
+  const convSearchSeqRef = useRef(0);
   const toast = useToast();
 
   // Bumped after each streamed turn finishes, so AgentNamePill can re-fetch
@@ -1703,6 +1711,70 @@ export default function ChatSidebar({
     }
   }, [convListOpen, workspaceId]);
 
+  // Conversation search: debounced server-side search + immediate pinyin filter on titles
+  const convSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleConvSearch = useCallback((q: string) => {
+    setConvSearchQuery(q);
+    if (convSearchTimerRef.current) clearTimeout(convSearchTimerRef.current);
+
+    if (!q.trim()) {
+      setConvSearchResults(null);
+      setConvSearchLoading(false);
+      return;
+    }
+
+    // Immediate: pinyin filter on already-fetched list titles
+    const localHits = convList.filter(c => pinyinMatch(c.title || "", q));
+    setConvSearchResults(localHits);
+
+    // Debounced: server-side search in message content
+    setConvSearchLoading(true);
+    convSearchTimerRef.current = setTimeout(async () => {
+      const seq = ++convSearchSeqRef.current;
+      try {
+        const results = await searchConversations(workspaceId, q);
+        if (seq !== convSearchSeqRef.current) return;
+        setConvSearchResults(results);
+      } catch {
+        if (seq !== convSearchSeqRef.current) return;
+        // Keep local results on error
+      } finally {
+        if (seq === convSearchSeqRef.current) setConvSearchLoading(false);
+      }
+    }, 300);
+  }, [convList, workspaceId]);
+
+  // Close conv list: reset search state
+  const closeConvList = useCallback(() => {
+    setConvListOpen(false);
+    setConvSearchQuery("");
+    setConvSearchResults(null);
+    setConvSearchLoading(false);
+  }, []);
+
+  // Click outside conv list panel
+  useEffect(() => {
+    if (!convListOpen) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        convListPanelRef.current && !convListPanelRef.current.contains(target) &&
+        convListBtnRef.current && !convListBtnRef.current.contains(target)
+      ) {
+        closeConvList();
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [convListOpen, closeConvList]);
+
+  // Auto-focus search input when popover opens
+  useEffect(() => {
+    if (convListOpen) {
+      requestAnimationFrame(() => convSearchInputRef.current?.focus());
+    }
+  }, [convListOpen]);
+
   // ─── Render ─────────────────────────────────────────────────────────
   // Header row re-added per Figma node 6:5309 "AI header": no title, just a
   // right-aligned cluster with History + More icon buttons. The outer
@@ -1838,44 +1910,67 @@ export default function ChatSidebar({
           width={200}
         />
       )}
-      {/* ≡ All conversations popover — V3.0.3:第一项是"+ 新对话",剩下是历史 list */}
-      {convListOpen && convListBtnRef.current && (
-        <DropdownMenu
-          anchorEl={convListBtnRef.current}
-          items={[
-            // 顶部 + 新对话(总在第一,始终可点)
-            {
-              key: "__new",
-              label: t("chat.list.newChat"),
-              icon: <PlusIcon size={16} />,
-            },
-            // 老对话列表
-            ...(convListLoading
-              ? [{ key: "__loading", label: "…", disabled: true }]
-              : convList.length === 0
-              ? [{ key: "__empty", label: t("chat.list.empty"), disabled: true }]
-              : convList.map((c) => ({
-                  key: c.id,
-                  label: c.title || t("chat.list.untitled"),
-                  active: c.id === activeConv?.id,
-                }))),
-          ]}
-          onSelect={(key) => {
-            if (key === "__new") {
-              setConvListOpen(false);
-              void handleNewConversation();
-              return;
-            }
-            if (!key.startsWith("__")) void handleSwitchConversation(key);
-          }}
-          onClose={() => setConvListOpen(false)}
-          width={260}
-          maxHeightPx={400}
-          // 用 .chat-part 父容器(包含 header + aside)作为 boundary,
-          // 弹窗最大高度被夹在 block 底边减 20px 内,内容超出竖直滚动。
-          boundaryEl={sidebarRef.current?.parentElement ?? sidebarRef.current}
-        />
-      )}
+      {/* ≡ All conversations popover — with search bar */}
+      {convListOpen && convListBtnRef.current && (() => {
+        const anchorRect = convListBtnRef.current!.getBoundingClientRect();
+        const displayList = convSearchResults ?? convList;
+        return createPortal(
+          <div
+            ref={convListPanelRef}
+            className="conv-list-popover"
+            style={{ top: anchorRect.bottom + 4, left: anchorRect.right - 260 }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {/* Search bar */}
+            <div className="conv-list-search">
+              <svg className="conv-list-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="currentColor"/>
+              </svg>
+              <input
+                ref={convSearchInputRef}
+                className="conv-list-search-input"
+                type="text"
+                placeholder={t("chat.list.searchPlaceholder")}
+                value={convSearchQuery}
+                onChange={(e) => handleConvSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") closeConvList(); }}
+              />
+              {convSearchLoading && <span className="conv-list-search-spinner">…</span>}
+            </div>
+            {/* + New conversation */}
+            {!convSearchQuery && (
+              <button
+                className="conv-list-item conv-list-new"
+                onClick={() => { closeConvList(); void handleNewConversation(); }}
+              >
+                <PlusIcon size={16} />
+                <span>{t("chat.list.newChat")}</span>
+              </button>
+            )}
+            {/* Conversation list */}
+            <div className="conv-list-items">
+              {convListLoading && !convSearchQuery ? (
+                <div className="conv-list-empty">…</div>
+              ) : displayList.length === 0 ? (
+                <div className="conv-list-empty">
+                  {convSearchQuery ? t("chat.list.noResults") : t("chat.list.empty")}
+                </div>
+              ) : (
+                displayList.map((c) => (
+                  <button
+                    key={c.id}
+                    className={`conv-list-item ${c.id === activeConv?.id ? "is-active" : ""}`}
+                    onClick={() => void handleSwitchConversation(c.id)}
+                  >
+                    {c.title || t("chat.list.untitled")}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>,
+          document.body,
+        );
+      })()}
       {/* Old refresh confirm — V3.0 不再使用,但保留兼容(防有地方还在用) */}
       <ConfirmDialog
         open={refreshConfirmOpen}

@@ -216,6 +216,24 @@ router.get("/conversations", async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/chat/conversations/search?workspaceId=xxx&q=xxx
+// Search conversations by message content (substring match on title + message content)
+router.get("/conversations/search", async (req: Request, res: Response) => {
+  const workspaceId = (req.query.workspaceId as string) || DEFAULT_WORKSPACE_ID;
+  const q = (req.query.q as string || "").trim();
+  if (!q) {
+    res.json([]);
+    return;
+  }
+  try {
+    const results = await convStore.searchConversations(workspaceId, q);
+    res.json(results);
+  } catch (err) {
+    console.error(`[chatRoutes] search conversations failed:`, err);
+    res.status(500).json({ error: `Search failed: ${err instanceof Error ? err.message : String(err)}` });
+  }
+});
+
 // POST /api/chat/conversations
 // Body: { workspaceId, agentId?, title?, attachedToType?, attachedToId? }
 //   - agentId defaults to "agent_default"

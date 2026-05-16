@@ -974,6 +974,16 @@ export async function listConversations(
   return res.json();
 }
 
+export async function searchConversations(
+  workspaceId: string,
+  query: string,
+): Promise<ChatConversation[]> {
+  const p = new URLSearchParams({ workspaceId, q: query });
+  const res = await fetch(`${BASE}/chat/conversations/search?${p}`);
+  if (!res.ok) throw new Error("Failed to search conversations");
+  return res.json();
+}
+
 /**
  * V3.0 PR3: passive listener — 订阅别的 ChatBlock 在同 conv 上发出 / 收到的事件。
  * 返回一个 cleanup 函数,unmount 时调以解订阅。

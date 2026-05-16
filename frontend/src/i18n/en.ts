@@ -600,6 +600,8 @@ export const en = {
   "chat.list.empty": "No history yet",
   "chat.list.untitled": "Untitled chat",
   "chat.list.newChat": "New chat",
+  "chat.list.searchPlaceholder": "Search conversations…",
+  "chat.list.noResults": "No matching conversations",
   "chat.menu.clearCurrent": "Clear conversation",
   // Chat agent meta button tooltip
   "chat.agent.menu.title": "Agent settings",

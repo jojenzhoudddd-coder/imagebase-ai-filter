@@ -2854,3 +2854,90 @@
   z-index: 50;
   pointer-events: none;
 }
+
+/* ── Conversation list popover with search ── */
+.conv-list-popover {
+  position: fixed;
+  z-index: 10000;
+  width: 260px;
+  background: var(--bg-body);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+  display: flex;
+  flex-direction: column;
+  max-height: 400px;
+  overflow: hidden;
+}
+
+.conv-list-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+.conv-list-search-icon {
+  flex-shrink: 0;
+  color: var(--text-quaternary);
+}
+.conv-list-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 20px;
+}
+.conv-list-search-input::placeholder {
+  color: var(--text-quaternary);
+}
+.conv-list-search-spinner {
+  flex-shrink: 0;
+  color: var(--text-quaternary);
+  font-size: 12px;
+}
+
+.conv-list-items {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.conv-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conv-list-item:hover {
+  background: var(--bg-hover);
+}
+.conv-list-item.is-active {
+  background: var(--bg-active, var(--bg-hover));
+  font-weight: 500;
+}
+.conv-list-new {
+  border-bottom: 1px solid var(--border-light);
+  color: var(--primary);
+}
+
+.conv-list-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-quaternary);
+}
