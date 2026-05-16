@@ -101,7 +101,7 @@
 }
 /* Align sidebar search styles with conv-list-popover (chat history) */
 .sidebar-expand-popover .sidebar-search-active {
-  margin-bottom: 4px;
+  margin-bottom: 8px;
   height: 32px;
   padding: 0 8px;
   border-radius: var(--radius-m);
