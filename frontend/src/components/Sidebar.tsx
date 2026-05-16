@@ -51,6 +51,8 @@ interface Props {
   width?: number;
   /** 父级监听拖宽事件 —— 设了就由父级写 state(per-block),不写 localStorage */
   onWidthChange?: (w: number) => void;
+  /** When true, sidebar opens with search input active (used by expand popover) */
+  defaultSearchActive?: boolean;
 }
 
 const DRAG_THRESHOLD = 4;
@@ -122,14 +124,14 @@ const SIDEBAR_MIN_W = 120;
 const SIDEBAR_MAX_W = 400;
 const SIDEBAR_DEFAULT_W = 200;
 
-export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onCreateIdea, onCreateDemo, onDeleteItem, onMoveItem, scrollToItemId, onCreateByAI, onCollapse, width: widthProp, onWidthChange }: Props) {
+export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onReorderItems, onDeleteTable, tableCount, onCreateWithAI, onResetToDefault, onCreateBlank, folders = [], onCreateFolder, onCreateDesign, onCreateIdea, onCreateDemo, onDeleteItem, onMoveItem, scrollToItemId, onCreateByAI, onCollapse, width: widthProp, onWidthChange, defaultSearchActive = false }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchActive, setSearchActive] = useState(false);
+  const [searchActive, setSearchActive] = useState(defaultSearchActive);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const moreRefs = useRef<Map<string, HTMLSpanElement>>(new Map());
   const newBtnRef = useRef<HTMLButtonElement>(null);

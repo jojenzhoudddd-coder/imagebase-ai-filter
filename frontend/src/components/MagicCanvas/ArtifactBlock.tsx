@@ -273,6 +273,7 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
       onMoveItem={ws.onMoveItem}
       onCreateByAI={handleCreateByAI}
       width={300}
+      defaultSearchActive
     />
   ) : null, [effectiveCollapsed, ws.sidebarItems, ws.onRenameItem, active?.id, handleSelectItem, ws.onReorderItems, ws.onDeleteTable, ws.tableCount, ws.onCreateWithAI, ws.onResetToDefault, handleCreateBlank, ws.folders, ws.onCreateFolder, handleCreateDesign, handleCreateIdea, handleCreateDemo, ws.onDeleteItem, ws.onMoveItem, handleCreateByAI]);
 

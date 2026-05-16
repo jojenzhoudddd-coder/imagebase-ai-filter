@@ -108,21 +108,6 @@
   background: var(--color-bg-hover);
   font-size: 14px;
 }
-.sidebar-expand-popover .sidebar-search-trigger {
-  margin-bottom: 4px;
-  height: 32px;
-  padding: 0 8px;
-  border-radius: var(--radius-m);
-  background: var(--color-bg-hover);
-  font-size: 14px;
-  color: var(--color-text-muted);
-}
-.sidebar-expand-popover .sidebar-search-trigger span {
-  color: var(--color-text-muted);
-}
-.sidebar-expand-popover .sidebar-search-trigger .sidebar-search-icon {
-  color: var(--color-text-muted);
-}
 .sidebar-expand-popover .sidebar-search-empty {
   padding: 12px 8px;
   font-size: 13px;
