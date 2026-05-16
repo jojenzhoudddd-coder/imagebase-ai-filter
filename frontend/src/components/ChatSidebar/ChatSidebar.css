@@ -2855,12 +2855,19 @@
   pointer-events: none;
 }
 
-/* ── Conversation list dropdown overrides ── */
-.conv-list-dropdown.dropdown-menu {
+/* ── Conversation list popover ── */
+.conv-list-popover {
+  position: fixed;
+  z-index: 1000;
+  width: 260px;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-dropdown);
   padding: 8px;
-}
-.conv-list-dropdown .dropdown-menu-header {
-  padding: 0 0 4px;
+  display: flex;
+  flex-direction: column;
+  max-height: 400px;
 }
 
 /* Header row: search icon + new chat (collapsed) or search bar + "+" (expanded) */
@@ -2868,6 +2875,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  margin-bottom: 4px;
 }
 
 /* Icon-only button (magnifier collapsed, "+" when search expanded) */
@@ -2955,4 +2964,85 @@
 .conv-search-bar-clear:hover {
   color: var(--color-text-primary);
   background: var(--surface-3);
+}
+.conv-search-bar-spinner {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: conv-spin 0.6s linear infinite;
+}
+@keyframes conv-spin { to { transform: rotate(360deg); } }
+
+/* Scrollable conversation items */
+.conv-list-scroll {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  scrollbar-width: none;
+}
+.conv-list-scroll::-webkit-scrollbar { display: none; }
+
+/* Individual conversation item */
+.conv-list-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+.conv-list-item:hover,
+.conv-list-item.is-highlighted {
+  background: var(--color-bg-hover);
+}
+.conv-list-item.is-active {
+  background: var(--surface-hover, rgba(20, 86, 240, 0.08));
+  color: var(--primary, #1456f0);
+  font-weight: 500;
+}
+.conv-list-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* More button (⋯) — visible on hover/highlight only */
+.conv-list-item-more {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-s);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.conv-list-item:hover .conv-list-item-more,
+.conv-list-item.is-highlighted .conv-list-item-more {
+  opacity: 1;
+}
+.conv-list-item-more:hover {
+  background: var(--surface-3, rgba(0,0,0,0.06));
+  color: var(--color-text-primary);
+}
+
+/* Empty / no-results state */
+.conv-list-empty {
+  padding: 12px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-muted);
 }
