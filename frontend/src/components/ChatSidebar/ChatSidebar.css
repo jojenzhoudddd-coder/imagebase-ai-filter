@@ -3005,8 +3005,8 @@
   background: var(--color-bg-hover);
 }
 .conv-list-item.is-active {
-  background: var(--surface-hover, rgba(20, 86, 240, 0.08));
-  color: var(--primary, #1456f0);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
   font-weight: 500;
 }
 .conv-list-item-label {
