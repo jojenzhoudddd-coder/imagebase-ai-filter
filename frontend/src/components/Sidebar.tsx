@@ -384,10 +384,10 @@ export default function Sidebar({ items, onRenameItem, activeItemId, onSelectIte
             setMenuItemId(menuItemId === item.id ? null : item.id);
           }}
         >
-          <svg width="14" height="14" viewBox="207 119 4 14" fill="none">
-            <path d="M209 122.208C208.436 122.208 207.979 121.751 207.979 121.187C207.979 120.624 208.436 120.167 209 120.167C209.564 120.167 210.021 120.624 210.021 121.187C210.021 121.751 209.564 122.208 209 122.208Z" fill="currentColor"/>
-            <path d="M209 127.006C208.436 127.006 207.979 126.549 207.979 125.985C207.979 125.422 208.436 124.965 209 124.965C209.564 124.965 210.021 125.422 210.021 125.985C210.021 126.549 209.564 127.006 209 127.006Z" fill="currentColor"/>
-            <path d="M209 131.833C208.436 131.833 207.979 131.376 207.979 130.812C207.979 130.249 208.436 129.792 209 129.792C209.564 129.792 210.021 130.249 210.021 130.812C210.021 131.376 209.564 131.833 209 131.833Z" fill="currentColor"/>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <circle cx="3.5" cy="8" r="1.2" fill="currentColor" />
+            <circle cx="8" cy="8" r="1.2" fill="currentColor" />
+            <circle cx="12.5" cy="8" r="1.2" fill="currentColor" />
           </svg>
         </span>
         {menuItemId === item.id && moreRefs.current.get(item.id) && (

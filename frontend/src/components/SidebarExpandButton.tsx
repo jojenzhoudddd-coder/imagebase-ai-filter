@@ -4,7 +4,7 @@
  * 左边作为前缀。展开时按钮节点不存在,title 自然归位。
  *
  * Hover 时显示一个 sidebar popover，可以快速切换 artifact。
- * 支持上下键导航 + 回车选中。
+ * 支持上下键导航 + 回车选中 + Escape 关闭。
  */
 
 import { useState, useRef, useCallback, useLayoutEffect, useEffect } from "react";
@@ -31,16 +31,12 @@ export default function SidebarExpandButton({ className }: { className?: string 
     clearTimeout(leaveTimer.current);
   };
 
-  // Recompute position whenever popover opens & auto-focus the popover
+  // Recompute position whenever popover opens
   useLayoutEffect(() => {
     if (!open) return;
     const rect = btnRef.current?.getBoundingClientRect();
     if (rect) setPos({ top: rect.bottom + 4, left: rect.left });
     setActiveIdx(-1);
-    // Focus popover after portal mounts so it can receive keyboard events
-    requestAnimationFrame(() => {
-      popoverRef.current?.focus();
-    });
   }, [open]);
 
   const handleEnter = useCallback(() => {
@@ -75,48 +71,55 @@ export default function SidebarExpandButton({ className }: { className?: string 
     return Array.from(popoverRef.current.querySelectorAll(ITEM_SELECTOR)) as HTMLElement[];
   }, []);
 
-  // Keyboard handler — works on both the popover container and bubbled from search input
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      setOpen(false);
-      btnRef.current?.focus();
-      return;
-    }
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      const items = getItems();
-      if (items.length === 0) return;
-      setActiveIdx((prev) => {
-        let next: number;
-        if (e.key === "ArrowDown") {
-          next = prev < items.length - 1 ? prev + 1 : 0;
-        } else {
-          next = prev > 0 ? prev - 1 : items.length - 1;
-        }
-        items[next]?.scrollIntoView({ block: "nearest" });
-        return next;
-      });
-      return;
-    }
-    if (e.key === "Enter") {
-      const items = getItems();
-      if (activeIdx >= 0 && activeIdx < items.length) {
-        e.preventDefault();
-        items[activeIdx].click();
-        setTimeout(() => setOpen(false), 100);
-      }
-    }
-  }, [activeIdx, getItems]);
-
-  // Reset activeIdx when items change (e.g. after search filter)
+  // Document-level keyboard listener — works regardless of focus
   useEffect(() => {
     if (!open) return;
-    // Use MutationObserver to detect when sidebar items change (search filter)
+    const handler = (e: KeyboardEvent) => {
+      // Don't handle if user is typing in the search input (except arrow/enter/escape)
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isInput = tag === "INPUT" || tag === "TEXTAREA";
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setOpen(false);
+        btnRef.current?.focus();
+        return;
+      }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const items = getItems();
+        if (items.length === 0) return;
+        setActiveIdx((prev) => {
+          let next: number;
+          if (e.key === "ArrowDown") {
+            next = prev < items.length - 1 ? prev + 1 : 0;
+          } else {
+            next = prev > 0 ? prev - 1 : items.length - 1;
+          }
+          items[next]?.scrollIntoView({ block: "nearest" });
+          return next;
+        });
+        return;
+      }
+      if (e.key === "Enter" && !isInput) {
+        const items = getItems();
+        if (activeIdx >= 0 && activeIdx < items.length) {
+          e.preventDefault();
+          items[activeIdx].click();
+          setTimeout(() => setOpen(false), 100);
+        }
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, activeIdx, getItems]);
+
+  // Reset activeIdx when sidebar items change (e.g. search filter)
+  useEffect(() => {
+    if (!open) return;
     const el = popoverRef.current;
     if (!el) return;
-    const observer = new MutationObserver(() => {
-      setActiveIdx(-1);
-    });
+    const observer = new MutationObserver(() => setActiveIdx(-1));
     observer.observe(el, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [open]);
@@ -157,8 +160,6 @@ export default function SidebarExpandButton({ className }: { className?: string 
           onMouseEnter={handlePopoverEnter}
           onMouseLeave={handlePopoverLeave}
           onClick={handlePopoverClick}
-          onKeyDown={handleKeyDown}
-          tabIndex={-1}
         >
           {ctx.sidebarElement}
         </div>,
