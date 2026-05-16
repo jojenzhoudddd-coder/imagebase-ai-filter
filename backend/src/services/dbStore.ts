@@ -625,9 +625,14 @@ export async function deleteField(tableId: string, fieldId: string): Promise<boo
   const fields = (row.fields ?? []) as Field[];
   const idx = fields.findIndex(f => f.id === fieldId);
   if (idx === -1) return false;
-  if (fields[idx].isPrimary) return false;
+  const wasPrimary = fields[idx].isPrimary;
 
   fields.splice(idx, 1);
+
+  // If deleted field was primary, promote the first remaining field
+  if (wasPrimary && fields.length > 0) {
+    fields[0].isPrimary = true;
+  }
 
   // Remove from views' filters/sorts/fieldOrder/hiddenFields
   const views = (row.views ?? []) as View[];
@@ -676,8 +681,8 @@ export async function batchDeleteFields(tableId: string, fieldIds: string[]): Pr
   const counters = (row.autoNumberCounters ?? {}) as Record<string, number>;
   const deleteSet = new Set(fieldIds);
 
-  // Validate: filter out primary fields and non-existent ones
-  const toDelete = fields.filter(f => deleteSet.has(f.id) && !f.isPrimary);
+  // Validate: filter out non-existent ones (primary fields can now be deleted)
+  const toDelete = fields.filter(f => deleteSet.has(f.id));
   if (toDelete.length === 0) return null;
   const toDeleteIds = new Set(toDelete.map(f => f.id));
 
@@ -726,6 +731,11 @@ export async function batchDeleteFields(tableId: string, fieldIds: string[]): Pr
 
   // Remove fields from table
   const remainingFields = fields.filter(f => !toDeleteIds.has(f.id));
+
+  // If primary field was deleted, promote the first remaining field
+  if (remainingFields.length > 0 && !remainingFields.some(f => f.isPrimary)) {
+    remainingFields[0].isPrimary = true;
+  }
 
   // Clean views — uses defensive normalizer (see stripFieldRefsFromView).
   for (const view of views) {

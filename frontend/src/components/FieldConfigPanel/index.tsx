@@ -103,7 +103,6 @@ export default function FieldConfigPanel({
       const target = filteredFields[highlightedIndex];
       if (!target) return;
       const isHidden = hiddenSet.has(target.id);
-      if (target.isPrimary) return; // primary field — no action
       if (isHidden) {
         // Hidden field: Enter shows it back (mirrors clicking the eye toggle).
         onToggleVisibility(target.id);
@@ -292,7 +291,6 @@ export default function FieldConfigPanel({
         ) : (
           filteredFields.map((field, idx) => {
             const isHidden = hiddenSet.has(field.id);
-            const isPrimary = field.isPrimary;
             const isDragging = dragState?.fieldId === field.id;
             const dragDisabled = isSearching;
             const isHighlighted = idx === highlightedIndex;
@@ -330,20 +328,14 @@ export default function FieldConfigPanel({
                   {field.name}
                 </span>
 
-                {/* Lock icon for primary, eye toggle for others */}
-                {isPrimary ? (
-                  <div className="field-config-lock">
-                    <LockIcon />
-                  </div>
-                ) : (
-                  <button
-                    className={`field-config-visibility ${isHidden ? "is-hidden" : ""}`}
-                    onClick={() => onToggleVisibility(field.id)}
-                    title={isHidden ? t("fieldConfig.showField") : t("fieldConfig.hideField")}
-                  >
-                    {isHidden ? <InvisibleIcon /> : <VisibleIcon />}
-                  </button>
-                )}
+                {/* Eye toggle for all fields (including primary) */}
+                <button
+                  className={`field-config-visibility ${isHidden ? "is-hidden" : ""}`}
+                  onClick={() => onToggleVisibility(field.id)}
+                  title={isHidden ? t("fieldConfig.showField") : t("fieldConfig.hideField")}
+                >
+                  {isHidden ? <InvisibleIcon /> : <VisibleIcon />}
+                </button>
               </div>
             );
           })

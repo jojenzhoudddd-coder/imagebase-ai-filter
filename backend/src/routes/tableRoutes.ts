@@ -238,7 +238,7 @@ router.put("/:tableId/fields/:fieldId", async (req: Request, res: Response) => {
 // DELETE /api/tables/:tableId/fields/:fieldId
 router.delete("/:tableId/fields/:fieldId", async (req: Request, res: Response) => {
   if (!(await store.deleteField(req.params.tableId, req.params.fieldId))) {
-    res.status(400).json({ error: "无法删除字段（可能是主字段或不存在）" });
+    res.status(400).json({ error: "无法删除字段（字段不存在）" });
     return;
   }
   eventBus.emitChange({ type: "field:delete", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { fieldId: req.params.fieldId } });

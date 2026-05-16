@@ -105,9 +105,14 @@ export function deleteField(tableId: string, fieldId: string): boolean {
 
   const idx = t.fields.findIndex(f => f.id === fieldId);
   if (idx === -1) return false;
-  if (t.fields[idx].isPrimary) return false; // cannot delete primary
+  const wasPrimary = t.fields[idx].isPrimary;
 
   t.fields.splice(idx, 1);
+
+  // If deleted field was primary, promote the first remaining field
+  if (wasPrimary && t.fields.length > 0) {
+    t.fields[0].isPrimary = true;
+  }
 
   // Remove from records
   for (const rec of t.records) {
