@@ -26,7 +26,7 @@ import AgentNamePill from "./AgentNamePill";
 import AgentAvatarMenu from "./AgentAvatarMenu";
 import {
   MoreIcon,
-  RefreshIcon,
+  ClearIcon,
   PlusIcon,
   HistoryIcon,
   TrashIcon,
@@ -1819,7 +1819,7 @@ export default function ChatSidebar({
             {
               key: "clear",
               label: t("chat.menu.clearCurrent"),
-              icon: <RefreshIcon size={16} />,
+              icon: <ClearIcon size={16} />,
               swipeDelete: true,
               onSwipeDelete: () => void handleClearCurrentConversation(),
             },

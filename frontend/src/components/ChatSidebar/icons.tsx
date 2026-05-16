@@ -144,6 +144,15 @@ export function RefreshIcon({ size = 16, className }: IconProps) {
   );
 }
 
+/** Clear icon — broom/mop for "clear conversation". */
+export function ClearIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M9 9H4.5C3.67157 9 3 9.67157 3 10.5V22C3 22.5523 3.44772 23 4 23H20C20.5523 23 21 22.5523 21 22V10.5C21 9.67157 20.3284 9 19.5 9H15V2C15 1.44772 14.5523 1 14 1H10C9.44772 1 9 1.44772 9 2V9ZM11 11V3H13V11H19V14H5V11H11ZM5 21V16H19V21H17V19H15V21H13V18H11V21H9V19H7V21H5Z" fill="currentColor"/>
+    </svg>
+  );
+}
+
 /** Trash icon — used by the chat header more-menu "Delete current chat" item. */
 export function TrashIcon({ size = 16, className }: IconProps) {
   return (
