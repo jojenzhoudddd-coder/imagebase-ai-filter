@@ -13,6 +13,7 @@ type ToolCategory =
   | "analyst"
   | "web_search"
   | "web_fetch"
+  | "integration"
   | "workflow"
   | "subagent"
   | "thinking"
@@ -68,6 +69,19 @@ const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   // web
   web_search: "web_search",
   web_fetch: "web_fetch",
+  // integration (folders, mentions, knowledge, models, skills, cron, meta)
+  list_folders: "integration", create_folder: "integration", rename_folder: "integration",
+  delete_folder: "integration", move_item_to_folder: "integration",
+  find_mentionable: "integration", list_incoming_mentions: "integration",
+  learn_from_url: "integration", learn_from_text: "integration",
+  search_knowledge: "integration", list_knowledge: "integration", delete_knowledge: "integration",
+  add_model: "integration", list_custom_models: "integration", remove_model: "integration", test_model: "integration",
+  update_profile: "integration", update_soul: "integration", create_memory: "integration",
+  read_memory: "integration", recall_memory: "integration",
+  find_skill: "integration", activate_skill: "integration", deactivate_skill: "integration",
+  schedule_task: "integration", list_scheduled_tasks: "integration", cancel_task: "integration",
+  create_skill: "integration", list_my_skills: "integration", update_skill: "integration",
+  delete_skill: "integration", enable_skill: "integration", save_workflow_run_as_skill: "integration",
 };
 
 function categorize(toolName: string): ToolCategory {
@@ -132,6 +146,14 @@ function WebFetchIcon() {
   );
 }
 
+function IntegrationIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M18 2C20.2091 2 22 3.79086 22 6C22 8.20914 20.2091 10 18 10C17.258 10 16.5634 9.79741 15.9678 9.44531L9.44531 15.9678C9.79741 16.5634 10 17.258 10 18C10 20.2091 8.20914 22 6 22C3.79086 22 2 20.2091 2 18C2 15.7909 3.79086 14 6 14C6.74157 14 7.43587 14.202 8.03125 14.5537L14.5537 8.03125C14.202 7.43587 14 6.74157 14 6C14 3.79086 15.7909 2 18 2ZM6 16C4.89543 16 4 16.8954 4 18C4 19.1046 4.89543 20 6 20C7.10457 20 8 19.1046 8 18C8 16.8954 7.10457 16 6 16ZM18 4C16.8954 4 16 4.89543 16 6C16 7.10457 16.8954 8 18 8C19.1046 8 20 7.10457 20 6C20 4.89543 19.1046 4 18 4Z" fill="currentColor"/><path d="M18 14C20.2091 14 22 15.7909 22 18C22 20.2091 20.2091 22 18 22C15.7909 22 14 20.2091 14 18C14 15.7909 15.7909 14 18 14ZM18 16C16.8954 16 16 16.8954 16 18C16 19.1046 16.8954 20 18 20C19.1046 20 20 19.1046 20 18C20 16.8954 19.1046 16 18 16Z" fill="currentColor"/><path d="M6 2C8.20914 2 10 3.79086 10 6C10 8.20914 8.20914 10 6 10C3.79086 10 2 8.20914 2 6C2 3.79086 3.79086 2 6 2ZM6 4C4.89543 4 4 4.89543 4 6C4 7.10457 4.89543 8 6 8C7.10457 8 8 7.10457 8 6C8 4.89543 7.10457 4 6 4Z" fill="currentColor"/>
+    </svg>
+  );
+}
+
 export function WorkflowIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -172,6 +194,7 @@ const ICON_MAP: Record<ToolCategory, () => JSX.Element> = {
   analyst: AnalystIcon,
   web_search: WebSearchIcon,
   web_fetch: WebFetchIcon,
+  integration: IntegrationIcon,
   workflow: WorkflowIcon,
   subagent: SubagentIcon,
   thinking: DeepThinkingIcon,
