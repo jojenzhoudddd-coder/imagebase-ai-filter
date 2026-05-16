@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ChatToolCall } from "../../../api";
 import { useTranslation } from "../../../i18n";
+import { ToolCategoryIcon } from "./toolCategoryIcons";
 
 /**
  * ToolCallGroup — consecutive tool calls of the same MCP tool are grouped
@@ -35,7 +36,7 @@ export default function ToolCallGroup({
         aria-expanded={expanded}
       >
         <span className="chat-expand-card-icon" aria-hidden="true">
-          <GroupGlyph />
+          <ToolCategoryIcon tool={tool} />
         </span>
         <span className="chat-expand-card-title">
           {label}
@@ -138,15 +139,6 @@ function SubstepMarker({ status }: { status: string }) {
   return <span className="chat-tool-substep-idle" />;
 }
 
-function GroupGlyph() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <rect x="2" y="2.5" width="10" height="2.2" rx="0.6" stroke="currentColor" strokeWidth="1.1" />
-      <rect x="2" y="6" width="10" height="2.2" rx="0.6" stroke="currentColor" strokeWidth="1.1" />
-      <rect x="2" y="9.5" width="10" height="2.2" rx="0.6" stroke="currentColor" strokeWidth="1.1" />
-    </svg>
-  );
-}
 
 function Chevron({ expanded }: { expanded: boolean }) {
   return (

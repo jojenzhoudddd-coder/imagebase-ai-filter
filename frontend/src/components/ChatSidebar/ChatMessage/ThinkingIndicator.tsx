@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "../../../i18n";
+import { DeepThinkingIcon } from "./toolCategoryIcons";
 
 /**
  * ThinkingIndicator — model "deep thinking" surface.
@@ -52,7 +53,7 @@ export default function ThinkingIndicator({
           disabled={!hasBody}
         >
           <span className="chat-expand-card-icon" aria-hidden="true">
-            <DeepThinkIcon size={14} />
+            <DeepThinkingIcon />
           </span>
           <span className="chat-expand-card-title">{headerLabel}</span>
           {hasBody && <Chevron expanded={expanded} />}
@@ -102,20 +103,7 @@ function SkeletonPreview() {
   );
 }
 
-/** icon_ai-deepthink — approximation of the Figma glyph. Sparkle + dot. */
-function DeepThinkIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path
-        d="M7 2.2c.18 0 .34.12.4.29l.62 1.96c.13.4.45.72.86.86l1.96.62c.35.12.35.6 0 .72l-1.96.62c-.4.13-.72.45-.86.86l-.62 1.96c-.06.17-.22.29-.4.29s-.34-.12-.4-.29l-.62-1.96c-.13-.4-.45-.72-.86-.86l-1.96-.62c-.35-.12-.35-.6 0-.72l1.96-.62c.4-.13.72-.45.86-.86l.62-1.96c.06-.17.22-.29.4-.29z"
-        stroke="currentColor"
-        strokeWidth="1"
-        strokeLinejoin="round"
-      />
-      <circle cx="11" cy="11" r="1.3" stroke="currentColor" strokeWidth="1" />
-    </svg>
-  );
-}
+/* DeepThinkIcon moved to toolCategoryIcons.tsx */
 
 function Chevron({ expanded }: { expanded: boolean }) {
   return (

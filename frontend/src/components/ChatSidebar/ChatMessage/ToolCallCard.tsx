@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import type { ChatToolCall } from "../../../api";
 import { useTranslation } from "../../../i18n";
 import ChatTableBlock from "./ChatTableBlock";
+import { ToolCategoryIcon } from "./toolCategoryIcons";
 
 /**
  * ToolCallCard — a single tool invocation rendered as an expandable card.
@@ -45,7 +46,7 @@ export default function ToolCallCard({ call }: { call: ChatToolCall }) {
         aria-label={label}
       >
         <span className="chat-expand-card-icon" aria-hidden="true">
-          <ToolGlyph />
+          <ToolCategoryIcon tool={call.tool} />
         </span>
         <span className="chat-expand-card-title">
           {label}
@@ -202,29 +203,6 @@ function extractTargetTag(args: Record<string, unknown>): string | null {
   if (typeof args.recordId === "string") return args.recordId.slice(0, 14);
   if (typeof args.fieldId === "string") return args.fieldId.slice(0, 14);
   return null;
-}
-
-/** Bracket+grid glyph hinting "a tracked table action". 14×14. */
-function ToolGlyph() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path
-        d="M9 1.5h2.5A1 1 0 0 1 12.5 2.5V5"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M5 12.5H2.5A1 1 0 0 1 1.5 11.5V9"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <rect x="4" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
 }
 
 /** 16×16 status indicator on the right of the header. */
