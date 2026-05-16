@@ -74,6 +74,7 @@
   position: fixed;
   z-index: 900;  /* below dropdown-menu (1000) so "+" create menu appears on top */
   background: var(--surface-2);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   box-shadow: var(--shadow-popover);
   padding: 0 0 4px;
