@@ -2855,9 +2855,65 @@
   pointer-events: none;
 }
 
-/* ── Conversation search bar (inside DropdownMenu header) ── */
-/* Mirrors Sidebar .sidebar-search-active style */
+/* ── Conversation list dropdown overrides ── */
+.conv-list-dropdown.dropdown-menu {
+  padding: 8px;
+}
+.conv-list-dropdown .dropdown-menu-header {
+  padding: 0 0 4px;
+}
+
+/* Header row: search icon + new chat (collapsed) or search bar + "+" (expanded) */
+.conv-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Icon-only button (magnifier collapsed, "+" when search expanded) */
+.conv-header-icon-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-m);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.conv-header-icon-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* "New chat" text button (collapsed state) */
+.conv-header-new-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-m);
+  font-size: 14px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.conv-header-new-btn:hover {
+  background: var(--color-bg-hover);
+}
+
+/* Expanded search bar — mirrors Sidebar .sidebar-search-active */
 .conv-search-bar {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;

@@ -441,6 +441,7 @@ export default function ChatSidebar({
   const [convListLoading, setConvListLoading] = useState(false);
   const convListBtnRef = useRef<HTMLButtonElement>(null);
   const convSearchInputRef = useRef<HTMLInputElement>(null);
+  const [convSearchActive, setConvSearchActive] = useState(false);
   const [convSearchQuery, setConvSearchQuery] = useState("");
   const [convSearchResults, setConvSearchResults] = useState<ChatConversation[] | null>(null);
   const [convSearchLoading, setConvSearchLoading] = useState(false);
@@ -1746,17 +1747,23 @@ export default function ChatSidebar({
   // Close conv list: reset search state
   const closeConvList = useCallback(() => {
     setConvListOpen(false);
+    setConvSearchActive(false);
     setConvSearchQuery("");
     setConvSearchResults(null);
     setConvSearchLoading(false);
   }, []);
 
-  // Auto-focus search input when popover opens
-  useEffect(() => {
-    if (convListOpen) {
-      requestAnimationFrame(() => convSearchInputRef.current?.focus());
-    }
-  }, [convListOpen]);
+  const closeConvSearch = useCallback(() => {
+    setConvSearchActive(false);
+    handleConvSearch("");
+  }, [handleConvSearch]);
+
+  const openConvSearch = useCallback(() => {
+    setConvSearchActive(true);
+    requestAnimationFrame(() => convSearchInputRef.current?.focus());
+  }, []);
+
+  // (auto-focus moved to openConvSearch callback)
 
   // ─── Render ─────────────────────────────────────────────────────────
   // Header row re-added per Figma node 6:5309 "AI header": no title, just a
@@ -1899,39 +1906,62 @@ export default function ChatSidebar({
         return (
           <DropdownMenu
             anchorEl={convListBtnRef.current!}
+            className="conv-list-dropdown"
             header={
-              <div className="conv-search-bar">
-                <svg className="conv-search-bar-icon" width="14" height="14" viewBox="20 80 15 15" fill="none">
-                  <path d="M30.982 91.9251C29.8941 92.8058 28.5086 93.3334 26.9998 93.3334C23.502 93.3334 20.6665 90.4979 20.6665 87.0001C20.6665 83.5023 23.502 80.6667 26.9998 80.6667C30.4976 80.6667 33.3332 83.5023 33.3332 87.0001C33.3332 88.5088 32.8056 89.8944 31.9249 90.9823L34.4399 93.4973C34.6987 93.7561 34.6938 94.1765 34.435 94.4353C34.1763 94.694 33.7559 94.6989 33.4971 94.4402L30.982 91.9251ZM31.9998 87.0001C31.9998 84.2387 29.7613 82.0001 26.9998 82.0001C24.2384 82.0001 21.9998 84.2387 21.9998 87.0001C21.9998 89.7615 24.2384 92.0001 26.9998 92.0001C29.7613 92.0001 31.9998 89.7615 31.9998 87.0001Z" fill="currentColor"/>
-                </svg>
-                <input
-                  ref={convSearchInputRef}
-                  className="conv-search-bar-input"
-                  type="text"
-                  placeholder={t("chat.list.searchPlaceholder")}
-                  value={convSearchQuery}
-                  onChange={(e) => handleConvSearch(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); closeConvList(); } }}
-                />
-                {convSearchQuery && (
-                  <button className="conv-search-bar-clear" onClick={() => handleConvSearch("")}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                  </button>
+              <div className="conv-header-row">
+                {convSearchActive ? (
+                  /* ── Expanded search bar + mini "+" ── */
+                  <>
+                    <div className="conv-search-bar">
+                      <svg className="conv-search-bar-icon" width="14" height="14" viewBox="20 80 15 15" fill="none">
+                        <path d="M30.982 91.9251C29.8941 92.8058 28.5086 93.3334 26.9998 93.3334C23.502 93.3334 20.6665 90.4979 20.6665 87.0001C20.6665 83.5023 23.502 80.6667 26.9998 80.6667C30.4976 80.6667 33.3332 83.5023 33.3332 87.0001C33.3332 88.5088 32.8056 89.8944 31.9249 90.9823L34.4399 93.4973C34.6987 93.7561 34.6938 94.1765 34.435 94.4353C34.1763 94.694 33.7559 94.6989 33.4971 94.4402L30.982 91.9251ZM31.9998 87.0001C31.9998 84.2387 29.7613 82.0001 26.9998 82.0001C24.2384 82.0001 21.9998 84.2387 21.9998 87.0001C21.9998 89.7615 24.2384 92.0001 26.9998 92.0001C29.7613 92.0001 31.9998 89.7615 31.9998 87.0001Z" fill="currentColor"/>
+                      </svg>
+                      <input
+                        ref={convSearchInputRef}
+                        className="conv-search-bar-input"
+                        type="text"
+                        placeholder={t("chat.list.searchPlaceholder")}
+                        value={convSearchQuery}
+                        onChange={(e) => handleConvSearch(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); closeConvSearch(); } }}
+                      />
+                      <button className="conv-search-bar-clear" onClick={closeConvSearch}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                      </button>
+                    </div>
+                    <button
+                      className="conv-header-icon-btn"
+                      title={t("chat.list.newChat")}
+                      onClick={() => { closeConvList(); void handleNewConversation(); }}
+                    >
+                      <PlusIcon size={16} />
+                    </button>
+                  </>
+                ) : (
+                  /* ── Collapsed: magnifier + "New chat" button ── */
+                  <>
+                    <button className="conv-header-icon-btn" title={t("chat.list.searchPlaceholder")} onClick={openConvSearch}>
+                      <svg width="14" height="14" viewBox="20 80 15 15" fill="none">
+                        <path d="M30.982 91.9251C29.8941 92.8058 28.5086 93.3334 26.9998 93.3334C23.502 93.3334 20.6665 90.4979 20.6665 87.0001C20.6665 83.5023 23.502 80.6667 26.9998 80.6667C30.4976 80.6667 33.3332 83.5023 33.3332 87.0001C33.3332 88.5088 32.8056 89.8944 31.9249 90.9823L34.4399 93.4973C34.6987 93.7561 34.6938 94.1765 34.435 94.4353C34.1763 94.694 33.7559 94.6989 33.4971 94.4402L30.982 91.9251ZM31.9998 87.0001C31.9998 84.2387 29.7613 82.0001 26.9998 82.0001C24.2384 82.0001 21.9998 84.2387 21.9998 87.0001C21.9998 89.7615 24.2384 92.0001 26.9998 92.0001C29.7613 92.0001 31.9998 89.7615 31.9998 87.0001Z" fill="currentColor"/>
+                      </svg>
+                    </button>
+                    <button
+                      className="conv-header-new-btn"
+                      onClick={() => { closeConvList(); void handleNewConversation(); }}
+                    >
+                      <PlusIcon size={16} />
+                      <span>{t("chat.list.newChat")}</span>
+                    </button>
+                  </>
                 )}
               </div>
             }
             items={[
-              // 顶部 + 新对话(搜索时隐藏)
-              ...(!convSearchQuery ? [{
-                key: "__new",
-                label: t("chat.list.newChat"),
-                icon: <PlusIcon size={16} />,
-              }] : []),
               // 对话列表
-              ...(convListLoading && !convSearchQuery
+              ...(convListLoading && !convSearchActive
                 ? [{ key: "__loading", label: "…", disabled: true }]
                 : displayList.length === 0
-                ? [{ key: "__empty", label: convSearchQuery ? t("chat.list.noResults") : t("chat.list.empty"), disabled: true }]
+                ? [{ key: "__empty", label: convSearchActive ? t("chat.list.noResults") : t("chat.list.empty"), disabled: true }]
                 : displayList.map((c) => ({
                     key: c.id,
                     label: c.title || t("chat.list.untitled"),
@@ -1939,11 +1969,6 @@ export default function ChatSidebar({
                   }))),
             ]}
             onSelect={(key) => {
-              if (key === "__new") {
-                closeConvList();
-                void handleNewConversation();
-                return;
-              }
               if (!key.startsWith("__")) void handleSwitchConversation(key);
             }}
             onClose={closeConvList}
