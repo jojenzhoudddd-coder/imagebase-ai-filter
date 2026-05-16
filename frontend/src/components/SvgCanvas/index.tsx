@@ -47,11 +47,8 @@ const PASTE_ICON = (
 );
 
 const LAYOUT_ICON = (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-    <rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-    <rect x="10" y="1" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-    <rect x="1" y="10" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-    <rect x="10" y="10" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+    <path d="M7.56396 8.73314C7.28677 8.05996 7.95995 7.38678 8.63313 7.66397L16.9928 11.4946C17.6728 11.7746 17.6679 12.7393 16.9852 13.0123L14.87 13.9058C14.3902 14.1084 14.0084 14.4902 13.8058 14.97L12.9123 17.0852C12.6392 17.7679 11.6745 17.7728 11.3946 17.0928L7.56396 8.73314Z" fill="currentColor"/><path d="M23 12C23 18.0751 18.0751 23 12 23C5.92487 23 1 18.0751 1 12C1 5.92487 5.92487 1 12 1C18.0751 1 23 5.92487 23 12ZM21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21C16.9706 21 21 16.9706 21 12Z" fill="currentColor"/>
   </svg>
 );
 
@@ -70,8 +67,8 @@ const EMPTY_ICON = (
 );
 
 const RENAME_ICON = (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-    <path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+    <path d="M17.5702 7.24391L17.5636 7.23764L17.9332 6.86799C18.323 6.47819 18.3238 5.84645 17.9351 5.45563L14.5009 2.00337L14.499 2.00151C14.1085 1.61099 13.4753 1.61099 13.0848 2.00151L12.3796 2.70676L12.3894 2.71666L2 13.186V17C2 17.5523 2.44772 18 3 18H6.81402L17.5702 7.24391ZM14.2971 7.63289L12.2824 5.61824L13.7686 4.10307L15.7917 6.13685L14.2971 7.63289ZM10.8819 7.04617L12.8836 9.04781L5.97053 15.9675H5.96748L4.03252 14.0326V14.0295L10.8819 7.04617Z" fill="currentColor"/><path d="M3 20C2.44772 20 2 20.4477 2 21C2 21.5523 2.44772 22 3 22H21C21.5523 22 22 21.5523 22 21C22 20.4477 21.5523 20 21 20H3Z" fill="currentColor"/>
   </svg>
 );
 

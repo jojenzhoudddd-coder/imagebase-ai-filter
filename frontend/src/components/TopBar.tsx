@@ -618,9 +618,8 @@ export default function TopBar({ tableName, documentName, workspaceId, onRenameT
               tzSubCloseTimer.current = setTimeout(() => setTzSubOpen(false), 300);
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon">
-              <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2" fill="none"/>
-              <path d="M8 3v5l3 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="topbar-menu-icon">
+              <path d="M23 12C23 18.0751 18.0751 23 12 23C5.92487 23 1 18.0751 1 12C1 5.92487 5.92487 1 12 1C18.0751 1 23 5.92487 23 12ZM9.75897 20.7188C9.63105 20.274 9.5 19.756 9.5 19.5C9.5 19 8.5 18 8.5 18C8.5 18 6.5 17.5 6 16.5C5.5 15.5 6.5 14 6.5 14L3.10713 10.6071C3.0366 11.0611 3 11.5263 3 12C3 16.1969 5.87266 19.7228 9.75897 20.7188ZM21 12C21 7.71252 18.002 4.12528 13.9879 3.22029C13.9582 4.27269 13.8555 6.14452 13.5 6.5C13 7 10.5 7.5 10.5 7.5L9.5 9.5L6.5 10L7 12H12L16 13.5C16 13.5 16.8 13.7 16.5 14.5C16.1126 15.2748 14.8247 19.0512 14.2643 20.7128C18.1388 19.7087 21 16.1885 21 12Z" fill="currentColor"/>
             </svg>
             <span className="topbar-menu-label">{t("topbar.timezone")}</span>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="topbar-menu-arrow">
@@ -698,12 +697,10 @@ export default function TopBar({ tableName, documentName, workspaceId, onRenameT
    12px 线性 icon，跟随父级 color。三个 stat 各一个语义对应的图标。 */
 
 function StackIcon() {
-  // 三层叠放矩形 —— 表达"全部资产/集合"
+  // artifact icon
   return (
-    <svg className="topbar-stat-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M6 1.2L1.5 3.4 6 5.6l4.5-2.2L6 1.2z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
-      <path d="M1.5 6L6 8.2 10.5 6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M1.5 8.6L6 10.8 10.5 8.6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+    <svg className="topbar-stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M20.6975 2.125C20.4804 2.04417 20.2453 2 20 2H4C2.89543 2 2 2.89543 2 4V20C2 20.2761 2.05596 20.5392 2.15717 20.7785C2.46079 21.4963 3.17157 22 4 22H9.19988L9.20133 22L20 22C21.1046 22 22 21.1046 22 20L22 4C22 3.14077 21.4582 2.40809 20.6975 2.125ZM20 10.0002L20 20H9.9999L10 10L20 10.0002ZM8 20H4V10H8V20ZM10 4H20V8L10 8V4ZM8 4V8H4V4H8Z" fill="currentColor"/>
     </svg>
   );
 }
@@ -720,20 +717,20 @@ function GlobeIcon() {
 }
 
 function SparkIcon() {
-  // 闪电/火花 —— 表达 token 消耗量
+  // AI spark — token consumption
   return (
-    <svg className="topbar-stat-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M6.5 1L3 7h2.5L5 11l3.5-6H6L6.5 1z" stroke="currentColor" strokeWidth="1.0" strokeLinejoin="round"/>
+    <svg className="topbar-stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 5.74805C10.6975 8.42839 8.57106 10.627 5.94434 12C8.5708 13.3728 10.6974 15.571 12 18.251C13.3026 15.571 15.4292 13.3728 18.0557 12C15.4289 10.627 13.3025 8.42839 12 5.74805ZM23.4971 12C23.4971 12.2712 23.2903 12.4955 23.0244 12.5264L22.9004 12.542C22.0266 12.653 21.1824 12.8599 20.3789 13.1533L19.4062 13.5605C16.892 14.7474 14.8593 16.8058 13.6875 19.3525L13.2861 20.3379C12.9986 21.145 12.7948 21.993 12.6846 22.8701L12.6572 22.998C12.5674 23.2869 12.3071 23.4971 12 23.4971L11.8721 23.4844C11.6224 23.4353 11.4198 23.2458 11.3428 22.998L11.3154 22.8701C11.2052 21.993 11.0014 21.145 10.7139 20.3379L10.3125 19.3525C9.14068 16.8058 7.10796 14.7474 4.59375 13.5605L3.62109 13.1533C2.88481 12.8844 2.11439 12.6878 1.31836 12.5713L0.975586 12.5264C0.709649 12.4955 0.50293 12.2712 0.50293 12C0.50293 11.7288 0.709649 11.5045 0.975586 11.4736C1.77894 11.3803 2.55774 11.2053 3.30371 10.957L3.62109 10.8467L4.59375 10.4395C7.10796 9.25256 9.14068 7.19415 10.3125 4.64746L10.7139 3.66211C11.0014 2.85502 11.2052 2.00705 11.3154 1.12988C11.3598 0.777377 11.6492 0.502931 12 0.50293C12.3508 0.50293 12.6402 0.777377 12.6846 1.12988C12.7948 2.00705 12.9986 2.85502 13.2861 3.66211L13.6875 4.64746C14.8593 7.19415 16.892 9.25256 19.4062 10.4395L20.3789 10.8467L20.6963 10.957C21.4423 11.2053 22.2211 11.3803 23.0244 11.4736C23.2903 11.5045 23.4971 11.7288 23.4971 12Z" fill="currentColor"/>
     </svg>
   );
 }
 
 function SloganIcon() {
-  // 引号 / 标语 icon —— 表达"工作区描述 + slogan"
+  // tag icon — workspace slogan
   return (
-    <svg className="topbar-stat-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M3 3.5h2v3l-1 2H2.5l1-2h-1v-3z" stroke="currentColor" strokeWidth="0.9" strokeLinejoin="round"/>
-      <path d="M7 3.5h2v3l-1 2H6.5l1-2h-1v-3z" stroke="currentColor" strokeWidth="0.9" strokeLinejoin="round"/>
+    <svg className="topbar-stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M14.2832 9.79136C14.999 10.5072 16.1596 10.5072 16.8755 9.79136C17.5913 9.07551 17.5913 7.91489 16.8755 7.19904C16.1596 6.48319 14.999 6.48319 14.2832 7.19904C13.5673 7.91489 13.5673 9.07551 14.2832 9.79136Z" fill="currentColor"/>
+      <path d="M22.0746 4.00001C22.0746 2.89544 21.1792 2.00001 20.0746 2.00001L13.2619 2C12.4663 2 11.7032 2.31607 11.1406 2.87868L2.24691 11.7724C1.46587 12.5535 1.46587 13.8198 2.24692 14.6009L9.47376 21.8277C10.2548 22.6088 11.5211 22.6088 12.3022 21.8277L21.1959 12.934C21.7585 12.3714 22.0746 11.6083 22.0746 10.8126L22.0746 4.00001ZM20.0746 4.00001L20.0746 10.8127C20.0746 11.0779 19.9692 11.3322 19.7817 11.5198L10.8268 20.4747L3.59995 13.2478L12.5548 4.29289C12.7424 4.10536 12.9967 4 13.2619 4L20.0746 4.00001Z" fill="currentColor"/>
     </svg>
   );
 }

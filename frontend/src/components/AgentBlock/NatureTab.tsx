@@ -98,8 +98,8 @@ export default function NatureTab({ agentId }: Props) {
         ))}
         <div className="ab-toolbar-divider" />
         <button className="ab-toolbar-btn" onClick={handleEditByChat}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M10 2l2 2-7 7H3v-2l7-7z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M17.5702 7.24391L17.5636 7.23764L17.9332 6.86799C18.323 6.47819 18.3238 5.84645 17.9351 5.45563L14.5009 2.00337L14.499 2.00151C14.1085 1.61099 13.4753 1.61099 13.0848 2.00151L12.3796 2.70676L12.3894 2.71666L2 13.186V17C2 17.5523 2.44772 18 3 18H6.81402L17.5702 7.24391ZM14.2971 7.63289L12.2824 5.61824L13.7686 4.10307L15.7917 6.13685L14.2971 7.63289ZM10.8819 7.04617L12.8836 9.04781L5.97053 15.9675H5.96748L4.03252 14.0326V14.0295L10.8819 7.04617Z" fill="currentColor"/><path d="M3 20C2.44772 20 2 20.4477 2 21C2 21.5523 2.44772 22 3 22H21C21.5523 22 22 21.5523 22 21C22 20.4477 21.5523 20 21 20H3Z" fill="currentColor"/>
           </svg>
           {t("agent.nature.editByChat")}
         </button>

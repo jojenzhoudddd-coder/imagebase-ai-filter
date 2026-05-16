@@ -36,9 +36,11 @@ export function PlusIcon({ size = 16, className }: IconProps) {
 
 export function HistoryIcon({ size = 16, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
-      <path d="M8 4v4l2.5 1.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M6.5 9C5.94772 9 5.5 9.44772 5.5 10V11C5.5 11.5523 5.94772 12 6.5 12H7.5C8.05228 12 8.5 11.5523 8.5 11V10C8.5 9.44772 8.05228 9 7.5 9H6.5Z" fill="currentColor"/>
+      <path d="M11.5 9C10.9477 9 10.5 9.44772 10.5 10V11C10.5 11.5523 10.9477 12 11.5 12H12.5C13.0523 12 13.5 11.5523 13.5 11V10C13.5 9.44772 13.0523 9 12.5 9H11.5Z" fill="currentColor"/>
+      <path d="M15.5 10C15.5 9.44772 15.9477 9 16.5 9H17.5C18.0523 9 18.5 9.44772 18.5 10V11C18.5 11.5523 18.0523 12 17.5 12H16.5C15.9477 12 15.5 11.5523 15.5 11V10Z" fill="currentColor"/>
+      <path d="M23 4C23 2.9 22.1 2 21 2H3C1.9 2 1 2.9 1 4V17.0111C1 18.0211 1.9 19.0111 3 19.0111H7.7586L10.4774 22C10.9822 22.5017 11.3166 22.6311 12 22.7009C12.414 22.707 13.0502 22.5093 13.5 22L16.2414 19.0111H21C22.1 19.0111 23 18.1111 23 17.0111V4ZM3 4H21V17.0111H15.5L12 20.6714L8.5 17.0111H3V4Z" fill="currentColor"/>
     </svg>
   );
 }
@@ -145,13 +147,8 @@ export function RefreshIcon({ size = 16, className }: IconProps) {
 /** Trash icon — used by the chat header more-menu "Delete current chat" item. */
 export function TrashIcon({ size = 16, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
-      <path
-        d="M6 2a1 1 0 00-1 1h6a1 1 0 00-1-1H6zM4 4h8v9a1 1 0 01-1 1H5a1 1 0 01-1-1V4zM3 4h10V3H3v1zM6.5 6v5M9.5 6v5"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M8 4C8 2.89543 8.89543 2 10 2H14C15.1046 2 16 2.89543 16 4H21C21.5523 4 22 4.44772 22 5C22 5.55228 21.5523 6 21 6H20C20 10.6667 20 15.3333 20 20C20 21.1046 19.1046 22 18 22H6C4.89543 22 4 21.1046 4 20C4 15.3333 4 10.6667 4 6H3C2.44772 6 2 5.55228 2 5C2 4.44772 2.44772 4 3 4H8ZM6 6V20H18V6H6ZM10 9C10.5523 9 11 9.44772 11 10V16C11 16.5523 10.5523 17 10 17C9.44772 17 9 16.5523 9 16V10C9 9.44772 9.44772 9 10 9ZM14 9C14.5523 9 15 9.44772 15 10V16C15 16.5523 14.5523 17 14 17C13.4477 17 13 16.5523 13 16V10C13 9.44772 13.4477 9 14 9Z" fill="currentColor"/>
     </svg>
   );
 }
@@ -242,18 +239,11 @@ export function SkillsIcon({ size = 16, className }: IconProps) {
   );
 }
 
-/** Acknowledge 了解我 — info circle */
+/** Acknowledge 了解我 — education (graduation cap) */
 export function AcknowledgeIcon({ size = 16, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
-      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4" />
-      <path
-        d="M8 7.2V11.2"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-      <circle cx="8" cy="5" r="0.8" fill="currentColor" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M12.8653 1.9157C12.3182 1.6531 11.6815 1.6531 11.1344 1.9157L0.438907 7.04952C0.0607281 7.23105 0.0607291 7.76952 0.438908 7.95104L1.03476 8.23705C1.01194 8.32092 0.999756 8.40918 0.999756 8.50027V13.5003C0.999756 14.0526 1.44747 14.5003 1.99976 14.5003C2.55204 14.5003 2.99976 14.0526 2.99976 13.5003V9.18025L4.49976 9.90025V16.9681C4.49976 17.3031 4.65749 17.6186 4.92551 17.8196L6.89976 19.3003C8.37107 20.4038 10.1606 21.0003 11.9998 21.0003C13.8389 21.0003 15.6284 20.4038 17.0998 19.3003L19.074 17.8196C19.342 17.6186 19.4998 17.3031 19.4998 16.9681V9.90031L23.5607 7.95104C23.9389 7.76952 23.9389 7.23105 23.5607 7.04952L12.8653 1.9157ZM19.878 7.50028L11.9998 11.2818L4.12163 7.50028L11.9998 3.71875L19.878 7.50028ZM6.49976 16.5003V10.8603L11.1344 13.0849C11.6815 13.3475 12.3182 13.3475 12.8653 13.0849L17.4998 10.8603V16.5003L15.8998 17.7003C14.7746 18.5441 13.4062 19.0003 11.9998 19.0003C10.5933 19.0003 9.22488 18.5441 8.09976 17.7003L6.49976 16.5003Z" fill="currentColor"/>
     </svg>
   );
 }
