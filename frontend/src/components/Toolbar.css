@@ -94,6 +94,10 @@
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+.sidebar-expand-popover:focus { outline: none; }
+.sidebar-expand-popover .sidebar-item.keyboard-active {
+  background: var(--color-bg-hover, var(--surface-3));
+}
 
 .table-topbar-actions {
   display: flex;

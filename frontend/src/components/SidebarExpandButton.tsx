@@ -4,22 +4,27 @@
  * 左边作为前缀。展开时按钮节点不存在,title 自然归位。
  *
  * Hover 时显示一个 sidebar popover，可以快速切换 artifact。
+ * 支持上下键导航 + 回车选中。
  */
 
-import { useState, useRef, useCallback, useLayoutEffect } from "react";
+import { useState, useRef, useCallback, useLayoutEffect, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useSidebarToggle } from "../contexts/sidebarToggleContext";
 
 const HOVER_DELAY = 200;
 const LEAVE_DELAY = 300;
 
+const ITEM_SELECTOR = ".sidebar-item, .tree-node-row";
+
 export default function SidebarExpandButton({ className }: { className?: string }) {
   const ctx = useSidebarToggle();
   const btnRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const enterTimer = useRef<ReturnType<typeof setTimeout>>();
   const leaveTimer = useRef<ReturnType<typeof setTimeout>>();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [activeIdx, setActiveIdx] = useState(-1);
 
   const clearTimers = () => {
     clearTimeout(enterTimer.current);
@@ -31,6 +36,14 @@ export default function SidebarExpandButton({ className }: { className?: string 
     if (!open) return;
     const rect = btnRef.current?.getBoundingClientRect();
     if (rect) setPos({ top: rect.bottom + 4, left: rect.left });
+    setActiveIdx(-1);
+  }, [open]);
+
+  // Focus the popover when it opens so it can receive keyboard events
+  useEffect(() => {
+    if (open && popoverRef.current) {
+      popoverRef.current.focus();
+    }
   }, [open]);
 
   const handleEnter = useCallback(() => {
@@ -60,6 +73,51 @@ export default function SidebarExpandButton({ className }: { className?: string 
     }
   }, []);
 
+  const getItems = useCallback((): HTMLElement[] => {
+    if (!popoverRef.current) return [];
+    return Array.from(popoverRef.current.querySelectorAll(ITEM_SELECTOR)) as HTMLElement[];
+  }, []);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setOpen(false);
+      btnRef.current?.focus();
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const items = getItems();
+      if (items.length === 0) return;
+      setActiveIdx((prev) => {
+        let next: number;
+        if (e.key === "ArrowDown") {
+          next = prev < items.length - 1 ? prev + 1 : 0;
+        } else {
+          next = prev > 0 ? prev - 1 : items.length - 1;
+        }
+        items[next]?.scrollIntoView({ block: "nearest" });
+        return next;
+      });
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const items = getItems();
+      if (activeIdx >= 0 && activeIdx < items.length) {
+        items[activeIdx].click();
+        setTimeout(() => setOpen(false), 100);
+      }
+    }
+  }, [activeIdx, getItems]);
+
+  // Sync highlight class on items when activeIdx changes
+  useEffect(() => {
+    if (!popoverRef.current) return;
+    const items = popoverRef.current.querySelectorAll(ITEM_SELECTOR);
+    items.forEach((el, i) => {
+      el.classList.toggle("keyboard-active", i === activeIdx);
+    });
+  }, [activeIdx, open]);
+
   if (!ctx || !ctx.collapsed) return null;
 
   return (
@@ -81,11 +139,14 @@ export default function SidebarExpandButton({ className }: { className?: string 
       </button>
       {open && pos && ctx.sidebarElement && createPortal(
         <div
+          ref={popoverRef}
           className="sidebar-expand-popover"
           style={{ top: pos.top, left: pos.left }}
           onMouseEnter={handlePopoverEnter}
           onMouseLeave={handlePopoverLeave}
           onClick={handlePopoverClick}
+          onKeyDown={handleKeyDown}
+          tabIndex={-1}
         >
           {ctx.sidebarElement}
         </div>,

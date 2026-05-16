@@ -440,12 +440,16 @@ export default function ChatSidebar({
   const [convList, setConvList] = useState<ChatConversation[]>([]);
   const [convListLoading, setConvListLoading] = useState(false);
   const convListBtnRef = useRef<HTMLButtonElement>(null);
+  const convListPanelRef = useRef<HTMLDivElement>(null);
   const convSearchInputRef = useRef<HTMLInputElement>(null);
   const [convSearchActive, setConvSearchActive] = useState(false);
   const [convSearchQuery, setConvSearchQuery] = useState("");
   const [convSearchResults, setConvSearchResults] = useState<ChatConversation[] | null>(null);
   const [convSearchLoading, setConvSearchLoading] = useState(false);
   const convSearchSeqRef = useRef(0);
+  const [convHighlightIdx, setConvHighlightIdx] = useState(-1);
+  const [convMoreMenuId, setConvMoreMenuId] = useState<string | null>(null);
+  const convMoreBtnRefs = useRef(new Map<string, HTMLButtonElement>());
   const toast = useToast();
 
   // Bumped after each streamed turn finishes, so AgentNamePill can re-fetch
@@ -1683,6 +1687,41 @@ export default function ChatSidebar({
     }
   }, [activeConv?.id, streaming, handleStop, t, toast]);
 
+  // Delete/clear any conversation from the list popover
+  const handleDeleteConversation = useCallback(async (convId: string) => {
+    try {
+      const list = await listConversations(workspaceId);
+      if (list.length <= 1) { toast.error(t("chat.toast.deleteOnlyOne")); return; }
+      await apiDeleteConversation(convId);
+      toast.success(t("chat.toast.deleted"));
+      const updated = list.filter(c => c.id !== convId);
+      setConvList(updated);
+      if (convId === activeConv?.id) {
+        const idx = list.findIndex(c => c.id === convId);
+        const neighbor = list[idx + 1] ?? list[idx - 1];
+        if (neighbor) {
+          stickToBottomRef.current = true;
+          setMessages([]); setPendingConfirm(null); setError(null);
+          setActiveConv({ id: neighbor.id } as ChatConversation);
+        }
+      }
+    } catch (err) { toast.error((err as Error).message); }
+    setConvMoreMenuId(null);
+  }, [workspaceId, activeConv?.id, t, toast]);
+
+  const handleClearConversation = useCallback(async (convId: string) => {
+    try {
+      if (convId === activeConv?.id && streaming) handleStop();
+      await clearConversationMessages(convId);
+      toast.success(t("chat.toast.cleared"));
+      if (convId === activeConv?.id) {
+        setMessages([]); setPendingConfirm(null); setError(null);
+        stickToBottomRef.current = true;
+      }
+    } catch (err) { toast.error((err as Error).message); }
+    setConvMoreMenuId(null);
+  }, [activeConv?.id, streaming, handleStop, t, toast]);
+
   // V3.0 PR1 打开 conversation 列表 (拉最新 list)
   // V3.0.1 修复:
   //   - 不按 agentId 过滤,workspace 已经做了 user 隔离;否则老对话
@@ -1751,6 +1790,8 @@ export default function ChatSidebar({
     setConvSearchQuery("");
     setConvSearchResults(null);
     setConvSearchLoading(false);
+    setConvHighlightIdx(-1);
+    setConvMoreMenuId(null);
   }, []);
 
   const closeConvSearch = useCallback(() => {
@@ -1763,7 +1804,21 @@ export default function ChatSidebar({
     requestAnimationFrame(() => convSearchInputRef.current?.focus());
   }, []);
 
-  // (auto-focus moved to openConvSearch callback)
+  // Click outside conv list panel → close
+  useEffect(() => {
+    if (!convListOpen) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        convListPanelRef.current && !convListPanelRef.current.contains(target) &&
+        convListBtnRef.current && !convListBtnRef.current.contains(target)
+      ) {
+        closeConvList();
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [convListOpen, closeConvList]);
 
   // ─── Render ─────────────────────────────────────────────────────────
   // Header row re-added per Figma node 6:5309 "AI header": no title, just a
@@ -1900,82 +1955,132 @@ export default function ChatSidebar({
           width={200}
         />
       )}
-      {/* ≡ All conversations popover — V3.0.3 + search bar */}
+      {/* ≡ All conversations popover — custom with search + keyboard nav + per-item more */}
       {convListOpen && convListBtnRef.current && (() => {
         const displayList = convSearchResults ?? convList;
-        return (
-          <DropdownMenu
-            anchorEl={convListBtnRef.current!}
-            className="conv-list-dropdown"
-            header={
-              <div className="conv-header-row">
-                {convSearchActive ? (
-                  /* ── Expanded search bar + mini "+" ── */
-                  <>
-                    <div className="conv-search-bar">
-                      <svg className="conv-search-bar-icon" width="14" height="14" viewBox="20 80 15 15" fill="none">
-                        <path d="M30.982 91.9251C29.8941 92.8058 28.5086 93.3334 26.9998 93.3334C23.502 93.3334 20.6665 90.4979 20.6665 87.0001C20.6665 83.5023 23.502 80.6667 26.9998 80.6667C30.4976 80.6667 33.3332 83.5023 33.3332 87.0001C33.3332 88.5088 32.8056 89.8944 31.9249 90.9823L34.4399 93.4973C34.6987 93.7561 34.6938 94.1765 34.435 94.4353C34.1763 94.694 33.7559 94.6989 33.4971 94.4402L30.982 91.9251ZM31.9998 87.0001C31.9998 84.2387 29.7613 82.0001 26.9998 82.0001C24.2384 82.0001 21.9998 84.2387 21.9998 87.0001C21.9998 89.7615 24.2384 92.0001 26.9998 92.0001C29.7613 92.0001 31.9998 89.7615 31.9998 87.0001Z" fill="currentColor"/>
-                      </svg>
-                      <input
-                        ref={convSearchInputRef}
-                        className="conv-search-bar-input"
-                        type="text"
-                        placeholder={t("chat.list.searchPlaceholder")}
-                        value={convSearchQuery}
-                        onChange={(e) => handleConvSearch(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); closeConvSearch(); } }}
-                      />
-                      <button className="conv-search-bar-clear" onClick={closeConvSearch}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                      </button>
-                    </div>
+        const anchorRect = convListBtnRef.current!.getBoundingClientRect();
+        const handleConvKeyDown = (e: React.KeyboardEvent) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setConvHighlightIdx(i => (i + 1) % displayList.length);
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setConvHighlightIdx(i => (i - 1 + displayList.length) % displayList.length);
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            const item = displayList[convHighlightIdx];
+            if (item) void handleSwitchConversation(item.id);
+          } else if (e.key === "Escape") {
+            e.stopPropagation();
+            if (convSearchActive) closeConvSearch();
+            else closeConvList();
+          }
+        };
+        return createPortal(
+          <div
+            ref={convListPanelRef}
+            className="conv-list-popover"
+            style={{ top: anchorRect.bottom + 4, left: anchorRect.right - 260 }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={handleConvKeyDown}
+          >
+            {/* Header: search trigger / search bar + new chat */}
+            <div className="conv-header-row">
+              {convSearchActive ? (
+                <>
+                  <div className="conv-search-bar">
+                    <svg className="conv-search-bar-icon" width="14" height="14" viewBox="20 80 15 15" fill="none">
+                      <path d="M30.982 91.9251C29.8941 92.8058 28.5086 93.3334 26.9998 93.3334C23.502 93.3334 20.6665 90.4979 20.6665 87.0001C20.6665 83.5023 23.502 80.6667 26.9998 80.6667C30.4976 80.6667 33.3332 83.5023 33.3332 87.0001C33.3332 88.5088 32.8056 89.8944 31.9249 90.9823L34.4399 93.4973C34.6987 93.7561 34.6938 94.1765 34.435 94.4353C34.1763 94.694 33.7559 94.6989 33.4971 94.4402L30.982 91.9251ZM31.9998 87.0001C31.9998 84.2387 29.7613 82.0001 26.9998 82.0001C24.2384 82.0001 21.9998 84.2387 21.9998 87.0001C21.9998 89.7615 24.2384 92.0001 26.9998 92.0001C29.7613 92.0001 31.9998 89.7615 31.9998 87.0001Z" fill="currentColor"/>
+                    </svg>
+                    <input
+                      ref={convSearchInputRef}
+                      className="conv-search-bar-input"
+                      type="text"
+                      placeholder={t("chat.list.searchPlaceholder")}
+                      value={convSearchQuery}
+                      onChange={(e) => { handleConvSearch(e.target.value); setConvHighlightIdx(0); }}
+                      autoFocus
+                    />
+                    {convSearchLoading && <span className="conv-search-bar-spinner" />}
+                    <button className="conv-search-bar-clear" onClick={closeConvSearch}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                    </button>
+                  </div>
+                  <button className="conv-header-icon-btn" title={t("chat.list.newChat")} onClick={() => { closeConvList(); void handleNewConversation(); }}>
+                    <PlusIcon size={16} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="conv-header-icon-btn" title={t("chat.list.searchPlaceholder")} onClick={openConvSearch}>
+                    <svg width="14" height="14" viewBox="20 80 15 15" fill="none">
+                      <path d="M30.982 91.9251C29.8941 92.8058 28.5086 93.3334 26.9998 93.3334C23.502 93.3334 20.6665 90.4979 20.6665 87.0001C20.6665 83.5023 23.502 80.6667 26.9998 80.6667C30.4976 80.6667 33.3332 83.5023 33.3332 87.0001C33.3332 88.5088 32.8056 89.8944 31.9249 90.9823L34.4399 93.4973C34.6987 93.7561 34.6938 94.1765 34.435 94.4353C34.1763 94.694 33.7559 94.6989 33.4971 94.4402L30.982 91.9251ZM31.9998 87.0001C31.9998 84.2387 29.7613 82.0001 26.9998 82.0001C24.2384 82.0001 21.9998 84.2387 21.9998 87.0001C21.9998 89.7615 24.2384 92.0001 26.9998 92.0001C29.7613 92.0001 31.9998 89.7615 31.9998 87.0001Z" fill="currentColor"/>
+                    </svg>
+                  </button>
+                  <button className="conv-header-new-btn" onClick={() => { closeConvList(); void handleNewConversation(); }}>
+                    <PlusIcon size={16} />
+                    <span>{t("chat.list.newChat")}</span>
+                  </button>
+                </>
+              )}
+            </div>
+            {/* Conversation items */}
+            <div className="conv-list-scroll">
+              {convListLoading && !convSearchActive ? (
+                <div className="conv-list-empty">…</div>
+              ) : displayList.length === 0 ? (
+                <div className="conv-list-empty">
+                  {convSearchActive ? t("chat.list.noResults") : t("chat.list.empty")}
+                </div>
+              ) : (
+                displayList.map((c, idx) => (
+                  <div
+                    key={c.id}
+                    className={`conv-list-item${c.id === activeConv?.id ? " is-active" : ""}${idx === convHighlightIdx ? " is-highlighted" : ""}`}
+                    onMouseEnter={() => setConvHighlightIdx(idx)}
+                    onClick={() => void handleSwitchConversation(c.id)}
+                  >
+                    <span className="conv-list-item-label">{c.title || t("chat.list.untitled")}</span>
                     <button
-                      className="conv-header-icon-btn"
-                      title={t("chat.list.newChat")}
-                      onClick={() => { closeConvList(); void handleNewConversation(); }}
+                      ref={(el) => { if (el) convMoreBtnRefs.current.set(c.id, el); else convMoreBtnRefs.current.delete(c.id); }}
+                      className="conv-list-item-more"
+                      onClick={(e) => { e.stopPropagation(); setConvMoreMenuId(prev => prev === c.id ? null : c.id); }}
                     >
-                      <PlusIcon size={16} />
+                      <MoreIcon size={14} />
                     </button>
-                  </>
-                ) : (
-                  /* ── Collapsed: magnifier + "New chat" button ── */
-                  <>
-                    <button className="conv-header-icon-btn" title={t("chat.list.searchPlaceholder")} onClick={openConvSearch}>
-                      <svg width="14" height="14" viewBox="20 80 15 15" fill="none">
-                        <path d="M30.982 91.9251C29.8941 92.8058 28.5086 93.3334 26.9998 93.3334C23.502 93.3334 20.6665 90.4979 20.6665 87.0001C20.6665 83.5023 23.502 80.6667 26.9998 80.6667C30.4976 80.6667 33.3332 83.5023 33.3332 87.0001C33.3332 88.5088 32.8056 89.8944 31.9249 90.9823L34.4399 93.4973C34.6987 93.7561 34.6938 94.1765 34.435 94.4353C34.1763 94.694 33.7559 94.6989 33.4971 94.4402L30.982 91.9251ZM31.9998 87.0001C31.9998 84.2387 29.7613 82.0001 26.9998 82.0001C24.2384 82.0001 21.9998 84.2387 21.9998 87.0001C21.9998 89.7615 24.2384 92.0001 26.9998 92.0001C29.7613 92.0001 31.9998 89.7615 31.9998 87.0001Z" fill="currentColor"/>
-                      </svg>
-                    </button>
-                    <button
-                      className="conv-header-new-btn"
-                      onClick={() => { closeConvList(); void handleNewConversation(); }}
-                    >
-                      <PlusIcon size={16} />
-                      <span>{t("chat.list.newChat")}</span>
-                    </button>
-                  </>
-                )}
-              </div>
-            }
-            items={[
-              // 对话列表
-              ...(convListLoading && !convSearchActive
-                ? [{ key: "__loading", label: "…", disabled: true }]
-                : displayList.length === 0
-                ? [{ key: "__empty", label: convSearchActive ? t("chat.list.noResults") : t("chat.list.empty"), disabled: true }]
-                : displayList.map((c) => ({
-                    key: c.id,
-                    label: c.title || t("chat.list.untitled"),
-                    active: c.id === activeConv?.id,
-                  }))),
-            ]}
-            onSelect={(key) => {
-              if (!key.startsWith("__")) void handleSwitchConversation(key);
-            }}
-            onClose={closeConvList}
-            width={260}
-            maxHeightPx={400}
-            boundaryEl={sidebarRef.current?.parentElement ?? sidebarRef.current}
-          />
+                  </div>
+                ))
+              )}
+            </div>
+            {/* Per-item more menu (clear / delete) */}
+            {convMoreMenuId && convMoreBtnRefs.current.get(convMoreMenuId) && (
+              <DropdownMenu
+                anchorEl={convMoreBtnRefs.current.get(convMoreMenuId)!}
+                position="right"
+                items={[
+                  {
+                    key: "clear",
+                    label: t("chat.menu.clearCurrent"),
+                    icon: <ClearIcon size={16} />,
+                    swipeDelete: true,
+                    onSwipeDelete: () => void handleClearConversation(convMoreMenuId),
+                  },
+                  {
+                    key: "delete",
+                    label: t("chat.menu.deleteCurrent"),
+                    icon: <TrashIcon size={16} />,
+                    danger: true,
+                    swipeDelete: true,
+                    onSwipeDelete: () => void handleDeleteConversation(convMoreMenuId),
+                  },
+                ]}
+                onSelect={() => setConvMoreMenuId(null)}
+                onClose={() => setConvMoreMenuId(null)}
+                width={180}
+              />
+            )}
+          </div>,
+          document.body,
         );
       })()}
       {/* Old refresh confirm — V3.0 不再使用,但保留兼容(防有地方还在用) */}
