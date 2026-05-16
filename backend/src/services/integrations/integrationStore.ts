@@ -301,17 +301,20 @@ async function replaceCredentials(
 }
 
 function rowToIntegration(row: any): AgentIntegrationRow {
+  const transport = row.transport as IntegrationTransport;
+  const providerKey = row.providerKey;
+  const rawToolManifest = Array.isArray(row.toolManifest) ? row.toolManifest : [];
   return {
     id: row.id,
     agentId: row.agentId,
-    providerKey: row.providerKey,
+    providerKey,
     displayName: row.displayName,
-    transport: row.transport,
+    transport,
     enabled: row.enabled,
     status: row.status,
     lastError: row.lastError ?? null,
     config: row.configJson ?? {},
-    toolManifest: Array.isArray(row.toolManifest) ? row.toolManifest : [],
+    toolManifest: effectiveToolManifest(providerKey, transport, rawToolManifest),
     scopes: Array.isArray(row.scopes) ? row.scopes : [],
     lastHealthAt: row.lastHealthAt ?? null,
     lastUsedAt: row.lastUsedAt ?? null,
@@ -319,6 +322,37 @@ function rowToIntegration(row: any): AgentIntegrationRow {
     updatedAt: row.updatedAt,
     credentials: Array.isArray(row.credentials) ? row.credentials : [],
   };
+}
+
+function effectiveToolManifest(
+  providerKey: string,
+  transport: IntegrationTransport,
+  rawToolManifest: IntegrationToolManifest[],
+): IntegrationToolManifest[] {
+  const byName = new Map<string, IntegrationToolManifest>();
+  for (const tool of rawToolManifest) {
+    if (isToolCompatibleWithTransport(tool, transport)) {
+      byName.set(tool.name, tool);
+    }
+  }
+
+  const preset = getIntegrationPreset(providerKey);
+  for (const tool of preset?.defaultTools ?? []) {
+    if (isToolCompatibleWithTransport(tool, transport) && !byName.has(tool.name)) {
+      byName.set(tool.name, tool);
+    }
+  }
+
+  return Array.from(byName.values());
+}
+
+function isToolCompatibleWithTransport(
+  tool: IntegrationToolManifest,
+  transport: IntegrationTransport,
+): boolean {
+  if (!tool || typeof tool.name !== "string") return false;
+  if (transport === "cli") return tool.mode === "cli";
+  return tool.mode === "mcp";
 }
 
 function cleanRequired(value: unknown, field: string): string {

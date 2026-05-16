@@ -47,6 +47,30 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
         },
       },
       {
+        name: "gh_repo_search",
+        description: "Search GitHub repositories using gh search repos.",
+        mode: "cli",
+        readOnly: true,
+        output: "json",
+        args: [
+          "search",
+          "repos",
+          "{{query}}",
+          "--limit",
+          "{{limit}}",
+          "--json",
+          "fullName,description,url,visibility,updatedAt,stargazersCount",
+        ],
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Repository search query." },
+            limit: { type: "number", description: "Maximum repositories to return. Default 20." },
+          },
+          required: ["query"],
+        },
+      },
+      {
         name: "gh_issue_list",
         description: "List GitHub issues for a repository.",
         mode: "cli",
