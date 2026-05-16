@@ -387,6 +387,7 @@
 .ab-card-state-success { color: var(--success); border-color: rgba(52,168,83,0.25); background: var(--success-bg, #E6F4EA); }
 .ab-card-state-primary { color: var(--primary); border-color: var(--primary-light, #E0E9FF); background: var(--primary-bg); }
 .ab-card-state-current { color: #d97706; border-color: rgba(217,119,6,0.25); background: rgba(217,119,6,0.08); }
+.ab-card-state-white { color: var(--color-text-primary); border-color: var(--border-light); background: var(--color-white, #fff); }
 .ab-card-state-danger { color: var(--danger, #F54A45); border-color: rgba(245,74,69,0.25); background: rgba(245,74,69,0.08); }
 .ab-card-state-muted { color: var(--text-muted); border-color: var(--border-light); background: var(--surface-1); }
 .ab-card-state-official { color: var(--primary); border-color: var(--primary-light, #E0E9FF); background: var(--primary-bg); }
