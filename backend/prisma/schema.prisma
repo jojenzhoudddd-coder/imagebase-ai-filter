@@ -83,9 +83,54 @@ model Agent {
 
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversations Conversation[]
+  integrations  AgentIntegration[]
 
   @@index([userId])
   @@map("agents")
+}
+
+// ─── Agent Integrations（MCP / CLI bridges to third-party platforms） ───
+
+model AgentIntegration {
+  id           String   @id
+  agentId      String
+  providerKey  String
+  displayName  String
+  transport    String
+  enabled      Boolean  @default(true)
+  status       String   @default("not_configured")
+  lastError    String?
+  configJson   Json     @default("{}")
+  toolManifest Json     @default("[]")
+  scopes       String[] @default([])
+  lastHealthAt DateTime?
+  lastUsedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  agent       Agent                        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  credentials AgentIntegrationCredential[]
+
+  @@index([agentId])
+  @@index([agentId, enabled])
+  @@index([providerKey])
+  @@map("agent_integrations")
+}
+
+model AgentIntegrationCredential {
+  id             String   @id
+  integrationId  String
+  name           String
+  encryptedValue String
+  valuePreview   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  integration AgentIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, name])
+  @@index([integrationId])
+  @@map("agent_integration_credentials")
 }
 
 // ─── 组织（Phase 0 前原名 Workspace，现作为 User → Org → Workspace → Artifact 的最上层） ───
@@ -317,8 +362,8 @@ model Message {
   /// Model ID used for this turn (e.g. "claude-opus-4.7", "doubao-2.0").
   /// Only set on assistant messages at turn completion.
   modelId          String?
-  /// Source context: active skill names or habit ID for this turn.
-  /// Format: "skill:table-skill,analyst-skill" or "habit:habit_system_evolve" or null.
+  /// Source context: active skill names, integration IDs, or habit ID for this turn.
+  /// Format: "skill:table-skill,analyst-skill integration:ig123..." or "habit:habit_system_evolve" or null.
   source           String?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

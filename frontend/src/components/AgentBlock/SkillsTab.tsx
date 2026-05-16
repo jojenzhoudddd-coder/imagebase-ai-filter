@@ -14,6 +14,7 @@ import { useToast } from "../Toast/index";
 import Tooltip from "../Tooltip";
 import CardGrid from "./CardGrid";
 import CardMoreMenu from "./CardMoreMenu";
+import { useAgentHomeRefresh } from "./agentHomeEvents";
 
 interface Props {
   agentId: string;
@@ -66,12 +67,27 @@ export default function SkillsTab({ agentId, blockId }: Props) {
   const [skills, setSkills] = useState<AgentSkillSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    listAgentSkills(agentId)
-      .then((data) => setSkills(data.skills))
-      .catch(() => setSkills([]))
-      .finally(() => setLoading(false));
+  const loadSkills = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      const data = await listAgentSkills(agentId);
+      setSkills(data.skills);
+    } catch {
+      setSkills([]);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
   }, [agentId]);
+
+  useEffect(() => {
+    void loadSkills(true);
+  }, [loadSkills]);
+
+  const refreshSkills = useCallback(() => {
+    void loadSkills(false);
+  }, [loadSkills]);
+
+  useAgentHomeRefresh(agentId, refreshSkills);
 
   const handleToggle = useCallback(async (skillId: string, enabled: boolean) => {
     setSkills((prev) =>

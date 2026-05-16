@@ -14,6 +14,7 @@ import { useToast } from "../Toast/index";
 import Tooltip from "../Tooltip";
 import CardGrid from "./CardGrid";
 import CardMoreMenu from "./CardMoreMenu";
+import { useAgentHomeRefresh } from "./agentHomeEvents";
 
 interface Props {
   agentId: string;
@@ -136,12 +137,27 @@ export default function HabitsTab({ agentId, blockId }: Props) {
   const [habits, setHabits] = useState<HabitSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    listHabits(agentId)
-      .then((data) => setHabits(data.habits))
-      .catch(() => setHabits([]))
-      .finally(() => setLoading(false));
+  const loadHabits = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      const data = await listHabits(agentId);
+      setHabits(data.habits);
+    } catch {
+      setHabits([]);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
   }, [agentId]);
+
+  useEffect(() => {
+    void loadHabits(true);
+  }, [loadHabits]);
+
+  const refreshHabits = useCallback(() => {
+    void loadHabits(false);
+  }, [loadHabits]);
+
+  useAgentHomeRefresh(agentId, refreshHabits);
 
   const handleToggle = useCallback(async (jobId: string, enabled: boolean) => {
     setHabits((prev) =>

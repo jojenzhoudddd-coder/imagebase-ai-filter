@@ -76,6 +76,15 @@ const _agentPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 pg.types.setTypeParser(1114, (str: string) => new Date(str + "Z"));
 import { listUserSkills, updateUserSkill, deleteUserSkill } from "../services/userSkill/userSkillStore.js";
 import {
+  createAgentIntegration,
+  deleteAgentIntegration,
+  ensureSystemIntegrations,
+  listAgentIntegrations,
+  updateAgentIntegration,
+} from "../services/integrations/integrationStore.js";
+import { testIntegration } from "../services/integrations/integrationRuntime.js";
+import { listIntegrationPresets } from "../services/integrations/providerCatalog.js";
+import {
   listVisibleModels,
   getModel,
   resolveModelForCall,
@@ -767,6 +776,114 @@ router.delete("/:agentId/skills/:skillId", async (req: Request, res: Response) =
   } catch (err: any) {
     console.error("[agents] skill delete error:", err);
     res.status(err.statusCode ?? 500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+/** GET /api/agents/:agentId/integrations/presets — builtin provider catalog */
+router.get("/:agentId/integrations/presets", async (req: Request, res: Response) => {
+  try {
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    res.json({ presets: listIntegrationPresets() });
+  } catch (err: any) {
+    console.error("[agents] integration presets error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+/** GET /api/agents/:agentId/integrations — installed integrations */
+router.get("/:agentId/integrations", async (req: Request, res: Response) => {
+  try {
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    await ensureSystemIntegrations(agent.id);
+    const integrations = await listAgentIntegrations(agent.id);
+    res.json({ integrations });
+  } catch (err: any) {
+    console.error("[agents] integrations list error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
+
+/** POST /api/agents/:agentId/integrations — install integration */
+router.post("/:agentId/integrations", async (req: Request, res: Response) => {
+  try {
+    const agent = await getAgent(req.params.agentId);
+    if (!agent) {
+      res.status(404).json({ error: "agent not found" });
+      return;
+    }
+    const integration = await createAgentIntegration({
+      agentId: agent.id,
+      providerKey: String(req.body?.providerKey ?? ""),
+      displayName: typeof req.body?.displayName === "string" ? req.body.displayName : undefined,
+      transport: req.body?.transport,
+      enabled: typeof req.body?.enabled === "boolean" ? req.body.enabled : undefined,
+      config: req.body?.config,
+      toolManifest: req.body?.toolManifest,
+      scopes: req.body?.scopes,
+      credentials: req.body?.credentials,
+    });
+    res.status(201).json(integration);
+  } catch (err: any) {
+    console.error("[agents] integration create error:", err);
+    const status = err?.name === "IntegrationValidationError" ? 400 : 500;
+    res.status(status).json({ error: err.message ?? "internal error", field: err.field });
+  }
+});
+
+/** PUT /api/agents/:agentId/integrations/:integrationId — patch integration */
+router.put("/:agentId/integrations/:integrationId", async (req: Request, res: Response) => {
+  try {
+    const { agentId, integrationId } = req.params;
+    const patch: Record<string, unknown> = {};
+    for (const key of ["displayName", "transport", "enabled", "config", "toolManifest", "scopes", "credentials"]) {
+      if (key in (req.body ?? {})) patch[key] = req.body[key];
+    }
+    const integration = await updateAgentIntegration(integrationId, patch as any, {
+      requireAgentId: agentId,
+    });
+    res.json(integration);
+  } catch (err: any) {
+    console.error("[agents] integration update error:", err);
+    const status = err?.name === "IntegrationValidationError" ? 400 : err?.name === "IntegrationNotFoundError" ? 404 : 500;
+    res.status(status).json({ error: err.message ?? "internal error", field: err.field });
+  }
+});
+
+/** POST /api/agents/:agentId/integrations/:integrationId/test — health check */
+router.post("/:agentId/integrations/:integrationId/test", async (req: Request, res: Response) => {
+  try {
+    const { agentId, integrationId } = req.params;
+    const result = await testIntegration(integrationId, { requireAgentId: agentId });
+    res.json(result);
+  } catch (err: any) {
+    console.error("[agents] integration test error:", err);
+    const status = err?.name === "IntegrationNotFoundError" ? 404 : 500;
+    res.status(status).json({ error: err.message ?? "internal error" });
+  }
+});
+
+/** DELETE /api/agents/:agentId/integrations/:integrationId — remove integration */
+router.delete("/:agentId/integrations/:integrationId", async (req: Request, res: Response) => {
+  try {
+    const { agentId, integrationId } = req.params;
+    const ok = await deleteAgentIntegration(integrationId, { requireAgentId: agentId });
+    if (!ok) {
+      res.status(404).json({ error: "integration not found" });
+      return;
+    }
+    res.status(204).end();
+  } catch (err: any) {
+    console.error("[agents] integration delete error:", err);
+    const status = err?.name === "IntegrationNotFoundError" ? 404 : 500;
+    res.status(status).json({ error: err.message ?? "internal error" });
   }
 });
 

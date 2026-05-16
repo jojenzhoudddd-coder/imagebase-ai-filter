@@ -8,6 +8,7 @@ import { type AgentActivity, listAgentActivities } from "../../api";
 import { useTranslation } from "../../i18n";
 import Tooltip from "../Tooltip";
 import CardGrid from "./CardGrid";
+import { useAgentHomeRefresh } from "./agentHomeEvents";
 
 const PAGE_SIZE = 20;
 
@@ -77,6 +78,12 @@ export default function ActivitiesTab({ agentId, initialSearch }: Props) {
     load(0, committed);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, committedKey]);
+
+  const refreshActivities = useCallback(() => {
+    load(page, committed);
+  }, [load, page, committed]);
+
+  useAgentHomeRefresh(agentId, refreshActivities);
 
   // Debounce search input
   const handleSearchChange = (val: string) => {

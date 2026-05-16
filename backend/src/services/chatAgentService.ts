@@ -23,12 +23,15 @@ import path from "path";
 import {
   allTools,
   toolsByName,
-  isDangerousTool,
   resolveActiveTools,
 } from "../../mcp-server/src/tools/index.js";
 import { allSkills, skillsByName } from "../../mcp-server/src/skills/index.js";
 import type { SkillDefinition } from "../../mcp-server/src/skills/types.js";
 import { loadUserSkills } from "./userSkill/userSkillRegistry.js";
+import {
+  integrationIdFromToolName,
+  loadIntegrationSkills,
+} from "./integrations/integrationSkillRegistry.js";
 import type { ToolDefinition, ToolContext } from "../../mcp-server/src/tools/tableTools.js";
 import * as convStore from "./conversationStore.js";
 import type { Message, ToolCall } from "./conversationStore.js";
@@ -136,6 +139,23 @@ export function buildAvailableSkillsByName(
   const merged: Record<string, SkillDefinition> = { ...skillsByName };
   for (const s of userSkills) merged[s.name] = s;
   return merged;
+}
+
+function buildActivitySource(activeSkills: Set<string>, toolCalls: Array<Pick<ToolCall, "tool">>): string | null {
+  const parts: string[] = [];
+  const skills = [...activeSkills].filter((name) => Boolean(name) && !name.startsWith("integration-"));
+  if (skills.length > 0) parts.push(`skill:${skills.join(",")}`);
+
+  const integrationIds = new Set<string>();
+  for (const call of toolCalls) {
+    const integrationId = integrationIdFromToolName(call.tool);
+    if (integrationId) integrationIds.add(integrationId);
+  }
+  if (integrationIds.size > 0) {
+    parts.push(`integration:${[...integrationIds].join(",")}`);
+  }
+
+  return parts.length > 0 ? parts.join(" ") : null;
 }
 
 /**
@@ -2278,6 +2298,7 @@ async function* runAgentImpl(
   // want the next turn to reflect them immediately. Failure to load (DB hiccup)
   // degrades to "no user skills this turn" — never aborts the turn.
   let userSkillsForTurn: SkillDefinition[] = [];
+  let integrationSkillsForTurn: SkillDefinition[] = [];
   try {
     userSkillsForTurn = await loadUserSkills(agentId);
   } catch (err) {
@@ -2288,12 +2309,26 @@ async function* runAgentImpl(
       error: err instanceof Error ? err.message : String(err),
     });
   }
+  try {
+    integrationSkillsForTurn = await loadIntegrationSkills(agentId);
+  } catch (err) {
+    logAgent({
+      event: "integration_skills_load_failed",
+      conversationId,
+      agentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  const dynamicSkillsForTurn = [
+    ...userSkillsForTurn,
+    ...integrationSkillsForTurn,
+  ];
   const availableSkillsForTurn: SkillDefinition[] = [
     ...allSkills,
-    ...userSkillsForTurn,
+    ...dynamicSkillsForTurn,
   ];
-  const availableSkillsByNameForTurn = buildAvailableSkillsByName(userSkillsForTurn);
-  const skillNameForToolForTurn = buildSkillNameForTool(userSkillsForTurn);
+  const availableSkillsByNameForTurn = buildAvailableSkillsByName(dynamicSkillsForTurn);
+  const skillNameForToolForTurn = buildSkillNameForTool(dynamicSkillsForTurn);
   // Per-turn tool lookup map. Builtin `toolsByName` only knows static
   // tools (tier0/tier1 + builtin skills' tools). User skills' synthesized
   // `invoke_skill_workflow_<id>_<i>` tools are created at runtime via
@@ -2304,7 +2339,7 @@ async function* runAgentImpl(
   // in the round's tool list. Build a per-turn override map that mirrors
   // the static one + user skill tools, then use it for execution lookup.
   const toolsByNameForTurn: Record<string, ToolDefinition> = { ...toolsByName };
-  for (const skill of userSkillsForTurn) {
+  for (const skill of dynamicSkillsForTurn) {
     for (const t of skill.tools) {
       toolsByNameForTurn[t.name] = t;
     }
@@ -2390,6 +2425,8 @@ async function* runAgentImpl(
     conversationId,
     workspaceId,
     activeSkills: [...skillState.active],
+    availableSkills: availableSkillsForTurn,
+    availableSkillsByName: availableSkillsByNameForTurn,
     callId: undefined as string | undefined,
     progress: (payload: {
       phase?: string;
@@ -3091,7 +3128,7 @@ async function* runAgentImpl(
       }
 
       // Dangerous tool with no confirmation? Ask the client, pause the loop.
-      const isDanger = isDangerousTool(fc.name);
+      const isDanger = Boolean(tool.danger);
       const alreadyConfirmed = parsedArgs.confirmed === true;
       if (isDanger && !alreadyConfirmed) {
         // Record pending confirmation so the route handler can resume later.
@@ -3361,6 +3398,7 @@ async function* runAgentImpl(
           content: accumulatedText,
           thinking: accumulatedThinking || undefined,
           toolCalls: accumulatedToolCalls,
+          source: buildActivitySource(skillState.active, accumulatedToolCalls),
         });
       } catch (err) {
         logAgent({
@@ -3395,11 +3433,10 @@ async function* runAgentImpl(
   // 历史 assistant 气泡仍能渲染 "Generated · X 秒 · Y tokens"。
   // V3.0 multi-conv:打 branchTag="main",方便 FE 折叠规则识别"被 synth
   // 取代的主线流式气泡"(synth 出现后此条折叠成可展开按钮)。
-  // Build source: active skills for this turn
-  const activeSkillSet = getOrInitSkillState(conversationId).active;
-  const sourceStr = activeSkillSet.size > 0
-    ? `skill:${[...activeSkillSet].join(",")}`
-    : null;
+  const sourceStr = buildActivitySource(
+    getOrInitSkillState(conversationId).active,
+    accumulatedToolCalls,
+  );
 
   const persistedAssistantMsg = await convStore.appendMessage(conversationId, {
     role: "assistant",
@@ -3585,13 +3622,23 @@ async function* resumeAfterConfirmImpl(
   // state the next turn will read.
   const resumeSkillState = getOrInitSkillState(ctx.conversationId);
   let resumeUserSkills: SkillDefinition[] = [];
+  let resumeIntegrationSkills: SkillDefinition[] = [];
   try {
     resumeUserSkills = await loadUserSkills(resumeAgentId);
   } catch {
     /* ignore */
   }
+  try {
+    resumeIntegrationSkills = await loadIntegrationSkills(resumeAgentId);
+  } catch {
+    /* ignore */
+  }
+  const resumeDynamicSkills = [
+    ...resumeUserSkills,
+    ...resumeIntegrationSkills,
+  ];
   const resumeToolsByName: Record<string, ToolDefinition> = { ...toolsByName };
-  for (const s of resumeUserSkills) {
+  for (const s of resumeDynamicSkills) {
     for (const t of s.tools) {
       resumeToolsByName[t.name] = t;
     }
@@ -3605,7 +3652,8 @@ async function* resumeAfterConfirmImpl(
   yield { event: "tool_start", data: { callId, tool: pending.tool, args: pending.args } };
   let output: string;
   let success = true;
-  const resumeAvailableSkillsByName = buildAvailableSkillsByName(resumeUserSkills);
+  const resumeStartedAt = Date.now();
+  const resumeAvailableSkillsByName = buildAvailableSkillsByName(resumeDynamicSkills);
   const resumeToolCtx: ToolContext = {
     agentId: resumeAgentId,
     activeSkills: [...resumeSkillState.active],
@@ -3621,7 +3669,7 @@ async function* resumeAfterConfirmImpl(
   };
   // Bump lastUsedTurn for the owning skill so it doesn't get evicted just
   // because the confirmation round-tripped across turns.
-  const resumeSkillNameForTool = buildSkillNameForTool(resumeUserSkills);
+  const resumeSkillNameForTool = buildSkillNameForTool(resumeDynamicSkills);
   const owningSkill = resumeSkillNameForTool.get(pending.tool);
   if (owningSkill && resumeSkillState.active.has(owningSkill)) {
     resumeSkillState.lastUsedTurn.set(owningSkill, resumeSkillState.turnIndex);
@@ -3652,6 +3700,8 @@ async function* resumeAfterConfirmImpl(
           error: success ? undefined : output,
         },
       ],
+      durationMs: Date.now() - resumeStartedAt,
+      source: buildActivitySource(resumeSkillState.active, [{ tool: pending.tool }]),
     });
   } catch (err) {
     logAgent({
