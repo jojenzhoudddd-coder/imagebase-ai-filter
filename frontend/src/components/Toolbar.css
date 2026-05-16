@@ -119,6 +119,27 @@
   font-size: 13px;
   color: var(--color-text-muted);
 }
+/* More options button — align with conv-list-item-more */
+.sidebar-expand-popover .sidebar-item-more {
+  width: 24px;
+  height: 24px;
+  margin-right: -4px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s;
+  display: inline-flex;
+}
+.sidebar-expand-popover .sidebar-item:hover .sidebar-item-more,
+.sidebar-expand-popover .sidebar-item.active .sidebar-item-more {
+  opacity: 1;
+}
+.sidebar-expand-popover .sidebar-item-more:hover {
+  background: var(--surface-3, rgba(0,0,0,0.06));
+  color: var(--color-text-primary);
+}
 
 .table-topbar-actions {
   display: flex;
