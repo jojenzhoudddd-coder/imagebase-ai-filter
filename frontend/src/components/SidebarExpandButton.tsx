@@ -14,7 +14,7 @@ import { useSidebarToggle } from "../contexts/sidebarToggleContext";
 const HOVER_DELAY = 200;
 const LEAVE_DELAY = 300;
 
-const ITEM_SELECTOR = ".sidebar-item, .tree-node-row";
+const ITEM_SELECTOR = ".sidebar-item";
 
 export default function SidebarExpandButton({ className }: { className?: string }) {
   const ctx = useSidebarToggle();
@@ -31,19 +31,16 @@ export default function SidebarExpandButton({ className }: { className?: string 
     clearTimeout(leaveTimer.current);
   };
 
-  // Recompute position whenever popover opens
+  // Recompute position whenever popover opens & auto-focus the popover
   useLayoutEffect(() => {
     if (!open) return;
     const rect = btnRef.current?.getBoundingClientRect();
     if (rect) setPos({ top: rect.bottom + 4, left: rect.left });
     setActiveIdx(-1);
-  }, [open]);
-
-  // Focus the popover when it opens so it can receive keyboard events
-  useEffect(() => {
-    if (open && popoverRef.current) {
-      popoverRef.current.focus();
-    }
+    // Focus popover after portal mounts so it can receive keyboard events
+    requestAnimationFrame(() => {
+      popoverRef.current?.focus();
+    });
   }, [open]);
 
   const handleEnter = useCallback(() => {
@@ -78,6 +75,7 @@ export default function SidebarExpandButton({ className }: { className?: string 
     return Array.from(popoverRef.current.querySelectorAll(ITEM_SELECTOR)) as HTMLElement[];
   }, []);
 
+  // Keyboard handler — works on both the popover container and bubbled from search input
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
       setOpen(false);
@@ -98,16 +96,30 @@ export default function SidebarExpandButton({ className }: { className?: string 
         items[next]?.scrollIntoView({ block: "nearest" });
         return next;
       });
+      return;
     }
     if (e.key === "Enter") {
-      e.preventDefault();
       const items = getItems();
       if (activeIdx >= 0 && activeIdx < items.length) {
+        e.preventDefault();
         items[activeIdx].click();
         setTimeout(() => setOpen(false), 100);
       }
     }
   }, [activeIdx, getItems]);
+
+  // Reset activeIdx when items change (e.g. after search filter)
+  useEffect(() => {
+    if (!open) return;
+    // Use MutationObserver to detect when sidebar items change (search filter)
+    const el = popoverRef.current;
+    if (!el) return;
+    const observer = new MutationObserver(() => {
+      setActiveIdx(-1);
+    });
+    observer.observe(el, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [open]);
 
   // Sync highlight class on items when activeIdx changes
   useEffect(() => {

@@ -98,6 +98,26 @@
 .sidebar-expand-popover .sidebar-item.keyboard-active {
   background: var(--color-bg-hover, var(--surface-3));
 }
+/* Align sidebar search styles with conv-list-popover (chat history) */
+.sidebar-expand-popover .sidebar-search-trigger,
+.sidebar-expand-popover .sidebar-search-active {
+  margin-bottom: 4px;
+  height: 32px;
+  border-radius: var(--radius-m);
+  background: var(--color-bg-hover);
+}
+.sidebar-expand-popover .sidebar-search-trigger {
+  background: transparent;
+}
+.sidebar-expand-popover .sidebar-search-trigger span {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+.sidebar-expand-popover .sidebar-search-empty {
+  padding: 12px 8px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
 
 .table-topbar-actions {
   display: flex;

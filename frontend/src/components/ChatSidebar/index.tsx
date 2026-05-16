@@ -1980,7 +1980,7 @@ export default function ChatSidebar({
           <div
             ref={convListPanelRef}
             className="conv-list-popover"
-            style={{ top: anchorRect.bottom + 4, left: anchorRect.right - 260 }}
+            style={{ top: anchorRect.bottom + 4, left: anchorRect.left }}
             onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={handleConvKeyDown}
           >
