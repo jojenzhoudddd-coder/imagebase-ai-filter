@@ -37,7 +37,8 @@ export async function testIntegration(integrationId: string, opts?: { requireAge
   try {
     let detail: unknown;
     if (integration.transport === "cli") {
-      const tool = integration.toolManifest.find((t) => t.mode === "cli" && t.readOnly !== false)
+      const tool = getCliHealthCheckTool(integration)
+        ?? integration.toolManifest.find((t) => t.mode === "cli" && t.readOnly !== false)
         ?? integration.toolManifest.find((t) => t.mode === "cli");
       if (!tool) throw new Error("No CLI tool declared in manifest");
       detail = await runCliIntegrationTool(integration, tool, {});
@@ -51,6 +52,21 @@ export async function testIntegration(integrationId: string, opts?: { requireAge
     await markIntegrationHealth(integration.id, "error", message).catch(() => {});
     return { ok: false, transport: integration.transport, detail: { error: message } };
   }
+}
+
+function getCliHealthCheckTool(integration: AgentIntegrationRow): IntegrationToolManifest | null {
+  if (integration.providerKey === "github") {
+    return {
+      name: "gh_auth_status",
+      description: "Check GitHub CLI authentication status.",
+      mode: "cli",
+      readOnly: true,
+      output: "text",
+      args: ["auth", "status", "--hostname", "github.com"],
+      inputSchema: { type: "object", properties: {} },
+    };
+  }
+  return null;
 }
 
 async function dispatch(
