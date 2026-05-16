@@ -76,7 +76,7 @@
   background: var(--surface-2);
   border-radius: 10px;
   box-shadow: var(--shadow-popover);
-  padding: 4px 4px 8px;
+  padding: 0 0 4px;
   max-height: 400px;
   overflow-y: auto;
   scrollbar-width: none;
