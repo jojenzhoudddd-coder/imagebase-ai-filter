@@ -3019,6 +3019,7 @@
   flex-shrink: 0;
   width: 24px;
   height: 24px;
+  margin-right: -4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

@@ -1880,18 +1880,6 @@ export default function ChatSidebar({
           >
             <HistoryIcon size={16} />
           </button>
-          <button
-            ref={moreBtnRef}
-            type="button"
-            className="chat-header-btn"
-            title={t("chat.menu.more")}
-            aria-label={t("chat.menu.more")}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((v) => !v)}
-          >
-            <MoreIcon size={16} />
-          </button>
           <BlockCloseButton />
         </div>
       </header>
@@ -1925,33 +1913,6 @@ export default function ChatSidebar({
             addBlock("system", { activeTab: key } as SystemBlockState);
           }}
           onClose={() => setAgentMetaMenuOpen(false)}
-          width={200}
-        />
-      )}
-      {/* ⋯ More menu — V3.0.3:含"清空当前对话" + "删除当前对话" */}
-      {menuOpen && moreBtnRef.current && (
-        <DropdownMenu
-          anchorEl={moreBtnRef.current}
-          items={[
-            {
-              key: "clear",
-              label: t("chat.menu.clearCurrent"),
-              icon: <ClearIcon size={16} />,
-              swipeDelete: true,
-              onSwipeDelete: () => void handleClearCurrentConversation(),
-            },
-            {
-              key: "delete",
-              label: t("chat.menu.deleteCurrent"),
-              icon: <TrashIcon size={16} />,
-              swipeDelete: true,
-              onSwipeDelete: () => void handleDeleteCurrentConversation(),
-            },
-          ]}
-          onSelect={() => {
-            setMenuOpen(false);
-          }}
-          onClose={() => setMenuOpen(false)}
           width={200}
         />
       )}

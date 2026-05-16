@@ -602,7 +602,7 @@ export const zh: TranslationKeys = {
   "chat.list.empty": "暂无历史对话",
   "chat.list.untitled": "未命名对话",
   "chat.list.newChat": "新建对话",
-  "chat.list.searchPlaceholder": "搜索对话…",
+  "chat.list.searchPlaceholder": "Search",
   "chat.list.noResults": "没有匹配的对话",
   "chat.menu.clearCurrent": "清空对话",
   // Chat agent meta button (chat header 左数第 3 个图标) tooltip
