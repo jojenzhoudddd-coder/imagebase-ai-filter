@@ -2020,6 +2020,140 @@ export async function deleteUserSkill(agentId: string, skillId: string): Promise
   }
 }
 
+// ═══════════════ Agent Integrations ═══════════════
+
+export type IntegrationTransport = "mcp-stdio" | "mcp-http" | "cli";
+
+export interface IntegrationToolManifest {
+  name: string;
+  description: string;
+  mode: "mcp" | "cli";
+  readOnly?: boolean;
+  danger?: boolean;
+}
+
+export interface AgentIntegrationSummary {
+  id: string;
+  providerKey: string;
+  displayName: string;
+  transport: IntegrationTransport;
+  enabled: boolean;
+  status: "not_configured" | "healthy" | "error" | "disabled";
+  lastError: string | null;
+  toolManifest: IntegrationToolManifest[];
+  scopes: string[];
+  credentials: Array<{ name: string; valuePreview: string | null }>;
+  lastHealthAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IntegrationProviderPreset {
+  key: string;
+  displayName: string;
+  description: string;
+  homepage?: string;
+  recommendedTransport: IntegrationTransport;
+  transports: IntegrationTransport[];
+  auth: Array<{ name: string; label: string; type: "secret" | "text"; required: boolean; description?: string }>;
+  defaultTools: IntegrationToolManifest[];
+  triggers: string[];
+  scopes: string[];
+}
+
+export interface CreateAgentIntegrationInput {
+  providerKey: string;
+  displayName?: string;
+  transport?: IntegrationTransport;
+  enabled?: boolean;
+  config?: Record<string, unknown>;
+  toolManifest?: IntegrationToolManifest[];
+  scopes?: string[];
+  credentials?: Record<string, string>;
+}
+
+export async function listIntegrationPresets(
+  agentId: string,
+): Promise<{ presets: IntegrationProviderPreset[] }> {
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/integrations/presets`);
+  if (!res.ok) throw new Error("Failed to list integration presets");
+  return res.json();
+}
+
+export async function listAgentIntegrations(
+  agentId: string,
+): Promise<{ integrations: AgentIntegrationSummary[] }> {
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/integrations`);
+  if (!res.ok) throw new Error("Failed to list integrations");
+  return res.json();
+}
+
+export async function createAgentIntegration(
+  agentId: string,
+  input: CreateAgentIntegrationInput,
+): Promise<AgentIntegrationSummary> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/integrations`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function toggleIntegration(
+  agentId: string,
+  integrationId: string,
+  enabled: boolean,
+): Promise<AgentIntegrationSummary> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/integrations/${encodeURIComponent(integrationId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deleteIntegration(agentId: string, integrationId: string): Promise<void> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/integrations/${encodeURIComponent(integrationId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok && res.status !== 204) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+}
+
+export async function testAgentIntegration(
+  agentId: string,
+  integrationId: string,
+): Promise<{ ok: boolean; transport: string; detail: unknown }> {
+  const res = await mutationFetch(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/integrations/${encodeURIComponent(integrationId)}/test`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 // ═══════════════ Chat Attachments ═══════════════
 
 export interface ChatAttachmentResponse {

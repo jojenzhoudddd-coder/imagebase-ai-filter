@@ -25,6 +25,7 @@ import ModelsTab from "./ModelsTab";
 import ActivitiesTab from "./ActivitiesTab";
 import SkillsTab from "./SkillsTab";
 import HabitsTab from "./HabitsTab";
+import IntegrationsTab from "./IntegrationsTab";
 import AcknowledgeTab from "./AcknowledgeTab";
 import PlaceholderTab from "./PlaceholderTab";
 import "./AgentBlock.css";
@@ -138,6 +139,8 @@ export default function AgentBlock({ blockId }: Props) {
         return <SkillsTab agentId={resolvedAgentId} blockId={blockId} />;
       case "habits":
         return <HabitsTab agentId={resolvedAgentId} blockId={blockId} />;
+      case "integrations":
+        return <IntegrationsTab agentId={resolvedAgentId} blockId={blockId} />;
       case "acknowledge":
         return <AcknowledgeTab agentId={resolvedAgentId} />;
       default:

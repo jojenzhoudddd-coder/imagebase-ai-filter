@@ -20,6 +20,7 @@ import {
 import { useTranslation } from "../../i18n";
 import { useToast } from "../Toast/index";
 import CardGrid from "./CardGrid";
+import { useAgentHomeRefresh } from "./agentHomeEvents";
 
 interface ModelSummary {
   id: string;
@@ -70,18 +71,31 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
   const [selection, setSelection] = useState<AgentModelSelection | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    Promise.all([
-      listModels(),
-      agentId ? getAgentModel(agentId) : Promise.resolve(null),
-    ])
-      .then(([data, sel]) => {
-        setModels(data.models);
-        setSelection(sel);
-      })
-      .catch(() => setModels([]))
-      .finally(() => setLoading(false));
+  const loadModels = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      const [data, sel] = await Promise.all([
+        listModels(),
+        agentId ? getAgentModel(agentId) : Promise.resolve(null),
+      ]);
+      setModels(data.models);
+      setSelection(sel);
+    } catch {
+      setModels([]);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
   }, [agentId]);
+
+  useEffect(() => {
+    void loadModels(true);
+  }, [loadModels]);
+
+  const refreshModels = useCallback(() => {
+    void loadModels(false);
+  }, [loadModels]);
+
+  useAgentHomeRefresh(agentId, refreshModels);
 
   // Listen for model selection changes from chat blocks
   useEffect(() => {
@@ -98,13 +112,11 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
   // Listen for custom model CRUD (add/remove via chat) and refetch list
   useEffect(() => {
     const handler = () => {
-      listModels()
-        .then((data) => setModels(data.models))
-        .catch(() => {});
+      void loadModels(false);
     };
     window.addEventListener("custom-models-changed", handler);
     return () => window.removeEventListener("custom-models-changed", handler);
-  }, []);
+  }, [loadModels]);
 
   const handleDeleteModel = useCallback(async (modelId: string, dbId: string) => {
     const prev = models;

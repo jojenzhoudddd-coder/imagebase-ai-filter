@@ -70,6 +70,7 @@ import { useToast } from "../Toast/index";
 import { pinyinMatch } from "../../utils/pinyinMatch";
 import { listenChatShared } from "./listenHub";
 import { AnimatedCharacters } from "../../auth/AnimatedCharacters";
+import { dispatchAgentHomeRefresh } from "../AgentBlock/agentHomeEvents";
 
 // Client-side message model (mutable during streaming)
 interface UiMessage {
@@ -1315,10 +1316,11 @@ export default function ChatSidebar({
           );
           setAgentRefreshToken((n) => n + 1);
           try { window.dispatchEvent(new CustomEvent("workspace-stats-changed")); } catch { /* noop */ }
+          dispatchAgentHomeRefresh(agentId, "chat-turn-done");
         }
       },
     });
-  }, [activeConv, inputValue, streaming, onActiveTableChange, onDemoCreated]);
+  }, [activeConv, inputValue, streaming, onActiveTableChange, onDemoCreated, agentId]);
 
   // V3.0 (queue model): append 路径 —— streaming 期间用户继续输入。
   // 不打断当前回复,只 push user 气泡 + POST。后端入队,turn_pending ack 立刻
@@ -1485,10 +1487,11 @@ export default function ChatSidebar({
             ),
           );
           try { window.dispatchEvent(new CustomEvent("workspace-stats-changed")); } catch { /* noop */ }
+          dispatchAgentHomeRefresh(agentId, "chat-confirm-done");
         },
       });
     },
-    [activeConv, pendingConfirm, onActiveTableChange, onDemoCreated]
+    [activeConv, pendingConfirm, onActiveTableChange, onDemoCreated, agentId]
   );
 
   const handleStop = useCallback(() => {

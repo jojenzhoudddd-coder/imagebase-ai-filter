@@ -34,10 +34,11 @@ export const skillRouterTools: ToolDefinition[] = [
     },
     handler: async (_args, ctx?: ToolContext) => {
       const active = new Set(ctx?.activeSkills || []);
+      const availableSkills = ctx?.availableSkills ?? allSkills;
       return JSON.stringify({
         ok: true,
-        count: allSkills.length,
-        skills: allSkills.map((s) => ({
+        count: availableSkills.length,
+        skills: availableSkills.map((s) => ({
           name: s.name,
           displayName: s.displayName,
           description: s.description,
@@ -68,12 +69,14 @@ export const skillRouterTools: ToolDefinition[] = [
       if (!name) {
         return JSON.stringify({ ok: false, error: "missing skill name" });
       }
-      const skill = skillsByName[name];
+      const availableSkillsByName = ctx?.availableSkillsByName ?? skillsByName;
+      const skill = availableSkillsByName[name];
       if (!skill) {
+        const availableSkills = ctx?.availableSkills ?? allSkills;
         return JSON.stringify({
           ok: false,
           error: `unknown skill: ${name}`,
-          available: allSkills.map((s) => s.name),
+          available: availableSkills.map((s) => s.name),
         });
       }
       // Mutate via callback — see chatAgentService attachSkillContext.

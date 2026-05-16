@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-05-17 (Feature · Agent Integration MCP/CLI)
+
+### feat(agent-integration): 打通 GitHub / Lark / Figma / Custom CLI integration 基建
+
+Commit: pending release commit.
+
+- 新增 Agent Integration 数据模型与 migration：`AgentIntegration`、`AgentIntegrationCredential`，支持 system provider 和 custom CLI。
+- GitHub、Lark、Figma 作为 system integrations 自动出现在 Agent Home，用户只需开启并配置凭证；Custom CLI 通过 Add by chat 创建。
+- 新增 MCP/CLI runtime：MCP stdio、MCP HTTP、CLI 三种 transport；enabled integrations 动态生成 `integration_<id>_<tool>` 工具。
+- 新增 integration 管理 MCP 工具：list/create/update/delete/test/call/inspect CLI help。
+- 加固 CLI 安全：`spawn(shell:false)`，创建/更新/runtime 均拒绝 shell 表达式 command，输出限制 512KB。
+- 打通 Activities 链路：integration tool 调用会写入 `Message.source=integration:<id>`，Integration card 的 View activities 能查看真实使用记录。
+- Agent Home 新增 Integrations tab，并与 Chat 完成事件联动刷新；Nature、Models、Habits、Skills、Acknowledge、Activities、Integrations 均监听统一 `agent-home-refresh`。
+- 新增 `docs/agent-integration-plan.md` 和 `docs/agent-integration-test-cases.md`，覆盖架构方案和 P0/P1/P2 验收用例。
+
+本地验收：
+- frontend `npm run build` 通过。
+- fake Custom CLI 创建、测试连接、runtime 调用、关闭态禁止调用、Activities 搜索命中均通过。
+- CLI 注入 payload 在 create/update 阶段返回 400。
+- Playwright-core + Chrome UI 冒烟通过：Integrations tab 可渲染，Official cards、Add by chat、Test connection、Configure by chat 正常。
+
+---
+
 ## 2026-04-30 (Feature · SVG → Demo 三路径并行方案)
 
 ### feat(svg-to-demo): 把用户上传的 Taste SVG 一键变可运行 Demo

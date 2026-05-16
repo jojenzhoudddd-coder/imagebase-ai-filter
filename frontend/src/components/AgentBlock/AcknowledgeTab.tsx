@@ -8,6 +8,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
 import { createConversation, listKnowledgeEntries, getKnowledgeEntry, type KnowledgeEntrySummary } from "../../api";
 import { useTranslation } from "../../i18n";
+import { useAgentHomeRefresh } from "./agentHomeEvents";
 
 interface Props {
   agentId: string;
@@ -38,12 +39,27 @@ export default function AcknowledgeTab({ agentId }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [fullContent, setFullContent] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    listKnowledgeEntries(agentId, { limit: 100 })
-      .then((data) => setEntries(data.entries))
-      .catch(() => setEntries([]))
-      .finally(() => setLoading(false));
+  const loadKnowledge = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      const data = await listKnowledgeEntries(agentId, { limit: 100 });
+      setEntries(data.entries);
+    } catch {
+      setEntries([]);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
   }, [agentId]);
+
+  useEffect(() => {
+    void loadKnowledge(true);
+  }, [loadKnowledge]);
+
+  const refreshKnowledge = useCallback(() => {
+    void loadKnowledge(false);
+  }, [loadKnowledge]);
+
+  useAgentHomeRefresh(agentId, refreshKnowledge);
 
   const handleAddByChat = useCallback(async () => {
     if (!workspaceId) return;

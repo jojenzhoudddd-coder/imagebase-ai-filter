@@ -35,6 +35,8 @@ export const ID_PREFIXES = {
   ideaBlock:        "ib",
   mention:          "mn",
   customModel:      "cm",
+  integration:      "ig",
+  integrationCredential: "ic",
   org:              "og",
   orgMember:        "om",
   workflowRun:      "wf",

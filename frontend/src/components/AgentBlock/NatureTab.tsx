@@ -3,7 +3,7 @@
  * via a secondary tab bar (soul / profile / memory).
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   type AgentIdentity,
   type AgentEpisodicMemory,
@@ -15,6 +15,7 @@ import {
 import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
 import { useTranslation } from "../../i18n";
+import { useAgentHomeRefresh } from "./agentHomeEvents";
 
 type SubTab = "soul" | "profile" | "memory";
 
@@ -47,21 +48,34 @@ export default function NatureTab({ agentId }: Props) {
   const [loading, setLoading] = useState(true);
   const [subTab, setSubTab] = useState<SubTab>("soul");
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    Promise.all([
-      getAgentIdentity(agentId),
-      listAgentMemories(agentId).catch(() => ({ episodic: [], working: [] })),
-    ]).then(([id, mem]) => {
-      if (cancelled) return;
+  const loadNature = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      const [id, mem] = await Promise.all([
+        getAgentIdentity(agentId),
+        listAgentMemories(agentId).catch(() => ({ episodic: [], working: [] })),
+      ]);
       setIdentity(id);
       setEpisodic(mem.episodic ?? []);
       setWorking(mem.working ?? []);
-      setLoading(false);
-    });
-    return () => { cancelled = true; };
+    } catch {
+      setIdentity(null);
+      setEpisodic([]);
+      setWorking([]);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
   }, [agentId]);
+
+  useEffect(() => {
+    void loadNature(true);
+  }, [loadNature]);
+
+  const refreshNature = useCallback(() => {
+    void loadNature(false);
+  }, [loadNature]);
+
+  useAgentHomeRefresh(agentId, refreshNature);
 
   if (loading) return <div className="ab-loading">{t("agent.block.loading")}</div>;
 

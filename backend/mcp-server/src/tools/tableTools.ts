@@ -4,6 +4,7 @@
  */
 
 import { apiRequest, toolResult, confirmationRequired, DEFAULT_WORKSPACE_ID } from "../dataStoreClient.js";
+import type { SkillDefinition } from "../skills/types.js";
 
 /**
  * Runtime context passed alongside each tool invocation. Populated by the
@@ -25,6 +26,9 @@ export interface ToolContext {
   /** Callback fired by skill-router tools to mutate activation state. */
   onActivateSkill?: (name: string) => void;
   onDeactivateSkill?: (name: string) => void;
+  /** Per-turn full skill catalog, including user skills and integration skills. */
+  availableSkills?: SkillDefinition[];
+  availableSkillsByName?: Record<string, SkillDefinition>;
   /**
    * Analyst P1: the conversation this tool call belongs to. Analyst tools
    * key their DuckDB session off this — same conversation, same .duckdb file.
