@@ -166,19 +166,17 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
               <div className="ab-card-title-block">
                 <div className="ab-card-title-row">
                   <h4 className="ab-card-title">{m.displayName}</h4>
-                  {m.id === currentModelId && (
-                    <span className="ab-card-state ab-card-state-current">
-                      <span className="ab-card-state-dot" />
-                      Current
-                    </span>
-                  )}
-                  <span className={`ab-card-state ${m.available ? "ab-card-state-success" : "ab-card-state-muted"}`}>
-                    <span className="ab-card-state-dot" />
-                    {m.available ? "Available" : "Offline"}
-                  </span>
                   <span className={`ab-card-state ${m.type === "custom" ? "ab-card-state-custom" : "ab-card-state-official"}`}>
                     {m.type === "custom" ? "Custom" : "Official"}
                   </span>
+                  <span className={`ab-card-state ${m.available ? "ab-card-state-success" : "ab-card-state-muted"}`}>
+                    {m.available ? "Available" : "Offline"}
+                  </span>
+                  {m.id === currentModelId && (
+                    <span className="ab-card-state ab-card-state-white">
+                      Current
+                    </span>
+                  )}
                 </div>
                 <Tooltip title={m.id}><p className="ab-card-desc">{m.id}</p></Tooltip>
               </div>
