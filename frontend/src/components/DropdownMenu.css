@@ -131,3 +131,14 @@
   background: var(--color-border);
   margin: 4px 8px;
 }
+
+/* Header slot (sticky, not scrollable) */
+.dropdown-menu.has-header {
+  display: flex;
+  flex-direction: column;
+}
+.dropdown-menu-header {
+  flex-shrink: 0;
+  padding: 4px 4px 0;
+}
+.dropdown-menu-scroll::-webkit-scrollbar { display: none; }

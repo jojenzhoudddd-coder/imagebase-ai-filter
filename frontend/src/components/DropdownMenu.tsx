@@ -48,9 +48,11 @@ interface Props {
   boundaryEl?: HTMLElement | null;
   /** Hard max-height cap (px). When set, overrides boundary-computed value. */
   maxHeightPx?: number;
+  /** Optional header rendered above items (sticky, not scrollable with items) */
+  header?: ReactNode;
 }
 
-export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "auto", width, activeSubMenuKey, onMenuRef, onItemRef, extraContainers, className, boundaryEl, maxHeightPx }: Props) {
+export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "auto", width, activeSubMenuKey, onMenuRef, onItemRef, extraContainers, className, boundaryEl, maxHeightPx, header }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number | null }>({
     top: -9999, left: -9999, maxHeight: null,
@@ -169,58 +171,65 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose, posit
     }
   }
 
+  const effectiveMaxHeight = maxHeightPx ?? pos.maxHeight ?? undefined;
+
+  const itemsContent = groups.map((group, gi) => (
+    <div key={group.title || gi} className="dropdown-menu-group">
+      {group.title && <div className="dropdown-menu-section">{group.title}</div>}
+      <div className="dropdown-menu-items">
+        {group.items.map((item) => (
+          item.swipeDelete ? (
+            <div key={item.key} className="dropdown-menu-item swipe-delete-wrapper">
+              <SwipeDelete
+                label={item.label}
+                icon={item.icon}
+                onDelete={() => {
+                  item.onSwipeDelete?.();
+                  onClose();
+                }}
+                disabled={item.disabled}
+              />
+            </div>
+          ) : (
+          <button
+            key={item.key}
+            ref={(el) => onItemRef?.(item.key, el)}
+            className={`dropdown-menu-item${item.disabled ? " disabled" : ""}${item.suffix ? " has-suffix" : ""}${activeSubMenuKey === item.key ? " active-submenu" : ""}${item.danger ? " danger" : ""}${item.active ? " active" : ""}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (item.disabled || item.noop) return;
+              onSelect(item.key);
+            }}
+          >
+            {item.icon && <span className="dropdown-menu-item-icon">{item.icon}</span>}
+            <span className="dropdown-menu-item-label">{item.label}</span>
+            {item.suffix && <span className="dropdown-menu-item-suffix">{item.suffix}</span>}
+          </button>
+          )
+        ))}
+      </div>
+    </div>
+  ));
+
   return createPortal(
     <div
       ref={menuRef}
-      className={`dropdown-menu${className ? ` ${className}` : ""}`}
+      className={`dropdown-menu${className ? ` ${className}` : ""}${header ? " has-header" : ""}`}
       style={{
         top: pos.top,
         left: pos.left,
         width: width ?? undefined,
-        // boundaryEl 限高时溢出滚动。CSS 兜底 padding 4px(.dropdown-menu)
-        // 跟 max-height 一起作用,内容超出会出现纵向滚动条。
-        maxHeight: maxHeightPx ?? pos.maxHeight ?? undefined,
-        overflowY: (maxHeightPx ?? pos.maxHeight) != null ? "auto" : undefined,
+        maxHeight: effectiveMaxHeight,
+        overflowY: header ? "hidden" : (effectiveMaxHeight != null ? "auto" : undefined),
         scrollbarWidth: maxHeightPx != null ? "none" : undefined,
       }}
     >
-      {groups.map((group, gi) => (
-        <div key={group.title || gi} className="dropdown-menu-group">
-          {group.title && <div className="dropdown-menu-section">{group.title}</div>}
-          <div className="dropdown-menu-items">
-            {group.items.map((item) => (
-              item.swipeDelete ? (
-                <div key={item.key} className="dropdown-menu-item swipe-delete-wrapper">
-                  <SwipeDelete
-                    label={item.label}
-                    icon={item.icon}
-                    onDelete={() => {
-                      item.onSwipeDelete?.();
-                      onClose();
-                    }}
-                    disabled={item.disabled}
-                  />
-                </div>
-              ) : (
-              <button
-                key={item.key}
-                ref={(el) => onItemRef?.(item.key, el)}
-                className={`dropdown-menu-item${item.disabled ? " disabled" : ""}${item.suffix ? " has-suffix" : ""}${activeSubMenuKey === item.key ? " active-submenu" : ""}${item.danger ? " danger" : ""}${item.active ? " active" : ""}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (item.disabled || item.noop) return;
-                  onSelect(item.key);
-                }}
-              >
-                {item.icon && <span className="dropdown-menu-item-icon">{item.icon}</span>}
-                <span className="dropdown-menu-item-label">{item.label}</span>
-                {item.suffix && <span className="dropdown-menu-item-suffix">{item.suffix}</span>}
-              </button>
-              )
-            ))}
-          </div>
+      {header && <div className="dropdown-menu-header">{header}</div>}
+      {header ? (
+        <div className="dropdown-menu-scroll" style={{ overflowY: "auto", flex: 1, minHeight: 0, scrollbarWidth: "none" }}>
+          {itemsContent}
         </div>
-      ))}
+      ) : itemsContent}
     </div>,
     document.body,
   );
