@@ -236,23 +236,29 @@
 }
 
 .sidebar-item-more {
-  display: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
+  margin-right: -4px;
+  border: none;
+  background: transparent;
   border-radius: var(--radius-s);
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
+  cursor: pointer;
   flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s;
 }
 
 .sidebar-item:hover .sidebar-item-more,
 .sidebar-item.active .sidebar-item-more {
-  display: flex;
+  opacity: 1;
 }
 
 .sidebar-item-more:hover {
-  background: rgba(31, 35, 41, 0.08);
+  background: var(--surface-3, rgba(0,0,0,0.06));
   color: var(--color-text-primary);
 }
 
