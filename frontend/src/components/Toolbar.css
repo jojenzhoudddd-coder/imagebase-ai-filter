@@ -100,18 +100,27 @@
   background: var(--color-bg-hover, var(--surface-3));
 }
 /* Align sidebar search styles with conv-list-popover (chat history) */
-.sidebar-expand-popover .sidebar-search-trigger,
 .sidebar-expand-popover .sidebar-search-active {
   margin-bottom: 4px;
   height: 32px;
+  padding: 0 8px;
   border-radius: var(--radius-m);
   background: var(--color-bg-hover);
+  font-size: 14px;
 }
 .sidebar-expand-popover .sidebar-search-trigger {
-  background: transparent;
+  margin-bottom: 4px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--radius-m);
+  background: var(--color-bg-hover);
+  font-size: 14px;
+  color: var(--color-text-muted);
 }
 .sidebar-expand-popover .sidebar-search-trigger span {
-  font-size: 13px;
+  color: var(--color-text-muted);
+}
+.sidebar-expand-popover .sidebar-search-trigger .sidebar-search-icon {
   color: var(--color-text-muted);
 }
 .sidebar-expand-popover .sidebar-search-empty {
