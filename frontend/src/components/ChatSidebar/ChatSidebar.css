@@ -2876,7 +2876,7 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 /* Icon-only button (magnifier collapsed, "+" when search expanded) */
