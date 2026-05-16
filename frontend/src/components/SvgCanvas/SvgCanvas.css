@@ -492,6 +492,8 @@
 
 .taste-context-menu-item svg {
   flex-shrink: 0;
+  color: var(--text-secondary, #666);
+  opacity: 0.8;
 }
 
 .taste-context-menu-sep {
