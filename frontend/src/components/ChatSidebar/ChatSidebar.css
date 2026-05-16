@@ -2982,6 +2982,9 @@
   flex: 1;
   min-height: 0;
   scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .conv-list-scroll::-webkit-scrollbar { display: none; }
 
