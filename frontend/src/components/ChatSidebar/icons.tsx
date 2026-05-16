@@ -187,16 +187,15 @@ export function MicIcon({ size = 14, className }: IconProps) {
 // ── Agent meta dropdown icons (16×16, 1.4 stroke, currentColor) ─────────
 // 占位图标,后续接各自页面时可换成 Figma 标准图标库版本.
 
-/** Nature 性格 — heart outline */
+/** Nature 性格 — robot outlined */
 export function NatureIcon({ size = 16, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
-      <path
-        d="M8 13.5C8 13.5 2 10.5 2 6.3C2 4.5 3.4 3 5.2 3C6.5 3 7.5 3.7 8 4.7C8.5 3.7 9.5 3 10.8 3C12.6 3 14 4.5 14 6.3C14 10.5 8 13.5 8 13.5Z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M9 12C9.82834 12.0001 10.5 12.6716 10.5 13.5C10.5 14.3284 9.82834 14.9999 9 15C8.17157 15 7.5 14.3284 7.5 13.5C7.5 12.6716 8.17157 12 9 12Z" fill="currentColor"/>
+      <path d="M15 12C15.8283 12.0001 16.5 12.6716 16.5 13.5C16.5 14.3284 15.8283 14.9999 15 15C14.1716 15 13.5 14.3284 13.5 13.5C13.5 12.6716 14.1716 12 15 12Z" fill="currentColor"/>
+      <path d="M13 0C13.8284 3.22128e-08 14.5 0.671573 14.5 1.5C14.5 2.27666 13.9097 2.91539 13.1533 2.99219L13 3V5.5H19C20.1045 5.5001 21 6.39549 21 7.5V20C21 21.1045 20.1045 21.9999 19 22H5C3.89543 22 3 21.1046 3 20V7.5C3 6.39543 3.89543 5.5 5 5.5H11V3L10.8467 2.99219C10.0903 2.91539 9.5 2.27666 9.5 1.5C9.5 0.671573 10.1716 3.22128e-08 11 0H13ZM5 20H19V7.5H5V20Z" fill="currentColor"/>
+      <path d="M1 10.5C1.55228 10.5 2 10.9477 2 11.5V15.5C2 16.0523 1.55228 16.5 1 16.5C0.447715 16.5 0 16.0523 0 15.5V11.5C0 10.9477 0.447715 10.5 1 10.5Z" fill="currentColor"/>
+      <path d="M23 10.5C23.5523 10.5 24 10.9477 24 11.5V15.5C24 16.0523 23.5523 16.5 23 16.5C22.4477 16.5 22 16.0523 22 15.5V11.5C22 10.9477 22.4477 10.5 23 10.5Z" fill="currentColor"/>
     </svg>
   );
 }
@@ -221,16 +220,14 @@ export function ModelsIcon({ size = 16, className }: IconProps) {
   );
 }
 
-/** Activities 活动 — lightning bolt */
+/** Activities 活动 — chat bubble (reply) */
 export function ActivitiesIcon({ size = 16, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
-      <path
-        d="M9 2L3.2 9H7.5L7 14L12.8 7H8.5L9 2Z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M6.5 9C5.94772 9 5.5 9.44772 5.5 10V11C5.5 11.5523 5.94772 12 6.5 12H7.5C8.05228 12 8.5 11.5523 8.5 11V10C8.5 9.44772 8.05228 9 7.5 9H6.5Z" fill="currentColor"/>
+      <path d="M11.5 9C10.9477 9 10.5 9.44772 10.5 10V11C10.5 11.5523 10.9477 12 11.5 12H12.5C13.0523 12 13.5 11.5523 13.5 11V10C13.5 9.44772 13.0523 9 12.5 9H11.5Z" fill="currentColor"/>
+      <path d="M15.5 10C15.5 9.44772 15.9477 9 16.5 9H17.5C18.0523 9 18.5 9.44772 18.5 10V11C18.5 11.5523 18.0523 12 17.5 12H16.5C15.9477 12 15.5 11.5523 15.5 11V10Z" fill="currentColor"/>
+      <path d="M23 4C23 2.9 22.1 2 21 2H3C1.9 2 1 2.9 1 4V17.0111C1 18.0211 1.9 19.0111 3 19.0111H7.7586L10.4774 22C10.9822 22.5017 11.3166 22.6311 12 22.7009C12.414 22.707 13.0502 22.5093 13.5 22L16.2414 19.0111H21C22.1 19.0111 23 18.1111 23 17.0111V4ZM3 4H21V17.0111H15.5L12 20.6714L8.5 17.0111H3V4Z" fill="currentColor"/>
     </svg>
   );
 }
@@ -265,38 +262,22 @@ export function AcknowledgeIcon({ size = 16, className }: IconProps) {
   );
 }
 
-/** Habits 习惯 — circular repeat arrow */
+/** Habits 习惯 — lightning bolt (sync) */
 export function HabitsIcon({ size = 16, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
-      <path
-        d="M13 7C12.7 4.7 10.6 3 8.2 3C5.4 3 3 5.3 3 8.2C3 9.6 3.6 10.9 4.5 11.8"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M3 9C3.3 11.3 5.4 13 7.8 13C10.6 13 13 10.7 13 7.8C13 6.4 12.4 5.1 11.5 4.2"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M11 4.5L11.7 3L13.2 3.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5 11.5L4.3 13L2.8 12.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M11.2234 12.7111C11.4843 12.7307 11.686 12.9481 11.686 13.2097L11.6861 20.6616L18.8277 11.6186L13.4496 11.2149C13.1887 11.1953 12.987 10.9779 12.987 10.7163L12.9869 3.26446L5.84531 12.3075L11.2234 12.7111ZM12.3652 0.952384C13.2813 -0.0792773 14.9869 0.568638 14.9869 1.9483L14.987 9.32467L19.9842 9.69975C21.2221 9.79266 21.8179 11.2632 20.9936 12.1915L12.3078 22.9736C11.3917 24.0053 9.68614 23.3574 9.68611 21.9777L9.68599 14.6014L4.68876 14.2263C3.45086 14.1334 2.85515 12.6628 3.67939 11.7345L12.3652 0.952384Z" fill="currentColor"/>
     </svg>
   );
 }
 
-/** Integrations 集成 — 2×2 grid (apps / modules) */
+/** Integrations 集成 — connector (two circles linked by a line) */
 export function IntegrationsIcon({ size = 16, className }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
-      <rect x="2.2" y="2.2" width="4.6" height="4.6" rx="0.8" stroke="currentColor" strokeWidth="1.4" />
-      <rect x="9.2" y="2.2" width="4.6" height="4.6" rx="0.8" stroke="currentColor" strokeWidth="1.4" />
-      <rect x="2.2" y="9.2" width="4.6" height="4.6" rx="0.8" stroke="currentColor" strokeWidth="1.4" />
-      <rect x="9.2" y="9.2" width="4.6" height="4.6" rx="0.8" stroke="currentColor" strokeWidth="1.4" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M18 2C20.2091 2 22 3.79086 22 6C22 8.20914 20.2091 10 18 10C17.258 10 16.5634 9.79741 15.9678 9.44531L9.44531 15.9678C9.79741 16.5634 10 17.258 10 18C10 20.2091 8.20914 22 6 22C3.79086 22 2 20.2091 2 18C2 15.7909 3.79086 14 6 14C6.74157 14 7.43587 14.202 8.03125 14.5537L14.5537 8.03125C14.202 7.43587 14 6.74157 14 6C14 3.79086 15.7909 2 18 2ZM6 16C4.89543 16 4 16.8954 4 18C4 19.1046 4.89543 20 6 20C7.10457 20 8 19.1046 8 18C8 16.8954 7.10457 16 6 16ZM18 4C16.8954 4 16 4.89543 16 6C16 7.10457 16.8954 8 18 8C19.1046 8 20 7.10457 20 6C20 4.89543 19.1046 4 18 4Z" fill="currentColor"/>
+      <path d="M18 14C20.2091 14 22 15.7909 22 18C22 20.2091 20.2091 22 18 22C15.7909 22 14 20.2091 14 18C14 15.7909 15.7909 14 18 14ZM18 16C16.8954 16 16 16.8954 16 18C16 19.1046 16.8954 20 18 20C19.1046 20 20 19.1046 20 18C20 16.8954 19.1046 16 18 16Z" fill="currentColor"/>
+      <path d="M6 2C8.20914 2 10 3.79086 10 6C10 8.20914 8.20914 10 6 10C3.79086 10 2 8.20914 2 6C2 3.79086 3.79086 2 6 2ZM6 4C4.89543 4 4 4.89543 4 6C4 7.10457 4.89543 8 6 8C7.10457 8 8 7.10457 8 6C8 4.89543 7.10457 4 6 4Z" fill="currentColor"/>
     </svg>
   );
 }
