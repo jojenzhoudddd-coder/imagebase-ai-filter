@@ -214,8 +214,8 @@
 }
 
 .sidebar-item.active {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
+  background: var(--surface-hover, rgba(20, 86, 240, 0.08));
+  color: var(--primary, #1456f0);
   font-weight: 500;
 }
 
