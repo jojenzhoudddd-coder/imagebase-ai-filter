@@ -73,6 +73,33 @@ type UndoItem =
   | { type: "cellEdit"; recordId: string; fieldId: string; oldValue: CellValue; newValue: CellValue }
   | { type: "cellBatchClear"; changes: Array<{ recordId: string; fieldId: string; oldValue: CellValue }> };
 
+function getSystemCellValueForCreatedField(record: TableRecord, field: Field): CellValue | undefined {
+  switch (field.type) {
+    case "CreatedUser":
+      return record.createdBy ?? null;
+    case "ModifiedUser":
+      return record.modifiedBy ?? null;
+    case "CreatedTime":
+      return record.createdAt;
+    case "ModifiedTime":
+      return record.updatedAt;
+    default:
+      return undefined;
+  }
+}
+
+function withCreatedFieldCells(records: TableRecord[], field: Field): TableRecord[] {
+  let changed = false;
+  const next = records.map((record) => {
+    if (Object.prototype.hasOwnProperty.call(record.cells, field.id)) return record;
+    const value = getSystemCellValueForCreatedField(record, field);
+    if (value === undefined) return record;
+    changed = true;
+    return { ...record, cells: { ...record.cells, [field.id]: value } };
+  });
+  return changed ? next : records;
+}
+
 interface Props {
   tableId: string;
   workspaceId: string;
@@ -706,11 +733,18 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
     setEditFieldState({ fieldId, anchorRect });
   }, []);
 
-  const handleCreateFieldConfirm = useCallback(async (newField: Field) => {
-    setFields((prev) => [...prev, newField]);
-    const r = await fetchRecords(tableId);
-    setAllRecords(r);
+  const handleCreateFieldConfirm = useCallback((newField: Field) => {
+    setFields((prev) => (prev.some((f) => f.id === newField.id) ? prev : [...prev, newField]));
+    setAllRecords((prev) => withCreatedFieldCells(prev, newField));
     setAddFieldAnchor(null);
+    Promise.all([fetchFields(tableId), fetchRecords(tableId)])
+      .then(([freshFields, records]) => {
+        setFields(freshFields);
+        setAllRecords(records);
+      })
+      .catch((err) => {
+        console.error("Failed to refresh created field data:", err);
+      });
   }, [tableId]);
 
   const handleEditFieldConfirm = useCallback(async (updatedField: Field) => {
@@ -757,7 +791,15 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
   }, []);
   const handleRemoteFieldCreate = useCallback((field: Field) => {
     setFields((prev) => (prev.some((f) => f.id === field.id) ? prev : [...prev, field]));
-    fetchRecords(tableId).then(setAllRecords);
+    setAllRecords((prev) => withCreatedFieldCells(prev, field));
+    Promise.all([fetchFields(tableId), fetchRecords(tableId)])
+      .then(([freshFields, records]) => {
+        setFields(freshFields);
+        setAllRecords(records);
+      })
+      .catch((err) => {
+        console.warn("[table-sync] failed to refresh created field data:", err);
+      });
   }, [tableId]);
   const handleRemoteFieldUpdate = useCallback((fieldId: string, changes: { name?: string; config?: any }) => {
     setFields((prev) => {

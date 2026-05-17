@@ -17,6 +17,29 @@ function getClientId(req: Request): string {
 
 const router = Router();
 
+const USER_FIELD_TYPES = new Set(["User", "CreatedUser", "ModifiedUser"]);
+
+function hydrateUserField(field: Field, users: { id: string; name: string; avatar: string }[]): Field {
+  if (!USER_FIELD_TYPES.has(field.type)) return field;
+  const existing = field.config.users ?? [];
+  const seen = new Set<string>();
+  const merged: { id: string; name: string; avatar: string }[] = [];
+  for (const u of users) {
+    if (!seen.has(u.id)) { seen.add(u.id); merged.push(u); }
+  }
+  for (const u of existing) {
+    if (!seen.has(u.id)) { seen.add(u.id); merged.push(u); }
+  }
+  return { ...field, config: { ...field.config, users: merged } };
+}
+
+async function hydrateUserFieldsForRequest(fields: Field[], req: Request): Promise<Field[]> {
+  if (!fields.some((f) => USER_FIELD_TYPES.has(f.type))) return fields;
+  const reqUserId = currentUser(req)?.id;
+  const users = reqUserId ? await store.listCurrentUserAndAgents(reqUserId) : [];
+  return fields.map((field) => hydrateUserField(field, users));
+}
+
 // ═══════ Table CRUD ═══════
 
 // GET /api/tables — list all tables
@@ -154,29 +177,7 @@ router.get("/:tableId/fields", async (req: Request, res: Response) => {
   if (!table) { res.status(404).json({ error: "Table not found" }); return; }
   // Fire-and-forget: warm up AI field suggestions cache for this table
   warmupSuggestions(req.params.tableId);
-  // Hydrate User/CreatedUser/ModifiedUser fields with current user + their agents
-  const hasUserField = table.fields.some(f => f.type === "User" || f.type === "CreatedUser" || f.type === "ModifiedUser");
-  if (hasUserField) {
-    const reqUserId = currentUser(req)?.id;
-    const currentMembers = reqUserId ? await store.listCurrentUserAndAgents(reqUserId) : [];
-    for (const f of table.fields) {
-      if (f.type === "User" || f.type === "CreatedUser" || f.type === "ModifiedUser") {
-        const existing = f.config.users ?? [];
-        const seen = new Set<string>();
-        const merged: { id: string; name: string; avatar: string }[] = [];
-        // Current user + agent first
-        for (const u of currentMembers) {
-          if (!seen.has(u.id)) { seen.add(u.id); merged.push(u); }
-        }
-        // Then any existing mock users (for display of old records)
-        for (const u of existing) {
-          if (!seen.has(u.id)) { seen.add(u.id); merged.push(u); }
-        }
-        f.config.users = merged;
-      }
-    }
-  }
-  res.json(table.fields);
+  res.json(await hydrateUserFieldsForRequest(table.fields, req));
 });
 
 // POST /api/tables/:tableId/fields — create field
@@ -203,9 +204,10 @@ router.post("/:tableId/fields", async (req: Request, res: Response) => {
   }
   const field = await store.createField(req.params.tableId, { name, type, config });
   if (!field) { res.status(404).json({ error: "Table not found" }); return; }
-  eventBus.emitChange({ type: "field:create", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { field } });
+  const [hydratedField] = await hydrateUserFieldsForRequest([field], req);
+  eventBus.emitChange({ type: "field:create", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { field: hydratedField } });
   invalidateSuggestionCache(req.params.tableId);
-  res.status(201).json(field);
+  res.status(201).json(hydratedField);
 });
 
 // PUT /api/tables/:tableId/fields/:fieldId — update field

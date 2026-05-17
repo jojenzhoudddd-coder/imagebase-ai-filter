@@ -173,6 +173,8 @@ export interface TableRecord {
   cells: Record<string, CellValue>;
   createdAt: number;
   updatedAt: number;
+  createdBy?: string;
+  modifiedBy?: string;
 }
 
 export interface ViewSortRule {
