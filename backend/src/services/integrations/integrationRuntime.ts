@@ -252,7 +252,12 @@ async function dispatch(
     ) {
       guardLarkCalendarPost(args);
     }
-    return runCliIntegrationTool(integration, manifest, args);
+    const effectiveArgs = integration.providerKey === "lark" &&
+      integration.transport === "cli" &&
+      manifest.name === "lark_cli"
+      ? normalizeLarkCliArgs(args)
+      : args;
+    return runCliIntegrationTool(integration, manifest, effectiveArgs);
   }
   const remoteName =
     manifest.remoteName ||
@@ -264,6 +269,95 @@ async function dispatch(
       ? args.arguments
       : args;
   return callMcpIntegrationTool(integration, remoteName, remoteArgs);
+}
+
+function normalizeLarkCliArgs(args: Record<string, any>): Record<string, any> {
+  if (!Array.isArray(args.argv)) return args;
+  const argv = args.argv.map(String);
+  const normalized = normalizeLarkSearchArgv(argv);
+  if (normalized === argv) return args;
+  return { ...args, argv: normalized };
+}
+
+function normalizeLarkSearchArgv(argv: string[]): string[] {
+  if (argv.length < 2) return argv;
+  const domain = argv[0];
+  const command = argv[1];
+  const isDriveSearch = domain === "drive" && command === "+search";
+  const isDocsSearch = domain === "docs" && command === "+search";
+  if (!isDriveSearch && !isDocsSearch) return argv;
+  if (isDocsSearch && hasFlag(argv, "--filter")) return argv;
+
+  let changed = false;
+  const next = [...argv];
+  if (isDocsSearch) {
+    next[0] = "drive";
+    changed = true;
+  }
+
+  for (let i = 2; i < next.length; i += 1) {
+    const arg = next[i];
+    if (arg === "--type") {
+      next[i] = "--doc-types";
+      if (i + 1 < next.length) next[i + 1] = normalizeLarkDocTypes(next[i + 1]);
+      changed = true;
+      continue;
+    }
+    if (arg.startsWith("--type=")) {
+      next[i] = `--doc-types=${normalizeLarkDocTypes(arg.slice("--type=".length))}`;
+      changed = true;
+      continue;
+    }
+    if (arg === "--doc-types" && i + 1 < next.length) {
+      const value = normalizeLarkDocTypes(next[i + 1]);
+      if (value !== next[i + 1]) {
+        next[i + 1] = value;
+        changed = true;
+      }
+      continue;
+    }
+    if (arg.startsWith("--doc-types=")) {
+      const value = normalizeLarkDocTypes(arg.slice("--doc-types=".length));
+      const normalized = `--doc-types=${value}`;
+      if (normalized !== arg) {
+        next[i] = normalized;
+        changed = true;
+      }
+    }
+  }
+  return changed ? next : argv;
+}
+
+function hasFlag(argv: string[], flag: string): boolean {
+  return argv.some((arg) => arg === flag || arg.startsWith(`${flag}=`));
+}
+
+function normalizeLarkDocTypes(value: string): string {
+  const aliases: Record<string, string> = {
+    base: "bitable",
+    bitable: "bitable",
+    wiki: "wiki",
+    docx: "docx",
+    doc: "doc",
+    sheet: "sheet",
+    sheets: "sheet",
+    spreadsheet: "sheet",
+    file: "file",
+    folder: "folder",
+    catalog: "catalog",
+    slides: "slides",
+    slide: "slides",
+    shortcut: "shortcut",
+    mindnote: "mindnote",
+  };
+  return value
+    .split(",")
+    .map((item) => {
+      const key = item.trim().toLowerCase();
+      return aliases[key] ?? key;
+    })
+    .filter(Boolean)
+    .join(",");
 }
 
 function guardLarkCalendarPost(args: Record<string, any>): void {

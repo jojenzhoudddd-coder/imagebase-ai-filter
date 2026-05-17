@@ -283,7 +283,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_cli",
         description:
-          "Run an explicit lark-cli argv list for official shortcut/API commands, such as ['drive', '+search', '--query', ...] or ['base', '+...', ...]. Prefer lark_cli_guide before unfamiliar commands; for cloud search use drive +search rather than docs +search. Writes and broad commands require confirmation. For read/search commands, summarize returned rows or hits to the user instead of only reporting completion.",
+          "Run an explicit lark-cli argv list for official shortcut/API commands, such as ['drive', '+search', '--query', ...] or ['base', '+...', ...]. Prefer lark_cli_guide before unfamiliar commands; for cloud search use drive +search rather than docs +search, and use --doc-types for document/resource type filters, never --type. Writes and broad commands require confirmation. For read/search commands, summarize returned rows or hits to the user instead of only reporting completion.",
         mode: "cli",
         readOnly: false,
         danger: true,
@@ -296,7 +296,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
               type: "array",
               items: { type: "string" },
               description:
-                "Arguments after `lark-cli`; each token must be a separate array item. Do not include shell syntax.",
+                "Arguments after `lark-cli`; each token must be a separate array item. Do not include shell syntax. For drive +search type filters, pass --doc-types, not --type.",
             },
           },
           required: ["argv"],
