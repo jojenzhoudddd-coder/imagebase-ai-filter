@@ -544,9 +544,17 @@ export async function listActivities(
     const userInput = userRow?.content ?? "";
     const conv = (row as any).conversation;
     const modelId = (row as any).modelId ?? null;
-    // Source priority: message.source (per-turn) > conversation.attachedTo (habit)
-    let source = (row as any).source ?? null;
-    if (!source && conv?.attachedToType === "habit") source = `habit:${conv.attachedToId}`;
+    // Habit runs often invoke skills, so assistant messages can carry
+    // source="skill:...". Keep that detail, but always include the parent
+    // habit anchor so "View activities" from a habit card can find its runs.
+    const messageSource = (row as any).source ?? null;
+    let source = messageSource;
+    if (conv?.attachedToType === "habit" && conv.attachedToId) {
+      const habitSource = `habit:${conv.attachedToId}`;
+      source = messageSource && messageSource !== habitSource
+        ? `${habitSource} ${messageSource}`
+        : habitSource;
+    }
     if (!source) source = "-";
 
     // App-layer full-text search: match across all fields
