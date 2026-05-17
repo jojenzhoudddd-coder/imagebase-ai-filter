@@ -31,8 +31,9 @@ export default function AgentTabs({ activeTab, onTabChange }: Props) {
   const updateScrollState = useCallback(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    setCanPrev(el.scrollLeft > 4);
-    setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    const hasOverflow = el.scrollWidth > el.clientWidth + 4;
+    setCanPrev(hasOverflow && el.scrollLeft > 4);
+    setCanNext(hasOverflow && el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
   }, []);
 
   useEffect(() => {
