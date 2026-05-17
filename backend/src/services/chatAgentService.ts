@@ -3851,7 +3851,151 @@ function buildConfirmedToolMessage(tool: string, output: string, success: boolea
       return lines.join("\n");
     }
   }
+  if (providerKey === "lark" && (integrationTool === "lark_cli" || integrationTool === "lark_api_get")) {
+    return buildLarkResultMessage(result);
+  }
   return "已执行完成。";
+}
+
+function buildLarkResultMessage(result: unknown): string {
+  const value = unwrapLarkResult(result);
+  const items = findLarkResultItems(value);
+  if (items) {
+    if (!items.length) return "执行成功，没有找到匹配结果。";
+    const visible = items.slice(0, 5);
+    const lines = [
+      `执行成功，返回 ${items.length} 条结果${items.length > visible.length ? `，先展示前 ${visible.length} 条` : ""}：`,
+    ];
+    visible.forEach((item, index) => {
+      lines.push(`${index + 1}. ${formatLarkResultItem(item)}`);
+    });
+    return lines.join("\n");
+  }
+  const objectSummary = formatLarkObjectSummary(value);
+  if (objectSummary) {
+    return `执行成功，返回结果如下：\n${objectSummary}`;
+  }
+  return "执行成功，没有返回可展示结果。";
+}
+
+function unwrapLarkResult(value: unknown): unknown {
+  let cur = value;
+  for (let i = 0; i < 4; i += 1) {
+    if (!cur || typeof cur !== "object" || Array.isArray(cur)) return cur;
+    const record = cur as Record<string, unknown>;
+    if (record.data !== undefined) {
+      cur = record.data;
+      continue;
+    }
+    if (record.result !== undefined) {
+      cur = record.result;
+      continue;
+    }
+    return cur;
+  }
+  return cur;
+}
+
+function findLarkResultItems(value: unknown, depth = 0): unknown[] | null {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== "object" || depth > 4) return null;
+  const record = value as Record<string, unknown>;
+  const preferredKeys = ["items", "list", "results", "records", "docs", "files", "children", "events"];
+  for (const key of preferredKeys) {
+    if (Array.isArray(record[key])) return record[key] as unknown[];
+  }
+  for (const key of preferredKeys) {
+    const nested = findLarkResultItems(record[key], depth + 1);
+    if (nested) return nested;
+  }
+  for (const nested of Object.values(record)) {
+    const found = findLarkResultItems(nested, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+function formatLarkResultItem(item: unknown): string {
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    return truncateText(String(item ?? ""), 220) || "空结果";
+  }
+  const title = readFirstStringDeep(item, [
+    "title",
+    "name",
+    "file_name",
+    "doc_name",
+    "sheet_name",
+    "summary",
+  ]) || "未命名结果";
+  const type = readFirstStringDeep(item, ["type", "doc_type", "file_type", "obj_type", "resource_type"]);
+  const link = readFirstStringDeep(item, ["url", "link", "app_link", "web_url", "share_url"]);
+  const id = readFirstStringDeep(item, [
+    "id",
+    "token",
+    "file_token",
+    "doc_token",
+    "document_id",
+    "wiki_token",
+    "node_token",
+    "obj_token",
+  ]);
+  const snippet = readFirstStringDeep(item, [
+    "snippet",
+    "excerpt",
+    "description",
+    "content",
+    "text",
+    "preview",
+  ]);
+  const parts = [title];
+  if (type) parts.push(`类型：${type}`);
+  if (link) parts.push(`链接：${link}`);
+  if (id) parts.push(`标识：${id}`);
+  if (snippet && snippet !== title) parts.push(`摘要：${truncateText(snippet, 160)}`);
+  return parts.join("\n   ");
+}
+
+function formatLarkObjectSummary(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    const text = truncateText(String(value ?? ""), 500);
+    return text ? `- ${text}` : "";
+  }
+  const record = value as Record<string, unknown>;
+  const entries = Object.entries(record)
+    .filter(([, v]) => v !== undefined && v !== null && typeof v !== "function")
+    .slice(0, 8);
+  if (!entries.length) return "";
+  return entries.map(([key, v]) => `- ${key}：${formatScalarPreview(v)}`).join("\n");
+}
+
+function formatScalarPreview(value: unknown): string {
+  if (typeof value === "string") return truncateText(value, 180);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return truncateText(JSON.stringify(value), 240);
+  } catch {
+    return String(value);
+  }
+}
+
+function readFirstStringDeep(value: unknown, keys: string[], depth = 0): string | null {
+  if (!value || typeof value !== "object" || depth > 3) return null;
+  const record = value as Record<string, unknown>;
+  for (const key of keys) {
+    const raw = record[key];
+    if (typeof raw === "string" && raw.trim()) return raw.trim();
+    if (typeof raw === "number" || typeof raw === "boolean") return String(raw);
+  }
+  for (const nested of Object.values(record)) {
+    const found = readFirstStringDeep(nested, keys, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+function truncateText(value: string, max: number): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 function extractToolError(output: string): string {

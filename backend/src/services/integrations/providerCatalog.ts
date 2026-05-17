@@ -166,7 +166,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_api_get",
         description:
-          "Call a read-only Lark Open Platform GET endpoint through lark-cli. Use for APIs that do not have a narrower shortcut in the manifest. If the result reports missing_scope, start incremental Lark auth with the exact missing scope before retrying.",
+          "Call a read-only Lark Open Platform GET endpoint through lark-cli. Use for APIs that do not have a narrower shortcut in the manifest. If the result reports missing_scope, start incremental Lark auth with the exact missing scope before retrying. On successful read/search responses, summarize returned data to the user.",
         mode: "cli",
         readOnly: true,
         output: "json",
@@ -260,7 +260,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_cli",
         description:
-          "Run an explicit lark-cli argv list for official shortcut/API commands, such as ['base', '+...', ...] or ['docs', '+search', ...]. Writes and broad commands require confirmation.",
+          "Run an explicit lark-cli argv list for official shortcut/API commands, such as ['base', '+...', ...] or ['docs', '+search', ...]. Writes and broad commands require confirmation. For read/search commands, summarize returned rows or hits to the user instead of only reporting completion.",
         mode: "cli",
         readOnly: false,
         danger: true,
