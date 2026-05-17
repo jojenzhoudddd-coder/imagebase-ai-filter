@@ -1982,8 +1982,10 @@
   margin-bottom: -4px;
 }
 .chat-generating-meta.phase-generated {
+  align-items: center;
   color: var(--text-muted);
-  padding: 0;
+  line-height: 28px;
+  padding: 4px;
 }
 /* "Generating" / "Generated" 文字 —— 跟右侧的秒数/token 数字一致风格,
  * 不再抢眼(去掉 font-weight:500 + text-primary)。整条 meta 现在视觉上
@@ -2044,7 +2046,7 @@
   gap: 8px;
   width: 100%;
   min-width: 0;
-  padding-bottom: 4px;
+  padding-bottom: 8px;
   /* Parent gap is 12px; offset it so details → answer text also lands at 8px. */
   margin-bottom: -4px;
 }
