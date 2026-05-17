@@ -82,20 +82,18 @@ export async function listEnabledIntegrations(agentId: string): Promise<AgentInt
 
 export async function ensureSystemIntegrations(agentId: string): Promise<void> {
   const existing = await listAgentIntegrations(agentId);
-  const existingProviders = new Set(existing.map((integration) => integration.providerKey));
   for (const preset of listSystemIntegrationPresets()) {
-    if (existingProviders.has(preset.key)) continue;
+    if (hasSystemPresetInstance(existing, preset.key, preset.recommendedTransport)) continue;
+    const displayName = preset.key === "lark" && existing.some((integration) => integration.providerKey === "lark")
+      ? `${preset.displayName} CLI`
+      : preset.displayName;
     await createAgentIntegration({
       agentId,
       providerKey: preset.key,
+      displayName,
       transport: preset.recommendedTransport,
       enabled: false,
     });
-  }
-  for (const integration of existing) {
-    if (shouldMigrateLegacyLarkMcp(integration)) {
-      await migrateLegacyLarkMcpToCli(integration);
-    }
   }
   await pool.query(
     `UPDATE agent_integrations SET status = 'not_configured' WHERE "agentId" = $1 AND status = 'disabled'`,
@@ -103,47 +101,17 @@ export async function ensureSystemIntegrations(agentId: string): Promise<void> {
   );
 }
 
-function shouldMigrateLegacyLarkMcp(integration: AgentIntegrationRow): boolean {
-  if (integration.providerKey !== "lark") return false;
-  if (integration.transport !== "cli") return true;
-  if (integration.config?.mcp || integration.config?.envMap?.APP_ID || integration.config?.envMap?.APP_SECRET) {
-    return true;
+function hasSystemPresetInstance(
+  integrations: AgentIntegrationRow[],
+  providerKey: string,
+  recommendedTransport: IntegrationTransport,
+): boolean {
+  if (providerKey === "lark") {
+    return integrations.some((integration) =>
+      integration.providerKey === providerKey && integration.transport === recommendedTransport
+    );
   }
-  return integration.toolManifest.some((tool) => tool.mode === "mcp" || tool.name === "lark_mcp_call");
-}
-
-async function migrateLegacyLarkMcpToCli(integration: AgentIntegrationRow): Promise<void> {
-  const preset = getIntegrationPreset("lark");
-  if (!preset) return;
-  await pool.query(
-    `
-      UPDATE agent_integrations
-      SET transport = $2,
-          "configJson" = $3::jsonb,
-          "toolManifest" = $4::jsonb,
-          scopes = $5::text[],
-          status = 'not_configured',
-          "lastError" = NULL,
-          "lastHealthAt" = NULL,
-          "updatedAt" = CURRENT_TIMESTAMP
-      WHERE id = $1
-    `,
-    [
-      integration.id,
-      preset.recommendedTransport,
-      JSON.stringify(preset.defaultConfig),
-      JSON.stringify(preset.defaultTools),
-      preset.scopes,
-    ],
-  );
-  await pool.query(
-    `
-      DELETE FROM agent_integration_credentials
-      WHERE "integrationId" = $1
-        AND name = ANY($2::text[])
-    `,
-    [integration.id, ["LARK_APP_ID", "LARK_APP_SECRET"]],
-  );
+  return integrations.some((integration) => integration.providerKey === providerKey);
 }
 
 export async function getAgentIntegration(

@@ -17,6 +17,7 @@ import {
   IntegrationValidationError,
 } from "../../../src/services/integrations/integrationStore.js";
 import { callIntegrationTool, testIntegration } from "../../../src/services/integrations/integrationRuntime.js";
+import { pollLarkAuth, startLarkAuth } from "../../../src/services/integrations/larkAuthRuntime.js";
 import { listIntegrationPresets } from "../../../src/services/integrations/providerCatalog.js";
 import { confirmationRequired } from "../dataStoreClient.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
@@ -184,7 +185,7 @@ export const integrationTools: ToolDefinition[] = [
   {
     name: "test_integration",
     description:
-      "测试 Integration 连通性。MCP transport 会 listTools；CLI transport 会运行 manifest 中第一个只读 CLI 工具。会更新 health 状态。",
+      "测试 Integration 连通性。MCP transport 会 listTools；CLI transport 会运行健康检查。Lark CLI 会返回 needsConfig/needsAuth，用于触发授权流程。",
     inputSchema: {
       type: "object",
       properties: {
@@ -196,6 +197,68 @@ export const integrationTools: ToolDefinition[] = [
     handler: async (args, ctx) => {
       try {
         const result = await testIntegration(String(args.integrationId ?? ""), {
+          requireAgentId: resolveAgentId(args, ctx),
+        });
+        return JSON.stringify(result);
+      } catch (err) {
+        return errJson(err);
+      }
+    },
+  },
+  {
+    name: "start_lark_auth",
+    description:
+      "为 Lark CLI integration 启动用户授权流程。返回 verificationUrl/userCode/authSessionId；Agent 必须把 URL/code 发给用户，再等待用户完成授权。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "可选；权限校验用" },
+        integrationId: { type: "string" },
+        recommend: {
+          type: "boolean",
+          description: "是否使用 lark-cli --recommend 推荐权限；默认 true",
+        },
+        domains: {
+          type: "array",
+          items: { type: "string" },
+          description: "可选；传给 lark-cli auth login --domain 的 domain 列表",
+        },
+        scope: {
+          type: "string",
+          description: "可选；显式 OAuth scope，留空时依赖 recommend/domains",
+        },
+      },
+      required: ["integrationId"],
+    },
+    handler: async (args, ctx) => {
+      try {
+        const result = await startLarkAuth(String(args.integrationId ?? ""), {
+          requireAgentId: resolveAgentId(args, ctx),
+          recommend: typeof args.recommend === "boolean" ? args.recommend : undefined,
+          domains: Array.isArray(args.domains) ? args.domains.map(String) : undefined,
+          scope: typeof args.scope === "string" && args.scope.trim() ? args.scope.trim() : undefined,
+        });
+        return JSON.stringify(result);
+      } catch (err) {
+        return errJson(err);
+      }
+    },
+  },
+  {
+    name: "poll_lark_auth",
+    description:
+      "用户完成 Lark 授权后，用 authSessionId 轮询并落盘 lark-cli 登录状态。成功后 integration health 会变为 healthy。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "可选；权限校验用" },
+        authSessionId: { type: "string" },
+      },
+      required: ["authSessionId"],
+    },
+    handler: async (args, ctx) => {
+      try {
+        const result = await pollLarkAuth(String(args.authSessionId ?? ""), {
           requireAgentId: resolveAgentId(args, ctx),
         });
         return JSON.stringify(result);

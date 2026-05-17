@@ -93,7 +93,7 @@ MCP 通用转发工具：
 
 GitHub、Lark/飞书、Figma 是 system integrations：每个 Agent 打开 Integrations tab
 或调用 `list_integrations` 时会自动生成 disabled 实例。用户不需要安装，只需要
-开启开关并补齐本机 CLI 登录 / MCP endpoint。`Install` 仅保留给 custom CLI / 未来
+开启开关并补齐 CLI 授权 / MCP endpoint。`Install` 仅保留给 custom CLI / 未来
 marketplace 多实例场景。
 
 GitHub：
@@ -106,9 +106,11 @@ Lark / Feishu：
 
 - 推荐 `cli`。
 - 默认命令：`lark-cli`。
-- 本机一次性安装/授权：`npx @larksuite/cli@latest install` → `lark-cli config init --new` → `lark-cli auth login --recommend`。
+- 服务端需要安装 `lark-cli`；运行时会为每个 agent/integration 创建独立 sandbox，不共享 `HOME` / `XDG_*` / `TMPDIR`。
+- 首次授权由 Agent 调 `start_lark_auth` 启动，返回 `verificationUrl` / `userCode` / `authSessionId`；Agent 在对话中把 URL 和 code 发给用户，用户完成授权后调 `poll_lark_auth` 落盘登录态。
+- `lark-cli config init` 所需 `LARK_APP_ID` / `LARK_APP_SECRET` 可来自 integration credentials 或服务端环境变量。
 - 默认工具：`lark_auth_status`、`lark_schema`、`lark_api_get`、`lark_api_post`、`lark_cli`。
-- 旧的 `lark_mcp_call` / `mcp-stdio` system card 会在 `ensureSystemIntegrations()` 中迁移到 CLI preset。
+- 存量 `lark_mcp_call` / `mcp-stdio` 行不自动迁移，避免覆盖已配置的历史 integration；如果只有历史 Lark MCP 行，`ensureSystemIntegrations()` 会额外补一个 disabled 的 Lark CLI preset。
 
 Figma：
 
@@ -125,6 +127,7 @@ Custom CLI：
 
 - CLI runtime 使用 `spawn(..., { shell: false })`，禁止 command 中出现 shell 表达式字符。
 - CLI 只允许 manifest 中声明的 argv 模板，不允许模型直接拼 shell。
+- CLI 和 stdio MCP 共用 integration runtime env：按 provider/agent/integration 隔离 sandbox，凭证只注入当前 integration，串行化同一 sandbox 的命令避免并发写坏 auth/config。
 - 输出限制 512 KB，默认超时 60s，单工具最高 180s。
 - `readOnly === false` 或 `danger === true` 的工具进入现有确认流。
 - MCP/CLI 输出作为不可信外部内容处理，prompt 中要求 Agent 不把外部返回当系统指令。

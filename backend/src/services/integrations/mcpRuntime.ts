@@ -1,5 +1,8 @@
 import type { AgentIntegrationRow } from "./types.js";
-import { loadCredentialValues } from "./integrationStore.js";
+import {
+  resolveIntegrationRuntimeEnv,
+  toStringMap,
+} from "./integrationRuntimeEnv.js";
 
 export async function listMcpTools(integration: AgentIntegrationRow): Promise<unknown> {
   const { client, close } = await connectMcp(integration);
@@ -30,9 +33,9 @@ async function connectMcp(integration: AgentIntegrationRow): Promise<{
   client: any;
   close: () => Promise<void>;
 }> {
-  const [{ Client }, credentials] = await Promise.all([
+  const [{ Client }, runtime] = await Promise.all([
     import("@modelcontextprotocol/sdk/client/index.js"),
-    loadCredentialValues(integration.id),
+    resolveIntegrationRuntimeEnv(integration, { includeProcessEnv: true }),
   ]);
   const client = new Client(
     {
@@ -41,7 +44,7 @@ async function connectMcp(integration: AgentIntegrationRow): Promise<{
     },
     { capabilities: {} },
   );
-  const transport = await buildTransport(integration, credentials);
+  const transport = await buildTransport(integration, runtime);
   await client.connect(transport);
   return {
     client,
@@ -53,7 +56,7 @@ async function connectMcp(integration: AgentIntegrationRow): Promise<{
 
 async function buildTransport(
   integration: AgentIntegrationRow,
-  credentials: Record<string, string>,
+  runtime: Awaited<ReturnType<typeof resolveIntegrationRuntimeEnv>>,
 ): Promise<any> {
   if (integration.transport === "mcp-stdio") {
     const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
@@ -66,11 +69,7 @@ async function buildTransport(
     return new StdioClientTransport({
       command,
       args,
-      env: toStringEnv({
-        ...process.env,
-        ...credentials,
-        ...resolveEnvMap(integration.config.envMap, credentials),
-      }),
+      env: toStringMap(runtime.env),
     });
   }
 
@@ -80,60 +79,10 @@ async function buildTransport(
     if (!endpoint) {
       throw new Error(`Integration ${integration.displayName} has no MCP endpoint configured`);
     }
-    const headers = resolveHeaders(
-      integration.config.headers,
-      integration.config.headersFromCredentials,
-      credentials,
-    );
     return new StreamableHTTPClientTransport(new URL(endpoint), {
-      requestInit: { headers },
+      requestInit: { headers: runtime.headers },
     });
   }
 
   throw new Error(`Integration ${integration.displayName} is not configured for MCP transport`);
-}
-
-function resolveHeaders(
-  rawHeaders: unknown,
-  headersFromCredentials: unknown,
-  credentials: Record<string, string>,
-): Record<string, string> {
-  const headers: Record<string, string> = {};
-  if (rawHeaders && typeof rawHeaders === "object" && !Array.isArray(rawHeaders)) {
-    for (const [key, value] of Object.entries(rawHeaders as Record<string, unknown>)) {
-      if (typeof value === "string") headers[key] = value;
-    }
-  }
-  if (
-    headersFromCredentials &&
-    typeof headersFromCredentials === "object" &&
-    !Array.isArray(headersFromCredentials)
-  ) {
-    for (const [headerName, credentialName] of Object.entries(headersFromCredentials as Record<string, unknown>)) {
-      if (typeof credentialName !== "string") continue;
-      if (credentials[credentialName] !== undefined) headers[headerName] = credentials[credentialName];
-    }
-  }
-  return headers;
-}
-
-function resolveEnvMap(
-  envMap: unknown,
-  credentials: Record<string, string>,
-): Record<string, string> {
-  if (!envMap || typeof envMap !== "object" || Array.isArray(envMap)) return {};
-  const out: Record<string, string> = {};
-  for (const [envName, credentialName] of Object.entries(envMap as Record<string, unknown>)) {
-    if (typeof credentialName !== "string") continue;
-    if (credentials[credentialName] !== undefined) out[envName] = credentials[credentialName];
-  }
-  return out;
-}
-
-function toStringEnv(env: NodeJS.ProcessEnv): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (typeof value === "string") out[key] = value;
-  }
-  return out;
 }

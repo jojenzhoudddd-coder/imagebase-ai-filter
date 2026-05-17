@@ -5,6 +5,7 @@ import {
   markIntegrationHealth,
   markIntegrationUsed,
 } from "./integrationStore.js";
+import { getLarkAuthStatus } from "./larkAuthRuntime.js";
 import type { AgentIntegrationRow, IntegrationToolManifest } from "./types.js";
 
 export async function callIntegrationTool(
@@ -29,12 +30,24 @@ export async function testIntegration(integrationId: string, opts?: { requireAge
   ok: boolean;
   transport: string;
   detail: unknown;
+  needsConfig?: boolean;
+  needsAuth?: boolean;
 }> {
   const integration = await getAgentIntegration(integrationId, {
     requireAgentId: opts?.requireAgentId,
   });
   if (!integration) throw new Error(`integration not found: ${integrationId}`);
   try {
+    if (integration.providerKey === "lark" && integration.transport === "cli") {
+      const status = await getLarkAuthStatus(integration);
+      return {
+        ok: status.ok,
+        transport: integration.transport,
+        detail: status.detail,
+        needsConfig: !status.configured,
+        needsAuth: status.configured && !status.authorized,
+      };
+    }
     let detail: unknown;
     if (integration.transport === "cli") {
       const tool = getCliHealthCheckTool(integration)

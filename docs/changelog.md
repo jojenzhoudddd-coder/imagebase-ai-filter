@@ -26,6 +26,23 @@ Commit: pending deployment commit.
 
 ## 2026-05-17 (Feature · Agent Integration MCP/CLI)
 
+### feat(agent-integration): Lark CLI 授权与隔离 runtime
+
+Commit: this release commit.
+
+- 新增 integration runtime sandbox：CLI 和 stdio MCP 按 `provider/agent/integration` 隔离 `HOME`、`XDG_*`、`TMPDIR`，同一 integration 的命令串行执行。
+- Lark CLI 接入用户授权流程：`test_integration` 返回 `needsConfig` / `needsAuth`；Agent 通过 `start_lark_auth` 把 URL/code 发给用户，再用 `poll_lark_auth` 完成登录态落盘。
+- 存量 Lark MCP 不再自动迁移到 CLI，避免覆盖已配置的历史 integration；如缺少 Lark CLI row，会额外补一个 disabled 的 CLI preset。
+- Lark preset 支持通过 integration credentials 或服务端环境提供 `LARK_APP_ID` / `LARK_APP_SECRET` / `LARK_BRAND`。
+
+本地验收：
+- frontend `npm run build` 通过。
+- integration 模块 import smoke 通过。
+- CLI sandbox smoke 通过，确认命令运行时 `HOME` / `cwd` 落到独立 sandbox。
+- `git diff --check` 通过。
+
+---
+
 ### feat(agent-integration): 打通 GitHub / Lark / Figma / Custom CLI integration 基建
 
 Commit: pending release commit.
