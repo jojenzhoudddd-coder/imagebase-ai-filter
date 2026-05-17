@@ -31,9 +31,9 @@ Commit: pending deployment commit.
 Commit: this release commit.
 
 - 新增 integration runtime sandbox：CLI 和 stdio MCP 按 `provider/agent/integration` 隔离 `HOME`、`XDG_*`、`TMPDIR`，同一 integration 的命令串行执行。
-- Lark CLI 接入用户授权流程：`test_integration` 返回 `needsConfig` / `needsAuth`；Agent 通过 `start_lark_auth` 把 URL/code 发给用户，再用 `poll_lark_auth` 完成登录态落盘。
+- Lark CLI 接入用户配置/授权流程：`test_integration` 返回 `needsConfig` / `needsAuth`；Agent 通过 `start_lark_auth` 把 config-init 的 URL/二维码或 auth-login 的 URL/code 发给用户，再用 `poll_lark_auth` 完成配置和登录态落盘。
 - 存量 Lark MCP 不再自动迁移到 CLI，避免覆盖已配置的历史 integration；如缺少 Lark CLI row，会额外补一个 disabled 的 CLI preset。
-- Lark preset 支持通过 integration credentials 或服务端环境提供 `LARK_APP_ID` / `LARK_APP_SECRET` / `LARK_BRAND`。
+- Lark preset 默认不再要求用户输入 App ID / App Secret；高级场景仍可通过服务端环境或隐藏 credential 走非交互初始化。
 
 本地验收：
 - frontend `npm run build` 通过。

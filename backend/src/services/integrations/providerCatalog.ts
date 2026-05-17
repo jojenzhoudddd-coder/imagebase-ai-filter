@@ -129,31 +129,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
     homepage: "https://github.com/larksuite/cli",
     recommendedTransport: "cli",
     transports: ["cli"],
-    auth: [
-      {
-        name: "LARK_APP_ID",
-        label: "Lark app id",
-        type: "text",
-        required: false,
-        description:
-          "Optional per-integration app id. Falls back to server LARK_APP_ID when omitted.",
-      },
-      {
-        name: "LARK_APP_SECRET",
-        label: "Lark app secret",
-        type: "secret",
-        required: false,
-        description:
-          "Optional per-integration app secret used to initialize lark-cli inside the integration sandbox.",
-      },
-      {
-        name: "LARK_BRAND",
-        label: "Lark brand",
-        type: "text",
-        required: false,
-        description: "Optional brand override such as feishu or lark. Defaults to feishu.",
-      },
-    ],
+    auth: [],
     defaultConfig: {
       command: "lark-cli",
     },
@@ -161,7 +137,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_auth_status",
         description:
-          "Check whether lark-cli is installed, configured, and logged in inside this integration sandbox. If login is missing, use start_lark_auth and send the returned URL/code to the user.",
+          "Check whether lark-cli is installed, configured, and logged in inside this integration sandbox. If setup or login is missing, use start_lark_auth and send the returned URL/QR/code to the user.",
         mode: "cli",
         readOnly: true,
         output: "text",

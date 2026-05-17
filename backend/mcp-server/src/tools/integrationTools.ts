@@ -87,7 +87,7 @@ export const integrationTools: ToolDefinition[] = [
         config: { type: "object", description: "transport 配置，如 command/args/endpoint/envMap" },
         toolManifest: { type: "array", items: { type: "object" }, description: "显式工具白名单 manifest" },
         scopes: { type: "array", items: { type: "string" } },
-        credentials: { type: "object", description: "密钥键值，如 GITHUB_TOKEN/LARK_APP_SECRET/FIGMA_TOKEN" },
+        credentials: { type: "object", description: "密钥键值，如 GITHUB_TOKEN/FIGMA_TOKEN。Lark CLI 默认走扫码/URL 授权，不需要手填 App ID/Secret。" },
       },
       required: ["providerKey"],
     },
@@ -185,7 +185,7 @@ export const integrationTools: ToolDefinition[] = [
   {
     name: "test_integration",
     description:
-      "测试 Integration 连通性。MCP transport 会 listTools；CLI transport 会运行健康检查。Lark CLI 会返回 needsConfig/needsAuth，用于触发授权流程。",
+      "测试 Integration 连通性。MCP transport 会 listTools；CLI transport 会运行健康检查。Lark CLI 会返回 needsConfig/needsAuth，用于触发 start_lark_auth 配置/授权流程。",
     inputSchema: {
       type: "object",
       properties: {
@@ -208,7 +208,7 @@ export const integrationTools: ToolDefinition[] = [
   {
     name: "start_lark_auth",
     description:
-      "为 Lark CLI integration 启动用户授权流程。返回 verificationUrl/userCode/authSessionId；Agent 必须把 URL/code 发给用户，再等待用户完成授权。",
+      "为 Lark CLI integration 启动配置或授权流程。缺 config 时返回 phase=config 的 URL/二维码；已有 config 时返回 phase=auth 的 verificationUrl/userCode。Agent 必须把这些信息发给用户。",
     inputSchema: {
       type: "object",
       properties: {
@@ -247,7 +247,7 @@ export const integrationTools: ToolDefinition[] = [
   {
     name: "poll_lark_auth",
     description:
-      "用户完成 Lark 授权后，用 authSessionId 轮询并落盘 lark-cli 登录状态。成功后 integration health 会变为 healthy。",
+      "用户完成 Lark 配置或授权后，用 authSessionId 轮询 lark-cli。config 阶段完成后会自动进入 auth 阶段并返回新的授权 URL/code；auth 阶段成功后 health 变为 healthy。",
     inputSchema: {
       type: "object",
       properties: {

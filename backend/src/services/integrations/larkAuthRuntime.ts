@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 import {
   getAgentIntegration,
   markIntegrationHealth,
@@ -13,15 +14,38 @@ import {
 } from "./integrationRuntimeEnv.js";
 import type { AgentIntegrationRow } from "./types.js";
 
-interface LarkAuthSession {
+interface LarkAuthOptions {
+  recommend?: boolean;
+  domains?: string[];
+  scope?: string;
+}
+
+interface LarkBaseAuthSession {
   id: string;
   integrationId: string;
   agentId: string;
-  deviceCode: string;
+  phase: "config" | "auth";
   verificationUrl: string | null;
   userCode: string | null;
+  deviceCode: string;
   expiresAt: number;
 }
+
+interface LarkLoginSession extends LarkBaseAuthSession {
+  phase: "auth";
+}
+
+interface LarkConfigSession extends Omit<LarkBaseAuthSession, "phase" | "deviceCode"> {
+  phase: "config";
+  child: ChildProcessWithoutNullStreams;
+  output: string;
+  error: string | null;
+  exitCode: number | null;
+  exitSignal: NodeJS.Signals | null;
+  authOptions: LarkAuthOptions;
+}
+
+type LarkAuthSession = LarkLoginSession | LarkConfigSession;
 
 const sessions = new Map<string, LarkAuthSession>();
 
@@ -34,7 +58,7 @@ export async function getLarkAuthStatus(
   detail: unknown;
 }> {
   assertLarkCliIntegration(integration);
-  const config = await ensureLarkCliConfigured(integration);
+  const config = await getLarkConfigState(integration);
   if (!config.configured) {
     await markIntegrationHealth(integration.id, "not_configured", config.message).catch(() => {});
     return {
@@ -43,7 +67,7 @@ export async function getLarkAuthStatus(
       authorized: false,
       detail: {
         needsConfig: true,
-        message: config.message,
+        message: `${config.message} Call start_lark_auth to start lark-cli config init and send the returned URL/QR code to the user.`,
       },
     };
   }
@@ -87,19 +111,16 @@ export async function startLarkAuth(
 ): Promise<unknown> {
   cleanupExpiredSessions();
   const integration = await loadLarkCliIntegration(integrationId, opts?.requireAgentId);
-  const config = await ensureLarkCliConfigured(integration);
+  const authOptions = normalizeAuthOptions(opts);
+  const config = await ensureLarkCliConfigured(integration, authOptions);
   if (!config.configured) {
-    return {
-      ok: false,
-      needsConfig: true,
-      message: config.message,
-    };
+    return startLarkConfigSession(integration, authOptions);
   }
 
   const argv = ["auth", "login", "--no-wait", "--json"];
-  if (opts?.recommend !== false) argv.push("--recommend");
-  if (opts?.scope) argv.push("--scope", opts.scope);
-  for (const domain of opts?.domains ?? []) {
+  if (authOptions.recommend !== false) argv.push("--recommend");
+  if (authOptions.scope) argv.push("--scope", authOptions.scope);
+  for (const domain of authOptions.domains ?? []) {
     if (typeof domain === "string" && domain.trim()) argv.push("--domain", domain.trim());
   }
 
@@ -115,6 +136,7 @@ export async function startLarkAuth(
     id,
     integrationId: integration.id,
     agentId: integration.agentId,
+    phase: "auth",
     deviceCode: normalized.deviceCode,
     verificationUrl: normalized.verificationUrl,
     userCode: normalized.userCode,
@@ -123,6 +145,7 @@ export async function startLarkAuth(
   return {
     ok: true,
     status: "pending",
+    phase: "auth",
     authSessionId: id,
     integrationId: integration.id,
     verificationUrl: normalized.verificationUrl,
@@ -147,8 +170,12 @@ export async function pollLarkAuth(
     return { ok: false, status: "missing", error: "auth session not found" };
   }
   if (Date.now() > session.expiresAt) {
+    if (session.phase === "config") session.child.kill("SIGTERM");
     sessions.delete(authSessionId);
     return { ok: false, status: "expired", error: "Lark authorization session expired" };
+  }
+  if (session.phase === "config") {
+    return pollLarkConfigSession(session);
   }
   const integration = await loadLarkCliIntegration(session.integrationId, session.agentId);
   try {
@@ -188,27 +215,40 @@ export async function pollLarkAuth(
 
 async function ensureLarkCliConfigured(
   integration: AgentIntegrationRow,
+  authOptions?: LarkAuthOptions,
+): Promise<{ configured: true } | { configured: false; message: string }> {
+  const state = await getLarkConfigState(integration);
+  if (state.configured) return state;
+  const initialized = await initializeLarkConfigFromCredentials(integration);
+  if (initialized) return { configured: true };
+  return state;
+}
+
+async function getLarkConfigState(
+  integration: AgentIntegrationRow,
 ): Promise<{ configured: true } | { configured: false; message: string }> {
   try {
     await runLarkCli(integration, ["auth", "status"], { timeoutMs: 15_000 });
     return { configured: true };
   } catch (err) {
-    if (classifyLarkAuthMessage(errorMessage(err)) !== "needs_config") {
+    const message = errorMessage(err);
+    if (classifyLarkAuthMessage(message) !== "needs_config") {
       return { configured: true };
     }
+    return { configured: false, message };
   }
+}
 
+async function initializeLarkConfigFromCredentials(
+  integration: AgentIntegrationRow,
+): Promise<boolean> {
   const runtime = await resolveIntegrationRuntimeEnv(integration);
   const appId = runtime.credentials.LARK_APP_ID || process.env.LARK_APP_ID;
   const appSecret = runtime.credentials.LARK_APP_SECRET || process.env.LARK_APP_SECRET;
   const brand = runtime.credentials.LARK_BRAND || process.env.LARK_BRAND || integration.config.brand || "feishu";
   const profile = integration.config.profile || "default";
   if (!appId || !appSecret) {
-    return {
-      configured: false,
-      message:
-        "lark-cli is not configured. Provide LARK_APP_ID and LARK_APP_SECRET as integration credentials or server env, then retry start_lark_auth.",
-    };
+    return false;
   }
   await withIntegrationMutex(runtime.mutexKey, () =>
     runCliCommand(larkCommand(integration), [
@@ -228,7 +268,110 @@ async function ensureLarkCliConfigured(
       timeoutMs: 30_000,
     }).then(() => undefined)
   );
-  return { configured: true };
+  return true;
+}
+
+async function startLarkConfigSession(
+  integration: AgentIntegrationRow,
+  authOptions: LarkAuthOptions,
+): Promise<unknown> {
+  const existing = findConfigSession(integration.id);
+  if (existing) return larkConfigPendingResponse(existing);
+
+  const runtime = await resolveIntegrationRuntimeEnv(integration);
+  const id = `las_${crypto.randomBytes(9).toString("base64url")}`;
+  const profile = String(integration.config.profile || "default");
+  const lang = String(integration.config.lang || "zh");
+  const argv = ["config", "init", "--new", "--lang", lang, "--name", profile];
+  if (integration.config.forceInit === true) argv.push("--force-init");
+
+  const child = spawn(larkCommand(integration), argv, {
+    env: runtime.env,
+    cwd: runtime.cwd,
+    shell: false,
+    windowsHide: true,
+  });
+  const session: LarkConfigSession = {
+    id,
+    integrationId: integration.id,
+    agentId: integration.agentId,
+    phase: "config",
+    verificationUrl: null,
+    userCode: null,
+    expiresAt: Date.now() + 15 * 60_000,
+    child,
+    output: "",
+    error: null,
+    exitCode: null,
+    exitSignal: null,
+    authOptions,
+  };
+  const appendOutput = (chunk: Buffer) => {
+    session.output = clampText(session.output + chunk.toString("utf8"), 12_000);
+    const info = extractSetupInfo(session.output);
+    session.verificationUrl = info.verificationUrl ?? session.verificationUrl;
+    session.userCode = info.userCode ?? session.userCode;
+  };
+  child.stdout.on("data", appendOutput);
+  child.stderr.on("data", appendOutput);
+  child.on("error", (err) => {
+    session.error = errorMessage(err);
+  });
+  child.on("close", (code, signal) => {
+    session.exitCode = code;
+    session.exitSignal = signal;
+    if (code !== 0 && !session.error) {
+      session.error = `lark-cli config init exited with ${code}${signal ? ` (${signal})` : ""}`;
+    }
+  });
+  sessions.set(id, session);
+  await waitForConfigUrlOrExit(session, 8_000);
+  if (session.exitCode !== null && session.exitCode !== 0) {
+    sessions.delete(id);
+    throw new Error(session.error || "lark-cli config init failed");
+  }
+  return larkConfigPendingResponse(session);
+}
+
+async function pollLarkConfigSession(session: LarkConfigSession): Promise<unknown> {
+  const integration = await loadLarkCliIntegration(session.integrationId, session.agentId);
+  if (session.exitCode === null && !session.error) {
+    return larkConfigPendingResponse(session);
+  }
+  sessions.delete(session.id);
+  if (session.exitCode === 0) {
+    await markIntegrationHealth(integration.id, "not_configured", "Lark CLI config initialized; user authorization required").catch(() => {});
+    return startLarkAuth(integration.id, {
+      requireAgentId: session.agentId,
+      ...session.authOptions,
+    });
+  }
+  const message = session.error || "lark-cli config init failed";
+  await markIntegrationHealth(integration.id, "error", message).catch(() => {});
+  return {
+    ok: false,
+    status: "error",
+    phase: "config",
+    integrationId: integration.id,
+    error: message,
+    output: session.output,
+  };
+}
+
+function larkConfigPendingResponse(session: LarkConfigSession): unknown {
+  return {
+    ok: true,
+    status: "pending",
+    phase: "config",
+    authSessionId: session.id,
+    integrationId: session.integrationId,
+    verificationUrl: session.verificationUrl,
+    userCode: session.userCode,
+    expiresAt: new Date(session.expiresAt).toISOString(),
+    qrCodeText: session.output,
+    instructions:
+      "请把 verificationUrl 或 qrCodeText 发给用户。用户完成 Lark 应用配置后，调用 poll_lark_auth(authSessionId)；成功后会自动进入 auth login 阶段并返回下一步授权 URL/code。",
+  };
 }
 
 async function runLarkCli(
@@ -364,7 +507,10 @@ function redactKeys(value: unknown, keys: Set<string>): void {
 function cleanupExpiredSessions(): void {
   const now = Date.now();
   for (const [id, session] of sessions) {
-    if (session.expiresAt <= now) sessions.delete(id);
+    if (session.expiresAt <= now) {
+      if (session.phase === "config" && session.exitCode === null) session.child.kill("SIGTERM");
+      sessions.delete(id);
+    }
   }
 }
 
@@ -391,4 +537,51 @@ function isAuthPending(message: string): boolean {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function normalizeAuthOptions(opts?: LarkAuthOptions): LarkAuthOptions {
+  return {
+    recommend: typeof opts?.recommend === "boolean" ? opts.recommend : undefined,
+    domains: Array.isArray(opts?.domains) ? opts.domains.filter((v): v is string => typeof v === "string" && Boolean(v.trim())) : undefined,
+    scope: typeof opts?.scope === "string" && opts.scope.trim() ? opts.scope.trim() : undefined,
+  };
+}
+
+function findConfigSession(integrationId: string): LarkConfigSession | null {
+  for (const session of sessions.values()) {
+    if (session.phase === "config" && session.integrationId === integrationId && Date.now() < session.expiresAt) {
+      return session;
+    }
+  }
+  return null;
+}
+
+async function waitForConfigUrlOrExit(session: LarkConfigSession, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (session.verificationUrl || session.exitCode !== null || session.error) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+function extractSetupInfo(output: string): {
+  verificationUrl: string | null;
+  userCode: string | null;
+} {
+  const url = output.match(/https?:\/\/[^\s]+/)?.[0] ?? null;
+  let userCode: string | null = null;
+  if (url) {
+    try {
+      userCode = new URL(url).searchParams.get("user_code");
+    } catch {
+      userCode = null;
+    }
+  }
+  userCode = userCode || output.match(/\b[A-Z0-9]{4}-[A-Z0-9]{4}\b/)?.[0] || null;
+  return { verificationUrl: url, userCode };
+}
+
+function clampText(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  return text.slice(text.length - limit);
 }

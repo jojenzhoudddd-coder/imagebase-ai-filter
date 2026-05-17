@@ -107,8 +107,9 @@ Lark / Feishu：
 - 推荐 `cli`。
 - 默认命令：`lark-cli`。
 - 服务端需要安装 `lark-cli`；运行时会为每个 agent/integration 创建独立 sandbox，不共享 `HOME` / `XDG_*` / `TMPDIR`。
-- 首次授权由 Agent 调 `start_lark_auth` 启动，返回 `verificationUrl` / `userCode` / `authSessionId`；Agent 在对话中把 URL 和 code 发给用户，用户完成授权后调 `poll_lark_auth` 落盘登录态。
-- `lark-cli config init` 所需 `LARK_APP_ID` / `LARK_APP_SECRET` 可来自 integration credentials 或服务端环境变量。
+- 首次配置由 Agent 调 `start_lark_auth` 启动 `lark-cli config init --new` 后台进程，返回 `phase=config`、`verificationUrl` / `qrCodeText` / `authSessionId`；Agent 在对话中把 URL 或二维码发给用户，用户完成应用配置后调 `poll_lark_auth`。
+- 配置完成后 `poll_lark_auth` 会自动进入 `auth login` 阶段，返回 `phase=auth`、`verificationUrl` / `userCode`；用户完成登录授权后再次调 `poll_lark_auth` 落盘登录态。
+- 正常路径不要求用户输入 App ID / App Secret；如服务端或高级配置已预置 `LARK_APP_ID` / `LARK_APP_SECRET`，仍可走非交互初始化兜底。
 - 默认工具：`lark_auth_status`、`lark_schema`、`lark_api_get`、`lark_api_post`、`lark_cli`。
 - 存量 `lark_mcp_call` / `mcp-stdio` 行不自动迁移，避免覆盖已配置的历史 integration；如果只有历史 Lark MCP 行，`ensureSystemIntegrations()` 会额外补一个 disabled 的 Lark CLI preset。
 
