@@ -42,9 +42,14 @@ export default function WorkspaceDock({
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<{ idx: number; side: "before" | "after" } | null>(null);
 
-  const handleDragStart = (idx: number) => setDragIdx(idx);
+  const handleDragStart = (e: React.DragEvent, idx: number) => {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", orderedWorkspaces[idx]?.id ?? "");
+    setDragIdx(idx);
+  };
   const handleDragOver = (e: React.DragEvent, idx: number) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = dragIdx === null || idx === dragIdx ? "none" : "move";
     if (dragIdx === null || idx === dragIdx) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const midY = rect.top + rect.height / 2;
@@ -197,7 +202,7 @@ export default function WorkspaceDock({
                   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                   setCtxMenu({ wsId: ws.id, x: rect.right + 4, y: rect.top });
                 }}
-                onDragStart={() => handleDragStart(i)}
+                onDragStart={(e) => handleDragStart(e, i)}
                 onDragOver={(e) => handleDragOver(e, i)}
                 onDrop={handleDrop}
                 onDragEnd={handleDragEnd}
@@ -304,7 +309,7 @@ function WorkspaceTile({
   dropSide?: "before" | "after";
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
-  onDragStart?: () => void;
+  onDragStart?: (e: React.DragEvent) => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: () => void;
   onDragEnd?: () => void;
@@ -336,7 +341,7 @@ function WorkspaceTile({
         >
           {workspace.avatarUrl ? (
             <div className="dock-tile-inner dock-tile-inner--img">
-              <img src={workspace.avatarUrl} alt={workspace.name} className="dock-tile-img" />
+              <img src={workspace.avatarUrl} alt={workspace.name} className="dock-tile-img" draggable={false} />
             </div>
           ) : (
             <div className="dock-tile-inner" style={{ background: gradient }}>
