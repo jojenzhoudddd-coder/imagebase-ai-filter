@@ -168,6 +168,7 @@ function findGithubItems(value: unknown, depth = 0): unknown[] | null {
   if (Array.isArray(value)) return value.map(unwrapNode);
   if (!value || typeof value !== "object" || depth > 5) return null;
   const record = value as Record<string, unknown>;
+  if (isGithubDisplayObject(record)) return [record];
   const preferredKeys = [
     "items",
     "nodes",
@@ -196,6 +197,33 @@ function findGithubItems(value: unknown, depth = 0): unknown[] | null {
     if (found) return found;
   }
   return null;
+}
+
+function isGithubDisplayObject(record: Record<string, unknown>): boolean {
+  if (typeof record.fullName === "string" || typeof record.nameWithOwner === "string" || typeof record.full_name === "string") {
+    return true;
+  }
+  if (
+    typeof record.title === "string" &&
+    (typeof record.number === "number" || typeof record.url === "string" || typeof record.html_url === "string")
+  ) {
+    return true;
+  }
+  if (
+    typeof record.name === "string" &&
+    (typeof record.html_url === "string" || typeof record.url === "string") &&
+    (record.owner || record.visibility || record.private !== undefined)
+  ) {
+    return true;
+  }
+  if (
+    typeof record.login === "string" &&
+    (typeof record.html_url === "string" || typeof record.url === "string") &&
+    (record.type || record.site_admin !== undefined)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function unwrapNode(value: unknown): unknown {
