@@ -101,23 +101,41 @@ export default function IntegrationsTab({ agentId, blockId }: Props) {
 
   const [integrations, setIntegrations] = useState<AgentIntegrationSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     const integrationData = await listAgentIntegrations(agentId);
     setIntegrations(integrationData.integrations);
+    setLoadError(false);
   }, [agentId]);
 
   useEffect(() => {
-    reload()
-      .catch(() => {
-        setIntegrations([]);
+    let active = true;
+    setLoading(true);
+    setLoadError(false);
+    setIntegrations([]);
+    listAgentIntegrations(agentId)
+      .then((integrationData) => {
+        if (!active) return;
+        setIntegrations(integrationData.integrations);
+        setLoadError(false);
       })
-      .finally(() => setLoading(false));
-  }, [reload]);
+      .catch(() => {
+        if (!active) return;
+        setIntegrations([]);
+        setLoadError(true);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [agentId]);
 
   const refreshIntegrations = useCallback(() => {
-    void reload().catch(() => setIntegrations([]));
+    void reload().catch(() => setLoadError(true));
   }, [reload]);
 
   useAgentHomeRefresh(agentId, refreshIntegrations);
@@ -217,7 +235,9 @@ export default function IntegrationsTab({ agentId, blockId }: Props) {
         </button>
       </div>
 
-      {integrations.length === 0 ? (
+      {loadError && integrations.length === 0 ? (
+        <div className="ab-empty">{t("agent.block.integrationsLoadFailed")}</div>
+      ) : integrations.length === 0 ? (
         <div className="ab-empty">{t("agent.block.noIntegrations")}</div>
       ) : (
         <CardGrid>

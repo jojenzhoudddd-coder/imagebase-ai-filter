@@ -11,6 +11,7 @@ import type {
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 pg.types.setTypeParser(1114, (str: string) => new Date(str + "Z"));
+type QueryExecutor = Pick<pg.Pool | pg.PoolClient, "query">;
 
 export class IntegrationValidationError extends Error {
   constructor(message: string, public readonly field?: string) {
@@ -96,7 +97,12 @@ export async function ensureSystemIntegrations(agentId: string): Promise<void> {
     });
   }
   await pool.query(
-    `UPDATE agent_integrations SET status = 'not_configured' WHERE "agentId" = $1 AND status = 'disabled'`,
+    `
+      UPDATE agent_integrations
+      SET status = 'not_configured',
+          "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "agentId" = $1 AND status = 'disabled'
+    `,
     [agentId],
   );
 }
@@ -163,27 +169,40 @@ export async function createAgentIntegration(
     return (r.rowCount ?? 0) > 0;
   });
 
-  await pool.query(
-    `
-      INSERT INTO agent_integrations
-        (id, "agentId", "providerKey", "displayName", transport, enabled, status, "configJson", "toolManifest", scopes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::text[])
-    `,
-    [
-      id,
-      agentId,
-      providerKey,
-      displayName,
-      transport,
-      input.enabled !== false,
-      "not_configured",
-      JSON.stringify(config),
-      JSON.stringify(toolManifest),
-      scopes,
-    ],
-  );
-  if (input.credentials) {
-    await replaceCredentials(id, input.credentials);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `
+        INSERT INTO agent_integrations
+          (
+            id, "agentId", "providerKey", "displayName", transport, enabled, status,
+            "configJson", "toolManifest", scopes, "createdAt", "updatedAt"
+          )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::text[], CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `,
+      [
+        id,
+        agentId,
+        providerKey,
+        displayName,
+        transport,
+        input.enabled !== false,
+        "not_configured",
+        JSON.stringify(config),
+        JSON.stringify(toolManifest),
+        scopes,
+      ],
+    );
+    if (input.credentials) {
+      await replaceCredentials(id, input.credentials, client);
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
   }
   const created = await getAgentIntegration(id);
   if (!created) throw new IntegrationNotFoundError(id);
@@ -292,19 +311,20 @@ export async function loadCredentialValues(integrationId: string): Promise<Recor
 async function replaceCredentials(
   integrationId: string,
   credentials: Record<string, string>,
+  executor: QueryExecutor = pool,
 ): Promise<void> {
   for (const [rawName, rawValue] of Object.entries(credentials)) {
     const name = cleanRequired(rawName, "credentials.name");
     if (typeof rawValue !== "string" || rawValue.length === 0) continue;
     const id = await generateId("integrationCredential", async (candidate) => {
-      const r = await pool.query("SELECT 1 FROM agent_integration_credentials WHERE id = $1", [candidate]);
+      const r = await executor.query("SELECT 1 FROM agent_integration_credentials WHERE id = $1", [candidate]);
       return (r.rowCount ?? 0) > 0;
     });
-    await pool.query(
+    await executor.query(
       `
         INSERT INTO agent_integration_credentials
-          (id, "integrationId", name, "encryptedValue", "valuePreview")
-        VALUES ($1, $2, $3, $4, $5)
+          (id, "integrationId", name, "encryptedValue", "valuePreview", "createdAt", "updatedAt")
+        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         ON CONFLICT ("integrationId", name)
         DO UPDATE SET
           "encryptedValue" = EXCLUDED."encryptedValue",
