@@ -18,10 +18,10 @@ import {
   setTurn,
   deleteTurn,
 } from "./turnRegistry.js";
-import { publishChatEvent } from "./chatPubsub.js";
 import { runAgent, type AgentContext, type SseEvent } from "./chatAgentService.js";
 import { getModel } from "./modelRegistry.js";
 import * as agentSvc from "./agentService.js";
+import * as turnRunStore from "./chatTurnRunStore.js";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Public entry — called by chatRoutes for every POST /messages
@@ -50,31 +50,46 @@ export async function* dispatchMessage(
     || modelOverride
     || (await agentSvc.getSelectedModel(agentId));
 
+  const inflight = getTurn(convId);
+  const turnRun = await turnRunStore.createTurnRun({
+    conversationId: convId,
+    workspaceId: ctx.workspaceId,
+    agentId,
+    requestText: userMessage,
+    modelId: effectiveModelId,
+    status: inflight ? "queued" : "doing",
+  });
+  const pendingUserMessageId = `pending_${convId}_${Date.now()}`;
+
   // 每条进来的 user message 都先 emit "message_persisted" 让 listener 立即看到 user bubble
   // (即使后续被入队,UI 不依赖 routing 决定才看到用户消息)
   const persistedEv: SseEvent = {
     event: "message_persisted",
     data: {
+      turnRunId: turnRun.id,
       role: "user",
       content: userMessage,
       modelId: effectiveModelId,
-      messageId: `pending_${convId}_${Date.now()}`,
+      messageId: pendingUserMessageId,
     },
   };
-  publishChatEvent(convId, persistedEv);
   yield persistedEv;
-
-  const inflight = getTurn(convId);
 
   // Case A: idle → 起新主线 (drain queue inline)
   if (!inflight) {
-    yield* runTurnAndDrainQueue({ ctx, userMessage, modelId: effectiveModelId, abortSignal });
+    yield* runTurnAndDrainQueue({
+      ctx: { ...ctx, turnRunId: turnRun.id },
+      userMessage,
+      modelId: effectiveModelId,
+      abortSignal,
+    });
     return;
   }
 
   // Case B: 有 inflight (主线 or 队列正在跑) → 入队,立刻关流
   const pending: PendingMessage = {
     userMessageId: `msg_${uuidv4()}`,
+    turnRunId: turnRun.id,
     queryText: userMessage,
     modelId: effectiveModelId,
     enqueuedAt: Date.now(),
@@ -83,12 +98,12 @@ export async function* dispatchMessage(
   const ev: SseEvent = {
     event: "turn_pending",
     data: {
+      turnRunId: turnRun.id,
       messageId: pending.userMessageId,
       queryText: pending.queryText,
       reason: "turn-inflight",
     },
   };
-  publishChatEvent(convId, ev);
   yield ev;
 }
 
@@ -129,20 +144,21 @@ async function* runTurnAndDrainQueue(opts: {
     // 主线完成后,逐个 drain 队列
     while (turn.pendingQueue.length > 0 && !ac.signal.aborted) {
       const next = turn.pendingQueue.shift()!;
+      await turnRunStore.promoteTurnRun(next.turnRunId);
       // emit turn_promoted 让 FE 知道队列里的某条 user message 现在升级为正在跑的 turn
       // (FE 可以用这个 messageId 关联到之前 turn_pending 时的 user bubble)
       const promotedEv: SseEvent = {
         event: "turn_promoted",
         data: {
+          turnRunId: next.turnRunId,
           messageId: next.userMessageId,
           queryText: next.queryText,
           modelId: next.modelId,
         },
       };
-      publishChatEvent(convId, promotedEv);
       yield promotedEv;
 
-      yield* runOneTurn(ctx, next.queryText, next.modelId, ac.signal);
+      yield* runOneTurn({ ...ctx, turnRunId: next.turnRunId }, next.queryText, next.modelId, ac.signal);
     }
   } finally {
     deleteTurn(convId);
@@ -167,7 +183,10 @@ async function* runOneTurn(
   // dispatchMessage 提取并 publish 了 message_persisted 用以让 FE 显示模型 chip)。
   // 真实的模型路由在 chatAgentService.runAgent → resolveModelForCall(agentId)。
   for await (const ev of runAgent({ ...ctx }, userMessage, signal)) {
-    yield ev;
+    yield {
+      ...ev,
+      data: ctx.turnRunId ? { ...ev.data, turnRunId: ctx.turnRunId } : ev.data,
+    };
     if (signal.aborted) break;
   }
 }

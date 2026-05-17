@@ -30,6 +30,7 @@ const hub = new Map<string, HubEntry>();
 export function listenChatShared(
   convId: string,
   handlers: Handlers,
+  opts: { afterSeq?: number } = {},
 ): () => void {
   // 把 handlers 折叠成 onEvent fan-out
   const fanOut: Listener = (eventName, data) => {
@@ -43,6 +44,7 @@ export function listenChatShared(
       case "synth_message_delta":
       case "synth_thinking_delta": handlers.onSynthDelta?.(data); break;
       case "synth_finished": handlers.onSynthFinished?.(data); break;
+      case "turn_usage": handlers.onTurnUsage?.(data); break;
       case "error": handlers.onError?.(data); break;
       case "connected": handlers.onConnected?.(data); break;
       default: handlers.onEvent?.(eventName, data); break;
@@ -62,10 +64,11 @@ export function listenChatShared(
       onSynthStarted: (d) => listeners.forEach((l) => l("synth_started", d)),
       onSynthDelta: (d) => listeners.forEach((l) => l("synth_message_delta", d)),
       onSynthFinished: (d) => listeners.forEach((l) => l("synth_finished", d)),
+      onTurnUsage: (d) => listeners.forEach((l) => l("turn_usage", d)),
       onError: (d) => listeners.forEach((l) => l("error", d)),
       onConnected: (d) => listeners.forEach((l) => l("connected", d)),
       onEvent: (name, d) => listeners.forEach((l) => l(name, d)),
-    });
+    }, opts);
     entry = { listeners, off };
     hub.set(convId, entry);
   }

@@ -951,6 +951,40 @@ export interface ChatConversation {
   messageCount: number;
   createdAt: number;
   updatedAt: number;
+  status?: string;
+}
+
+export interface ChatLiveTurnRun {
+  id: string;
+  conversationId: string;
+  workspaceId: string;
+  agentId: string | null;
+  status: "queued" | "doing" | "awaiting_confirmation" | "done" | "error" | "aborted" | string;
+  requestText: string;
+  userMessageId: string | null;
+  assistantMessageId: string | null;
+  modelId: string | null;
+  errorMessage: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  durationMs: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  lastSeq: number;
+  snapshotJson: any;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatLiveState {
+  conversation: ChatConversation;
+  messages: ChatMessage[];
+  hasMore: boolean;
+  activeTurnRuns: ChatLiveTurnRun[];
+  recentTurnRuns: ChatLiveTurnRun[];
+  lastSeq: number;
+  serverTime: number;
 }
 
 /** V3.0.3 清空对话内容(保留 conv id) */
@@ -984,6 +1018,15 @@ export async function searchConversations(
   return res.json();
 }
 
+export async function fetchChatLiveState(conversationId: string, limit = 20): Promise<ChatLiveState> {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  const res = await fetch(`${BASE}/chat/conversations/${encodeURIComponent(conversationId)}/live-state?${qs}`, {
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to fetch chat live state");
+  return res.json();
+}
+
 /**
  * V3.0 PR3: passive listener — 订阅别的 ChatBlock 在同 conv 上发出 / 收到的事件。
  * 返回一个 cleanup 函数,unmount 时调以解订阅。
@@ -1008,8 +1051,12 @@ export function subscribeChatListen(
     /** generic — 任何未单独 handle 的事件走这里 */
     onEvent?: (event: string, data: any) => void;
   },
+  opts: { afterSeq?: number } = {},
 ): () => void {
-  const url = `${BASE}/chat/conversations/${encodeURIComponent(conversationId)}/listen`;
+  const qs = new URLSearchParams();
+  if (typeof opts.afterSeq === "number" && opts.afterSeq > 0) qs.set("afterSeq", String(opts.afterSeq));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const url = `${BASE}/chat/conversations/${encodeURIComponent(conversationId)}/listen${suffix}`;
   const es = new EventSource(url, { withCredentials: true });
   const wire = (name: string, h?: (data: any) => void) => {
     if (!h) return;
@@ -1041,7 +1088,13 @@ export function subscribeChatListen(
       try { handlers.onEvent!("message", JSON.parse(e.data)); } catch { /* */ }
     };
     // 也监听一些 V1 事件,旁观方仍要消费 (assistant message 流式 / tool_call 等):
-    for (const name of ["start", "thinking", "message", "tool_start", "tool_result", "confirm", "done"]) {
+    for (const name of [
+      "start", "thinking", "message", "tool_start", "tool_progress", "tool_heartbeat", "tool_result", "confirm", "turn_usage", "done",
+      "subagent_start", "subagent_thinking", "subagent_message", "subagent_tool_start", "subagent_tool_result",
+      "subagent_done", "subagent_error", "subagent_danger_request",
+      "workflow_start", "workflow_node_start", "workflow_node_end", "workflow_loop_iteration",
+      "workflow_branch_start", "workflow_end", "workflow_error", "workflow_aborted",
+    ]) {
       if (known.has(name)) continue;
       es.addEventListener(name, (e: MessageEvent) => {
         try { handlers.onEvent!(name, JSON.parse(e.data)); } catch { /* */ }

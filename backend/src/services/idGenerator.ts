@@ -40,6 +40,8 @@ export const ID_PREFIXES = {
   org:              "og",
   orgMember:        "om",
   workflowRun:      "wf",
+  chatTurnRun:      "tr",
+  chatTurnEvent:    "te",
   agencySession:    "as",
   agencyMilestone:  "am",
   agencyCheckpoint: "ac",

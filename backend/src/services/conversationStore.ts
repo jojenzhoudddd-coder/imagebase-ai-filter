@@ -54,6 +54,7 @@ export interface Conversation {
   messageCount: number;
   createdAt: number;
   updatedAt: number;
+  status?: string;
   /** PR9: optional anchor for "comment-style" conversations (idea-block / etc). */
   attachedToType?: string | null;
   attachedToId?: string | null;
@@ -76,6 +77,7 @@ function toConversation(row: {
   messageCount: number;
   createdAt: Date;
   updatedAt: Date;
+  status?: string | null;
   attachedToType?: string | null;
   attachedToId?: string | null;
 }): Conversation {
@@ -88,6 +90,7 @@ function toConversation(row: {
     messageCount: row.messageCount,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
+    status: row.status ?? "idle",
     attachedToType: row.attachedToType ?? null,
     attachedToId: row.attachedToId ?? null,
   };

@@ -326,6 +326,8 @@ model Conversation {
 
   agent    Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
   messages Message[]
+  turnRuns ChatTurnRun[]
+  turnEvents ChatTurnEvent[]
 
   @@index([workspaceId, updatedAt(sort: Desc)])
   @@index([agentId, updatedAt(sort: Desc)])
@@ -334,6 +336,63 @@ model Conversation {
   // PR9: 反查"某 block 上有哪些对话"
   @@index([attachedToType, attachedToId])
   @@map("conversations")
+}
+
+/// Persistent per-turn runtime state. This is the backend source of truth for
+/// "doing" chat UI, independent of any browser SSE connection.
+model ChatTurnRun {
+  id             String   @id @default(cuid())
+  conversationId String
+  workspaceId    String
+  agentId        String?
+
+  /// "queued" | "doing" | "awaiting_confirmation" | "done" | "error" | "aborted"
+  status       String   @default("queued")
+  requestText  String   @db.Text
+  userMessageId      String?
+  assistantMessageId String?
+  modelId      String?
+  errorMessage String?  @db.Text
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  durationMs  Int      @default(0)
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+  totalTokens      Int @default(0)
+
+  /// Last event sequence folded into snapshotJson.
+  lastSeq      Int      @default(0)
+  snapshotJson Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  events       ChatTurnEvent[]
+
+  @@index([conversationId, status, createdAt])
+  @@index([workspaceId, status, createdAt])
+  @@map("chat_turn_runs")
+}
+
+/// Replayable chat SSE event log. SSE is now a transport; this table is the
+/// durable stream used to reconnect after conversation/block/workspace switches.
+model ChatTurnEvent {
+  id             String   @id @default(cuid())
+  conversationId String
+  turnRunId      String?
+  seq            Int
+  event          String
+  payloadJson    Json
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turnRun      ChatTurnRun? @relation(fields: [turnRunId], references: [id], onDelete: SetNull)
+
+  @@unique([conversationId, seq])
+  @@index([conversationId, seq])
+  @@index([turnRunId, seq])
+  @@map("chat_turn_events")
 }
 
 model Message {

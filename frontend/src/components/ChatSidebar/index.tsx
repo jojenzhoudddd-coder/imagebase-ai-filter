@@ -60,6 +60,7 @@ import {
   getConversationMessages,
   fetchChatContextSnapshot,
   fetchChatSuggestions,
+  fetchChatLiveState,
   streamChatMessage,
   sendChatConfirmation,
   stopChatTurn,
@@ -206,20 +207,14 @@ function readCache(workspaceId: string): CachedState | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CachedState;
     if (!parsed.activeConvId || !Array.isArray(parsed.messages)) return null;
-    // Drop any streaming flag left over from an interrupted session so the
-    // UI doesn't show a hanging spinner after a reload. Also flip any
-    // toolCall that was still `running` at snapshot time to `error` — the
-    // actual invocation ended (stream closed) but we never received its
-    // tool_result, so marking it as a failure is the honest reconstruction.
-    // Without this, a refresh/tab-switch during a confirm pause (or any
-    // interrupted turn) leaves a perpetual spinner on the card.
+    // Keep cached streaming state as a short-lived visual primer. The backend
+    // live-state endpoint is now authoritative and will confirm whether this
+    // turn is still doing, completed, or failed immediately after mount.
     parsed.messages = parsed.messages.map((m) => ({
       ...m,
       detailsDefaultExpanded: undefined,
-      streaming: false,
-      toolCalls: (m.toolCalls || []).map((tc) =>
-        tc.status === "running" ? { ...tc, status: "error" as const } : tc
-      ),
+      streaming: Boolean(m.streaming),
+      toolCalls: (m.toolCalls || []).map((tc) => ({ ...tc })),
       // Schema migration:cache 里旧版 turnMeta 用 totalTokens,新版用
       // completionTokens。读到旧 shape 时 completionTokens = undefined,
       // GeneratingMeta 里 .toLocaleString() 会炸。这里把旧字段映射过来,
@@ -380,6 +375,8 @@ export default function ChatSidebar({
     if (initialCache) return { id: initialCache.activeConvId } as ChatConversation;
     return null;
   });
+  const activeConvIdRef = useRef<string | null>(activeConv?.id ?? null);
+  useEffect(() => { activeConvIdRef.current = activeConv?.id ?? null; }, [activeConv?.id]);
 
   // V3.0 PR1: 父级切换 conversationId 时同步 activeConv (e.g. App.tsx 从 BlockState
   // 读到不同的 convId 后传下来)。前提:propConversationId 与当前 activeConv.id 不同
@@ -441,7 +438,7 @@ export default function ChatSidebar({
 
   const sidebarRef = useRef<HTMLElement>(null);
   const [sidebarDragging, setSidebarDragging] = useState(false);
-  const [streaming, setStreaming] = useState(false);
+  const [streaming, setStreaming] = useState(() => Boolean(initialCache?.messages?.some((m) => m.streaming)));
   // Live ref to `streaming` so effects that run on prop-id changes (the
   // [open, workspaceId] revalidation) can check the CURRENT value without
   // being re-keyed into their deps. Used to guard against wiping the
@@ -507,6 +504,7 @@ export default function ChatSidebar({
   // sidebar just doesn't render a modal for them.
 
   const cancelRef = useRef<(() => void) | null>(null);
+  const lastSeqByConvRef = useRef<Record<string, number>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   // Sticky-to-bottom auto-scroll. Stays `true` while the user is parked at
   // the bottom; once they scroll up (even a few px), we stop yanking them
@@ -591,6 +589,26 @@ export default function ChatSidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, workspaceId]);
 
+  const hydrateLiveState = useCallback(async (convId: string) => {
+    const live = await fetchChatLiveState(convId, 20);
+    if (activeConvIdRef.current !== convId) return;
+    lastSeqByConvRef.current[convId] = live.lastSeq;
+    setActiveConv(live.conversation);
+    setHasMoreHistory(live.hasMore);
+    const serverUi = live.messages.map(serverToUi);
+    const merged = mergeLiveRunsIntoMessages(serverUi, live.activeTurnRuns);
+    const active = live.activeTurnRuns.some((r) =>
+      r.status === "queued" || r.status === "doing" || r.status === "awaiting_confirmation"
+    );
+    setMessages((prev) => active ? mergeServerWithLocal(merged, prev) : serverUi);
+    setStreaming(active);
+    const pending = live.activeTurnRuns
+      .map((r) => r.snapshotJson?.pendingConfirm)
+      .find(Boolean) as PendingConfirm | undefined;
+    setPendingConfirm(pending ?? null);
+    setError(null);
+  }, []);
+
   // V3.0.2 #3:切换对话时主动拉历史
   // 老逻辑只在 [open, workspaceId] 上跑初始化,activeConv.id 通过 list popover /
   // delete 后建新等内部路径变化时,messages 不会重新拉 → 一直显示空白 / 老内容,
@@ -603,21 +621,15 @@ export default function ChatSidebar({
     const convId = activeConv?.id;
     if (!convId) return;
     if (convId === lastFetchedConvIdRef.current) return;  // 已拉过
-    if (streamingRef.current) return;  // streaming 中不打断
     lastFetchedConvIdRef.current = convId;
     (async () => {
       try {
-        const { conversation, messages: serverMsgs, hasMore } = await getConversationMessages(convId, { limit: 20 });
-        setActiveConv(conversation);
-        setHasMoreHistory(hasMore);
-        setMessages(serverMsgs.map(serverToUi));
-        setPendingConfirm(null);
-        setError(null);
+        await hydrateLiveState(convId);
       } catch (err) {
         setError((err as Error).message);
       }
     })();
-  }, [open, activeConv?.id]);
+  }, [open, activeConv?.id, hydrateLiveState]);
 
   // ─── Persist active conversation + messages to cache ─────────────────
   // Write on every settled state change. Streaming intermediate states are
@@ -1341,6 +1353,7 @@ export default function ChatSidebar({
         } else {
           // SSE closed — done with all turns. Any tool still "running" at
           // this point completed successfully (backend finished normally).
+          cancelRef.current = null;
           setStreaming(false);
           setMessages((prev) =>
             prev.map((m) =>
@@ -1533,6 +1546,7 @@ export default function ChatSidebar({
           );
         },
         onDone: () => {
+          cancelRef.current = null;
           setStreaming(false);
           // Belt-and-braces sanitisation; same reasoning as the main flow.
           setMessages((prev) =>
@@ -1560,6 +1574,7 @@ export default function ChatSidebar({
   const handleStop = useCallback(() => {
     if (activeConv) stopChatTurn(activeConv.id).catch(() => undefined);
     if (cancelRef.current) cancelRef.current();
+    cancelRef.current = null;
     setStreaming(false);
     // Also flip any in-flight tool call on the streaming message to `error`
     // so the spinner doesn't spin forever. The server-side handler may keep
@@ -1582,7 +1597,11 @@ export default function ChatSidebar({
   }, [activeConv]);
 
   const handleNewConversation = useCallback(async () => {
-    if (streaming) handleStop();
+    if (streaming && cancelRef.current) {
+      cancelRef.current();
+      cancelRef.current = null;
+      setStreaming(false);
+    }
     // Reset UI first so the user sees the welcome page immediately; the new
     // conversation + context snapshot fetch happen in parallel behind it.
     stickToBottomRef.current = true;
@@ -1600,7 +1619,7 @@ export default function ChatSidebar({
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [workspaceId, agentId, streaming, handleStop]);
+  }, [workspaceId, agentId, streaming]);
 
   // V3.0 PR3: passive listener — 同 conv 在多个 ChatBlock 时,非发起方通过 SSE
   // 接收对方触发的事件,延迟 200ms 后从 server 重拉 messages。
@@ -1629,11 +1648,7 @@ export default function ChatSidebar({
       if (reloadTimer) clearTimeout(reloadTimer);
       reloadTimer = setTimeout(async () => {
         try {
-          const { messages: msgs, hasMore } = await getConversationMessages(convId, { limit: 20 });
-          setHasMoreHistory(hasMore);
-          // mergeServerWithLocal 已经会保护 streaming:true 的本地消息不被
-          // server 的 placeholder 覆盖,所以这里 streaming 状态下也安全 merge
-          setMessages((prev) => mergeServerWithLocal(msgs.map(serverToUi), prev));
+          await hydrateLiveState(convId);
         } catch {
           // ignore — 下次事件还会触发
         }
@@ -1646,6 +1661,7 @@ export default function ChatSidebar({
       forceReload();
     };
 
+    const afterSeq = lastSeqByConvRef.current[convId] ?? 0;
     const off = listenChatShared(convId, {
       // main-flow 类 — 自己 fetch SSE 已投递
       onMessagePersisted: gatedReload,
@@ -1655,53 +1671,50 @@ export default function ChatSidebar({
       // gatedReload 即可(streaming 期间不抢拉,turn 结束后自动 catch up)。
       onTurnPending: gatedReload,
       onTurnPromoted: gatedReload,
+      onTurnUsage: (data: any) => {
+        if (typeof data?.seq === "number") {
+          lastSeqByConvRef.current[convId] = Math.max(lastSeqByConvRef.current[convId] ?? 0, data.seq);
+        }
+        if (!cancelRef.current) forceReload();
+      },
       // V1 backward-compat events (assistant 流式 done / tool_result):
       // 仍走 gated reload(发起方 fetch SSE 已投递了真实事件)
-      onEvent: (name: string) => {
-        if (name === "done" || name === "tool_result" || name === "start") gatedReload();
+      onEvent: (name: string, data: any) => {
+        if (typeof data?.seq === "number") {
+          lastSeqByConvRef.current[convId] = Math.max(lastSeqByConvRef.current[convId] ?? 0, data.seq);
+        }
+        if (!cancelRef.current) forceReload();
+        else if (name === "done" || name === "tool_result" || name === "start") gatedReload();
       },
-    });
+    }, { afterSeq });
     return () => {
       off();
       if (reloadTimer) clearTimeout(reloadTimer);
     };
-  }, [open, activeConv?.id]);
+  }, [open, activeConv?.id, hydrateLiveState]);
 
   // V3.0 PR1 切换到指定 conversation
   //
-  // ⚠️ "后台运行"功能临时回退 ⚠️
-  // 真正的"切走时不打断生成 + 切回来恢复进度"需要 per-conv 的 messages /
-  // streaming 状态结构(messagesByConv: Record<convId, UiMessage[]> +
-  // streamingByConv),涉及 53 个 setMessages 调用点逐一加 convId 守卫。
-  // 当前用全局 messages 单数组无法区分"哪条 conv 的状态",导致:
-  //   - 旧 fetch reader 的回调污染新 conv 的 UI 状态
-  //   - 切回来后 server 上的旧 turn 仍在跑,FE 状态不知道,新 send 走了
-  //     append branch 路径但 FE 期望 main 流式 → bubble 永远填不上内容
-  //   - 死锁:button 看似可点但没反应,工具卡片永远 loading
-  //
-  // 为消除死锁,先恢复"切换 = 干净中止"的 V2 行为(handleStop 同步 abort
-  // turn + cancel fetch + 清状态)。代价是失去后台运行(切走会终止生成),
-  // 但状态机始终自洽,不会卡死。
-  //
-  // server 端 res.on("close") 不再 abort 的改动保留 —— 关 tab / 网络抖动
-  // 仍然不会丢已生成的内容,只有 explicit /stop 才会终止 turn。"切换对话"
-  // 现在显式调 /stop,符合用户意图。
-  //
-  // TODO(per-conv-state):做完整的 messagesByConv refactor 后再上线真后台
-  // 运行。详细方案见 docs/multi-conversation-plan.md V3.1 章节(待写)。
+  // Switching conversations only detaches this view from the current fetch SSE.
+  // The backend turn continues and is restored through live-state + replayable
+  // /listen when the user comes back.
   const handleSwitchConversation = useCallback(async (convId: string) => {
     if (convId === activeConv?.id) {
       setConvListOpen(false);
       return;
     }
-    if (streaming) handleStop();
+    if (streaming && cancelRef.current) {
+      cancelRef.current();
+      cancelRef.current = null;
+      setStreaming(false);
+    }
     stickToBottomRef.current = true;
     setMessages([]);
     setPendingConfirm(null);
     setError(null);
     setActiveConv({ id: convId } as ChatConversation);
     setConvListOpen(false);
-  }, [activeConv?.id, streaming, handleStop]);
+  }, [activeConv?.id, streaming]);
 
   // V3.0.3 删除当前 conv → 切到列表里的下一条/上一条
   // 最后一条不能删(用户改用"清空对话"重置内容)。
@@ -2329,6 +2342,80 @@ function serverToUi(m: ChatMessage): UiMessage {
       : undefined,
     streaming: false,
   };
+}
+
+function mergeLiveRunsIntoMessages(serverMessages: UiMessage[], runs: any[]): UiMessage[] {
+  let next = [...serverMessages];
+  for (const run of runs) {
+    const snapshot = run?.snapshotJson;
+    if (!snapshot) continue;
+    const userId = snapshot.userMessageId || run.userMessageId || `turn_user_${run.id}`;
+    const assistantId = snapshot.assistant?.messageId || run.assistantMessageId || `turn_asst_${run.id}`;
+    if (!next.some((m) => m.id === userId)) {
+      next.push({
+        id: userId,
+        role: "user",
+        content: snapshot.requestText || run.requestText || "",
+        timestamp: snapshot.updatedAt || Date.now(),
+        toolCalls: [],
+      });
+    }
+    if (run.status === "queued" || snapshot.status === "queued") continue;
+    const assistant: UiMessage = {
+      id: assistantId,
+      role: "assistant",
+      content: snapshot.assistant?.content || "",
+      thinking: snapshot.assistant?.thinking || undefined,
+      timestamp: snapshot.updatedAt || Date.now(),
+      toolCalls: Array.isArray(snapshot.toolCalls) ? snapshot.toolCalls.map((tc: any) => ({ ...tc })) : [],
+      streaming: snapshot.status === "doing" || snapshot.status === "awaiting_confirmation",
+      detailsDefaultExpanded: true,
+      turnMeta: {
+        phase: snapshot.status === "done" ? "generated" : "generating",
+        startedAt: snapshot.turnMeta?.startedAt || snapshot.startedAt || Date.now(),
+        durationMs: snapshot.turnMeta?.durationMs ?? run.durationMs ?? 0,
+        completionTokens: snapshot.turnMeta?.completionTokens ?? run.completionTokens ?? 0,
+      },
+      subagentRuns: Array.isArray(snapshot.subagentRuns)
+        ? snapshot.subagentRuns.map((r: any): UiSubagentRun => ({
+            runId: r.runId,
+            requestedModel: r.requestedModel,
+            resolvedModel: r.resolvedModel,
+            usedFallback: Boolean(r.usedFallback),
+            userPrompt: r.userPrompt || "",
+            systemPrompt: r.systemPrompt || "",
+            thinking: r.thinking || "",
+            finalText: r.finalText || "",
+            toolCalls: Array.isArray(r.toolCalls) ? r.toolCalls : [],
+            status: r.status === "success" ? "success" : r.status === "error" ? "error" : "running",
+            startedAt: r.startedAt || Date.now(),
+            durationMs: r.durationMs,
+            error: r.error,
+            workflowNodeId: r.workflowNodeId ?? null,
+          }))
+        : undefined,
+      workflowRuns: Array.isArray(snapshot.workflowRuns)
+        ? snapshot.workflowRuns.map((r: any): UiWorkflowRun => ({
+            runId: r.runId,
+            templateId: r.templateId,
+            status: r.status === "success" ? "success" : r.status === "error" ? "error" : r.status === "aborted" ? "aborted" : "running",
+            nodeEvents: Array.isArray(r.nodeEvents) ? r.nodeEvents : [],
+            startedAt: r.startedAt || Date.now(),
+            durationMs: r.durationMs,
+            error: r.error,
+          }))
+        : undefined,
+    };
+    const existingIdx = next.findIndex((m) => m.id === assistant.id);
+    if (existingIdx >= 0) {
+      next = next.map((m, idx) => idx === existingIdx ? { ...m, ...assistant } : m);
+    } else {
+      const userIdx = next.findIndex((m) => m.id === userId);
+      if (userIdx >= 0) next.splice(userIdx + 1, 0, assistant);
+      else next.push(assistant);
+    }
+  }
+  return next;
 }
 
 /**

@@ -16,6 +16,7 @@
 
 export interface PendingMessage {
   userMessageId: string;
+  turnRunId: string;
   queryText: string;
   modelId: string;
   enqueuedAt: number;

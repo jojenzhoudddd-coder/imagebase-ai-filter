@@ -1842,6 +1842,8 @@ export type UserMention =
 
 export interface AgentContext {
   conversationId: string;
+  /** Persistent ChatTurnRun id for the currently executing user turn. */
+  turnRunId?: string;
   workspaceId: string;
   /** Authenticated user represented by this agent turn. */
   userId?: string;
@@ -1938,6 +1940,14 @@ export interface SpawnSubagentOptions {
    *  under the correct user (previously null → silently skipped). */
   ownerUserId?: string | null;
 }
+
+type SpawnSubagentResult = {
+  runId: string;
+  finalText: string;
+  success: boolean;
+  promptTokens?: number;
+  completionTokens?: number;
+};
 
 /** Convert WorkflowEvent (executor) to SseEvent (chat stream). */
 function toWorkflowSseEvent(ev: WorkflowEvent): SseEvent {
@@ -2037,7 +2047,7 @@ export function resolveSubagentDanger(
 export async function* spawnSubagent(
   opts: SpawnSubagentOptions,
   abortSignal?: AbortSignal,
-): AsyncGenerator<SseEvent, { runId: string; finalText: string; success: boolean }, undefined> {
+): AsyncGenerator<SseEvent, SpawnSubagentResult, undefined> {
   const {
     modelId,
     systemPrompt = DEFAULT_SUBAGENT_SYSTEM,
@@ -3043,7 +3053,7 @@ async function* runAgentImpl(
         },
         abortSignal,
       );
-      let result: { runId: string; finalText: string; success: boolean; promptTokens?: number; completionTokens?: number } | null = null;
+      let result: SpawnSubagentResult | null = null;
       try {
         let next = await stream.next();
         while (!next.done) {
@@ -3063,7 +3073,7 @@ async function* runAgentImpl(
           }
           next = await stream.next();
         }
-        result = next.value as typeof result;
+        result = next.value as SpawnSubagentResult;
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         // We still need to return SOMETHING so the tool handler can serialize.

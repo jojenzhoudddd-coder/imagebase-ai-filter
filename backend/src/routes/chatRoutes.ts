@@ -16,6 +16,7 @@
 import express, { type Request, type Response } from "express";
 import * as convStore from "../services/conversationStore.js";
 import { publishChatEvent, subscribeChat } from "../services/chatPubsub.js";
+import * as chatTurnRunStore from "../services/chatTurnRunStore.js";
 import { dispatchMessage } from "../services/turnOrchestrator.js";
 import { runAgent, resumeAfterConfirm, type AgentContext, type SseEvent } from "../services/chatAgentService.js";
 import * as store from "../services/dbStore.js";
@@ -104,13 +105,78 @@ function writeEvent(res: Response, e: SseEvent) {
  * V3.0 PR3:writeEvent + 同时 publish 到 chatPubsub。所有 passive listener
  * (其他 chat block 看同 conv) 通过 GET /listen 收到广播。
  *
- * 不广播的事件:`done` (request-scoped 标识,旁观者不需要),其他都广播。
+ * All events, including `done`, are persisted and broadcast so passive or
+ * reconnecting clients can reconstruct the same lifecycle.
  */
-function writeEventBoth(res: Response, convId: string, e: SseEvent) {
-  writeEvent(res, e);
-  if (e.event !== "done") {
-    publishChatEvent(convId, { event: e.event, data: e.data });
+async function writeEventBoth(res: Response, convId: string, e: SseEvent) {
+  let data = e.data;
+  try {
+    const logged = await chatTurnRunStore.appendTurnEvent({
+      conversationId: convId,
+      turnRunId: typeof e.data?.turnRunId === "string" ? e.data.turnRunId as string : undefined,
+      event: e.event,
+      data: e.data,
+    });
+    data = logged.payloadJson;
+  } catch (err) {
+    console.error(`[chatRoutes] persist chat event failed (${convId}/${e.event}):`, err);
   }
+  const persistedEvent = { ...e, data };
+  writeEvent(res, persistedEvent);
+  publishChatEvent(convId, { event: e.event, data });
+}
+
+async function loadEnrichedMessagesForClient(
+  conversationId: string,
+  opts: { limit?: number; before?: string } = {},
+) {
+  const result = await convStore.getMessages(conversationId, opts);
+  const messageIds = result.messages.map((m) => m.id);
+  const [subagentRuns, workflowRuns] = await Promise.all([
+    messageIds.length > 0
+      ? listSubagentRunsForConversation(conversationId).catch(() => [])
+      : Promise.resolve([] as any[]),
+    messageIds.length > 0
+      ? listWorkflowRunsForConversation(conversationId).catch(() => [])
+      : Promise.resolve([] as any[]),
+  ]);
+
+  const subagentByMsg: Record<string, any[]> = {};
+  for (const r of subagentRuns) {
+    const key = r.parentMessageId;
+    (subagentByMsg[key] = subagentByMsg[key] || []).push(r);
+  }
+  const workflowByMsg: Record<string, any[]> = {};
+  for (const r of workflowRuns) {
+    const key = r.parentMessageId;
+    (workflowByMsg[key] = workflowByMsg[key] || []).push(r);
+  }
+
+  const pendingKey = `pending_${conversationId}`;
+  const lastAssistant = [...result.messages].reverse().find((m) => m.role === "assistant");
+  if (lastAssistant) {
+    if (subagentByMsg[pendingKey]) {
+      subagentByMsg[lastAssistant.id] = [
+        ...(subagentByMsg[lastAssistant.id] ?? []),
+        ...subagentByMsg[pendingKey],
+      ];
+      delete subagentByMsg[pendingKey];
+    }
+    if (workflowByMsg[pendingKey]) {
+      workflowByMsg[lastAssistant.id] = [
+        ...(workflowByMsg[lastAssistant.id] ?? []),
+        ...workflowByMsg[pendingKey],
+      ];
+      delete workflowByMsg[pendingKey];
+    }
+  }
+
+  const messages = result.messages.map((m) => ({
+    ...m,
+    subagentRuns: subagentByMsg[m.id] ?? [],
+    workflowRuns: workflowByMsg[m.id] ?? [],
+  }));
+  return { messages, hasMore: result.hasMore };
 }
 
 // ─── REST endpoints ──────────────────────────────────────────────────────
@@ -361,6 +427,35 @@ router.get("/conversations/:id/messages", async (req: Request, res: Response) =>
   res.json({ conversation: conv, messages: enrichedMessages, hasMore: result.hasMore });
 });
 
+// GET /api/chat/conversations/:id/live-state
+// Authoritative resumable state for the chat UI. Used after conversation,
+// block, workspace, page, or login switches to reconstruct any in-flight turn.
+router.get("/conversations/:id/live-state", async (req: Request, res: Response) => {
+  const convId = req.params.id;
+  const conv = await convStore.getConversation(convId);
+  if (!conv) {
+    res.status(404).json({ error: "Conversation not found" });
+    return;
+  }
+  const limitRaw = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : NaN;
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : 20;
+  const [messagePayload, activeTurnRuns, recentTurnRuns, lastSeq] = await Promise.all([
+    loadEnrichedMessagesForClient(convId, { limit }),
+    chatTurnRunStore.listLiveTurnRuns(convId),
+    chatTurnRunStore.listRecentTurnRuns(convId, 5),
+    chatTurnRunStore.getConversationLastSeq(convId),
+  ]);
+  res.json({
+    conversation: conv,
+    messages: messagePayload.messages,
+    hasMore: messagePayload.hasMore,
+    activeTurnRuns,
+    recentTurnRuns,
+    lastSeq,
+    serverTime: Date.now(),
+  });
+});
+
 // V3.0.3 POST /api/chat/conversations/:id/clear — 清空对话内容(保留 conv id)
 router.post("/conversations/:id/clear", async (req: Request, res: Response) => {
   const convId = req.params.id;
@@ -383,6 +478,7 @@ router.post("/conversations/:id/clear", async (req: Request, res: Response) => {
   // turnRegistry 当前 inflight 也 abort 掉(避免清空后旧 turn 还在写入)
   const { abortTurn } = await import("../services/turnRegistry.js");
   abortTurn(convId, "conversation_cleared");
+  await chatTurnRunStore.abortActiveTurnRuns(convId, "conversation_cleared").catch(() => undefined);
   res.json({ ok });
 });
 
@@ -499,11 +595,11 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
         userMessage: message.trim(),
         abortSignal: ac.signal,
       })) {
-        writeEventBoth(res, req.params.id, event);
+        await writeEventBoth(res, req.params.id, event);
       }
     } catch (err) {
       console.error("[chatRoutes] dispatchMessage threw:", err);
-      writeEventBoth(res, req.params.id, {
+      await writeEventBoth(res, req.params.id, {
         event: "error",
         data: {
           code: "INTERNAL",
@@ -524,7 +620,7 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
     } else {
       // SSE already open — try to write a final error event if we still can.
       try {
-        writeEventBoth(res, req.params.id, {
+        await writeEventBoth(res, req.params.id, {
           event: "error",
           data: { code: "INTERNAL", message: msg },
         });
@@ -575,11 +671,11 @@ router.post("/conversations/:id/confirm", async (req: Request, res: Response) =>
 
     try {
       for await (const event of resumeAfterConfirm(ctx, callId, confirmed, ac.signal)) {
-        writeEventBoth(res, req.params.id, event);
+        await writeEventBoth(res, req.params.id, event);
       }
     } catch (err) {
       console.error("[chatRoutes] resumeAfterConfirm threw:", err);
-      writeEventBoth(res, req.params.id, {
+      await writeEventBoth(res, req.params.id, {
         event: "error",
         data: { code: "INTERNAL", message: err instanceof Error ? err.message : String(err) },
       });
@@ -594,7 +690,7 @@ router.post("/conversations/:id/confirm", async (req: Request, res: Response) =>
       res.status(500).json({ error: `confirm request failed: ${msg}` });
     } else {
       try {
-        writeEventBoth(res, req.params.id, { event: "error", data: { code: "INTERNAL", message: msg } });
+        await writeEventBoth(res, req.params.id, { event: "error", data: { code: "INTERNAL", message: msg } });
         res.end();
       } catch { /* closed */ }
     }
@@ -605,6 +701,8 @@ router.post("/conversations/:id/confirm", async (req: Request, res: Response) =>
 // GET /api/chat/conversations/:id/listen
 router.get("/conversations/:id/listen", async (req: Request, res: Response) => {
   const convId = req.params.id;
+  const afterSeqRaw = typeof req.query.afterSeq === "string" ? parseInt(req.query.afterSeq, 10) : NaN;
+  const afterSeq = Number.isFinite(afterSeqRaw) && afterSeqRaw >= 0 ? afterSeqRaw : 0;
   // 验 conversation 存在
   const conv = await convStore.getConversation(convId);
   if (!conv) {
@@ -613,15 +711,46 @@ router.get("/conversations/:id/listen", async (req: Request, res: Response) => {
   }
   setupSse(res);
   // 首包确认连接
-  res.write(`event: connected\ndata: {"convId":"${convId}"}\n\n`);
+  const lastSeq = await chatTurnRunStore.getConversationLastSeq(convId).catch(() => 0);
+  res.write(`event: connected\ndata: ${JSON.stringify({ convId, afterSeq, lastSeq })}\n\n`);
 
+  let replaying = true;
+  const liveBuffer: Array<{ event: string; data: unknown }> = [];
+  const replayedSeq = new Set<number>();
   const off = subscribeChat(convId, (ev) => {
+    if (replaying) {
+      liveBuffer.push(ev);
+      return;
+    }
     try {
       res.write(`event: ${ev.event}\ndata: ${JSON.stringify(ev.data)}\n\n`);
     } catch {
       // res 已关 → 后面 close 事件会清理
     }
   });
+
+  // Replay missed durable events after subscribing. Live events that arrive
+  // during replay are buffered and flushed after replay to avoid a subscribe
+  // gap during conversation/block/workspace switches.
+  try {
+    const missed = await chatTurnRunStore.listEventsAfter(convId, afterSeq, 1000);
+    for (const ev of missed) {
+      replayedSeq.add(ev.seq);
+      res.write(`event: ${ev.event}\ndata: ${JSON.stringify(ev.payloadJson)}\n\n`);
+    }
+  } catch (err) {
+    console.error(`[chatRoutes] replay chat events failed (${convId} after ${afterSeq}):`, err);
+  }
+  replaying = false;
+  for (const ev of liveBuffer) {
+    const seq = typeof (ev.data as any)?.seq === "number" ? (ev.data as any).seq : null;
+    if (seq != null && replayedSeq.has(seq)) continue;
+    try {
+      res.write(`event: ${ev.event}\ndata: ${JSON.stringify(ev.data)}\n\n`);
+    } catch {
+      // res 已关 → 后面 close 事件会清理
+    }
+  }
 
   // 心跳:每 25s 一个 comment 行,防 nginx 60s idle 切流
   const hb = setInterval(() => {
@@ -647,6 +776,9 @@ router.post("/conversations/:id/stop", async (req: Request, res: Response) => {
   // V3.0 PR4: 也 abort orchestrator 的 turn (含 main + branches + synth)
   const { abortTurn } = await import("../services/turnRegistry.js");
   abortTurn(req.params.id, "user_stop");
+  await chatTurnRunStore.abortActiveTurnRuns(req.params.id, "user_stop").catch((err) => {
+    console.error("[chatRoutes] abort active turn runs failed:", err);
+  });
   res.json({ ok: true });
 });
 

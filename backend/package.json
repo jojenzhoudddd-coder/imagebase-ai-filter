@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "test:chat-turn-state": "tsx scripts/chat-turn-state-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
