@@ -186,6 +186,28 @@ export function CanvasProvider({
   // Prefer localStorage (always current within session) over server initial (stale after /me)
   const [state, setState] = useState<CanvasState>(() => readLocalCache(workspaceId) ?? initial ?? defaultLayout());
 
+  // Keep refs to latest state + wsId for unmount flush
+  const stateForFlush = useRef(state);
+  const wsIdForFlush = useRef(workspaceId);
+  stateForFlush.current = state;
+  wsIdForFlush.current = workspaceId;
+
+  // Flush to localStorage synchronously on every state change
+  // (useEffect is too late — unmount from key change may skip it)
+  const prevStateRef = useRef(state);
+  if (prevStateRef.current !== state) {
+    prevStateRef.current = state;
+    writeLocalCache(state, workspaceId);
+  }
+
+  // Flush on unmount (key change = workspace switch)
+  useEffect(() => {
+    return () => {
+      writeLocalCache(stateForFlush.current, wsIdForFlush.current);
+      void persistToBackend(stateForFlush.current, wsIdForFlush.current);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 防抖保存
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleSave = useCallback(() => {
@@ -194,10 +216,6 @@ export function CanvasProvider({
       writeLocalCache(state, workspaceId);
       void persistToBackend(state, workspaceId);
     }, 800);
-  }, [state, workspaceId]);
-
-  useEffect(() => {
-    writeLocalCache(state, workspaceId);
   }, [state, workspaceId]);
 
   // V2.9 #13: 任何 state 变化都自动 scheduleSave。之前只在 BlockShell 拖动落
