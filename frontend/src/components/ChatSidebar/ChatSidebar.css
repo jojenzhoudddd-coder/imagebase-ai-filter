@@ -1981,7 +1981,10 @@
    * children 之间不受影响 —— 仅这一处显式收紧。 */
   margin-bottom: -4px;
 }
-.chat-generating-meta.phase-generated { color: var(--text-muted); }
+.chat-generating-meta.phase-generated {
+  color: var(--text-muted);
+  padding: 0;
+}
 /* "Generating" / "Generated" 文字 —— 跟右侧的秒数/token 数字一致风格,
  * 不再抢眼(去掉 font-weight:500 + text-primary)。整条 meta 现在视觉上
  * 是同色同字重的次要信息,只有蓝点呼吸一处提示"在跑"。 */
