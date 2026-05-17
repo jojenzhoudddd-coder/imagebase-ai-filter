@@ -25,6 +25,10 @@ interface Props {
   chatAgentOpen?: boolean;
   /** Phase 4 Day 3 — unread count from /api/agents/:id/inbox?unread=1. 0 or undefined hides the dot. */
   agentUnreadCount?: number;
+  /** Toggle workspace dock visibility */
+  onToggleDock?: () => void;
+  /** Whether the workspace dock is currently open */
+  dockOpen?: boolean;
 }
 
 interface WorkspaceStats {
@@ -53,7 +57,7 @@ function formatTokenCount(n: number): string {
   return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0).replace(/\.0$/, "")}M`;
 }
 
-export default function TopBar({ tableName, documentName, workspaceId, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount }: Props) {
+export default function TopBar({ tableName, documentName, workspaceId, onRenameTable, onRenameDocument, onOpenChatAgent, chatAgentOpen, agentUnreadCount, onToggleDock, dockOpen }: Props) {
   const { t, locale } = useTranslation();
   const { user, patchUser, logout, patchPreferences, preferences } = useAuth();
   const toast = useToast();
@@ -288,22 +292,18 @@ export default function TopBar({ tableName, documentName, workspaceId, onRenameT
       {/* Left: nav icons + divider + stacked basic info */}
       <div className="topbar-left">
         <div className="topbar-nav">
-          <button className="topbar-icon-btn" title={t("topbar.menu")}>
-            {/* Figma: Sidebar layout indicator —— 装饰图标。真正的展开按钮在
-                 sidebar 收起时会出现在 breadcrumb 左边（见下方 .topbar-info 内
-                 的条件渲染）；收起按钮在 Sidebar 自己的 header 里。 */}
-            <svg width="16" height="16" viewBox="24 24 16 16" fill="none">
-              <path d="M38.6669 26.6667C38.6669 26.2985 38.3684 26 38.0002 26H26.0002C25.632 26 25.3335 26.2985 25.3335 26.6667C25.3335 27.0349 25.632 27.3333 26.0002 27.3333H38.0002C38.3684 27.3333 38.6669 27.0349 38.6669 26.6667Z" fill="#646A73"/>
-              <path d="M37.926 31.3333C38.3351 31.3333 38.6667 31.6318 38.6667 32C38.6667 32.3682 38.3351 32.6667 37.926 32.6667H32.7408C32.3317 32.6667 32 32.3682 32 32C32 31.6318 32.3317 31.3333 32.7408 31.3333H37.926Z" fill="#646A73"/>
-              <path d="M38.6667 37.3333C38.6667 36.9651 38.3351 36.6667 37.926 36.6667H32.7408C32.3317 36.6667 32 36.9651 32 37.3333C32 37.7015 32.3317 38 32.7408 38H37.926C38.3351 38 38.6667 37.7015 38.6667 37.3333Z" fill="#646A73"/>
-              <path d="M29.7269 35.243C30.0911 34.9548 30.0911 34.3785 29.7269 34.0903L26.4261 31.4787C25.9758 31.1225 25.3334 31.4614 25.3334 32.0551V37.2783C25.3334 37.8719 25.9758 38.2108 26.4261 37.8546L29.7269 35.243Z" fill="#646A73"/>
-            </svg>
-          </button>
-          <button className="topbar-icon-btn" title={t("topbar.home")}>
-            {/* Figma: Home — line 712 */}
-            <svg width="16" height="16" viewBox="56 24 16 16" fill="none">
-              <path d="M69.3334 30.6665L64 26.7074L58.6667 30.6665L58.6667 37.3332H62V34.7999C62 33.9898 62.6567 33.3332 63.4667 33.3332H64.5334C65.3434 33.3332 66 33.9898 66 34.7999V37.3332H69.3334V30.6665ZM63.3334 37.9999C63.3334 38.368 63.0349 38.6665 62.6667 38.6665H58.6667C57.9303 38.6665 57.3334 38.0696 57.3334 37.3332V30.6665C57.3334 30.2615 57.5175 29.8784 57.8338 29.6253L63.1671 25.6662C63.6541 25.2766 64.346 25.2766 64.833 25.6662L70.1663 29.6253C70.4826 29.8784 70.6667 30.2615 70.6667 30.6665V37.3332C70.6667 38.0696 70.0698 38.6665 69.3334 38.6665H65.3334C64.9652 38.6665 64.6667 38.368 64.6667 37.9999V34.7999C64.6667 34.7262 64.607 34.6665 64.5334 34.6665H63.4667C63.3931 34.6665 63.3334 34.7262 63.3334 34.7999V37.9999Z" fill="#646A73"/>
-            </svg>
+          <button className={`topbar-icon-btn ${dockOpen ? "topbar-icon-btn--active" : ""}`} title={t("topbar.home")} onClick={onToggleDock}>
+            {dockOpen ? (
+              /* Filled home icon (active state) */
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M9.5 22.0003C10.0523 22.0003 10.5 21.5526 10.5 21.0003V17.0002C10.5 16.448 10.9477 16.0002 11.5 16.0002H12.5C13.0523 16.0002 13.5 16.448 13.5 17.0002V21.0003C13.5 21.5526 13.9477 22.0003 14.5 22.0003H20C21.1046 22.0003 22 21.1048 22 20.0003V10.0002C22 9.39268 21.7238 8.81805 21.2494 8.43851L13.2494 2.49979C12.519 1.91544 11.481 1.91544 10.7506 2.49979L2.75061 8.43851C2.27618 8.81805 2 9.39268 2 10.0002V20.0003C2 21.1048 2.89543 22.0003 4 22.0003H9.5Z" fill="currentColor"/>
+              </svg>
+            ) : (
+              /* Outlined home icon (default state) */
+              <svg width="16" height="16" viewBox="56 24 16 16" fill="none">
+                <path d="M69.3334 30.6665L64 26.7074L58.6667 30.6665L58.6667 37.3332H62V34.7999C62 33.9898 62.6567 33.3332 63.4667 33.3332H64.5334C65.3434 33.3332 66 33.9898 66 34.7999V37.3332H69.3334V30.6665ZM63.3334 37.9999C63.3334 38.368 63.0349 38.6665 62.6667 38.6665H58.6667C57.9303 38.6665 57.3334 38.0696 57.3334 37.3332V30.6665C57.3334 30.2615 57.5175 29.8784 57.8338 29.6253L63.1671 25.6662C63.6541 25.2766 64.346 25.2766 64.833 25.6662L70.1663 29.6253C70.4826 29.8784 70.6667 30.2615 70.6667 30.6665V37.3332C70.6667 38.0696 70.0698 38.6665 69.3334 38.6665H65.3334C64.9652 38.6665 64.6667 38.368 64.6667 37.9999V34.7999C64.6667 34.7262 64.607 34.6665 64.5334 34.6665H63.4667C63.3931 34.6665 63.3334 34.7262 63.3334 34.7999V37.9999Z" fill="currentColor"/>
+              </svg>
+            )}
           </button>
         </div>
         <span className="topbar-divider" />

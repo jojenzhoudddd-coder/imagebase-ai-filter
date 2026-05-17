@@ -32,6 +32,7 @@ import { useWorkspaceSync } from "./hooks/useWorkspaceSync";
 import { useSplitResize } from "./hooks/useSplitResize";
 import ChatSidebar from "./components/ChatSidebar/index";
 import { useAuth } from "./auth/AuthContext";
+import { WorkspaceDock } from "./components/WorkspaceDock/index";
 
 // WORKSPACE_ID + AGENT_ID 都在组件内部根据 AuthContext 动态派生（见 App()
 // 顶部）。URL 只携带 workspaceId，不再包含 artifactType/artifactId —— artifact
@@ -65,6 +66,9 @@ export default function App() {
   // 空串占位 —— 真实的 workspace.name 会在 bootstrap effect 里从后端拉回来
   // 覆盖。之前是 "Default Document"，在接口返回前会闪一下英文文案，很丑。
   const [documentName, setDocumentName] = useState("");
+  // ── Workspace Dock (infra-level left dock) ──
+  const [dockOpen, setDockOpen] = useState(() => localStorage.getItem("dock_open") === "true");
+  useEffect(() => { localStorage.setItem("dock_open", String(dockOpen)); }, [dockOpen]);
   const [activeTableId, setActiveTableId] = useState<string>("tbl_requirements");
   const activeTableIdRef = useRef(activeTableId);
   activeTableIdRef.current = activeTableId;
@@ -458,7 +462,7 @@ export default function App() {
     };
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [WORKSPACE_ID]);
 
   // Initialize fieldOrder & hiddenFields from a view
   const initFieldOrderFromView = useCallback((view: View, fieldList: Field[]) => {
@@ -2141,23 +2145,34 @@ export default function App() {
       authPreferencesLoaded={authPreferences !== undefined}
     >
     <div className="app">
-      <TopBar
-        tableName={tableName}
-        documentName={documentName}
-        workspaceId={WORKSPACE_ID}
-        onRenameTable={(name) => handleRenameSidebarItem(activeTableId, name)}
-        onRenameDocument={handleRenameDocument}
-        onOpenChatAgent={() => setChatAgentOpen((v) => !v)}
-        chatAgentOpen={chatAgentOpen}
-        agentUnreadCount={agentUnread}
-      />
-      <MagicCanvas
-        globalActiveTableId={activeTableId}
-        onPickGlobalTable={(id) => {
-          // table block 切换 → 同步 global activeTableId(让 ArtifactView 的 render 拉新表)
-          handleSelectItem(id, "table");
+      <WorkspaceDock
+        open={dockOpen}
+        currentWorkspaceId={WORKSPACE_ID}
+        onSelectWorkspace={(wsId) => {
+          navigate(`/workspace/${wsId}`, { replace: true });
         }}
       />
+      <div className="app-main">
+        <TopBar
+          tableName={tableName}
+          documentName={documentName}
+          workspaceId={WORKSPACE_ID}
+          onRenameTable={(name) => handleRenameSidebarItem(activeTableId, name)}
+          onRenameDocument={handleRenameDocument}
+          onOpenChatAgent={() => setChatAgentOpen((v) => !v)}
+          chatAgentOpen={chatAgentOpen}
+          agentUnreadCount={agentUnread}
+          onToggleDock={() => setDockOpen((v) => !v)}
+          dockOpen={dockOpen}
+        />
+        <MagicCanvas
+          globalActiveTableId={activeTableId}
+          onPickGlobalTable={(id) => {
+            // table block 切换 → 同步 global activeTableId(让 ArtifactView 的 render 拉新表)
+            handleSelectItem(id, "table");
+          }}
+        />
+      </div>
     </div>
     </CanvasProvider>
     </ChatBlockProvider>

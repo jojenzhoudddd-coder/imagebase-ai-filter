@@ -31,6 +31,7 @@ export interface AuthWorkspace {
   id: string;
   name: string;
   orgId: string;
+  avatarUrl?: string | null;
 }
 
 /** Per-user UI 偏好，后端 user.preferences JSONB 字段映射。空对象表示

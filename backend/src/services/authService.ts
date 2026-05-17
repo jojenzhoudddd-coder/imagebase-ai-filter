@@ -390,7 +390,7 @@ export async function listUserWorkspaces(userId: string) {
         { org: { members: { some: { userId } } } },
       ],
     },
-    select: { id: true, name: true, orgId: true },
+    select: { id: true, name: true, orgId: true, avatarUrl: true },
     orderBy: { createdAt: "asc" },
   });
   return rows;

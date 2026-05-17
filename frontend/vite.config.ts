@@ -7,7 +7,7 @@ const backendUrl = process.env.BACKEND_URL || "http://localhost:3001";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5176,
+    port: 5173,
     watch: {
       ignored: ["**/.git/**"],
     },

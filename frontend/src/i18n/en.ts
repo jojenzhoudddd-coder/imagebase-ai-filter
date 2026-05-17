@@ -1026,6 +1026,26 @@ export const en = {
   "admin.filter.isNotEmpty": "is not empty",
   "admin.filter.isTrue": "is true",
   "admin.filter.isFalse": "is false",
+
+  // ─── Workspace Dock ───
+  "dock.sectionWork": "Work",
+  "dock.sectionHome": "Home",
+  "dock.sectionMuse": "Muse",
+  "dock.createWorkspace": "New workspace",
+  "dock.createHome": "Home (coming soon)",
+  "dock.createMuse": "Muse (coming soon)",
+  "dock.changeAvatar": "Change avatar",
+  "dock.deleteWorkspace": "Delete workspace",
+  "dock.cannotDeleteLast": "Cannot delete your only workspace",
+  "dock.workspaceDeleted": "Workspace deleted",
+  "dock.avatarUpdated": "Avatar updated",
+  "dock.addWorkspace": "Add workspace",
+  "dock.comingSoon": "Coming soon",
+  "dock.avatarFormatError": "Only PNG/JPG/GIF/WebP supported",
+  "dock.avatarTooLarge": "Image too large (max 20MB)",
+  "dock.avatarUploadFailed": "Failed to update avatar",
+  "dock.createFailed": "Failed to create workspace",
+  "dock.deleteFailed": "Failed to delete workspace",
 };
 
 export type TranslationKeys = typeof en;
