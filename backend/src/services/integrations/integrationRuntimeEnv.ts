@@ -206,7 +206,10 @@ async function doEnsureSecretService(
     return;
   }
 
-  if (probeSecretService(runtimeEnv)) return;
+  if (probeSecretService(runtimeEnv)) {
+    createLoginCollection(runtimeEnv);
+    return;
+  }
 
   const busPath = path.join(runtimeDir, "bus");
   if (!probeSessionBus(runtimeEnv)) {
@@ -222,7 +225,10 @@ async function doEnsureSecretService(
     });
   }
 
-  if (probeSecretService(runtimeEnv)) return;
+  if (probeSecretService(runtimeEnv)) {
+    createLoginCollection(runtimeEnv);
+    return;
+  }
 
   await ensureLoginKeyringFile(sandboxRoot);
   const started = spawnSync("gnome-keyring-daemon", [
@@ -328,7 +334,6 @@ function createLoginCollection(env: Record<string, string>): void {
     "login",
   ], {
     env,
-    input: "",
     stdio: "ignore",
     timeout: 5_000,
   });

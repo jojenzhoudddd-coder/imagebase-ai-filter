@@ -5,6 +5,7 @@ import path from "path";
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 import {
   getAgentIntegration,
+  listAgentIntegrations,
   markIntegrationHealth,
 } from "./integrationStore.js";
 import {
@@ -204,6 +205,9 @@ export async function pollLarkAuth(
           note: "auth session was not found, but lark-cli auth status is healthy",
         };
       }
+    } else if (opts?.requireAgentId) {
+      const authorized = await findAuthorizedLarkIntegration(opts.requireAgentId);
+      if (authorized) return authorized;
     }
   }
   if (!session) {
@@ -241,6 +245,25 @@ export async function pollLarkAuth(
     return pollLarkConfigSession(session);
   }
   return pollLarkLoginSession(session);
+}
+
+async function findAuthorizedLarkIntegration(agentId: string): Promise<unknown | null> {
+  const integrations = await listAgentIntegrations(agentId).catch(() => []);
+  for (const integration of integrations) {
+    if (integration.providerKey !== "lark" || integration.transport !== "cli") continue;
+    const status = await getLarkAuthStatus(integration).catch(() => null);
+    if (!status?.ok) continue;
+    await markIntegrationHealth(integration.id, "healthy", null).catch(() => {});
+    return {
+      ok: true,
+      status: "authorized",
+      phase: "auth",
+      integrationId: integration.id,
+      detail: status.detail,
+      note: "auth session was not found, but an existing Lark CLI integration is already authorized",
+    };
+  }
+  return null;
 }
 
 async function ensureLarkCliConfigured(
