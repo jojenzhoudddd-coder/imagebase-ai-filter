@@ -1565,7 +1565,7 @@
   line-height: 20px;
 }
 .chat-confirm-card-body {
-  padding: 0 14px 0 46px; /* align body text under the title (icon width + gap) */
+  padding: 0 14px;
   color: var(--text-secondary);
   font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   font-size: 12px;
@@ -1592,7 +1592,7 @@
  * "开始执行".
  */
 .chat-confirm-refs {
-  margin: 0 12px 10px 46px;
+  margin: 0 12px 10px;
   padding: 8px 10px;
   background: var(--surface-2);
   border: 0.5px solid var(--border-default);
