@@ -1,8 +1,8 @@
 /**
  * /api/agents/* routes — Agent metadata + identity files.
  *
- * MVP (Phase 1) only exposes the default user's agents. When auth lands
- * we'll filter by the authenticated userId.
+ * Agent list/create is user-scoped through the authenticated request user.
+ * Agent-id routes are protected by the global artifact access middleware.
  *
  * Metadata (DB):
  *   GET    /api/agents                            — list agents for default user
@@ -56,6 +56,8 @@ import {
   setSelectedModel,
   getModelStrengthOverrides,
   setModelStrengthOverride,
+  getDisabledBuiltinSkills,
+  setBuiltinSkillEnabled,
   type AgentConfig,
 } from "../services/agentService.js";
 
@@ -92,17 +94,16 @@ import {
   DEFAULT_MODEL_ID,
   FALLBACK_MODEL_ID,
 } from "../services/modelRegistry.js";
+import { currentUser, requireAuth } from "../services/authService.js";
 
 const router = express.Router();
 
-// MVP: hardcode to default user until auth is wired up.
-const DEFAULT_USER_ID = "user_default";
-
 // ─── Metadata ───
 
-router.get("/", async (_req: Request, res: Response) => {
+router.get("/", requireAuth, async (req: Request, res: Response) => {
   try {
-    const agents = await listAgents(DEFAULT_USER_ID);
+    const user = currentUser(req)!;
+    const agents = await listAgents(user.id);
     res.json(agents);
   } catch (err: any) {
     console.error("[agents] list error:", err);
@@ -110,11 +111,12 @@ router.get("/", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", requireAuth, async (req: Request, res: Response) => {
   try {
+    const user = currentUser(req)!;
     const { name, avatarUrl } = req.body ?? {};
     const agent = await createAgent({
-      userId: DEFAULT_USER_ID,
+      userId: user.id,
       name: typeof name === "string" ? name : undefined,
       avatarUrl: typeof avatarUrl === "string" ? avatarUrl : null,
     });
@@ -708,7 +710,8 @@ router.get("/:agentId/skills", async (req: Request, res: Response) => {
       }
     } catch { /* non-fatal */ }
 
-    // Builtin skills
+    // Builtin skills. The enabled state is per-agent/user config, not global.
+    const disabledBuiltinSkills = new Set(await getDisabledBuiltinSkills(agentId));
     const builtinSkills = allSkills.map((s) => ({
       id: s.name,
       name: s.name,
@@ -719,7 +722,7 @@ router.get("/:agentId/skills", async (req: Request, res: Response) => {
         .slice(0, 10),
       lastUsed: skillLastUsedMap.get(s.name) ?? null,
       type: "builtin" as const,
-      enabled: true,
+      enabled: !disabledBuiltinSkills.has(s.name),
     }));
 
     // User skills
@@ -750,7 +753,7 @@ router.get("/:agentId/skills", async (req: Request, res: Response) => {
   }
 });
 
-/** PUT /api/agents/:agentId/skills/:skillId/toggle — toggle user skill enabled */
+/** PUT /api/agents/:agentId/skills/:skillId/toggle — toggle builtin/user skill enabled */
 router.put("/:agentId/skills/:skillId/toggle", async (req: Request, res: Response) => {
   try {
     const { agentId, skillId } = req.params;
@@ -759,8 +762,14 @@ router.put("/:agentId/skills/:skillId/toggle", async (req: Request, res: Respons
       res.status(400).json({ error: "enabled must be boolean" });
       return;
     }
+    const builtin = allSkills.find((s) => s.name === skillId);
+    if (builtin) {
+      await setBuiltinSkillEnabled(agentId, builtin.name, enabled);
+      res.json({ ok: true, type: "builtin", skillId: builtin.name, enabled });
+      return;
+    }
     await updateUserSkill(skillId, { enabled }, { requireOwnerId: agentId });
-    res.json({ ok: true });
+    res.json({ ok: true, type: "user", skillId, enabled });
   } catch (err: any) {
     console.error("[agents] skill toggle error:", err);
     res.status(err.statusCode ?? 500).json({ error: err.message ?? "internal error" });

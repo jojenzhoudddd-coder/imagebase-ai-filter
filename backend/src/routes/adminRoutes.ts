@@ -10,6 +10,7 @@
  *   GET /api/admin/subagent-runs?limit=&offset=&status=&hostAgentId=
  *   GET /api/admin/workflow-runs?limit=&offset=&status=&templateId=&hostAgentId=
  *   GET /api/admin/metrics?windowDays=7
+ *   GET /api/admin/error-logs?date=YYYY-MM-DD&limit=&scope=&kind=&q=
  *
  * 默认 limit=50,硬上限 200。
  */
@@ -19,6 +20,7 @@ import { PrismaClient } from "../generated/prisma/client.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { getHistory } from "../services/dailySnapshotService.js";
+import { readErrorLogQuery, readErrorLogs } from "../services/errorLogService.js";
 
 // Override pg type parser for "timestamp without time zone" (OID 1114):
 // pg-types by default interprets it using Node's local TZ, but Prisma
@@ -256,6 +258,28 @@ function requireAdmin(req: any, res: any, next: any) {
   }
   next();
 }
+
+// ─── Diagnostics endpoints (admin-only) ──────────────────────────────────────
+
+router.get("/error-logs", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const query = readErrorLogQuery(req);
+    const result = await readErrorLogs(query);
+    res.json({
+      ...result,
+      limit: query.limit,
+      filters: {
+        date: query.date,
+        scope: query.scope,
+        kind: query.kind,
+        q: query.q,
+      },
+    });
+  } catch (err: any) {
+    console.error("[admin] error-logs error:", err);
+    res.status(500).json({ error: err.message ?? "internal error" });
+  }
+});
 
 // ─── User management endpoints (admin-only) ──────────────────────────────────
 

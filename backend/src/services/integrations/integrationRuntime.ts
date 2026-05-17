@@ -16,6 +16,12 @@ import { getGithubCliGuide } from "./githubCliGuide.js";
 import { getLarkAuthStatus } from "./larkAuthRuntime.js";
 import { getLarkCliGuide } from "./larkCliGuide.js";
 import type { AgentIntegrationRow, IntegrationToolManifest } from "./types.js";
+import {
+  extractToolOutputError,
+  normalizeError,
+  summarizeForLog,
+  writeErrorLog,
+} from "../errorLogService.js";
 
 export async function callIntegrationTool(
   integrationId: string,
@@ -23,13 +29,47 @@ export async function callIntegrationTool(
   args: Record<string, any>,
   opts?: { requireAgentId?: string },
 ): Promise<unknown> {
+  const startedAt = Date.now();
   const integration = await getAgentIntegration(integrationId, {
     requireAgentId: opts?.requireAgentId,
   });
-  if (!integration) throw new Error(`integration not found: ${integrationId}`);
-  if (!integration.enabled) throw new Error(`integration is disabled: ${integration.displayName}`);
+  if (!integration) {
+    const err = new Error(`integration not found: ${integrationId}`);
+    logIntegrationToolError("integration_tool_config_error", {
+      integrationId,
+      toolName,
+      args,
+      durationMs: Date.now() - startedAt,
+      error: err,
+      agentId: opts?.requireAgentId,
+    });
+    throw err;
+  }
+  if (!integration.enabled) {
+    const err = new Error(`integration is disabled: ${integration.displayName}`);
+    logIntegrationToolError("integration_tool_config_error", {
+      integration,
+      toolName,
+      args,
+      durationMs: Date.now() - startedAt,
+      error: err,
+      agentId: opts?.requireAgentId,
+    });
+    throw err;
+  }
   const manifest = integration.toolManifest.find((t) => t.name === toolName);
-  if (!manifest) throw new Error(`unknown integration tool: ${toolName}`);
+  if (!manifest) {
+    const err = new Error(`unknown integration tool: ${toolName}`);
+    logIntegrationToolError("integration_tool_unknown", {
+      integration,
+      toolName,
+      args,
+      durationMs: Date.now() - startedAt,
+      error: err,
+      agentId: opts?.requireAgentId,
+    });
+    throw err;
+  }
   let result: unknown;
   try {
     result = await dispatch(integration, manifest, args);
@@ -40,14 +80,34 @@ export async function callIntegrationTool(
       : [];
     if (missingScopes.length) {
       await markIntegrationUsed(integration.id).catch(() => {});
-      return larkMissingScopeResponse(integration, manifest.name, message, missingScopes);
+      const response = larkMissingScopeResponse(integration, manifest.name, message, missingScopes);
+      logIntegrationToolResultError("integration_tool_result_error", {
+        integration,
+        manifest,
+        args,
+        durationMs: Date.now() - startedAt,
+        message: String(response.message ?? "Missing Lark OAuth scope(s)"),
+        result: response,
+        agentId: opts?.requireAgentId,
+      });
+      return response;
     }
     const githubMissingScopes = integration.providerKey === "github" && integration.transport === "cli"
       ? parseGithubMissingScopes(message)
       : [];
     if (githubMissingScopes.length) {
       await markIntegrationUsed(integration.id).catch(() => {});
-      return githubMissingScopeResponse(integration, manifest.name, message, githubMissingScopes);
+      const response = githubMissingScopeResponse(integration, manifest.name, message, githubMissingScopes);
+      logIntegrationToolResultError("integration_tool_result_error", {
+        integration,
+        manifest,
+        args,
+        durationMs: Date.now() - startedAt,
+        message: String(response.message ?? "Missing GitHub OAuth scope(s)"),
+        result: response,
+        agentId: opts?.requireAgentId,
+      });
+      return response;
     }
     if (
       integration.providerKey === "github" &&
@@ -59,6 +119,14 @@ export async function callIntegrationTool(
         requireAgentId: opts?.requireAgentId,
       });
     }
+    logIntegrationToolError("integration_tool_error", {
+      integration,
+      manifest,
+      args,
+      durationMs: Date.now() - startedAt,
+      error: err,
+      agentId: opts?.requireAgentId,
+    });
     throw err;
   }
   const larkAuthFailure = integration.providerKey === "lark" && integration.transport === "cli"
@@ -66,14 +134,108 @@ export async function callIntegrationTool(
     : null;
   if (larkAuthFailure) {
     await markIntegrationUsed(integration.id).catch(() => {});
-    return startIntegrationAuth(integration.id, {
+    const response = await startIntegrationAuth(integration.id, {
       requireAgentId: opts?.requireAgentId,
       scope: larkAuthFailure.missingScopes.length ? larkAuthFailure.missingScopes.join(" ") : undefined,
       recommend: larkAuthFailure.missingScopes.length ? false : undefined,
     });
+    logIntegrationToolResultError("integration_tool_result_error", {
+      integration,
+      manifest,
+      args,
+      durationMs: Date.now() - startedAt,
+      message: larkAuthFailure.missingScopes.length
+        ? `missing Lark OAuth scope(s): ${larkAuthFailure.missingScopes.join(" ")}`
+        : "Lark auth required",
+      result,
+      agentId: opts?.requireAgentId,
+    });
+    return response;
   }
   await markIntegrationUsed(integration.id).catch(() => {});
+  const reportedError = extractToolOutputError(result);
+  if (reportedError) {
+    logIntegrationToolResultError("integration_tool_result_error", {
+      integration,
+      manifest,
+      args,
+      durationMs: Date.now() - startedAt,
+      message: reportedError,
+      result,
+      agentId: opts?.requireAgentId,
+    });
+  }
   return result;
+}
+
+function logIntegrationToolError(
+  kind: string,
+  params: {
+    integration?: AgentIntegrationRow;
+    manifest?: IntegrationToolManifest;
+    integrationId?: string;
+    toolName?: string;
+    args: unknown;
+    durationMs: number;
+    error: unknown;
+    agentId?: string;
+  },
+): void {
+  writeErrorLog({
+    scope: "integration",
+    kind,
+    level: "error",
+    message: params.error instanceof Error ? params.error.message : String(params.error),
+    agentId: params.agentId,
+    durationMs: params.durationMs,
+    integration: integrationLogMeta(params.integration, params.integrationId),
+    tool: {
+      name: params.manifest?.name ?? params.toolName,
+      mode: params.manifest?.mode,
+      args: summarizeForLog(params.args),
+    },
+    error: normalizeError(params.error),
+  });
+}
+
+function logIntegrationToolResultError(
+  kind: string,
+  params: {
+    integration: AgentIntegrationRow;
+    manifest: IntegrationToolManifest;
+    args: unknown;
+    durationMs: number;
+    message: string;
+    result: unknown;
+    agentId?: string;
+  },
+): void {
+  writeErrorLog({
+    scope: "integration",
+    kind,
+    level: "warning",
+    message: params.message,
+    agentId: params.agentId,
+    durationMs: params.durationMs,
+    integration: integrationLogMeta(params.integration),
+    tool: {
+      name: params.manifest.name,
+      mode: params.manifest.mode,
+      args: summarizeForLog(params.args),
+    },
+    result: summarizeForLog(params.result),
+  });
+}
+
+function integrationLogMeta(integration?: AgentIntegrationRow, fallbackId?: string): Record<string, unknown> {
+  if (!integration) return { id: fallbackId };
+  return {
+    id: integration.id,
+    agentId: integration.agentId,
+    providerKey: integration.providerKey,
+    transport: integration.transport,
+    displayName: integration.displayName,
+  };
 }
 
 export async function testIntegration(integrationId: string, opts?: { requireAgentId?: string }): Promise<{
@@ -83,6 +245,7 @@ export async function testIntegration(integrationId: string, opts?: { requireAge
   needsConfig?: boolean;
   needsAuth?: boolean;
 }> {
+  const startedAt = Date.now();
   const integration = await getAgentIntegration(integrationId, {
     requireAgentId: opts?.requireAgentId,
   });
@@ -121,6 +284,16 @@ export async function testIntegration(integrationId: string, opts?: { requireAge
     return { ok: true, transport: integration.transport, detail };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    writeErrorLog({
+      scope: "integration",
+      kind: "integration_test_error",
+      level: "error",
+      message,
+      agentId: opts?.requireAgentId,
+      durationMs: Date.now() - startedAt,
+      integration: integrationLogMeta(integration),
+      error: normalizeError(err),
+    });
     await markIntegrationHealth(integration.id, "error", message).catch(() => {});
     return { ok: false, transport: integration.transport, detail: { error: message } };
   }

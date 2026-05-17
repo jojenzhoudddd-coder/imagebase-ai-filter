@@ -65,6 +65,7 @@ import { consumeFiredJobs, recoverOrphanedJobs } from "./services/inboxConsumer.
 import { startAnalystCleanup, stopAnalystCleanup } from "./services/analyst/cleanupCron.js";
 import { startWorktreeCleanupCron, stopWorktreeCleanupCron } from "./services/worktreeManager.js";
 import { recordSnapshot, startDailySnapshotCron } from "./services/dailySnapshotService.js";
+import { createApiErrorLogger, normalizeError, writeErrorLog } from "./services/errorLogService.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -91,6 +92,7 @@ app.use(compression({
   },
   threshold: 1024, // < 1KB 不压(没必要)
 }));
+app.use(createApiErrorLogger());
 // Bumped body limit to 10mb so large SVG pastes (Figma exports, embedded <image>
 // blobs, verbose path data) fit. The /tastes/from-svg endpoint still validates
 // the payload and caps it at 5mb in its own handler.
@@ -579,9 +581,23 @@ async function start() {
   // every other in-flight / subsequent request stays happy.
   process.on("uncaughtException", (err) => {
     console.error("[process] uncaughtException — keeping server alive:", err);
+    writeErrorLog({
+      scope: "process",
+      kind: "uncaught_exception",
+      level: "error",
+      message: err.message,
+      error: normalizeError(err),
+    });
   });
   process.on("unhandledRejection", (reason) => {
     console.error("[process] unhandledRejection — keeping server alive:", reason);
+    writeErrorLog({
+      scope: "process",
+      kind: "unhandled_rejection",
+      level: "error",
+      message: reason instanceof Error ? reason.message : String(reason),
+      error: normalizeError(reason),
+    });
   });
 }
 

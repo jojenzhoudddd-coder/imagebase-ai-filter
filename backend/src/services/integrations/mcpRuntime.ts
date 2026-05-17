@@ -3,13 +3,25 @@ import {
   resolveIntegrationRuntimeEnv,
   toStringMap,
 } from "./integrationRuntimeEnv.js";
+import {
+  extractToolOutputError,
+  normalizeError,
+  summarizeForLog,
+  writeErrorLog,
+} from "../errorLogService.js";
 
 export async function listMcpTools(integration: AgentIntegrationRow): Promise<unknown> {
-  const { client, close } = await connectMcp(integration);
+  const startedAt = Date.now();
+  let close: (() => Promise<void>) | null = null;
   try {
-    return await client.listTools();
+    const connected = await connectMcp(integration);
+    close = connected.close;
+    return await connected.client.listTools();
+  } catch (err) {
+    writeMcpIntegrationError("mcp_integration_list_tools_error", integration, undefined, undefined, Date.now() - startedAt, err);
+    throw err;
   } finally {
-    await close();
+    await close?.();
   }
 }
 
@@ -18,15 +30,65 @@ export async function callMcpIntegrationTool(
   toolName: string,
   args: Record<string, any>,
 ): Promise<unknown> {
-  const { client, close } = await connectMcp(integration);
+  const startedAt = Date.now();
+  let close: (() => Promise<void>) | null = null;
   try {
-    return await client.callTool({
+    const connected = await connectMcp(integration);
+    close = connected.close;
+    const result = await connected.client.callTool({
       name: toolName,
       arguments: args,
     });
+    const reportedError = extractToolOutputError(result);
+    if (reportedError) {
+      writeErrorLog({
+        scope: "integration",
+        kind: "mcp_integration_tool_result_error",
+        level: "warning",
+        message: reportedError,
+        durationMs: Date.now() - startedAt,
+        integration: mcpIntegrationMeta(integration),
+        tool: { name: toolName, args: summarizeForLog(args) },
+        result: summarizeForLog(result),
+      });
+    }
+    return result;
+  } catch (err) {
+    writeMcpIntegrationError("mcp_integration_tool_error", integration, toolName, args, Date.now() - startedAt, err);
+    throw err;
   } finally {
-    await close();
+    await close?.();
   }
+}
+
+function writeMcpIntegrationError(
+  kind: string,
+  integration: AgentIntegrationRow,
+  toolName: string | undefined,
+  args: unknown,
+  durationMs: number,
+  err: unknown,
+): void {
+  writeErrorLog({
+    scope: "integration",
+    kind,
+    level: "error",
+    message: err instanceof Error ? err.message : String(err),
+    durationMs,
+    integration: mcpIntegrationMeta(integration),
+    tool: toolName ? { name: toolName, args: summarizeForLog(args) } : undefined,
+    error: normalizeError(err),
+  });
+}
+
+function mcpIntegrationMeta(integration: AgentIntegrationRow): Record<string, unknown> {
+  return {
+    id: integration.id,
+    agentId: integration.agentId,
+    providerKey: integration.providerKey,
+    transport: integration.transport,
+    displayName: integration.displayName,
+  };
 }
 
 async function connectMcp(integration: AgentIntegrationRow): Promise<{

@@ -27,37 +27,32 @@ import { viewTools } from "./viewTools.js";
 import { metaTools } from "./metaTools.js";
 import { memoryTools } from "./memoryTools.js";
 import { skillRouterTools } from "./skillRouterTools.js";
-import { cronTools } from "./cronTools.js";
 import { userSkillTools } from "./userSkillTools.js";
 import { ideaNavTools, ideaTools } from "./ideaTools.js";
 import { mentionTools } from "./mentionTools.js";
 import { designNavTools } from "./designTools.js";
 import { tasteNavTools } from "./tasteTools.js";
-import { dictionaryTools } from "./dictionaryTools.js";
 import { demoNavTools } from "./demoTools.js";
-import { folderTools } from "./folderTools.js";
-import { subagentTools } from "./subagentTools.js";
-import { workflowTools } from "./workflowTools.js";
 import { webTools } from "./webTools.js";
 import { visionTools } from "./visionTools.js";
-import { modelTools } from "./modelTools.js";
-import { knowledgeTools } from "./knowledgeTools.js";
 import { adminTools } from "./adminTools.js";
+import { toolIntrospectionTools } from "./toolIntrospectionTools.js";
 import { allSkills, skillsByName } from "../skills/index.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
 // ── Tier partitioning ────────────────────────────────────────────────────
 
-// Tier 1 = always-on workspace navigation. Stays small on purpose — every
-// tool here ships in the system prompt for every agent turn, so each added
-// name trades prompt budget for capability. Current members:
-//   - Table nav:   list_tables, get_table              (exists since Phase 3)
-//   - Idea nav:    list_ideas,  get_idea               (v1 of chatbot-idea)
-//   - Design nav:  list_designs                        (taste-chatbot v1)
-//   - Taste nav:   list_tastes,  get_taste             (taste-chatbot v1)
-//   - Mention:     find_mentionable,
-//                  list_incoming_mentions              (cross-skill bridge)
-//   - Web:         web_search,   web_fetch            (Tavily + Readability)
+// Tier 1 = minimal always-on workspace navigation. Stays small on purpose:
+// every tool here ships in the prompt for every agent turn, so non-core
+// capabilities should live behind skills and be discovered via find_tool.
+// Current members:
+//   - Table nav:   list_tables, get_table
+//   - Idea nav:    list_ideas,  get_idea
+//   - Design nav:  list_designs
+//   - Taste nav:   list_tastes, get_taste
+//   - Demo nav:    list_demos,  get_demo
+//   - Mention:     find_mentionable, list_incoming_mentions
+//   - Web/Vision:  web_search, web_fetch, analyze_image
 //
 // `find_mentionable` is cross-skill on purpose: writing an idea may require
 // referencing a view or a taste the agent hasn't "activated" any skill for.
@@ -72,58 +67,33 @@ const TIER1_NAMES = new Set([
   "list_designs",
   "list_tastes",
   "get_taste",
-  // Vision + SVG structural inspection — always available so the Agent can
-  // reach for them the moment a user mentions a design / taste, without
-  // having to activate taste-skill first.
-  "view_taste_image",
-  "analyze_taste",
   "find_mentionable",
   "list_incoming_mentions",
-  // Analyst P1 additions (always-on — semantic map + snapshot awareness)
-  "get_data_dictionary",
-  "list_snapshots",
   // Vibe Demo V1 nav
   "list_demos",
   "get_demo",
-  // PR3 Agent Workflow: subagent spawn always-on so the host doesn't need
-  // to activate workflow-skill just to fork a single sub-task.
-  "spawn_subagent",
-  // V2.4 B1 subagent danger upcall — host-only resolution tools, always-on
-  // so host can react to subagent_danger_request events without activating
-  // any skill mid-flight.
-  "approve_subagent_danger",
-  "reject_subagent_danger",
-  "escalate_subagent_danger",
-  // PR4 Agent Workflow: workflow template orchestration. Always-on so any
-  // host can list / run review / brainstorm without first activating skill.
-  "list_workflow_templates",
-  "execute_workflow_template",
-  // V2.5 B4 自由编排
-  "compose_workflow",
-  // Folder tools — always-on workspace hierarchy management
-  "list_folders",
-  "create_folder",
-  "rename_folder",
-  "delete_folder",
-  "move_item_to_folder",
-  // Web tools — always-on info retrieval (knowledge cutoff bypass)
+  // Web + image analysis — common enough to stay one hop away while heavier
+  // domain bundles remain behind find_tool / activate_skill.
   "web_search",
   "web_fetch",
-  // Vision tool — always-on deep image analysis (OCR, table extract, UI audit)
   "analyze_image",
 ]);
+
+const tier0RouterTools = [
+  ...skillRouterTools.filter((t) => t.name === "find_tool"),
+  ...skillRouterTools.filter((t) => t.name === "find_skill"),
+  ...skillRouterTools.filter((t) => t.name !== "find_tool" && t.name !== "find_skill"),
+];
 
 /** Tier 0 — identity + memory + skill routing + cron + user-skill management.
  *  Always loaded. Skill Creator V1 adds 6 user-skill management tools so the
  *  Agent can create / list / update / delete / toggle / save-from-run user
  *  skills in any conversation. */
 export const tier0Tools: ToolDefinition[] = [
+  ...tier0RouterTools,
   ...metaTools,
   ...memoryTools,
-  ...skillRouterTools,
-  ...cronTools,
-  ...modelTools,
-  ...knowledgeTools,
+  ...toolIntrospectionTools,
 ];
 
 /** Tier 1 — core workspace navigation. Always loaded. */
@@ -133,11 +103,7 @@ export const tier1Tools: ToolDefinition[] = [
   ...designNavTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...tasteNavTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...mentionTools.filter((t) => TIER1_NAMES.has(t.name)),
-  ...dictionaryTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...demoNavTools.filter((t) => TIER1_NAMES.has(t.name)),
-  ...folderTools.filter((t) => TIER1_NAMES.has(t.name)),
-  ...subagentTools.filter((t) => TIER1_NAMES.has(t.name)),
-  ...workflowTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...webTools.filter((t) => TIER1_NAMES.has(t.name)),
   ...visionTools.filter((t) => TIER1_NAMES.has(t.name)),
 ];
@@ -165,7 +131,7 @@ export function resolveActiveTools(
   }
   const seen = new Set(active.map((t) => t.name));
   for (const name of activeSkillNames) {
-    const skill = extraSkillsByName?.[name] ?? skillsByName[name];
+    const skill = extraSkillsByName ? extraSkillsByName[name] : skillsByName[name];
     if (!skill) continue;
     for (const t of skill.tools) {
       if (seen.has(t.name)) continue; // dedupe (shouldn't happen but defensive)

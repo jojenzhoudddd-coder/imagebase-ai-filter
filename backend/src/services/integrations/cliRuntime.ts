@@ -4,6 +4,12 @@ import {
   resolveIntegrationRuntimeEnv,
   withIntegrationMutex,
 } from "./integrationRuntimeEnv.js";
+import {
+  extractToolOutputError,
+  normalizeError,
+  summarizeForLog,
+  writeErrorLog,
+} from "../errorLogService.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const OUTPUT_LIMIT = 512 * 1024;
@@ -19,31 +25,130 @@ export async function runCliIntegrationTool(
   tool: IntegrationToolManifest,
   args: Record<string, any>,
 ): Promise<unknown> {
-  const command = String(tool.command || integration.config.command || "").trim();
-  if (!command) {
-    throw new Error(`Integration ${integration.displayName} has no CLI command configured`);
-  }
-  if (/[;&|`$<>]/.test(command)) {
-    throw new Error("CLI command must be a binary/path, not a shell expression");
-  }
-  const argv = resolveArgTemplates(tool.args ?? [], args);
-  const runtime = await resolveIntegrationRuntimeEnv(integration);
-  const result = await withIntegrationMutex(runtime.mutexKey, () =>
-    runCliCommand(command, argv, {
-      env: runtime.env,
-      cwd: runtime.cwd,
-      timeoutMs: tool.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    })
-  );
-  const stdout = result.stdout.trim();
-  if (tool.output === "json") {
-    try {
-      return JSON.parse(stdout);
-    } catch {
-      return { raw: stdout, note: "CLI output was not valid JSON; returned raw text." };
+  const startedAt = Date.now();
+  let command = "";
+  let argvCount = 0;
+  try {
+    command = String(tool.command || integration.config.command || "").trim();
+    if (!command) {
+      throw new Error(`Integration ${integration.displayName} has no CLI command configured`);
     }
+    if (/[;&|`$<>]/.test(command)) {
+      throw new Error("CLI command must be a binary/path, not a shell expression");
+    }
+    const argv = resolveArgTemplates(tool.args ?? [], args);
+    argvCount = argv.length;
+    const runtime = await resolveIntegrationRuntimeEnv(integration);
+    const result = await withIntegrationMutex(runtime.mutexKey, () =>
+      runCliCommand(command, argv, {
+        env: runtime.env,
+        cwd: runtime.cwd,
+        timeoutMs: tool.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      })
+    );
+    const stdout = result.stdout.trim();
+    const parsed = tool.output === "json"
+      ? parseCliJson(stdout)
+      : stdout;
+    const reportedError = extractToolOutputError(parsed);
+    if (reportedError) {
+      writeCliIntegrationResultError(
+        integration,
+        tool,
+        args,
+        command,
+        argvCount,
+        Date.now() - startedAt,
+        reportedError,
+        parsed,
+      );
+    }
+    return parsed;
+  } catch (err) {
+    writeCliIntegrationError(
+      integration,
+      tool,
+      args,
+      command,
+      argvCount,
+      Date.now() - startedAt,
+      err,
+    );
+    throw err;
   }
-  return stdout;
+}
+
+function parseCliJson(stdout: string): unknown {
+  try {
+    return JSON.parse(stdout);
+  } catch {
+    return { raw: stdout, note: "CLI output was not valid JSON; returned raw text." };
+  }
+}
+
+function writeCliIntegrationError(
+  integration: AgentIntegrationRow,
+  tool: IntegrationToolManifest,
+  args: unknown,
+  command: string,
+  argvCount: number,
+  durationMs: number,
+  err: unknown,
+): void {
+  writeErrorLog({
+    scope: "integration",
+    kind: "cli_integration_tool_error",
+    level: "error",
+    message: err instanceof Error ? err.message : String(err),
+    durationMs,
+    integration: cliIntegrationMeta(integration),
+    tool: {
+      name: tool.name,
+      mode: tool.mode,
+      command: command || undefined,
+      argvCount,
+      args: summarizeForLog(args),
+    },
+    error: normalizeError(err),
+  });
+}
+
+function writeCliIntegrationResultError(
+  integration: AgentIntegrationRow,
+  tool: IntegrationToolManifest,
+  args: unknown,
+  command: string,
+  argvCount: number,
+  durationMs: number,
+  message: string,
+  result: unknown,
+): void {
+  writeErrorLog({
+    scope: "integration",
+    kind: "cli_integration_tool_result_error",
+    level: "warning",
+    message,
+    durationMs,
+    integration: cliIntegrationMeta(integration),
+    tool: {
+      name: tool.name,
+      mode: tool.mode,
+      command: command || undefined,
+      argvCount,
+      args: summarizeForLog(args),
+    },
+    result: summarizeForLog(result),
+  });
+}
+
+function cliIntegrationMeta(integration: AgentIntegrationRow): Record<string, unknown> {
+  return {
+    id: integration.id,
+    agentId: integration.agentId,
+    providerKey: integration.providerKey,
+    transport: integration.transport,
+    displayName: integration.displayName,
+  };
 }
 
 export function resolveCliArgTemplates(templates: string[], args: Record<string, any>): string[] {
