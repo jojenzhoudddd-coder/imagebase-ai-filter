@@ -78,6 +78,7 @@ const DEFAULT_CONFIG = {
   temperature: 1.0,
   maxOutputTokens: 20000,
   enabledSkills: [] as string[],
+  disabledBuiltinSkills: [] as string[],
 };
 
 /** Create the agent's filesystem skeleton if it doesn't exist. Idempotent. */
@@ -306,6 +307,7 @@ export interface AgentConfig {
   temperature: number;
   maxOutputTokens: number;
   enabledSkills: string[];
+  disabledBuiltinSkills: string[];
   [k: string]: unknown;
 }
 
@@ -317,6 +319,38 @@ export async function readConfig(agentId: string): Promise<AgentConfig> {
   } catch {
     return { ...DEFAULT_CONFIG };
   }
+}
+
+export function normalizeDisabledBuiltinSkills(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((v) => (typeof v === "string" ? v.trim() : ""))
+        .filter(Boolean),
+    ),
+  );
+}
+
+export async function getDisabledBuiltinSkills(agentId: string): Promise<string[]> {
+  const cfg = await readConfig(agentId);
+  return normalizeDisabledBuiltinSkills(cfg.disabledBuiltinSkills);
+}
+
+export async function setBuiltinSkillEnabled(
+  agentId: string,
+  skillName: string,
+  enabled: boolean,
+): Promise<string[]> {
+  const disabled = new Set(await getDisabledBuiltinSkills(agentId));
+  if (enabled) {
+    disabled.delete(skillName);
+  } else {
+    disabled.add(skillName);
+  }
+  const next = [...disabled].sort();
+  await writeConfig(agentId, { disabledBuiltinSkills: next });
+  return next;
 }
 
 // ─── Selected model (multi-model feature) ─────────────────────────────

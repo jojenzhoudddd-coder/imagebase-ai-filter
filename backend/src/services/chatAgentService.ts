@@ -36,7 +36,7 @@ import type { ToolDefinition, ToolContext } from "../../mcp-server/src/tools/tab
 import * as convStore from "./conversationStore.js";
 import type { Message, ToolCall } from "./conversationStore.js";
 import * as store from "./dbStore.js";
-import { readSoul, readProfile, getAgent } from "./agentService.js";
+import { readSoul, readProfile, getAgent, type AgentConfig } from "./agentService.js";
 import * as agentSvc from "./agentService.js";
 import { readUserPreferences, type UserPreferences } from "./authService.js";
 import {
@@ -68,6 +68,12 @@ import { executeWorkflow as runWorkflowExecutor } from "./workflow/executor.js";
 import { buildTemplate as buildWorkflowTemplate } from "./workflow/templates.js";
 import type { WorkflowEvent, WorkflowTemplate } from "./workflow/types.js";
 import * as wfStore from "./workflowRunStore.js";
+import {
+  extractToolOutputError,
+  normalizeError,
+  summarizeForLog,
+  writeErrorLog,
+} from "./errorLogService.js";
 
 // Pushed up from 10 per user request. Seed can chain dozens of tool calls in
 // a single CRM-build turn; cap is only a last-resort runaway guard.
@@ -124,9 +130,15 @@ const skillNameForTool: Map<string, string> = (() => {
 
 /** Build the per-turn tool→skill map. Builtin entries are static; user
  *  entries (`invoke_skill_workflow_*`) are added on top of the cached map. */
-export function buildSkillNameForTool(userSkills: SkillDefinition[]): Map<string, string> {
-  if (userSkills.length === 0) return skillNameForTool;
-  const m = new Map(skillNameForTool);
+export function buildSkillNameForTool(
+  userSkills: SkillDefinition[],
+  builtinSkills: SkillDefinition[] = allSkills,
+): Map<string, string> {
+  if (userSkills.length === 0 && builtinSkills === allSkills) return skillNameForTool;
+  const m = new Map<string, string>();
+  for (const s of builtinSkills) {
+    for (const t of s.tools) m.set(t.name, s.name);
+  }
   for (const s of userSkills) {
     for (const t of s.tools) m.set(t.name, s.name);
   }
@@ -136,11 +148,33 @@ export function buildSkillNameForTool(userSkills: SkillDefinition[]): Map<string
 /** Build the per-turn merged skillsByName lookup. User skills win on collision. */
 export function buildAvailableSkillsByName(
   userSkills: SkillDefinition[],
+  builtinSkills: SkillDefinition[] = allSkills,
 ): Record<string, SkillDefinition> {
-  if (userSkills.length === 0) return skillsByName;
-  const merged: Record<string, SkillDefinition> = { ...skillsByName };
+  if (userSkills.length === 0 && builtinSkills === allSkills) return skillsByName;
+  const merged: Record<string, SkillDefinition> = {};
+  for (const s of builtinSkills) merged[s.name] = s;
   for (const s of userSkills) merged[s.name] = s;
   return merged;
+}
+
+export function resolveEnabledBuiltinSkills(config: Pick<AgentConfig, "disabledBuiltinSkills">): SkillDefinition[] {
+  const disabled = new Set(agentSvc.normalizeDisabledBuiltinSkills(config.disabledBuiltinSkills));
+  if (disabled.size === 0) return allSkills;
+  return allSkills.filter((skill) => !disabled.has(skill.name));
+}
+
+export function pruneUnavailableActiveSkills(
+  state: ConvSkillState,
+  availableSkillsByName: Record<string, SkillDefinition>,
+): string[] {
+  const removed: string[] = [];
+  for (const name of [...state.active]) {
+    if (availableSkillsByName[name]) continue;
+    state.active.delete(name);
+    state.lastUsedTurn.delete(name);
+    removed.push(name);
+  }
+  return removed;
 }
 
 function buildActivitySource(activeSkills: Set<string>, toolCalls: Array<Pick<ToolCall, "tool">>): string | null {
@@ -471,6 +505,54 @@ function logAgent(entry: Record<string, unknown>) {
   }
 }
 
+function logAgentError(kind: string, entry: Record<string, unknown>) {
+  writeErrorLog({
+    scope: "agent",
+    kind,
+    level: "error",
+    ...entry,
+  });
+}
+
+function logProviderError(kind: string, entry: Record<string, unknown>) {
+  writeErrorLog({
+    scope: "provider",
+    kind,
+    level: "error",
+    ...entry,
+  });
+}
+
+function logAgentToolFailure(params: {
+  kind?: string;
+  conversationId?: string;
+  agentId?: string;
+  workspaceId?: string;
+  round?: number;
+  callId?: string;
+  tool: string;
+  args?: unknown;
+  durationMs?: number;
+  error: unknown;
+  context?: Record<string, unknown>;
+}) {
+  logAgentError(params.kind ?? "agent_tool_error", {
+    message: typeof params.error === "string" ? params.error : undefined,
+    conversationId: params.conversationId,
+    agentId: params.agentId,
+    workspaceId: params.workspaceId,
+    round: params.round,
+    durationMs: params.durationMs,
+    tool: {
+      name: params.tool,
+      callId: params.callId,
+      args: summarizeForLog(params.args),
+    },
+    error: typeof params.error === "string" ? { message: params.error } : normalizeError(params.error),
+    ...(params.context ?? {}),
+  });
+}
+
 // ─── System Prompt (three-layer structure, plan §3) ─────────────────────
 //
 //   Layer 1: META  — hardcoded, immutable. Meta-behavior + safety red lines.
@@ -567,8 +649,8 @@ export function buildSkillCatalog(
   const activeSet = new Set(activeSkillNames);
   const lines: string[] = [
     "# Tier 2 · 可激活技能目录（Skill Catalog）",
-    "默认只有 Tier 0（记忆 / 身份 / skill 路由）和 Tier 1（list_tables / get_table）工具。",
-    "当用户的需求落在以下场景时，先调 activate_skill({name}) 把对应技能挂进来，下一轮就能调用里面的工具。",
+    "默认只加载最小核心工具：skill/tool 检索入口、身份/记忆核心、基础 artifact 导航。",
+    "find_tool 与 find_skill 是同等最高优先级入口；当当前工具不足以满足用户需求时，优先调 find_tool({query}) 或 find_skill({query}) 检索能力；命中 skill 后再 activate_skill({name})。",
     "已 active 的技能会标记为 ✅；无需重复激活。带 [user] 前缀是你自己保存的技能。",
     "",
   ];
@@ -580,12 +662,13 @@ export function buildSkillCatalog(
   }
   lines.push("");
   lines.push(
-    "触发匹配时我们会自动替你激活（如用户说「创建字段」「删除记录」「加视图」），你只需关心业务逻辑。找不到对应能力时先 find_skill 看完整目录。"
+    "触发匹配时我们会自动替你激活（如用户说「创建字段」「删除记录」「加视图」）。如果当前工具列表里没有显然可用的工具，不要直接说做不到，先用 find_tool / find_skill 查询。"
   );
   return lines.join("\n");
 }
 
 const TOOL_GUIDANCE_ZH = `# 当前工具使用指南（Tier 1 Core MCP）
+- find_tool 与 find_skill 同等最高优先级。如果当前可见工具不能直接满足用户请求，先调用 find_tool({query: 用户意图}) 或 find_skill({query: 用户意图}) 查找是否有未加载工具/Skill；命中后按 nextAction 直接调用或 activate_skill。
 - 需要了解现状时先调 list_tables / get_table / list_fields / query_records
 - 批量操作优先使用 batch_ 系列（减少轮次）
 - 创建复杂表时顺序：create_table → **先用 update_field 改造默认主字段**（见下条）→ 再逐个 create_field 追加其余字段 → **先 batch_delete_records 删掉默认 5 条空记录** → batch_create_records 写入真实数据
@@ -1710,6 +1793,8 @@ export type UserMention =
 export interface AgentContext {
   conversationId: string;
   workspaceId: string;
+  /** Authenticated user represented by this agent turn. */
+  userId?: string;
   /** Identity scope. Defaults to "agent_default" if the caller doesn't set
    * one — that seed agent is created on backend boot. Once UI has multi-agent
    * selection this should be the active agent from the conversation. */
@@ -1933,10 +2018,14 @@ export async function* spawnSubagent(
   // 工具永远从 subagent 视图里删:
   //   - 自我身份编辑 (update_profile / update_soul / create_memory):
   //     subagent 是聚焦任务,不应改 host 的人格
-  //   - skill router (find_skill / activate_skill / deactivate_skill):
+  //   - skill router (find_skill / find_tool / activate_skill / deactivate_skill):
   //     skill 状态属于 host 的对话,subagent 不该 mutate
+  //   - user / agent / workspace settings tools:
+  //     subagent 是任务执行单元,不应改宿主用户资料或 agent/workspace 元数据
   //   - cron (schedule_task / list_scheduled_tasks / cancel_task):
   //     全 host 级
+  //   - model / knowledge management:
+  //     子任务不应改模型配置或长期知识库
   //   - host 决议 (approve/reject/escalate_subagent_danger):
   //     subagent 不能批准自己的 danger
   //   - workflow 顶层编排 (execute_workflow_template / list_workflow_templates):
@@ -1951,11 +2040,34 @@ export async function* spawnSubagent(
     "read_memory",
     "recall_memory",
     "find_skill",
+    "find_tool",
     "activate_skill",
     "deactivate_skill",
+    "get_current_user",
+    "update_user_profile",
+    "upload_user_avatar",
+    "update_user_preferences",
+    "list_my_agents",
+    "get_agent_metadata",
+    "update_agent_metadata",
+    "upload_agent_avatar",
+    "get_agent_identity",
+    "get_workspace",
+    "update_workspace_name",
     "schedule_task",
     "list_scheduled_tasks",
     "cancel_task",
+    "update_scheduled_task",
+    "add_model",
+    "list_custom_models",
+    "remove_model",
+    "test_model",
+    "learn_from_url",
+    "learn_from_text",
+    "search_knowledge",
+    "list_knowledge",
+    "update_knowledge",
+    "delete_knowledge",
     "approve_subagent_danger",
     "reject_subagent_danger",
     "escalate_subagent_danger",
@@ -2060,7 +2172,19 @@ export async function* spawnSubagent(
           let parsedArgs: any;
           try {
             parsedArgs = ev.call.arguments ? JSON.parse(ev.call.arguments) : {};
-          } catch {
+          } catch (err) {
+            logAgentToolFailure({
+              kind: "subagent_tool_bad_args",
+              conversationId: parentConversationId,
+              agentId: hostAgentId,
+              workspaceId: toolCtx.workspaceId,
+              round,
+              callId: ev.call.callId,
+              tool: ev.call.name,
+              args: ev.call.arguments,
+              error: err,
+              context: { runId: run.id, depth },
+            });
             parsedArgs = {};
           }
           pendingToolCalls.push({
@@ -2118,6 +2242,18 @@ export async function* spawnSubagent(
             });
             if (decision === "rejected") {
               const errMsg = "host 拒绝了此次危险动作";
+              logAgentToolFailure({
+                kind: "subagent_tool_rejected",
+                conversationId: parentConversationId,
+                agentId: hostAgentId,
+                workspaceId: toolCtx.workspaceId,
+                round,
+                callId: call.callId,
+                tool: call.name,
+                args: call.args,
+                error: errMsg,
+                context: { runId: run.id, depth },
+              });
               const callRow = {
                 callId: call.callId,
                 tool: call.name,
@@ -2152,6 +2288,18 @@ export async function* spawnSubagent(
 
           if (!tool) {
             const errMsg = `tool ${call.name} not in subagent allowlist`;
+            logAgentToolFailure({
+              kind: "subagent_tool_unknown",
+              conversationId: parentConversationId,
+              agentId: hostAgentId,
+              workspaceId: toolCtx.workspaceId,
+              round,
+              callId: call.callId,
+              tool: call.name,
+              args: call.args,
+              error: errMsg,
+              context: { runId: run.id, depth },
+            });
             const callRow = {
               callId: call.callId,
               tool: call.name,
@@ -2178,6 +2326,7 @@ export async function* spawnSubagent(
 
           yield { event: "subagent_tool_start", data: { runId: run.id, callId: call.callId, tool: call.name, args: call.args } };
           let toolResult: any;
+          const subToolStartedAt = Date.now();
           try {
             // V2.4 B2: 若 subagent 调 spawn_subagent (depth=1 → 调出 depth=2),
             // 给 subagent 看到的 toolCtx.spawnSubagent 增加 depth+1 注入。
@@ -2192,6 +2341,22 @@ export async function* spawnSubagent(
                 }
               : toolCtx;
             toolResult = await tool.handler(call.args, subToolCtx);
+            const reportedError = extractToolOutputError(toolResult);
+            if (reportedError) {
+              logAgentToolFailure({
+                kind: "subagent_tool_result_error",
+                conversationId: parentConversationId,
+                agentId: hostAgentId,
+                workspaceId: toolCtx.workspaceId,
+                round,
+                callId: call.callId,
+                tool: call.name,
+                args: call.args,
+                durationMs: Date.now() - subToolStartedAt,
+                error: reportedError,
+                context: { runId: run.id, depth },
+              });
+            }
             const callRow = {
               callId: call.callId,
               tool: call.name,
@@ -2203,6 +2368,19 @@ export async function* spawnSubagent(
             yield { event: "subagent_tool_result", data: { runId: run.id, callId: call.callId, success: true, result: toolResult } };
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
+            logAgentToolFailure({
+              kind: "subagent_tool_error",
+              conversationId: parentConversationId,
+              agentId: hostAgentId,
+              workspaceId: toolCtx.workspaceId,
+              round,
+              callId: call.callId,
+              tool: call.name,
+              args: call.args,
+              durationMs: Date.now() - subToolStartedAt,
+              error: err,
+              context: { runId: run.id, depth },
+            });
             const callRow = {
               callId: call.callId,
               tool: call.name,
@@ -2239,6 +2417,15 @@ export async function* spawnSubagent(
     success = true;
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
+    logProviderError("subagent_provider_error", {
+      message: errorMessage,
+      conversationId: parentConversationId,
+      agentId: hostAgentId,
+      workspaceId: toolCtx.workspaceId,
+      runId: run.id,
+      model: { id: model.id, provider: model.provider },
+      error: normalizeError(err),
+    });
     yield { event: "subagent_error", data: { runId: run.id, error: errorMessage } };
   }
 
@@ -2390,6 +2577,18 @@ async function* runAgentImpl(
   // degrades to "no user skills this turn" — never aborts the turn.
   let userSkillsForTurn: SkillDefinition[] = [];
   let integrationSkillsForTurn: SkillDefinition[] = [];
+  let builtinSkillsForTurn: SkillDefinition[] = allSkills;
+  try {
+    const agentConfig = await agentSvc.readConfig(agentId);
+    builtinSkillsForTurn = resolveEnabledBuiltinSkills(agentConfig);
+  } catch (err) {
+    logAgent({
+      event: "builtin_skills_config_load_failed",
+      conversationId,
+      agentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
   try {
     userSkillsForTurn = await loadUserSkills(agentId);
   } catch (err) {
@@ -2415,11 +2614,20 @@ async function* runAgentImpl(
     ...integrationSkillsForTurn,
   ];
   const availableSkillsForTurn: SkillDefinition[] = [
-    ...allSkills,
+    ...builtinSkillsForTurn,
     ...dynamicSkillsForTurn,
   ];
-  const availableSkillsByNameForTurn = buildAvailableSkillsByName(dynamicSkillsForTurn);
-  const skillNameForToolForTurn = buildSkillNameForTool(dynamicSkillsForTurn);
+  const availableSkillsByNameForTurn = buildAvailableSkillsByName(dynamicSkillsForTurn, builtinSkillsForTurn);
+  const skillNameForToolForTurn = buildSkillNameForTool(dynamicSkillsForTurn, builtinSkillsForTurn);
+  const prunedSkills = pruneUnavailableActiveSkills(skillState, availableSkillsByNameForTurn);
+  if (prunedSkills.length) {
+    logAgent({
+      event: "skill_pruned_unavailable",
+      conversationId,
+      agentId,
+      skills: prunedSkills,
+    });
+  }
   // Per-turn tool lookup map. Builtin `toolsByName` only knows static
   // tools (tier0/tier1 + builtin skills' tools). User skills' synthesized
   // `invoke_skill_workflow_<id>_<i>` tools are created at runtime via
@@ -2512,6 +2720,8 @@ async function* runAgentImpl(
   // `callId` is rewritten right before each handler dispatch so the progress
   // callback always references the currently-executing tool.
   const toolCtx = {
+    userId: ctx.userId ?? ownerUserId ?? undefined,
+    authToken: ctx.authToken,
     agentId,
     conversationId,
     workspaceId,
@@ -2519,6 +2729,8 @@ async function* runAgentImpl(
     activeSkills: [...skillState.active],
     availableSkills: availableSkillsForTurn,
     availableSkillsByName: availableSkillsByNameForTurn,
+    availableToolNames: [] as string[],
+    availableToolSummaries: [] as Array<{ name: string; description: string; danger?: boolean }>,
     callId: undefined as string | undefined,
     progress: (payload: {
       phase?: string;
@@ -2961,6 +3173,12 @@ async function* runAgentImpl(
     // expose that skill's tools on the NEXT round.
     toolCtx.activeSkills = [...skillState.active];
     const activeTools = resolveActiveTools(toolCtx.activeSkills, availableSkillsByNameForTurn, { isAdmin: isOwnerAdmin });
+    toolCtx.availableToolNames = activeTools.map((t) => t.name);
+    toolCtx.availableToolSummaries = activeTools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      ...(t.danger ? { danger: true } : {}),
+    }));
 
     // Rebuild the system prompt when the active skill set changed since
     // last round. Without this the newly-activated skill's promptFragment
@@ -3081,6 +3299,15 @@ async function* runAgentImpl(
       }
 
       logAgent({ event: "provider_error", round, model: model.id, provider: model.provider, error: msg });
+      logProviderError("chat_provider_error", {
+        message: msg,
+        conversationId,
+        agentId,
+        workspaceId,
+        round,
+        model: { id: model.id, provider: model.provider },
+        error: normalizeError(err),
+      });
       yield {
         event: "error",
         data: {
@@ -3093,6 +3320,15 @@ async function* runAgentImpl(
     }
     if (streamErrored) {
       logAgent({ event: "provider_stream_error", round, model: model.id, provider: model.provider, error: streamErrored });
+      logProviderError("chat_provider_stream_error", {
+        message: streamErrored,
+        conversationId,
+        agentId,
+        workspaceId,
+        round,
+        model: { id: model.id, provider: model.provider },
+        error: { message: streamErrored },
+      });
       yield { event: "error", data: { code: "PROVIDER_ERROR", message: streamErrored, model: model.id } };
       break;
     }
@@ -3142,6 +3378,7 @@ async function* runAgentImpl(
     // mixed in, run them in parallel. Otherwise fall through to sequential.
     // The parallel path collects all results, injects them into `input`,
     // and skips the sequential loop for those calls.
+    const availableToolNamesThisRound = new Set(toolCtx.availableToolNames);
     const subagentCalls = funcCalls.filter(fc => fc.name === "spawn_subagent");
     const nonSubagentCalls = funcCalls.filter(fc => fc.name !== "spawn_subagent");
     const parallelSubagentResults = new Map<string, string>(); // callId → output
@@ -3154,19 +3391,80 @@ async function* runAgentImpl(
       // Parse args + look up tool for each
       const jobs = subagentCalls.map(fc => {
         let parsedArgs: Record<string, unknown> = {};
-        try { parsedArgs = JSON.parse(fc.arguments || "{}"); } catch { /* */ }
-        const tool = toolsByNameForTurn[fc.name];
+        try {
+          parsedArgs = JSON.parse(fc.arguments || "{}");
+        } catch (err) {
+          logAgentToolFailure({
+            kind: "agent_tool_bad_args",
+            conversationId,
+            agentId,
+            workspaceId,
+            round,
+            callId: fc.callId,
+            tool: fc.name,
+            args: fc.arguments,
+            error: err,
+            context: { path: "parallel_subagent" },
+          });
+        }
+        const tool = availableToolNamesThisRound.has(fc.name) ? toolsByNameForTurn[fc.name] : undefined;
         return { fc, parsedArgs, tool };
       });
 
       // Fire all in parallel (semaphore inside callModelStream handles concurrency)
       const promises = jobs.map(async ({ fc, parsedArgs, tool }) => {
-        if (!tool) return { callId: fc.callId, output: JSON.stringify({ error: `未知工具: ${fc.name}` }), success: false };
+        const started = Date.now();
+        if (!tool) {
+          const msg = `未知工具: ${fc.name}`;
+          logAgentToolFailure({
+            kind: "agent_tool_unknown",
+            conversationId,
+            agentId,
+            workspaceId,
+            round,
+            callId: fc.callId,
+            tool: fc.name,
+            args: fc.arguments,
+            durationMs: Date.now() - started,
+            error: msg,
+            context: { path: "parallel_subagent" },
+          });
+          return { callId: fc.callId, output: JSON.stringify({ error: msg }), success: false };
+        }
         try {
           toolCtx.callId = fc.callId;
           const out = await tool.handler(parsedArgs, toolCtx);
+          const reportedError = extractToolOutputError(out);
+          if (reportedError) {
+            logAgentToolFailure({
+              kind: "agent_tool_result_error",
+              conversationId,
+              agentId,
+              workspaceId,
+              round,
+              callId: fc.callId,
+              tool: fc.name,
+              args: parsedArgs,
+              durationMs: Date.now() - started,
+              error: reportedError,
+              context: { path: "parallel_subagent" },
+            });
+          }
           return { callId: fc.callId, output: out, success: true };
         } catch (err) {
+          logAgentToolFailure({
+            kind: "agent_tool_error",
+            conversationId,
+            agentId,
+            workspaceId,
+            round,
+            callId: fc.callId,
+            tool: fc.name,
+            args: parsedArgs,
+            durationMs: Date.now() - started,
+            error: err,
+            context: { path: "parallel_subagent" },
+          });
           return { callId: fc.callId, output: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), success: false };
         }
       });
@@ -3205,6 +3503,17 @@ async function* runAgentImpl(
       try {
         parsedArgs = JSON.parse(fc.arguments || "{}");
       } catch (err) {
+        logAgentToolFailure({
+          kind: "agent_tool_bad_args",
+          conversationId,
+          agentId,
+          workspaceId,
+          round,
+          callId: fc.callId,
+          tool: fc.name,
+          args: fc.arguments,
+          error: err,
+        });
         yield { event: "error", data: { code: "BAD_ARGS", message: `工具参数 JSON 解析失败: ${fc.name}` } };
         continue;
       }
@@ -3212,9 +3521,20 @@ async function* runAgentImpl(
       // Look up via the per-turn map (builtin + user skill workflow tools).
       // Falling back to module-level toolsByName here would still miss
       // user skills — keep them at parity by reading from the merged map.
-      const tool = toolsByNameForTurn[fc.name];
+      const tool = availableToolNamesThisRound.has(fc.name) ? toolsByNameForTurn[fc.name] : undefined;
       if (!tool) {
         const msg = `未知工具: ${fc.name}`;
+        logAgentToolFailure({
+          kind: "agent_tool_unknown",
+          conversationId,
+          agentId,
+          workspaceId,
+          round,
+          callId: fc.callId,
+          tool: fc.name,
+          args: fc.arguments,
+          error: msg,
+        });
         yield { event: "error", data: { code: "UNKNOWN_TOOL", message: msg } };
         input.push({ type: "function_call", call_id: fc.callId, name: fc.name, arguments: fc.arguments });
         input.push({ type: "function_call_output", call_id: fc.callId, output: JSON.stringify({ error: msg }) });
@@ -3282,9 +3602,11 @@ async function* runAgentImpl(
       // blocked on `await`. The event-pump loop below yields queued progress
       // / heartbeat events as they arrive, keeping nginx + browser SSE alive
       // during long tool calls and feeding the FE progress bar in real time.
+      const toolStartedAt = Date.now();
       let toolOutput: string = "";
       let success = true;
       let toolSettled = false;
+      let thrownToolError: unknown = null;
       const toolPromise = (async () => {
         try {
           const out = await tool.handler(parsedArgs, toolCtx);
@@ -3298,6 +3620,7 @@ async function* runAgentImpl(
           }
         } catch (err) {
           success = false;
+          thrownToolError = err;
           toolOutput = JSON.stringify({
             error: err instanceof Error ? err.message : String(err),
           });
@@ -3365,6 +3688,7 @@ async function* runAgentImpl(
       longTask.settleTool();
       toolCtx.callId = undefined;
       toolCtx.abortSignal = abortSignal;
+      const toolDurationMs = Date.now() - toolStartedAt;
 
       // V2 streaming-write hook: detect begin/end so the text_delta router
       // knows when to redirect into the idea session. We look at the tool
@@ -3413,6 +3737,22 @@ async function* runAgentImpl(
           // tool really was a stream-write, the MCP layer's marker would
           // have been JSON-serializable.
         }
+      }
+
+      const reportedToolError = extractToolOutputError(toolOutput);
+      if (!success || reportedToolError) {
+        logAgentToolFailure({
+          kind: success ? "agent_tool_result_error" : "agent_tool_error",
+          conversationId,
+          agentId,
+          workspaceId,
+          round,
+          callId: fc.callId,
+          tool: fc.name,
+          args: parsedArgs,
+          durationMs: toolDurationMs,
+          error: thrownToolError ?? reportedToolError ?? toolOutput,
+        });
       }
 
       yield {
@@ -3658,11 +3998,25 @@ async function* resumeAfterConfirmImpl(
   abortSignal?: AbortSignal
 ): AsyncGenerator<SseEvent, void, undefined> {
   if (!ctx.pendingConfirmations) {
+    logAgentError("agent_confirm_context_missing", {
+      message: "confirmation context is missing",
+      conversationId: ctx.conversationId,
+      agentId: ctx.agentId,
+      workspaceId: ctx.workspaceId,
+      tool: { callId },
+    });
     yield { event: "error", data: { code: "NO_CONTEXT", message: "会话上下文已丢失，请重新发起提问" } };
     return;
   }
   const pending = ctx.pendingConfirmations.get(callId);
   if (!pending) {
+    logAgentError("agent_confirm_pending_missing", {
+      message: "pending confirmation not found",
+      conversationId: ctx.conversationId,
+      agentId: ctx.agentId,
+      workspaceId: ctx.workspaceId,
+      tool: { callId },
+    });
     yield { event: "error", data: { code: "NO_PENDING", message: "找不到待确认的工具调用" } };
     return;
   }
@@ -3712,6 +4066,15 @@ async function* resumeAfterConfirmImpl(
   const resumeAgentId = ctx.agentId || DEFAULT_AGENT_ID;
   const resumeOwnerAgent = await getAgent(resumeAgentId);
   const resumeOwnerUserId = resumeOwnerAgent?.userId ?? null;
+  let resumeIsOwnerAdmin = false;
+  if (resumeOwnerUserId) {
+    try {
+      const resumeOwnerUser = await store.getUserById(resumeOwnerUserId);
+      resumeIsOwnerAdmin = !!resumeOwnerUser?.admin;
+    } catch {
+      /* ignore */
+    }
+  }
   const resumeTimeZone = await resolveContextTimeZone(ctx, resumeOwnerUserId);
   // Reuse the per-conversation skill state so that if the confirmed tool
   // happens to be a skill-router tool (today none are danger=true, but keep
@@ -3720,6 +4083,13 @@ async function* resumeAfterConfirmImpl(
   const resumeSkillState = getOrInitSkillState(ctx.conversationId);
   let resumeUserSkills: SkillDefinition[] = [];
   let resumeIntegrationSkills: SkillDefinition[] = [];
+  let resumeBuiltinSkills: SkillDefinition[] = allSkills;
+  try {
+    const resumeAgentConfig = await agentSvc.readConfig(resumeAgentId);
+    resumeBuiltinSkills = resolveEnabledBuiltinSkills(resumeAgentConfig);
+  } catch {
+    /* ignore */
+  }
   try {
     resumeUserSkills = await loadUserSkills(resumeAgentId);
   } catch {
@@ -3734,14 +4104,32 @@ async function* resumeAfterConfirmImpl(
     ...resumeUserSkills,
     ...resumeIntegrationSkills,
   ];
-  const resumeToolsByName: Record<string, ToolDefinition> = { ...toolsByName };
-  for (const s of resumeDynamicSkills) {
-    for (const t of s.tools) {
-      resumeToolsByName[t.name] = t;
-    }
-  }
+  const resumeAvailableSkillsByName = buildAvailableSkillsByName(resumeDynamicSkills, resumeBuiltinSkills);
+  pruneUnavailableActiveSkills(resumeSkillState, resumeAvailableSkillsByName);
+  const resumeAvailableSkillsForTurn: SkillDefinition[] = [
+    ...resumeBuiltinSkills,
+    ...resumeDynamicSkills,
+  ];
+  const resumeActiveTools = resolveActiveTools(
+    [...resumeSkillState.active],
+    resumeAvailableSkillsByName,
+    { isAdmin: resumeIsOwnerAdmin },
+  );
+  const resumeToolsByName: Record<string, ToolDefinition> =
+    Object.fromEntries(resumeActiveTools.map((t) => [t.name, t]));
   const tool = resumeToolsByName[pending.tool];
   if (!tool) {
+    logAgentToolFailure({
+      kind: "agent_tool_unknown",
+      conversationId: ctx.conversationId,
+      agentId: resumeAgentId,
+      workspaceId: ctx.workspaceId,
+      callId,
+      tool: pending.tool,
+      args: pending.args,
+      error: `未知工具: ${pending.tool}`,
+      context: { path: "resume_confirm" },
+    });
     yield { event: "error", data: { code: "UNKNOWN_TOOL", message: `未知工具: ${pending.tool}` } };
     return;
   }
@@ -3750,11 +4138,24 @@ async function* resumeAfterConfirmImpl(
   let output: string;
   let success = true;
   const resumeStartedAt = Date.now();
-  const resumeAvailableSkillsByName = buildAvailableSkillsByName(resumeDynamicSkills);
   const resumeToolCtx: ToolContext = {
+    userId: ctx.userId ?? resumeOwnerUserId ?? undefined,
+    authToken: ctx.authToken,
     agentId: resumeAgentId,
+    conversationId: ctx.conversationId,
+    workspaceId: ctx.workspaceId,
+    callId,
     timeZone: resumeTimeZone,
     activeSkills: [...resumeSkillState.active],
+    availableSkills: resumeAvailableSkillsForTurn,
+    availableSkillsByName: resumeAvailableSkillsByName,
+    availableToolNames: Object.keys(resumeToolsByName),
+    availableToolSummaries: Object.values(resumeToolsByName).map((t) => ({
+      name: t.name,
+      description: t.description,
+      ...(t.danger ? { danger: true } : {}),
+    })),
+    abortSignal,
     onActivateSkill: (name: string) => {
       if (!resumeAvailableSkillsByName[name]) return;
       resumeSkillState.active.add(name);
@@ -3767,7 +4168,7 @@ async function* resumeAfterConfirmImpl(
   };
   // Bump lastUsedTurn for the owning skill so it doesn't get evicted just
   // because the confirmation round-tripped across turns.
-  const resumeSkillNameForTool = buildSkillNameForTool(resumeDynamicSkills);
+  const resumeSkillNameForTool = buildSkillNameForTool(resumeDynamicSkills, resumeBuiltinSkills);
   const owningSkill = resumeSkillNameForTool.get(pending.tool);
   if (owningSkill && resumeSkillState.active.has(owningSkill)) {
     resumeSkillState.lastUsedTurn.set(owningSkill, resumeSkillState.turnIndex);
@@ -3776,7 +4177,34 @@ async function* resumeAfterConfirmImpl(
     output = await tool.handler({ ...pending.args, confirmed: true }, resumeToolCtx);
   } catch (err) {
     success = false;
+    logAgentToolFailure({
+      kind: "agent_tool_error",
+      conversationId: ctx.conversationId,
+      agentId: resumeAgentId,
+      workspaceId: ctx.workspaceId,
+      callId,
+      tool: pending.tool,
+      args: { ...pending.args, confirmed: true },
+      durationMs: Date.now() - resumeStartedAt,
+      error: err,
+      context: { path: "resume_confirm" },
+    });
     output = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+  }
+  const resumeReportedError = extractToolOutputError(output);
+  if (success && resumeReportedError) {
+    logAgentToolFailure({
+      kind: "agent_tool_result_error",
+      conversationId: ctx.conversationId,
+      agentId: resumeAgentId,
+      workspaceId: ctx.workspaceId,
+      callId,
+      tool: pending.tool,
+      args: { ...pending.args, confirmed: true },
+      durationMs: Date.now() - resumeStartedAt,
+      error: resumeReportedError,
+      context: { path: "resume_confirm" },
+    });
   }
   yield { event: "tool_result", data: { callId, tool: pending.tool, success, result: output } };
   const resumeMessage = buildConfirmedToolMessage(pending.tool, output, success);

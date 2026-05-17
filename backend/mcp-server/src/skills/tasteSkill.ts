@@ -19,8 +19,11 @@
  */
 
 import { designWriteTools } from "../tools/designTools.js";
-import { tasteWriteTools } from "../tools/tasteTools.js";
+import { tasteNavTools, tasteWriteTools } from "../tools/tasteTools.js";
 import type { SkillDefinition } from "./types.js";
+
+const TASTE_ALWAYS_ON_NAV = new Set(["list_tastes", "get_taste"]);
+const tasteDeepReadTools = tasteNavTools.filter((t) => !TASTE_ALWAYS_ON_NAV.has(t.name));
 
 export const tasteSkill: SkillDefinition = {
   name: "taste-skill",
@@ -43,5 +46,5 @@ export const tasteSkill: SkillDefinition = {
     /\b(rename|edit|update)\b.*\b(design|canvas|taste|svg)s?\b/i,
     /\b(move|align|auto[-\s]?layout|tidy|arrange|reflow)\b.*\b(design|canvas|taste|svg)?s?\b/i,
   ],
-  tools: [...designWriteTools, ...tasteWriteTools],
+  tools: [...tasteDeepReadTools, ...designWriteTools, ...tasteWriteTools],
 };

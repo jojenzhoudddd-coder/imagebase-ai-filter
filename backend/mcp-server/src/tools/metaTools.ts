@@ -25,6 +25,7 @@ import {
   writeProfile,
   appendEpisodicMemory,
   ensureAgentFiles,
+  getAgent,
   updateAgent,
 } from "../../../src/services/agentService.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
@@ -35,6 +36,14 @@ function resolveAgentId(args: Record<string, any>, ctx?: ToolContext): string {
   if (typeof args.agentId === "string" && args.agentId.trim()) return args.agentId.trim();
   if (ctx?.agentId) return ctx.agentId;
   return DEFAULT_AGENT_ID;
+}
+
+async function assertOwnedAgent(agentId: string, ctx?: ToolContext): Promise<string | null> {
+  if (!ctx?.userId) return null;
+  const agent = await getAgent(agentId);
+  if (!agent) return `agent ${agentId} 不存在`;
+  if (agent.userId !== ctx.userId) return `agent ${agentId} 不属于当前用户`;
+  return null;
 }
 
 export const metaTools: ToolDefinition[] = [
@@ -58,6 +67,8 @@ export const metaTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const agentId = resolveAgentId(args, ctx);
+      const denied = await assertOwnedAgent(agentId, ctx);
+      if (denied) return JSON.stringify({ ok: false, error: denied });
       const content = typeof args.content === "string" ? args.content : "";
       if (!content.trim()) {
         return JSON.stringify({ ok: false, error: "content 不能为空" });
@@ -88,6 +99,8 @@ export const metaTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const agentId = resolveAgentId(args, ctx);
+      const denied = await assertOwnedAgent(agentId, ctx);
+      if (denied) return JSON.stringify({ ok: false, error: denied });
       const content = typeof args.content === "string" ? args.content : "";
       if (!content.trim()) {
         return JSON.stringify({ ok: false, error: "content 不能为空" });
@@ -118,6 +131,8 @@ export const metaTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const agentId = resolveAgentId(args, ctx);
+      const denied = await assertOwnedAgent(agentId, ctx);
+      if (denied) return JSON.stringify({ ok: false, error: denied });
       const raw = typeof args.name === "string" ? args.name.trim() : "";
       if (!raw) {
         return JSON.stringify({ ok: false, error: "name 不能为空" });
@@ -156,6 +171,8 @@ export const metaTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const agentId = resolveAgentId(args, ctx);
+      const denied = await assertOwnedAgent(agentId, ctx);
+      if (denied) return JSON.stringify({ ok: false, error: denied });
       const title = typeof args.title === "string" ? args.title.trim() : "";
       const body = typeof args.body === "string" ? args.body : "";
       const tags = Array.isArray(args.tags) ? args.tags.filter((t: unknown) => typeof t === "string") : undefined;

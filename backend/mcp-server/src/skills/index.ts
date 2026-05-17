@@ -28,6 +28,11 @@ import { workflowSkill } from "./workflowSkill.js";
 import { skillCreatorSkill } from "./skillCreatorSkill.js";
 import { systemThemeSkill } from "./systemThemeSkill.js";
 import { integrationSkill } from "./integrationSkill.js";
+import { settingsSkill } from "./settingsSkill.js";
+import { folderSkill } from "./folderSkill.js";
+import { scheduleSkill } from "./scheduleSkill.js";
+import { modelManagementSkill } from "./modelManagementSkill.js";
+import { knowledgeSkill } from "./knowledgeSkill.js";
 import type { SkillDefinition } from "./types.js";
 
 export const allSkills: SkillDefinition[] = [
@@ -44,6 +49,11 @@ export const allSkills: SkillDefinition[] = [
   worktreeSkill,
   workflowSkill,
   skillCreatorSkill,
+  settingsSkill,
+  folderSkill,
+  scheduleSkill,
+  modelManagementSkill,
+  knowledgeSkill,
   systemThemeSkill,
   integrationSkill,
 ];

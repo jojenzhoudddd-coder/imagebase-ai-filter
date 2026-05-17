@@ -16,6 +16,10 @@ import type { SkillDefinition } from "../skills/types.js";
  * tools like create_table) or supply the identifier explicitly in args.
  */
 export interface ToolContext {
+  /** Current authenticated user id for in-process chat-agent calls. */
+  userId?: string;
+  /** Current request JWT, forwarded to API-backed tools when needed. */
+  authToken?: string;
   agentId?: string;
   /**
    * Phase 3: currently-active skill names for the live conversation.
@@ -29,6 +33,13 @@ export interface ToolContext {
   /** Per-turn full skill catalog, including user skills and integration skills. */
   availableSkills?: SkillDefinition[];
   availableSkillsByName?: Record<string, SkillDefinition>;
+  /** Per-round tool list that the model can call right now. */
+  availableToolNames?: string[];
+  availableToolSummaries?: Array<{
+    name: string;
+    description: string;
+    danger?: boolean;
+  }>;
   /** Resolved user timezone for date/time-aware tools. */
   timeZone?: string;
   /**

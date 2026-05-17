@@ -23,6 +23,7 @@
 // but it's a stable public-internal that express-async-errors and others rely on.
 import Layer from "express/lib/router/layer.js";
 import type { Request, Response, NextFunction } from "express";
+import { normalizeError, writeErrorLog } from "../services/errorLogService.js";
 
 let installed = false;
 
@@ -73,6 +74,20 @@ export function globalErrorHandler(
   console.error(
     `[express] unhandled error on ${req.method} ${req.originalUrl}: ${msg}\n${stack ?? ""}`,
   );
+  writeErrorLog({
+    scope: "api",
+    kind: "api_unhandled_error",
+    level: "error",
+    message: msg,
+    error: normalizeError(err),
+    request: {
+      method: req.method,
+      url: req.originalUrl,
+      statusCode: res.statusCode,
+      headersSent: res.headersSent,
+      userId: (req as Request & { user?: { id?: string } }).user?.id,
+    },
+  });
   if (res.headersSent) {
     // Connection is mid-flight (e.g. SSE). Best we can do is end it.
     try {

@@ -17,6 +17,7 @@
 
 import { analystTools } from "../tools/analystTools.js";
 import { analystWriteTools } from "../tools/analystWriteTools.js";
+import { dictionaryTools } from "../tools/dictionaryTools.js";
 import type { SkillDefinition } from "./types.js";
 
 export const ANALYST_PROMPT_FRAGMENT = `## Analyst 操作规则（严格）
@@ -135,6 +136,6 @@ export const analystSkill: SkillDefinition = {
     // 英文
     /\b(analyze|aggregate|group by|pivot|top\s*\d+|trend|distribution|breakdown|sum|avg|average|count|compare)\b/i,
   ],
-  tools: [...analystTools, ...analystWriteTools],
+  tools: [...dictionaryTools, ...analystTools, ...analystWriteTools],
   promptFragment: ANALYST_PROMPT_FRAGMENT,
 };

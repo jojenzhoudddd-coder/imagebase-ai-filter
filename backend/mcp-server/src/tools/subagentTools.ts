@@ -19,7 +19,15 @@
  */
 
 import type { ToolContext, ToolDefinition } from "./tableTools.js";
-import { resolveSubagentDanger } from "../../../src/services/chatAgentService.js";
+
+async function resolveSubagentDangerDecision(
+  runId: string,
+  callId: string,
+  decision: "approved" | "rejected",
+): Promise<boolean> {
+  const { resolveSubagentDanger } = await import("../../../src/services/chatAgentService.js");
+  return resolveSubagentDanger(runId, callId, decision);
+}
 
 export const subagentTools: ToolDefinition[] = [
   {
@@ -130,7 +138,7 @@ export const subagentTools: ToolDefinition[] = [
       required: ["runId", "callId"],
     },
     handler: async (args, _ctx?: ToolContext): Promise<string> => {
-      const ok = resolveSubagentDanger(String(args.runId), String(args.callId), "approved");
+      const ok = await resolveSubagentDangerDecision(String(args.runId), String(args.callId), "approved");
       return JSON.stringify({ ok, decision: "approved" });
     },
   },
@@ -148,7 +156,7 @@ export const subagentTools: ToolDefinition[] = [
       required: ["runId", "callId"],
     },
     handler: async (args, _ctx?: ToolContext): Promise<string> => {
-      const ok = resolveSubagentDanger(String(args.runId), String(args.callId), "rejected");
+      const ok = await resolveSubagentDangerDecision(String(args.runId), String(args.callId), "rejected");
       return JSON.stringify({ ok, decision: "rejected" });
     },
   },
@@ -176,7 +184,7 @@ export const subagentTools: ToolDefinition[] = [
       // V2.4 V1:简化实现,先转 reject 让 subagent 收到 error,host 后续在
       // finalText 里告诉用户。完整的 escalate→user→confirm→subagent 链路
       // 涉及 subagent loop pause + chatRoutes 跨模块协作,留 V2.5 跟进。
-      const ok = resolveSubagentDanger(String(args.runId), String(args.callId), "rejected");
+      const ok = await resolveSubagentDangerDecision(String(args.runId), String(args.callId), "rejected");
       return JSON.stringify({
         ok,
         decision: "escalated-as-reject",
