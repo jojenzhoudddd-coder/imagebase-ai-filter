@@ -128,16 +128,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.dock-tile:hover {
-  transform: scale(1.15) translateY(-2px);
-}
-
-.dock-tile:active {
-  transform: scale(0.92);
-  transition-duration: 0.1s;
 }
 
 /* Individual icon glass card */
@@ -157,15 +147,7 @@
   transition: border-radius 0.2s ease, box-shadow 0.2s ease;
 }
 
-.dock-tile:hover .dock-tile-inner {
-  border-radius: 14px;
-  box-shadow:
-    0 4px 12px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25);
-}
-
 .dock-tile--active .dock-tile-inner {
-  border-radius: 14px;
   box-shadow:
     0 4px 12px rgba(0, 0, 0, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
@@ -210,14 +192,22 @@
   opacity: 0.4;
 }
 
-.dock-tile-wrap--dragover {
-  transform: scale(0.9);
-}
-
-.dock-tile-wrap--dragover::after {
+/* Drop indicator line: 2px blue line above the target tile, 4px gap from tile */
+.dock-tile-wrap--dragover-before::before {
   content: "";
   position: absolute;
-  top: -3px;
+  top: -5px;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--primary, #1456F0);
+}
+
+.dock-tile-wrap--dragover-after::after {
+  content: "";
+  position: absolute;
+  bottom: -5px;
   left: 8px;
   right: 8px;
   height: 2px;
@@ -281,9 +271,6 @@
   opacity: 0.35;
 }
 
-.dock-tile--add:hover {
-  transform: scale(1.08);
-}
 
 /* ─── Avatar image tile ─── */
 

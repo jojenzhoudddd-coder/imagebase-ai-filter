@@ -38,25 +38,33 @@ export default function WorkspaceDock({
   }, [workspaces, preferences?.workspaceOrder]);
 
   // ── Drag-to-reorder ──
+  // dropSide: "before" = line above target, "after" = line below target
   const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ idx: number; side: "before" | "after" } | null>(null);
 
   const handleDragStart = (idx: number) => setDragIdx(idx);
   const handleDragOver = (e: React.DragEvent, idx: number) => {
     e.preventDefault();
-    if (dragIdx !== null && idx !== dragIdx) setDragOverIdx(idx);
+    if (dragIdx === null || idx === dragIdx) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const side = e.clientY < midY ? "before" : "after";
+    setDropTarget({ idx, side });
   };
-  const handleDrop = (idx: number) => {
-    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setDragOverIdx(null); return; }
+  const handleDrop = () => {
+    if (dragIdx === null || !dropTarget) { setDragIdx(null); setDropTarget(null); return; }
     const reordered = [...orderedWorkspaces];
     const [moved] = reordered.splice(dragIdx, 1);
-    reordered.splice(idx, 0, moved);
+    // Calculate insert position accounting for removal shift
+    let insertAt = dropTarget.side === "before" ? dropTarget.idx : dropTarget.idx + 1;
+    if (dragIdx < insertAt) insertAt--;
+    reordered.splice(insertAt, 0, moved);
     const newOrder = reordered.map((w) => w.id);
     patchPreferences({ workspaceOrder: newOrder });
     setDragIdx(null);
-    setDragOverIdx(null);
+    setDropTarget(null);
   };
-  const handleDragEnd = () => { setDragIdx(null); setDragOverIdx(null); };
+  const handleDragEnd = () => { setDragIdx(null); setDropTarget(null); };
 
   // ── Context menu ──
   const [ctxMenu, setCtxMenu] = useState<{ wsId: string; x: number; y: number } | null>(null);
@@ -182,7 +190,7 @@ export default function WorkspaceDock({
                 workspace={ws}
                 active={ws.id === currentWorkspaceId}
                 dragging={dragIdx === i}
-                dragOver={dragOverIdx === i}
+                dropSide={dropTarget?.idx === i ? dropTarget.side : undefined}
                 onClick={() => onSelectWorkspace(ws.id)}
                 onContextMenu={(e) => {
                   e.preventDefault();
@@ -191,7 +199,7 @@ export default function WorkspaceDock({
                 }}
                 onDragStart={() => handleDragStart(i)}
                 onDragOver={(e) => handleDragOver(e, i)}
-                onDrop={() => handleDrop(i)}
+                onDrop={handleDrop}
                 onDragEnd={handleDragEnd}
               />
             ))}
@@ -282,7 +290,7 @@ function WorkspaceTile({
   workspace,
   active,
   dragging,
-  dragOver,
+  dropSide,
   onClick,
   onContextMenu,
   onDragStart,
@@ -293,7 +301,7 @@ function WorkspaceTile({
   workspace: AuthWorkspace;
   active: boolean;
   dragging?: boolean;
-  dragOver?: boolean;
+  dropSide?: "before" | "after";
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onDragStart?: () => void;
@@ -304,10 +312,16 @@ function WorkspaceTile({
   const initials = getInitials(workspace.name);
   const gradient = getGradientForId(workspace.id);
 
+  const dragCls = [
+    dragging ? "dock-tile-wrap--dragging" : "",
+    dropSide === "before" ? "dock-tile-wrap--dragover-before" : "",
+    dropSide === "after" ? "dock-tile-wrap--dragover-after" : "",
+  ].filter(Boolean).join(" ");
+
   return (
     <DockTip label={workspace.name}>
       <div
-        className={`dock-tile-wrap ${dragging ? "dock-tile-wrap--dragging" : ""} ${dragOver ? "dock-tile-wrap--dragover" : ""}`}
+        className={`dock-tile-wrap ${dragCls}`}
         draggable
         onDragStart={onDragStart}
         onDragOver={onDragOver}
