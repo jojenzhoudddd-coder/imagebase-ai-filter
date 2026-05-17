@@ -26,11 +26,18 @@ import {
 
 interface Props {
   run: UiSubagentRun;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
-export default function SubagentBlock({ run }: Props) {
+export default function SubagentBlock({ run, expanded: controlledExpanded, onExpandedChange }: Props) {
   const { t } = useCardTranslation();
-  const [expanded, setExpanded] = useState(run.status === "running");
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(run.status === "running");
+  const expanded = controlledExpanded ?? uncontrolledExpanded;
+  const setExpanded = (next: boolean) => {
+    if (onExpandedChange) onExpandedChange(next);
+    else setUncontrolledExpanded(next);
+  };
   // V2.3 C6: auto-collapse on success (but not on error — keep error visible)
   const prevStatusRef = useRef(run.status);
   // V2.8 C5: 首次 mount 且 status==="running" 时,卡片闪一下提醒用户
@@ -48,6 +55,10 @@ export default function SubagentBlock({ run }: Props) {
   }, []);
   useEffect(() => {
     const prev = prevStatusRef.current;
+    if (controlledExpanded !== undefined) {
+      prevStatusRef.current = run.status;
+      return;
+    }
     if (prev === "running" && run.status === "success") {
       setExpanded(false);
     }
@@ -55,7 +66,7 @@ export default function SubagentBlock({ run }: Props) {
       setExpanded(true);
     }
     prevStatusRef.current = run.status;
-  }, [run.status]);
+  }, [controlledExpanded, run.status]);
 
   const status: CardStatus = run.status;
   const userPromptShort =
@@ -74,7 +85,7 @@ export default function SubagentBlock({ run }: Props) {
       <button
         type="button"
         className="chat-expand-card-header"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
       >
         <span className="chat-expand-card-icon" aria-hidden="true">

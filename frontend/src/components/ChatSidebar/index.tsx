@@ -77,6 +77,7 @@ interface UiMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  timestamp?: number;
   thinking?: string;
   toolCalls: ChatToolCall[];
   // PR3: subagent runs spawned from this message. Each run is rendered as
@@ -114,6 +115,9 @@ interface UiMessage {
     /** Lifecycle marker: "generating" while in-flight, "generated" after done. */
     phase: "generating" | "generated";
   };
+  /** Local-only UI hint: live turns expand their detail cards by default.
+   *  Server-loaded history omits this, so details start collapsed. */
+  detailsDefaultExpanded?: boolean;
 }
 
 const CONV_LIST_POPOVER_WIDTH = 260;
@@ -210,6 +214,7 @@ function readCache(workspaceId: string): CachedState | null {
     // interrupted turn) leaves a perpetual spinner on the card.
     parsed.messages = parsed.messages.map((m) => ({
       ...m,
+      detailsDefaultExpanded: undefined,
       streaming: false,
       toolCalls: (m.toolCalls || []).map((tc) =>
         tc.status === "running" ? { ...tc, status: "error" as const } : tc
@@ -238,7 +243,10 @@ function writeCache(workspaceId: string, state: CachedState) {
   try {
     const trimmed: CachedState = {
       ...state,
-      messages: state.messages.slice(-CACHE_MAX_MESSAGES),
+      messages: state.messages.slice(-CACHE_MAX_MESSAGES).map((m) => ({
+        ...m,
+        detailsDefaultExpanded: undefined,
+      })),
     };
     localStorage.setItem(CACHE_KEY_PREFIX + workspaceId, JSON.stringify(trimmed));
   } catch {
@@ -787,8 +795,10 @@ export default function ChatSidebar({
         id: assistantMsgId,
         role: "assistant",
         content: "",
+        timestamp: turnStartedAt,
         toolCalls: [],
         streaming: true,
+        detailsDefaultExpanded: true,
         turnMeta: {
           startedAt: turnStartedAt,
           completionTokens: 0,
@@ -868,8 +878,10 @@ export default function ChatSidebar({
             id: serverId,
             role: "assistant",
             content: "",
+            timestamp: Date.now(),
             toolCalls: [],
             streaming: true,
+            detailsDefaultExpanded: true,
             turnMeta: {
               startedAt: Date.now(),
               completionTokens: 0,
@@ -1299,6 +1311,7 @@ export default function ChatSidebar({
                 ? {
                     ...m,
                     streaming: false,
+                    timestamp: Date.now(),
                     turnMeta: m.turnMeta
                       ? {
                           ...m.turnMeta,
@@ -1330,6 +1343,7 @@ export default function ChatSidebar({
                 ? {
                     ...m,
                     streaming: false,
+                    timestamp: m.timestamp ?? Date.now(),
                     turnMeta: m.turnMeta
                       ? {
                           ...m.turnMeta,
@@ -2247,6 +2261,7 @@ function serverToUi(m: ChatMessage): UiMessage {
     id: m.id,
     role: m.role === "user" ? "user" : "assistant",
     content: m.content,
+    timestamp: m.timestamp,
     thinking: m.thinking,
     toolCalls: (m.toolCalls || []).map((tc) => ({ ...tc })),
     branchTag: m.branchTag ?? null,
@@ -2386,13 +2401,11 @@ function normalizeServerNodeEvent(e: any): UiWorkflowRun["nodeEvents"][number] |
  *   - Once the answer has begun to stream (or the message is finished) and
  *     a `thinking` transcript exists, show the COLLAPSED deepthink pill
  *     ("深度思考") above the answer text — node 6:5302.
- *   - Tool-call cards render after the answer text, in the order they
- *     arrived from the stream.
+ *   - Details cards render above the answer text and are controlled as a
+ *     turn-level group from the meta row.
  */
 function MessageBlock({ msg, confirmSlot }: { msg: UiMessage; confirmSlot?: React.ReactNode }) {
   const { t } = useTranslation();
-  if (msg.role === "user") return <UserBubble content={msg.content} />;
-
   const hasThinking = Boolean(msg.thinking && msg.thinking.length > 0);
   const hasAnswer = msg.content.length > 0;
   const hasAnyToolCall = msg.toolCalls.length > 0;
@@ -2413,51 +2426,118 @@ function MessageBlock({ msg, confirmSlot }: { msg: UiMessage; confirmSlot?: Reac
   // Group consecutive tool calls sharing the same MCP tool name — 2+ in a
   // run collapse into a single header with an expand chevron so the
   // transcript doesn't get buried under near-identical rows.
-  const groups = groupConsecutiveTools(msg.toolCalls);
+  const groups = msg.role === "assistant" ? groupConsecutiveTools(msg.toolCalls) : [];
+  const orchestrationEntries = msg.role === "assistant" ? interleaveOrchestration(msg) : [];
+  const detailCount =
+    (thinkingCollapsed ? 1 : 0) +
+    groups.length +
+    orchestrationEntries.length;
+  const shouldDefaultExpandDetails = msg.detailsDefaultExpanded === true && detailCount > 0;
+  const [detailsExpanded, setDetailsExpanded] = useState(shouldDefaultExpandDetails);
+  const detailsUserToggledRef = useRef(false);
+
+  useEffect(() => {
+    if (!detailsUserToggledRef.current && shouldDefaultExpandDetails) {
+      setDetailsExpanded(true);
+    }
+  }, [shouldDefaultExpandDetails, detailCount]);
+
+  const setAllDetailsExpanded = useCallback((next: boolean) => {
+    detailsUserToggledRef.current = true;
+    setDetailsExpanded(next);
+  }, []);
+
+  const toggleDetails = detailCount > 0
+    ? () => setAllDetailsExpanded(!detailsExpanded)
+    : undefined;
+  const displayTurnMeta = msg.turnMeta ?? (
+    detailCount > 0 && !waitingForFirstResponse
+      ? {
+          phase: "generated" as const,
+          startedAt: msg.timestamp ?? Date.now(),
+          durationMs: 0,
+          completionTokens: 0,
+        }
+      : undefined
+  );
+
+  if (msg.role === "user") return <UserBubble content={msg.content} />;
 
   // Wrap in a single block so the inner gap (text ↔ tool cards = 12px) is
   // tighter than the outer message gap (28px between successive messages).
   const assistantBody = (
     <div className="chat-msg-assistant-block">
-      {thinkingCollapsed && (
-        <ThinkingIndicator
-          mode="collapsed"
-          label={t("chat.thinking.collapsed")}
-          thinking={msg.thinking}
-        />
-      )}
       {/* V3.0 UX: per-turn meta strip replaces the old "Analyzing your
        *  request · skeleton" placeholder. Always shown on a streaming
        *  assistant message, AND kept on the message after done as the
        *  frozen "Generated · Xs · Y tokens" footer. The legacy
        *  ThinkingIndicator active mode is only used as a fallback for
        *  history messages that have no turnMeta (pre-V3.0 saved rows). */}
-      {msg.turnMeta ? (
+      {displayTurnMeta ? (
         <GeneratingMeta
-          phase={msg.turnMeta.phase}
-          startedAt={msg.turnMeta.startedAt}
-          completionTokens={msg.turnMeta.completionTokens}
-          frozenDurationMs={msg.turnMeta.durationMs}
+          phase={displayTurnMeta.phase}
+          startedAt={displayTurnMeta.startedAt}
+          completionTokens={displayTurnMeta.completionTokens}
+          frozenDurationMs={displayTurnMeta.durationMs}
+          generatedAt={msg.timestamp}
+          detailsCount={detailCount}
+          detailsExpanded={detailsExpanded}
+          onToggleDetails={toggleDetails}
         />
       ) : waitingForFirstResponse ? (
         <ThinkingIndicator mode="active" text={t("chat.thinking.caption")} />
       ) : null}
+      {detailsExpanded && detailCount > 0 && (
+        <div className="chat-msg-details-stack">
+          {thinkingCollapsed && (
+            <ThinkingIndicator
+              mode="collapsed"
+              label={t("chat.thinking.collapsed")}
+              thinking={msg.thinking}
+              expanded={detailsExpanded}
+              onExpandedChange={setAllDetailsExpanded}
+            />
+          )}
+          {groups.map((g, i) =>
+            g.items.length === 1 ? (
+              <ToolCallCard
+                key={g.items[0].callId}
+                call={g.items[0]}
+                expanded={detailsExpanded}
+                onExpandedChange={setAllDetailsExpanded}
+              />
+            ) : (
+              <ToolCallGroup
+                key={`tg-${msg.id}-${i}`}
+                tool={g.tool}
+                items={g.items}
+                expanded={detailsExpanded}
+                onExpandedChange={setAllDetailsExpanded}
+              />
+            )
+          )}
+          {orchestrationEntries.map((entry) =>
+            entry.kind === "workflow"
+              ? (
+                <WorkflowBlock
+                  key={`wf-${entry.run.runId}`}
+                  run={entry.run}
+                  expanded={detailsExpanded}
+                  onExpandedChange={setAllDetailsExpanded}
+                />
+              )
+              : (
+                <SubagentBlock
+                  key={`sa-${entry.run.runId}`}
+                  run={entry.run}
+                  expanded={detailsExpanded}
+                  onExpandedChange={setAllDetailsExpanded}
+                />
+              )
+          )}
+        </div>
+      )}
       <AssistantText content={msg.content} streaming={msg.streaming} />
-      {groups.map((g, i) =>
-        g.items.length === 1 ? (
-          <ToolCallCard key={g.items[0].callId} call={g.items[0]} />
-        ) : (
-          <ToolCallGroup key={`tg-${msg.id}-${i}`} tool={g.tool} items={g.items} />
-        )
-      )}
-      {/* V2.3 C2: interleave WorkflowBlock + SubagentBlock by startedAt
-          so the timeline reads true to execution order (subagent runs
-          spawned BY a workflow appear after the workflow's own card). */}
-      {interleaveOrchestration(msg).map((entry) =>
-        entry.kind === "workflow"
-          ? <WorkflowBlock key={`wf-${entry.run.runId}`} run={entry.run} />
-          : <SubagentBlock key={`sa-${entry.run.runId}`} run={entry.run} />
-      )}
       {confirmSlot}
     </div>
   );
@@ -2498,10 +2578,12 @@ function mergeToolOnlyMessages(messages: UiMessage[]): UiMessage[] {
       // Merge tool calls into previous assistant message (shallow copy to avoid mutation)
       const merged: UiMessage = {
         ...prev,
+        timestamp: m.timestamp ?? prev.timestamp,
         toolCalls: [...prev.toolCalls, ...m.toolCalls],
         subagentRuns: [...(prev.subagentRuns ?? []), ...(m.subagentRuns ?? [])],
         workflowRuns: [...(prev.workflowRuns ?? []), ...(m.workflowRuns ?? [])],
         streaming: m.streaming || prev.streaming,
+        detailsDefaultExpanded: prev.detailsDefaultExpanded || m.detailsDefaultExpanded,
       };
       // Keep turnMeta from the later message if it exists (more up-to-date)
       if (m.turnMeta) merged.turnMeta = m.turnMeta;

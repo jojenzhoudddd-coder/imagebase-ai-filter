@@ -22,20 +22,31 @@ import {
 
 interface Props {
   run: UiWorkflowRun;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
-export default function WorkflowBlock({ run }: Props) {
+export default function WorkflowBlock({ run, expanded: controlledExpanded, onExpandedChange }: Props) {
   const { t } = useCardTranslation();
-  const [expanded, setExpanded] = useState(run.status === "running");
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(run.status === "running");
+  const expanded = controlledExpanded ?? uncontrolledExpanded;
+  const setExpanded = (next: boolean) => {
+    if (onExpandedChange) onExpandedChange(next);
+    else setUncontrolledExpanded(next);
+  };
   // V2.3 C6: auto-collapse on success
   const prevStatusRef = useRef(run.status);
   useEffect(() => {
+    if (controlledExpanded !== undefined) {
+      prevStatusRef.current = run.status;
+      return;
+    }
     const prev = prevStatusRef.current;
     if (prev === "running" && run.status === "success") setExpanded(false);
     if (prev === "running" && (run.status === "error" || run.status === "aborted"))
       setExpanded(true);
     prevStatusRef.current = run.status;
-  }, [run.status]);
+  }, [controlledExpanded, run.status]);
 
   const status: CardStatus =
     run.status === "running" ? "running"
@@ -52,7 +63,7 @@ export default function WorkflowBlock({ run }: Props) {
       <button
         type="button"
         className="chat-expand-card-header"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
       >
         <span className="chat-expand-card-icon" aria-hidden="true">

@@ -16,12 +16,22 @@ import { ToolCategoryIcon } from "./toolCategoryIcons";
 export default function ToolCallGroup({
   tool,
   items,
+  expanded: controlledExpanded,
+  onExpandedChange,
 }: {
   tool: string;
   items: ChatToolCall[];
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(false);
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
+  const expanded = controlledExpanded ?? uncontrolledExpanded;
+  const toggleExpanded = () => {
+    const next = !expanded;
+    if (onExpandedChange) onExpandedChange(next);
+    else setUncontrolledExpanded(next);
+  };
 
   const translated = t(`chat.tool.${tool}`);
   const label = translated === `chat.tool.${tool}` ? tool : translated;
@@ -32,7 +42,7 @@ export default function ToolCallGroup({
       <button
         type="button"
         className="chat-expand-card-header"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={toggleExpanded}
         aria-expanded={expanded}
       >
         <span className="chat-expand-card-icon" aria-hidden="true">

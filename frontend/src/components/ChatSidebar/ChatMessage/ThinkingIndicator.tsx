@@ -27,6 +27,9 @@ interface Props {
   label?: string;
   /** Full thinking transcript rendered inside the expanded card body. */
   thinking?: string;
+  /** Controlled expanded state for turn-level details toggles. */
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 export default function ThinkingIndicator({
@@ -34,11 +37,19 @@ export default function ThinkingIndicator({
   text = "正在分析需求",
   label,
   thinking,
+  expanded: controlledExpanded,
+  onExpandedChange,
 }: Props) {
   const { t } = useTranslation();
   // Default collapsed — the thinking transcript is supplementary context,
   // not the primary answer. Users opt in by clicking.
-  const [expanded, setExpanded] = useState(false);
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
+  const expanded = controlledExpanded ?? uncontrolledExpanded;
+  const toggleExpanded = () => {
+    const next = !expanded;
+    if (onExpandedChange) onExpandedChange(next);
+    else setUncontrolledExpanded(next);
+  };
   const headerLabel = label ?? t("chat.thinking.collapsed");
 
   if (mode === "collapsed") {
@@ -48,7 +59,7 @@ export default function ThinkingIndicator({
         <button
           type="button"
           className="chat-expand-card-header"
-          onClick={() => hasBody && setExpanded((v) => !v)}
+          onClick={() => hasBody && toggleExpanded()}
           aria-expanded={expanded}
           disabled={!hasBody}
         >

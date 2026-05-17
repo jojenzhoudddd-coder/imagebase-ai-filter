@@ -18,10 +18,24 @@ import { ToolCategoryIcon } from "./toolCategoryIcons";
  * The header always shows status on the right. Clicking toggles the body,
  * which lines up with the thinking/confirm cards for visual consistency.
  */
-export default function ToolCallCard({ call }: { call: ChatToolCall }) {
+export default function ToolCallCard({
+  call,
+  expanded: controlledExpanded,
+  onExpandedChange,
+}: {
+  call: ChatToolCall;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
+}) {
   const { t } = useTranslation();
   const status = call.status || "running";
-  const [expanded, setExpanded] = useState(false);
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
+  const expanded = controlledExpanded ?? uncontrolledExpanded;
+  const toggleExpanded = () => {
+    const next = !expanded;
+    if (onExpandedChange) onExpandedChange(next);
+    else setUncontrolledExpanded(next);
+  };
 
   const translated = t(`chat.tool.${call.tool}`);
   const label = translated === `chat.tool.${call.tool}` ? call.tool : translated;
@@ -41,7 +55,7 @@ export default function ToolCallCard({ call }: { call: ChatToolCall }) {
       <button
         type="button"
         className="chat-expand-card-header"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={toggleExpanded}
         aria-expanded={expanded}
         aria-label={label}
       >

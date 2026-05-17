@@ -48,6 +48,14 @@ interface Props {
   /** Server-reported final duration. ONLY used in "generated" phase. In
    *  "generating" phase the timer is client-side from `startedAt`. */
   frozenDurationMs?: number;
+  /** Final assistant message timestamp. Used instead of the word "Generated". */
+  generatedAt?: number;
+  /** Number of detail/feed cards attached to this turn. */
+  detailsCount?: number;
+  /** Whether all detail cards for this turn are currently visible/expanded. */
+  detailsExpanded?: boolean;
+  /** Toggle all detail cards for this turn. */
+  onToggleDetails?: () => void;
 }
 
 export default function GeneratingMeta({
@@ -55,6 +63,10 @@ export default function GeneratingMeta({
   startedAt,
   completionTokens = 0,
   frozenDurationMs,
+  generatedAt,
+  detailsCount = 0,
+  detailsExpanded = false,
+  onToggleDetails,
 }: Props) {
   const { t } = useTranslation();
   const [tickMs, setTickMs] = useState<number>(() => Date.now() - startedAt);
@@ -78,7 +90,7 @@ export default function GeneratingMeta({
 
   const label = phase === "generating"
     ? t("chat.meta.generating")
-    : t("chat.meta.generated");
+    : formatGeneratedAt(generatedAt ?? (startedAt + (frozenDurationMs ?? 0)));
 
   // Number formatting: tokens use `,` thousand separators (1,234) so
   // the strip reads naturally even at 100k+ tokens. seconds stays raw.
@@ -118,6 +130,25 @@ export default function GeneratingMeta({
         {tokensStr}
         <span className="chat-generating-meta-unit"> {t("chat.meta.tokens")}</span>
       </span>
+      <span className="chat-generating-meta-sep">·</span>
+      <button
+        type="button"
+        className={`chat-generating-meta-details${detailsExpanded ? " expanded" : ""}`}
+        onClick={onToggleDetails}
+        disabled={!onToggleDetails}
+        aria-pressed={detailsExpanded}
+      >
+        {detailsCount.toLocaleString()} details
+      </button>
     </div>
   );
+}
+
+function formatGeneratedAt(ts: number): string {
+  const d = new Date(ts);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${mm}-${dd} ${hh}：${min}`;
 }
