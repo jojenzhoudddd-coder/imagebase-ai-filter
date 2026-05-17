@@ -10,6 +10,38 @@
    * own outline via .artifact-part / .chat-part borders. */
   flex-shrink: 0;
   z-index: 10;
+  /* Desktop shells / installed app windows use the infra topbar as the
+   * draggable titlebar. Normal browsers ignore these properties. */
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
+/* Keep controls interactive inside the draggable titlebar. */
+.topbar :where(
+  button,
+  input,
+  select,
+  textarea,
+  label,
+  a,
+  [role="button"],
+  [contenteditable="true"],
+  .inline-edit-text,
+  .inline-edit-input,
+  .topbar-avatar,
+  .topbar-menu,
+  .topbar-menu *,
+  .topbar-profile-avatar-wrap,
+  .topbar-profile-avatar-wrap *,
+  .topbar-profile-avatar-input
+),
+.mc-add-block-menu,
+.mc-add-block-menu *,
+.avatar-crop-overlay,
+.avatar-crop-overlay * {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 /* Left: nav icons + divider + stacked info */
