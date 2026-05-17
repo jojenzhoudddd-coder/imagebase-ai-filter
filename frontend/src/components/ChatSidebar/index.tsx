@@ -20,6 +20,7 @@ import SubagentBlock from "./ChatMessage/SubagentBlock";
 import WorkflowBlock from "./ChatMessage/WorkflowBlock";
 import ToolCallGroup from "./ChatMessage/ToolCallGroup";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
+import { extractLarkAuthPayload, type LarkAuthPayload } from "./ChatMessage/LarkAuthCard";
 import ChatModelPicker from "./ChatModelPicker";
 import BlockCloseButton from "../BlockCloseButton";
 import AgentNamePill from "./AgentNamePill";
@@ -756,9 +757,10 @@ export default function ChatSidebar({
   // streaming flag 反映"当前 block 是否有正在跑的 fetch SSE 流",由 main
   // 路径独占。append 路径触发的二次 fetch 是短连接(只读到 branch_started
   // 后立刻 close),不动 streaming flag。
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback((overrideText?: string) => {
     if (!activeConv) return;
-    const text = inputValue.trim();
+    const isProgrammatic = typeof overrideText === "string";
+    const text = (isProgrammatic ? overrideText : inputValue).trim();
     if (!text) return;  // V3.0:streaming 时也允许发(走 append 路径)
 
     // ── append 路径:正在 streaming + 用户继续输入 ──
@@ -781,7 +783,8 @@ export default function ChatSidebar({
     // 事件会更新 totalTokens,done 事件会切到 phase="generated"。
     const turnStartedAt = Date.now();
     // Build user message content: attachments as image/file markdown above text
-    const attachmentLines = attachments.map((a) =>
+    const draftAttachments = isProgrammatic ? [] : attachments;
+    const attachmentLines = draftAttachments.map((a) =>
       a.mime.startsWith("image/")
         ? `![${a.originalName}](${a.url})`
         : `[${a.originalName}](${a.url})`
@@ -806,8 +809,10 @@ export default function ChatSidebar({
         },
       },
     ]);
-    setInputValue("");
-    setAttachments([]);
+    if (!isProgrammatic) {
+      setInputValue("");
+      setAttachments([]);
+    }
     setStreaming(true);
     setError(null);
     // Clear prefillMessage from blockState now that it's been sent,
@@ -835,7 +840,7 @@ export default function ChatSidebar({
     };
 
     // Vision: build structured image attachments for the backend
-    const imageAttachments = attachments
+    const imageAttachments = draftAttachments
       .filter((a) => a.mime.startsWith("image/"))
       .map((a) => ({
         kind: "image" as const,
@@ -1366,7 +1371,15 @@ export default function ChatSidebar({
         }
       },
     });
-  }, [activeConv, inputValue, streaming, onActiveTableChange, onDemoCreated, agentId]);
+  }, [activeConv, inputValue, attachments, streaming, onActiveTableChange, onDemoCreated, agentId]);
+
+  const handleLarkAuthContinue = useCallback((payload: LarkAuthPayload) => {
+    const phaseText = payload.phase === "config" ? "应用配置" : "授权";
+    const integrationText = payload.integrationId ? `，integrationId=${payload.integrationId}` : "";
+    handleSend(
+      `我已完成飞书${phaseText}。请调用 poll_lark_auth 检查状态：authSessionId=${payload.authSessionId}${integrationText}。如果状态成功，请继续执行刚才因飞书授权暂停的操作。`,
+    );
+  }, [handleSend]);
 
   // V3.0 (queue model): append 路径 —— streaming 期间用户继续输入。
   // 不打断当前回复,只 push user 气泡 + POST。后端入队,turn_pending ack 立刻
@@ -2176,6 +2189,8 @@ export default function ChatSidebar({
                 <MessageBlock
                   key={m.id}
                   msg={m}
+                  onLarkAuthContinue={handleLarkAuthContinue}
+                  authContinueDisabled={streaming}
                   confirmSlot={idx === arr.length - 1 && pendingConfirm ? (
                     <ConfirmCard
                       pending={pendingConfirm}
@@ -2404,7 +2419,17 @@ function normalizeServerNodeEvent(e: any): UiWorkflowRun["nodeEvents"][number] |
  *   - Details cards render above the answer text. The meta row controls
  *     whether the card list is visible; each card keeps its own expand state.
  */
-function MessageBlock({ msg, confirmSlot }: { msg: UiMessage; confirmSlot?: React.ReactNode }) {
+function MessageBlock({
+  msg,
+  confirmSlot,
+  onLarkAuthContinue,
+  authContinueDisabled,
+}: {
+  msg: UiMessage;
+  confirmSlot?: React.ReactNode;
+  onLarkAuthContinue?: (payload: LarkAuthPayload) => void;
+  authContinueDisabled?: boolean;
+}) {
   const { t } = useTranslation();
   const hasThinking = Boolean(msg.thinking && msg.thinking.length > 0);
   const hasAnswer = msg.content.length > 0;
@@ -2501,6 +2526,8 @@ function MessageBlock({ msg, confirmSlot }: { msg: UiMessage; confirmSlot?: Reac
               <ToolCallCard
                 key={g.items[0].callId}
                 call={g.items[0]}
+                onLarkAuthContinue={onLarkAuthContinue}
+                authContinueDisabled={authContinueDisabled}
               />
             ) : (
               <ToolCallGroup
@@ -2592,11 +2619,19 @@ function groupConsecutiveTools(
 ): Array<{ tool: string; items: ChatToolCall[] }> {
   const groups: Array<{ tool: string; items: ChatToolCall[] }> = [];
   for (const call of calls) {
+    if (isStandaloneToolCall(call)) {
+      groups.push({ tool: call.tool, items: [call] });
+      continue;
+    }
     const last = groups[groups.length - 1];
-    if (last && last.tool === call.tool) last.items.push(call);
+    if (last && last.tool === call.tool && !last.items.some(isStandaloneToolCall)) last.items.push(call);
     else groups.push({ tool: call.tool, items: [call] });
   }
   return groups;
+}
+
+function isStandaloneToolCall(call: ChatToolCall): boolean {
+  return call.tool === "start_lark_auth" || Boolean(extractLarkAuthPayload(call.result));
 }
 
 /**

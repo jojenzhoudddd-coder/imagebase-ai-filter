@@ -1660,6 +1660,108 @@
 }
 .chat-confirm-btn.secondary:hover { background: var(--surface-inset); }
 
+.chat-lark-auth-card {
+  margin: 0 10px 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface-2);
+  border: 0.5px solid var(--border-default);
+  border-radius: 8px;
+}
+.chat-lark-auth-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.chat-lark-auth-icon {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #1456f0;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.chat-lark-auth-title-wrap {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.chat-lark-auth-title {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.chat-lark-auth-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+.chat-lark-auth-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chat-lark-auth-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.chat-lark-auth-label {
+  color: var(--text-secondary);
+}
+.chat-lark-auth-value,
+.chat-lark-auth-code {
+  min-width: 0;
+  color: var(--text-primary);
+}
+.chat-lark-auth-code {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--surface-inset);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+.chat-lark-auth-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chat-lark-auth-btn {
+  min-height: 30px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.chat-lark-auth-btn.primary {
+  background: var(--primary);
+  color: var(--text-on-primary);
+}
+.chat-lark-auth-btn.secondary {
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+.chat-lark-auth-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Error card */
 .chat-error-card {
   background: var(--danger-bg);
