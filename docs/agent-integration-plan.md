@@ -6,8 +6,8 @@
 
 设计原则：
 
-- **MCP first**：平台已有稳定 MCP server 时优先通过 MCP 暴露工具，保留协议兼容性。
-- **CLI fallback**：没有 MCP、或本地 CLI 更成熟时，通过显式 manifest 把 CLI 命令安全包装成 Agent tool。
+- **Provider preset first**：优先使用当前最稳定的官方接入方式；Lark/飞书使用官方 `lark-cli`，Figma 使用本地 MCP，GitHub 默认使用 `gh` CLI。
+- **CLI manifest 白名单**：通过显式 manifest 把 CLI 命令安全包装成 Agent tool，避免模型直接拼 shell。
 - **Agent 可自举**：Agent 自己能通过管理工具创建、更新、测试 integration，而不是完全依赖前端表单。
 - **最小权限**：每个 integration 显式声明工具、参数 schema、readOnly/danger、scopes 和凭证名。
 
@@ -93,7 +93,7 @@ MCP 通用转发工具：
 
 GitHub、Lark/飞书、Figma 是 system integrations：每个 Agent 打开 Integrations tab
 或调用 `list_integrations` 时会自动生成 disabled 实例。用户不需要安装，只需要
-开启开关并补齐凭证 / MCP endpoint。`Install` 仅保留给 custom CLI / 未来
+开启开关并补齐本机 CLI 登录 / MCP endpoint。`Install` 仅保留给 custom CLI / 未来
 marketplace 多实例场景。
 
 GitHub：
@@ -104,9 +104,11 @@ GitHub：
 
 Lark / Feishu：
 
-- 推荐 `mcp-stdio`。
-- 默认命令：`npx -y @larksuiteoapi/lark-mcp mcp --mode stdio`。
-- `LARK_APP_ID` / `LARK_APP_SECRET` 映射到 MCP env。
+- 推荐 `cli`。
+- 默认命令：`lark-cli`。
+- 本机一次性安装/授权：`npx @larksuite/cli@latest install` → `lark-cli config init --new` → `lark-cli auth login --recommend`。
+- 默认工具：`lark_auth_status`、`lark_schema`、`lark_api_get`、`lark_api_post`、`lark_cli`。
+- 旧的 `lark_mcp_call` / `mcp-stdio` system card 会在 `ensureSystemIntegrations()` 中迁移到 CLI preset。
 
 Figma：
 

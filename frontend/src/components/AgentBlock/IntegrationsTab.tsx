@@ -39,7 +39,7 @@ const ADD_INTEGRATION_PROMPT = `我想添加一个新的 agent integration。请
 4. 可暴露给 Agent 的工具清单、参数 schema、是否只读
 5. 测试命令或 MCP list_tools / call_tool 验证方式
 
-请优先使用 MCP；只有平台没有稳定 MCP 或本地 CLI 更合适时才用 CLI。涉及写操作或危险命令时需要显式确认。`;
+请优先使用官方 preset；Lark/飞书走官方 lark-cli，Figma 可走本地 MCP，GitHub 默认走 gh CLI。涉及写操作或危险命令时需要显式确认。`;
 
 function configurePrompt(integration: AgentIntegrationSummary): string {
   return `请帮我配置这个 agent integration：

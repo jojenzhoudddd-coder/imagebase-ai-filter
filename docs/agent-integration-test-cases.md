@@ -16,7 +16,7 @@
 - 本地后端：`http://127.0.0.1:3002`
 - 测试账号：使用本地测试账号登录。
 - 默认进入 Agent Home 的 `Integrations` tab。
-- GitHub/Lark/Figma 可使用真实凭证或 stub MCP/CLI；涉及外部写操作的用例必须使用测试空间、测试仓库、测试 Figma 文件。
+- GitHub/Lark/Figma 可使用真实凭证或 stub MCP/CLI；Lark 使用官方 `lark-cli`；涉及外部写操作的用例必须使用测试空间、测试仓库、测试 Figma 文件。
 
 ## P0 用例
 
@@ -27,7 +27,7 @@
 | AI-INT-P0-03 | Configure by chat 引导配置 | GitHub 卡存在 | 点击 GitHub 卡 `Configure by chat` | 打开 Chat block，输入框预填包含 integrationId、provider、displayName、transport 的配置提示；不会在提示中要求用户安装 system integration |
 | AI-INT-P0-04 | GitHub CLI 连接测试成功 | 本机安装 `gh`，测试账号已登录 gh 或配置 token；GitHub integration 已补齐 read-only manifest | 点击 `Test connection` | Toast 显示健康；开启态卡片显示 `Healthy`；后端 `lastHealthAt` 更新；凭证只显示 preview，不显示完整 token |
 | AI-INT-P0-05 | GitHub CLI 连接测试失败 | GitHub integration 使用错误命令或错误 token | 点击 `Test connection` | Toast 显示测试失败；开启态卡片显示 `Error`；卡片描述显示错误摘要；不会泄露完整 secret |
-| AI-INT-P0-06 | Lark MCP stdio 配置成功 | 提供测试 Lark APP_ID / APP_SECRET；使用测试 tenant | 通过 `Configure by chat` 补齐凭证和 MCP stdio config → 点击 `Test connection` | MCP server 可以启动并 list tools；卡片变为 `Healthy`；credentials preview 显示脱敏值 |
+| AI-INT-P0-06 | Lark CLI 配置成功 | 本机已执行 `npx @larksuite/cli@latest install`、`lark-cli config init --new`、`lark-cli auth login --recommend`；使用测试 tenant | 打开 Lark 卡片 → 点击 `Test connection` | 后端运行 `lark-cli auth status` 成功；卡片变为 `Healthy`；默认 transport 为 `cli`，不再要求 `LARK_APP_ID` / `LARK_APP_SECRET` |
 | AI-INT-P0-07 | Figma MCP HTTP 配置成功 | 本地 Figma MCP server 在 `127.0.0.1:3845/mcp`；配置 FIGMA_TOKEN | 开启 Figma → 配置 endpoint/token → 点击 `Test connection` | HTTP MCP list tools 成功；卡片变为 `Healthy`；失败时错误展示为摘要 |
 | AI-INT-P0-08 | Custom CLI 通过 chat 创建 | 无 custom CLI integration | 点击 `Add by chat`，按对话提供 CLI 名称、command、env 凭证名、read-only tool manifest | 创建成功后 Integrations tab 自动刷新，出现新的 `Custom` card；不再出现单独的 custom CLI preset card；卡片可配置、可测试、可删除 |
 | AI-INT-P0-09 | Custom CLI 调用只使用 manifest 白名单 | 已创建 custom CLI，manifest 暴露 `echo_status` | 在 chat 中要求 agent 调用该 custom CLI | 模型只能调用生成的 `integration_<id>_echo_status` 工具；CLI 使用 `spawn(shell:false)`；输出显示在 tool result；integration `lastUsedAt` 更新 |
@@ -68,6 +68,7 @@
 | AI-INT-P2-02 | 未配置 `INTEGRATION_SECRET_KEY` 的 dev fallback | 本地可运行；日志/文档提示生产必须配置独立密钥 |
 | AI-INT-P2-03 | MCP HTTP header 注入 | Figma token 只进入请求 header，不出现在 UI 和日志 |
 | AI-INT-P2-04 | provider preset 幂等 | 多次打开 Integrations tab 不重复创建 GitHub/Lark/Figma card |
+| AI-INT-P2-04b | Lark legacy MCP 迁移 | DB 已存在 `providerKey=lark`、`transport=mcp-stdio` 或 `lark_mcp_call` | 再次打开 Integrations tab 或调用 `list_integrations` 后，该卡片变为 `transport=cli`，manifest 为 `lark-cli` 工具，旧 Lark MCP app credential 被移除 |
 | AI-INT-P2-05 | manifest schema 非法 | 创建或更新失败，错误提示字段明确 |
 | AI-INT-P2-06 | tool remoteName 映射 | MCP manifest 中 remoteName 与本地 tool name 不同，仍调用正确远端工具 |
 

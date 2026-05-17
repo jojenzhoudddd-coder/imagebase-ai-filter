@@ -17,7 +17,7 @@ export async function runCliIntegrationTool(
   if (/[;&|`$<>]/.test(command)) {
     throw new Error("CLI command must be a binary/path, not a shell expression");
   }
-  const argv = (tool.args ?? []).map((part) => resolveArgTemplate(part, args));
+  const argv = resolveArgTemplates(tool.args ?? [], args);
   const credentials = integration.id === "__inspect__"
     ? {}
     : await loadCredentialValues(integration.id);
@@ -40,20 +40,50 @@ export async function runCliIntegrationTool(
   return stdout;
 }
 
+function resolveArgTemplates(templates: string[], args: Record<string, any>): string[] {
+  const argv: string[] = [];
+  for (const template of templates) {
+    const exact = /^\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}$/.exec(template);
+    if (exact) {
+      const v = readPath(args, exact[1]);
+      if (Array.isArray(v)) {
+        for (const item of v) argv.push(sanitizeArgValue(item));
+        continue;
+      }
+    }
+    argv.push(resolveArgTemplate(template, args));
+  }
+  return argv;
+}
+
 function resolveArgTemplate(template: string, args: Record<string, any>): string {
   const value = template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_m, key: string) => {
     const v = readPath(args, key);
     if (v === undefined || v === null || v === "") {
       if (key === "limit") return "20";
+      if (key === "params" || key === "data" || key === "filter") return "{}";
       return "";
     }
-    if (typeof v === "object") return JSON.stringify(v);
-    return String(v);
+    return stringifyArgValue(v);
   });
   if (value.includes("\u0000")) {
     throw new Error("CLI arguments may not contain NUL bytes");
   }
   return value;
+}
+
+function sanitizeArgValue(value: unknown): string {
+  const out = stringifyArgValue(value);
+  if (out.includes("\u0000")) {
+    throw new Error("CLI arguments may not contain NUL bytes");
+  }
+  return out;
+}
+
+function stringifyArgValue(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
 }
 
 function readPath(obj: Record<string, any>, path: string): unknown {
@@ -114,7 +144,8 @@ function spawnCapture(
         resolve(stdout.trim());
         return;
       }
-      reject(new Error(`CLI exited with ${code}: ${stderr.trim().slice(0, 2000)}`));
+      const detail = (stderr.trim() || stdout.trim()).slice(0, 2000);
+      reject(new Error(`CLI exited with ${code}: ${detail}`));
     });
   });
 }

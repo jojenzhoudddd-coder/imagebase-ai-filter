@@ -92,9 +92,57 @@ export async function ensureSystemIntegrations(agentId: string): Promise<void> {
       enabled: false,
     });
   }
+  for (const integration of existing) {
+    if (shouldMigrateLegacyLarkMcp(integration)) {
+      await migrateLegacyLarkMcpToCli(integration);
+    }
+  }
   await pool.query(
     `UPDATE agent_integrations SET status = 'not_configured' WHERE "agentId" = $1 AND status = 'disabled'`,
     [agentId],
+  );
+}
+
+function shouldMigrateLegacyLarkMcp(integration: AgentIntegrationRow): boolean {
+  if (integration.providerKey !== "lark") return false;
+  if (integration.transport !== "cli") return true;
+  if (integration.config?.mcp || integration.config?.envMap?.APP_ID || integration.config?.envMap?.APP_SECRET) {
+    return true;
+  }
+  return integration.toolManifest.some((tool) => tool.mode === "mcp" || tool.name === "lark_mcp_call");
+}
+
+async function migrateLegacyLarkMcpToCli(integration: AgentIntegrationRow): Promise<void> {
+  const preset = getIntegrationPreset("lark");
+  if (!preset) return;
+  await pool.query(
+    `
+      UPDATE agent_integrations
+      SET transport = $2,
+          "configJson" = $3::jsonb,
+          "toolManifest" = $4::jsonb,
+          scopes = $5::text[],
+          status = 'not_configured',
+          "lastError" = NULL,
+          "lastHealthAt" = NULL,
+          "updatedAt" = CURRENT_TIMESTAMP
+      WHERE id = $1
+    `,
+    [
+      integration.id,
+      preset.recommendedTransport,
+      JSON.stringify(preset.defaultConfig),
+      JSON.stringify(preset.defaultTools),
+      preset.scopes,
+    ],
+  );
+  await pool.query(
+    `
+      DELETE FROM agent_integration_credentials
+      WHERE "integrationId" = $1
+        AND name = ANY($2::text[])
+    `,
+    [integration.id, ["LARK_APP_ID", "LARK_APP_SECRET"]],
   );
 }
 

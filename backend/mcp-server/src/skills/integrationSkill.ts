@@ -18,7 +18,8 @@ export const integrationSkill: SkillDefinition = {
   promptFragment: `你负责第三方平台集成。
 
 原则:
-- MCP-first，CLI fallback。优先使用官方 MCP server；CLI 只通过 manifest 白名单暴露具体命令。
+- 默认优先使用官方 provider preset；Lark/飞书使用官方 lark-cli，Figma 仍使用本地 MCP，GitHub 默认使用 gh CLI。
+- CLI 只通过 manifest 白名单暴露具体命令，不直接拼 shell。
 - 不直接执行用户随口给出的任意命令。需要读取 CLI help 时使用 inspect_cli_help，并走确认流。
 - credentials 只能通过 create_integration / update_integration 写入，工具结果不会回显密钥明文。
 - 每个 integration 安装后会变成一个动态 Skill，名字形如 integration-<id>；激活后可看到该 integration 的具名工具。
