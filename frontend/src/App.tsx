@@ -293,7 +293,7 @@ export default function App() {
   const DELETE_PROTECTION_KEY = "doc_delete_protection";
   const [deleteProtection, setDeleteProtectionRaw] = useState(() => {
     const stored = localStorage.getItem(DELETE_PROTECTION_KEY);
-    return stored === null ? true : stored === "true";
+    return stored === "true";
   });
   const setDeleteProtection = useCallback((val: boolean | ((prev: boolean) => boolean)) => {
     setDeleteProtectionRaw(prev => {

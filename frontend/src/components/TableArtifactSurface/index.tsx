@@ -64,7 +64,6 @@ import { useCanvas } from "../../contexts/canvasContext";
 import { useAuth } from "../../auth/AuthContext";
 
 const MAX_UNDO = 20;
-const DELETE_PROTECTION_KEY = "doc_delete_protection";
 
 type CellValue = string | number | boolean | string[] | null;
 type UndoItem =
@@ -107,10 +106,7 @@ interface Props {
 }
 
 function readDeleteProtection(): boolean {
-  try {
-    const v = localStorage.getItem(DELETE_PROTECTION_KEY);
-    return v === null ? true : v === "true";
-  } catch { return true; }
+  return false;
 }
 
 export default function TableArtifactSurface({ tableId, workspaceId: _workspaceId, onRename }: Props) {

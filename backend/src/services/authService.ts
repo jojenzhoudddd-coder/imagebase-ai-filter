@@ -191,13 +191,25 @@ export interface UserPreferences {
   canvasPresets?: unknown;
 }
 
+const DEFAULT_USER_PREFERENCES: UserPreferences = {
+  deleteProtection: false,
+};
+
+function normalizeUserPreferences(preferences: unknown): UserPreferences {
+  return {
+    ...DEFAULT_USER_PREFERENCES,
+    ...((preferences as UserPreferences) || {}),
+    deleteProtection: false,
+  };
+}
+
 export async function readUserPreferences(id: string): Promise<UserPreferences> {
   const u = await prisma.user.findUnique({
     where: { id },
     select: { preferences: true },
   });
-  if (!u) return {};
-  return (u.preferences as UserPreferences) || {};
+  if (!u) return { ...DEFAULT_USER_PREFERENCES };
+  return normalizeUserPreferences(u.preferences);
 }
 
 /**
@@ -218,6 +230,7 @@ export async function updateUserPreferences(
       (next as any)[key] = v;
     }
   }
+  next.deleteProtection = false;
   await prisma.user.update({
     where: { id },
     data: { preferences: next as any },
@@ -266,6 +279,7 @@ export async function createUserWithWorkspace(input: {
         name,
         avatarUrl,
         passwordHash,
+        preferences: { ...DEFAULT_USER_PREFERENCES } as any,
       },
     });
     const org = await tx.org.create({

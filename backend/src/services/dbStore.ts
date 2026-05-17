@@ -1084,7 +1084,12 @@ export async function ensureDefaults(): Promise<void> {
   const seedUserId = await generateId("user");
   const seedOrgId = await generateId("org");
   await prisma.user.create({
-    data: { id: seedUserId, email: "default@local", name: "Default User" },
+    data: {
+      id: seedUserId,
+      email: "default@local",
+      name: "Default User",
+      preferences: { deleteProtection: false },
+    },
   });
   await prisma.org.create({
     data: { id: seedOrgId, name: "Default Org" },
