@@ -376,6 +376,17 @@ export default function App() {
   // fetch their own detail from the active id. Tables are loaded inline
   // here because fields/records/views feed the main TableView.
   useEffect(() => {
+    // Reset stale state from previous workspace before loading new data
+    setFields([]);
+    setAllRecords([]);
+    setViews([]);
+    setDocumentTables([]);
+    setDocumentFolders([]);
+    setDocumentDesigns([]);
+    setDocumentIdeas([]);
+    setDocumentDemos([]);
+    setDocumentName("");
+
     const init = async () => {
       const [treeData, doc] = await Promise.all([
         fetchWorkspaceTree(WORKSPACE_ID),
@@ -415,7 +426,7 @@ export default function App() {
       // 1. lastActiveArtifact_v2
       if (!target) {
         try {
-          const stored = localStorage.getItem("lastActiveArtifact_v2");
+          const stored = localStorage.getItem(`lastActiveArtifact_v2_${WORKSPACE_ID}`);
           if (stored) {
             const parsed = JSON.parse(stored) as { type?: string; id?: string };
             if (parsed?.type && parsed?.id) {
@@ -1843,7 +1854,7 @@ export default function App() {
     if (!activeTableId) return;
     try {
       localStorage.setItem(
-        "lastActiveArtifact_v2",
+        `lastActiveArtifact_v2_${WORKSPACE_ID}`,
         JSON.stringify({ type: activeItemType, id: activeTableId })
       );
       if (activeItemType === "table") {
