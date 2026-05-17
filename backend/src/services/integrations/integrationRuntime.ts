@@ -6,7 +6,7 @@ import {
   markIntegrationHealth,
   markIntegrationUsed,
 } from "./integrationStore.js";
-import { getLarkAuthStatus } from "./larkAuthRuntime.js";
+import { getLarkAuthStatus, startLarkAuth } from "./larkAuthRuntime.js";
 import type { AgentIntegrationRow, IntegrationToolManifest } from "./types.js";
 
 export async function callIntegrationTool(
@@ -35,6 +35,17 @@ export async function callIntegrationTool(
       return larkMissingScopeResponse(integration, manifest.name, message, missingScopes);
     }
     throw err;
+  }
+  const larkAuthFailure = integration.providerKey === "lark" && integration.transport === "cli"
+    ? parseLarkAuthFailureResult(result)
+    : null;
+  if (larkAuthFailure) {
+    await markIntegrationUsed(integration.id).catch(() => {});
+    return startLarkAuth(integration.id, {
+      requireAgentId: opts?.requireAgentId,
+      scope: larkAuthFailure.missingScopes.length ? larkAuthFailure.missingScopes.join(" ") : undefined,
+      recommend: larkAuthFailure.missingScopes.length ? false : undefined,
+    });
   }
   await markIntegrationUsed(integration.id).catch(() => {});
   return result;
@@ -136,10 +147,50 @@ function parseLarkMissingScopes(message: string): string[] {
     collectScopes(scopes, String((error as Record<string, any>).message ?? ""));
     collectScopes(scopes, String((error as Record<string, any>).hint ?? ""));
   }
-  if (!scopes.size && message.toLowerCase().includes("missing_scope")) {
+  const lower = message.toLowerCase();
+  if (!scopes.size && (lower.includes("missing_scope") || lower.includes("missing required scope"))) {
     collectScopes(scopes, message);
   }
   return [...scopes];
+}
+
+function parseLarkAuthFailureResult(result: unknown): null | { missingScopes: string[] } {
+  const parsed = parseJsonLike(result);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const record = parsed as Record<string, any>;
+  if (record.ok !== false) return null;
+  const error = record.error;
+  const errorType = typeof error?.type === "string" ? error.type : "";
+  const message = [
+    errorType,
+    typeof error?.message === "string" ? error.message : "",
+    typeof error?.hint === "string" ? error.hint : "",
+    typeof record.message === "string" ? record.message : "",
+  ].filter(Boolean).join("\n");
+  const lower = message.toLowerCase();
+  if (errorType === "missing_scope" || lower.includes("missing_scope") || lower.includes("missing required scope")) {
+    return { missingScopes: parseLarkMissingScopes(message) };
+  }
+  if (
+    lower.includes("not authorized") ||
+    lower.includes("not logged") ||
+    lower.includes("login") ||
+    lower.includes("access token") ||
+    lower.includes("authorization expired") ||
+    lower.includes("auth expired")
+  ) {
+    return { missingScopes: [] };
+  }
+  return null;
+}
+
+function parseJsonLike(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 function parseEmbeddedJson(message: string): unknown | null {

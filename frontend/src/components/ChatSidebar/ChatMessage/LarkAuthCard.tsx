@@ -129,6 +129,8 @@ export function extractLarkAuthPayload(result: unknown): LarkAuthPayload | null 
   const parsed = parseJsonLike(result);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
   const record = parsed as Record<string, unknown>;
+  const nested = extractLarkAuthPayload(record.result);
+  if (nested) return nested;
   if (record.ok !== true || record.status !== "pending") return null;
   if (record.phase !== "auth" && record.phase !== "config") return null;
   if (typeof record.authSessionId !== "string" || !record.authSessionId.trim()) return null;
