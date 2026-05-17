@@ -3,6 +3,7 @@
  * Reuses the existing i18n keys from chat.agent.menu.*.
  */
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentTabKey } from "../../canvas/types";
 import { useTranslation } from "../../i18n";
 
@@ -23,17 +24,89 @@ interface Props {
 
 export default function AgentTabs({ activeTab, onTabChange }: Props) {
   const { t } = useTranslation();
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [canPrev, setCanPrev] = useState(false);
+  const [canNext, setCanNext] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setCanPrev(el.scrollLeft > 4);
+    setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    updateScrollState();
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", updateScrollState);
+    window.addEventListener("resize", updateScrollState);
+    return () => {
+      el.removeEventListener("scroll", updateScrollState);
+      window.removeEventListener("resize", updateScrollState);
+    };
+  }, [updateScrollState]);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    const active = el?.querySelector<HTMLButtonElement>(".ab-tab.active");
+    active?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    requestAnimationFrame(updateScrollState);
+  }, [activeTab, updateScrollState]);
+
+  const scrollBy = (dx: number) => {
+    scrollerRef.current?.scrollBy({ left: dx, behavior: "smooth" });
+  };
+
   return (
-    <div className="ab-tabs">
-      {TABS.map((tab) => (
+    <div className="ab-tabs-wrap">
+      {canPrev && (
         <button
-          key={tab.key}
-          className={`ab-tab${tab.key === activeTab ? " active" : ""}`}
-          onClick={() => onTabChange(tab.key)}
+          type="button"
+          className="ab-tabs-arrow prev"
+          onClick={() => scrollBy(-240)}
+          aria-label={t("chat.empty.scrollLeft")}
         >
-          {t(tab.i18nKey)}
+          <ArrowLeftIcon />
         </button>
-      ))}
+      )}
+      <div className="ab-tabs" ref={scrollerRef}>
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            className={`ab-tab${tab.key === activeTab ? " active" : ""}`}
+            onClick={() => onTabChange(tab.key)}
+          >
+            {t(tab.i18nKey)}
+          </button>
+        ))}
+      </div>
+      {canNext && (
+        <button
+          type="button"
+          className="ab-tabs-arrow next"
+          onClick={() => scrollBy(240)}
+          aria-label={t("chat.empty.scrollRight")}
+        >
+          <ArrowRightIcon />
+        </button>
+      )}
     </div>
+  );
+}
+
+function ArrowLeftIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M9 3 5 7l4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M5 3 9 7l-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

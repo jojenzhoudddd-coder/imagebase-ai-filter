@@ -197,20 +197,52 @@
 
 
 /* ══════ Tabs ════════════════════════════════════════════════════════ */
+.ab-tabs-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-light);
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+
 .ab-tabs {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: stretch;
   gap: 2px;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border-light);
-  padding: 0 20px;
   overflow-x: auto;
-  flex-shrink: 0;
+  scroll-behavior: smooth;
   scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .ab-tabs::-webkit-scrollbar { display: none; }
 
+.ab-tabs-arrow {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-light);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.ab-tabs-arrow:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
 .ab-tab {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
