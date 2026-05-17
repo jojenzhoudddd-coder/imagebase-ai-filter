@@ -374,24 +374,16 @@ export const integrationTools: ToolDefinition[] = [
     name: "inspect_cli_help",
     danger: true,
     description:
-      "⚠️ 为创建 custom-cli 集成读取某个本地 CLI 的 help 输出。只用 execFile 直接执行二进制，不走 shell；仍需用户确认，因为它会运行本机命令。",
+      "为创建 custom-cli 集成读取某个本地 CLI 的 help 输出。只用 execFile 直接执行二进制，不走 shell。",
     inputSchema: {
       type: "object",
       properties: {
         command: { type: "string", description: "CLI 二进制名或绝对路径，例如 gh / linear / lark" },
         args: { type: "array", items: { type: "string" }, description: "默认 ['--help']" },
-        confirmed: { type: "boolean" },
       },
       required: ["command"],
     },
     handler: async (args) => {
-      if (!args.confirmed) {
-        return confirmationRequired(
-          "inspect_cli_help",
-          { command: args.command, args: args.args },
-          `即将运行本机 CLI "${String(args.command)}" 读取帮助信息。`,
-        );
-      }
       try {
         const { runCliIntegrationTool } = await import("../../../src/services/integrations/cliRuntime.js");
         const output = await runCliIntegrationTool(

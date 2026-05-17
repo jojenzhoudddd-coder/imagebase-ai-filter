@@ -54,12 +54,25 @@ function useSkillI18n() {
       const translated = t(key);
       return translated !== key ? translated : s.description;
     },
+    triggers: (s: AgentSkillSummary) => {
+      const key = `skill.${s.id}.triggers` as any;
+      const translated = t(key);
+      if (s.type === "builtin" && translated !== key) return translated;
+      const visible = s.triggers.slice(0, 4).join(", ");
+      return `${visible}${s.triggers.length > 4 ? ` +${s.triggers.length - 4}` : ""}`;
+    },
+    triggerTitle: (s: AgentSkillSummary) => {
+      const key = `skill.${s.id}.triggers` as any;
+      const translated = t(key);
+      if (s.type === "builtin" && translated !== key) return translated;
+      return s.triggers.join(", ");
+    },
   };
 }
 
 export default function SkillsTab({ agentId, blockId }: Props) {
   const { t } = useTranslation();
-  const { name: localName, desc: localDesc } = useSkillI18n();
+  const { name: localName, desc: localDesc, triggers: localTriggers, triggerTitle: localTriggerTitle } = useSkillI18n();
   const { workspaceId, preferences } = useAuth();
   const timezone = preferences.timezone ?? "Asia/Shanghai";
   const { addBlock, patchBlockState } = useCanvas();
@@ -177,7 +190,7 @@ export default function SkillsTab({ agentId, blockId }: Props) {
             {s.triggers.length > 0 && (
               <div className="ab-card-kv-row">
                 <dt>{t("agent.card.triggers")}</dt>
-                <Tooltip title={s.triggers.join(", ")}><dd>{s.triggers.slice(0, 4).join(", ")}{s.triggers.length > 4 ? ` +${s.triggers.length - 4}` : ""}</dd></Tooltip>
+                <Tooltip title={localTriggerTitle(s)}><dd>{localTriggers(s)}</dd></Tooltip>
               </div>
             )}
             <div className="ab-card-kv-row">

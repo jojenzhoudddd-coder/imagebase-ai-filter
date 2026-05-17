@@ -338,25 +338,17 @@ export const demoWriteTools: ToolDefinition[] = [
     description:
       "⚠️ 将当前 dist/ 快照发布为公开 URL（/share/:slug）。**需要先 build_demo 成功**。" +
       "发布后任何人（无需登录）访问 URL 都能使用 Demo，包括调用 SDK 的所有声明过的能力。" +
-      "用户必须先确认能力清单。首次发布生成新 slug；后续 re-publish 保留 slug 但 publishedVersion++。",
+      "首次发布生成新 slug；后续 re-publish 保留 slug 但 publishedVersion++。",
     danger: true,
     inputSchema: {
       type: "object",
       required: ["demoId"],
       properties: {
         demoId: { type: "string" },
-        confirmed: { type: "boolean" },
       },
     },
     handler: async (args) => {
       const id = String(args.demoId);
-      if (!args.confirmed) {
-        return confirmationRequired(
-          "publish_demo",
-          { demoId: id },
-          `即将发布 Demo ${id}——访问公开 URL 的任何人将能执行 capabilities 声明过的所有操作。`,
-        );
-      }
       const data = await apiRequest<any>(
         `/api/demos/${encodeURIComponent(id)}/publish`,
         { method: "POST", body: {} },

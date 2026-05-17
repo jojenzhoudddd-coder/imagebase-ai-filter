@@ -221,6 +221,55 @@ export function autoActivateByTriggers(
   return added;
 }
 
+function toolRequiresConfirmation(
+  tool: ToolDefinition,
+  args: Record<string, any>,
+  ctx?: ToolContext,
+): boolean {
+  if (typeof tool.requiresConfirmation === "function") {
+    try {
+      return tool.requiresConfirmation(args, ctx);
+    } catch {
+      // A broken dynamic policy must fail closed.
+      return true;
+    }
+  }
+  return isDeleteLikeToolCall(tool.name, args);
+}
+
+const DELETE_LIKE_ACTION_RE = /(^|[_\-\s+:/+])(delete|remove|rm|clear|reset|drop|destroy|cleanup|trash|purge)($|[_\-\s+:/+])/i;
+
+export function isDeleteLikeToolCall(
+  toolName: string,
+  args: Record<string, any> = {},
+): boolean {
+  if (DELETE_LIKE_ACTION_RE.test(toolName)) return true;
+  const candidates: string[] = [];
+  collectDeleteLikeCandidates(args, candidates);
+  return candidates.some((value) => DELETE_LIKE_ACTION_RE.test(value));
+}
+
+function collectDeleteLikeCandidates(value: unknown, out: string[], depth = 0): void {
+  if (depth > 2 || value == null) return;
+  if (typeof value === "string") {
+    out.push(value);
+    return;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    out.push(String(value));
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectDeleteLikeCandidates(item, out, depth + 1);
+    return;
+  }
+  if (typeof value !== "object") return;
+  const record = value as Record<string, unknown>;
+  for (const key of ["toolName", "action", "operation", "method", "path", "endpoint", "command", "argv", "arguments"]) {
+    if (key in record) collectDeleteLikeCandidates(record[key], out, depth + 1);
+  }
+}
+
 /**
  * Evict skills whose tools haven't been invoked for SKILL_EVICTION_TURNS
  * consecutive turns. Called at end-of-turn. Returns the dropped names.
@@ -719,7 +768,7 @@ const TOOL_GUIDANCE_ZH = `# 当前工具使用指南（Tier 1 Core MCP）
 
 ## 灵感文档（Ideas）写入与 @ 引用
 - 对灵感文档进行任何写入操作前，先调 \`list_ideas\` 看现状；需要在特定章节插入时，先调 \`get_idea\` 拿到 sections[]（每项含 slug），再用 \`insert_into_idea({ideaId, anchor:{section:"<slug>", mode:"append"|"after"|"replace"}, payload:"..."})\`。
-- 没有明确章节目标时用 \`append_to_idea\`（默认追加到文末）；整篇重写才用 \`replace_idea_content\`（危险操作，必须先征得同意）。
+   - 没有明确章节目标时用 \`append_to_idea\`（默认追加到文末）；整篇重写才用 \`replace_idea_content\`。
 - 写入内容允许 **Markdown 嵌入 HTML**：前端使用 rehype-raw + rehype-sanitize 渲染，允许 \`<div>\`、\`<figure>\`、\`<table>\`、\`<pre>\`、内联 SVG 等大部分常见块级标签。若要用 HTML 做排版，写闭合良好的成对标签，不要混入 \`<script>/<style>/onclick="..."\`（会被净化移除）。
 - 写入 @ 提及其他实体（视图 / 设计切片 / 其他灵感 / 灵感章节）时：**先调 \`find_mentionable\` 得到命中的 \`markdown\` 字段**，直接把该 markdown 片段拼进 payload 即可形成可点击的 chip。格式规范是 \`[@标签](mention://type/id[?query])\`——不要手写这个格式，以免 ID / query 参数不一致导致死链。
 
@@ -742,11 +791,11 @@ const TOOL_GUIDANCE_ZH = `# 当前工具使用指南（Tier 1 Core MCP）
 
 \`update_scheduled_task\` 调用 system habit 的 \`prompt\` 字段会返回固定错误"系统 habit 的内容不允许修改",这是契约,不是 bug,**不要重试 / 不要换 phrasing**。
 
-## V2.4 Subagent danger 上抛决议
+## V2.4 Subagent 删除类动作上抛决议
 当你 (host) 看到 \`subagent_danger_request\` 事件 (data 含 runId / callId / tool / args / summary):
 - **该动作在用户原指令明确授权 + 当前 workflow 节点设计内** → 调 \`approve_subagent_danger({runId, callId})\`
 - **subagent 越界** (review 阶段突然要写 / 与 workflow 当前阶段不符) → 调 \`reject_subagent_danger({runId, callId})\`
-- **涉及 table/idea/design 的删除/重置/批量改 + 你拿不准** → 调 \`escalate_subagent_danger({runId, callId, message:"用户请确认..."})\`,然后在最后的回复里 explicit 告诉用户该动作需要单独确认
+- **涉及 table/idea/design 的删除/清空/重置 + 你拿不准** → 调 \`escalate_subagent_danger({runId, callId, message:"用户请确认..."})\`,然后在最后的回复里 explicit 告诉用户该动作需要单独确认
 - 决议必须在 30 秒内做出,否则 subagent 自动超时拒绝
 - 收到 \`subagent_danger_request\` 时不要先恢复闲聊,先决议;subagent 在等你`;
 
@@ -2217,7 +2266,7 @@ export async function* spawnSubagent(
           // 不再直接拒绝。emit `subagent_danger_request` 给 host,然后阻塞
           // 等 host 调 approve / reject / escalate 工具决议(in-memory promise)。
           // 30 秒无决议默认 reject(避免永久 hang)。
-          if (tool && (tool as any).danger === true) {
+          if (tool && toolRequiresConfirmation(tool, call.args, toolCtx)) {
             yield {
               event: "subagent_danger_request",
               data: {
@@ -3178,7 +3227,7 @@ async function* runAgentImpl(
     toolCtx.availableToolSummaries = activeTools.map((t) => ({
       name: t.name,
       description: t.description,
-      ...(t.danger ? { danger: true } : {}),
+      ...(isDeleteLikeToolCall(t.name) ? { danger: true } : {}),
     }));
 
     // Rebuild the system prompt when the active skill set changed since
@@ -3542,8 +3591,8 @@ async function* runAgentImpl(
         continue;
       }
 
-      // Dangerous tool with no confirmation? Ask the client, pause the loop.
-      const isDanger = Boolean(tool.danger);
+      // Delete-like action with no confirmation? Ask the client, pause the loop.
+      const isDanger = toolRequiresConfirmation(tool, parsedArgs, toolCtx);
       const alreadyConfirmed = parsedArgs.confirmed === true;
       if (isDanger && !alreadyConfirmed) {
         // Record pending confirmation so the route handler can resume later.
@@ -3588,7 +3637,7 @@ async function* runAgentImpl(
         break;
       }
 
-      // Execute safe tool (or confirmed danger tool)
+      // Execute safe tool (or confirmed delete-like tool)
       yield { event: "tool_start", data: { callId: fc.callId, tool: fc.name, args: parsedArgs } };
       logAgent({ event: "tool_call", round, tool: fc.name, args: parsedArgs });
 
@@ -4154,7 +4203,7 @@ async function* resumeAfterConfirmImpl(
     availableToolSummaries: Object.values(resumeToolsByName).map((t) => ({
       name: t.name,
       description: t.description,
-      ...(t.danger ? { danger: true } : {}),
+      ...(isDeleteLikeToolCall(t.name) ? { danger: true } : {}),
     })),
     abortSignal,
     onActivateSkill: (name: string) => {

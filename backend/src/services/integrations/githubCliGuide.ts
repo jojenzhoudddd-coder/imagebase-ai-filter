@@ -90,7 +90,7 @@ function topicGuidance(topic: GithubGuideTopic, operation: string): string[] {
     return [
       ...shared,
       "For issue lists, use gh_issue_list({ repo, limit }) or github_api_get('/repos/{owner}/{repo}/issues', { params }).",
-      "Issue creation, editing, closing, comments, labels, and assignment are writes and must use a danger-confirmed tool call.",
+      "Issue creation, editing, closing, comments, labels, and assignment are writes. Only delete-like GitHub actions require confirmation.",
       "Display #number, title, state, author, updatedAt, URL, and labels/milestone when available.",
     ];
   }

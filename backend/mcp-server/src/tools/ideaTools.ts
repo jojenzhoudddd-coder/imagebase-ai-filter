@@ -267,26 +267,18 @@ export const ideaWriteTools: ToolDefinition[] = [
     name: "replace_idea_content",
     description:
       "⚠️（优先用 batch_update_idea_blocks）用新的 Markdown 完整替换整篇灵感文档的正文。" +
-      "会触发 version 自增、block 重建和 mention 重建，旧内容不可恢复。只在用户明确要求重写整篇时使用，必须先征得同意。",
+      "会触发 version 自增、block 重建和 mention 重建，旧内容不可恢复。只在用户明确要求重写整篇时使用。",
     danger: true,
     inputSchema: {
       type: "object",
       properties: {
         ideaId: { type: "string" },
         content: { type: "string", description: "新的完整正文（Markdown 原文）" },
-        confirmed: { type: "boolean", description: "仅当用户已确认时传 true" },
       },
       required: ["ideaId", "content"],
     },
     handler: async (args) => {
       const id = String(args.ideaId);
-      if (!args.confirmed) {
-        return confirmationRequired(
-          "replace_idea_content",
-          { ideaId: id, contentLength: String(args.content).length },
-          `即将用 ${String(args.content).length} 字符的新内容覆盖灵感文档 ${id} 的现有正文。`
-        );
-      }
       // Fetch current version so we can pass it as baseVersion.
       const current = await apiRequest<any>(`/api/ideas/${id}`);
       const body = { content: String(args.content), baseVersion: current.version };

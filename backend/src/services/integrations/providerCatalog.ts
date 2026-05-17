@@ -173,7 +173,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "github_api_post",
         description:
-          "Call a GitHub REST/GraphQL write endpoint through gh api. Requires confirmation. Supports method POST/PATCH/PUT/DELETE, params as query fields, and data as JSON body. Prefer narrow read-only tools for reads.",
+          "Call a GitHub REST/GraphQL write endpoint through gh api. Supports method POST/PATCH/PUT/DELETE, params as query fields, and data as JSON body. Prefer narrow read-only tools for reads. Only delete-like requests require confirmation.",
         mode: "cli",
         readOnly: false,
         danger: true,
@@ -206,7 +206,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "github_cli",
         description:
-          "Run an explicit gh argv list for GitHub CLI commands. Do not include `gh`; each token must be a separate array item and no shell syntax is allowed. Prefer github_cli_guide before unfamiliar commands and request --json where supported. Writes require confirmation.",
+          "Run an explicit gh argv list for GitHub CLI commands. Do not include `gh`; each token must be a separate array item and no shell syntax is allowed. Prefer github_cli_guide before unfamiliar commands and request --json where supported. Only delete-like commands require confirmation.",
         mode: "cli",
         readOnly: false,
         danger: true,
@@ -328,7 +328,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_api_post",
         description:
-          "Call a Lark Open Platform POST endpoint through lark-cli. This may write third-party data and requires confirmation. For calendar event creation, prefer lark_calendar_create_event so the backend converts time safely. If the result reports missing_scope, start incremental auth with start_integration_auth and the exact missing scope before retrying.",
+          "Call a Lark Open Platform POST endpoint through lark-cli. This may write third-party data; only delete-like endpoints require confirmation. For calendar event creation, prefer lark_calendar_create_event so the backend converts time safely. If the result reports missing_scope, start incremental auth with start_integration_auth and the exact missing scope before retrying.",
         mode: "cli",
         readOnly: false,
         danger: true,
@@ -405,7 +405,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_cli",
         description:
-          "Run an explicit lark-cli argv list for official shortcut/API commands, such as ['drive', '+search', '--query', ...] or ['base', '+...', ...]. Prefer lark_cli_guide before unfamiliar commands; for cloud search use drive +search rather than docs +search, and use --doc-types for document/resource type filters, never --type. Writes and broad commands require confirmation. For read/search commands, summarize returned rows or hits to the user instead of only reporting completion.",
+          "Run an explicit lark-cli argv list for official shortcut/API commands, such as ['drive', '+search', '--query', ...] or ['base', '+...', ...]. Prefer lark_cli_guide before unfamiliar commands; for cloud search use drive +search rather than docs +search, and use --doc-types for document/resource type filters, never --type. Only delete-like commands require confirmation. For read/search commands, summarize returned rows or hits to the user instead of only reporting completion.",
         mode: "cli",
         readOnly: false,
         danger: true,

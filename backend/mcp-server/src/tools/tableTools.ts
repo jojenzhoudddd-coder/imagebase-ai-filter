@@ -128,6 +128,11 @@ export interface ToolDefinition {
     required?: string[];
   };
   danger?: boolean;
+  /**
+   * Optional per-call confirmation policy. Use this for broad tools where the
+   * confirmation decision depends on argv/API args instead of static metadata.
+   */
+  requiresConfirmation?: (args: Record<string, any>, ctx?: ToolContext) => boolean;
   handler: (args: Record<string, any>, ctx?: ToolContext) => Promise<string>;
 }
 
