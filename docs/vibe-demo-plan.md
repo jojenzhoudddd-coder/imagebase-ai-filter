@@ -13,8 +13,8 @@
 | 产物形态 | **前端静态 bundle**（HTML + JS + CSS），V1 支持 `static` 和 `react-spa` 两种模板 |
 | 运行环境 | **云端 iframe 预览** 为默认；导出 zip 作为 power user 路径；**不做 localhost/WebContainer**（留给未来 CS 产品） |
 | 构建工具 | Backend **esbuild Node API**（已有 vite 链路复用），bundle React/TSX → JS |
-| 发布机制 | **立即可用** `https://www.imagebase.cc/share/:slug`（同域），同文件 serve，**直读写活 Table / 读 Idea**（非 snapshot） |
-| 数据访问 | **Demo 自带 SDK**（`window.ImageBase`）直连 workspace 内声明过的 Table **和** Idea |
+| 发布机制 | **立即可用** `https://www.funature.fun/share/:slug`（同域），同文件 serve，**直读写活 Table / 读 Idea**（非 snapshot） |
+| 数据访问 | **Funature Demo SDK**（当前运行时 namespace 为 `window.ImageBase`，保留早期兼容名）直连 workspace 内声明过的 Table **和** Idea |
 | SDK · Table | **7 种记录级操作**（query / getRecord / describeTable / createRecord / updateRecord / deleteRecord / batch*）；schema 操作架构级封死 |
 | SDK · Idea | **2 种只读操作**（listIdeas / readIdea）；写入不暴露（Idea streaming write 协议过于复杂，留在 V2+ 评估） |
 | 权限粒度 | **per-resource capability 声明**：`{"tb12345678": ["query", "createRecord"], "ide12345678": ["readIdea"]}` |
@@ -598,7 +598,10 @@ Per (demoId, IP, opFamily) 分桶：
 
 ---
 
-## 7 · Browser SDK (`window.ImageBase`)
+## 7 · Funature Demo SDK (`window.ImageBase`)
+
+`window.ImageBase` 是早期 namespace，当前作为兼容 API 保留。文档和产品层统一称为
+**Funature Demo SDK**；后续如新增 `window.Funature` alias，需要先保证旧 Demo 不破坏。
 
 ### 7.1 SDK 生成策略：**动态按需生成**
 
@@ -667,7 +670,7 @@ Per (demoId, IP, opFamily) 分桶：
 
   window.ImageBase = Object.freeze(SDK);
   console.log(
-    "%c[ImageBase SDK loaded]",
+    "%c[Funature Demo SDK loaded]",
     "color:#1456F0;font-weight:bold",
     "demo=", DEMO_ID,
     "tables=", SDK.dataTables,
@@ -754,7 +757,7 @@ Agent 写 TypeScript 需要知道 SDK 形状。在 demo-skill 的 promptFragment
 │  发布 Demo：「活动报名表」                             │
 ├─────────────────────────────────────────────────────┤
 │  生成公开 URL：                                        │
-│    https://www.imagebase.cc/share/xKp7QrS2mNt5  📋   │
+│    https://www.funature.fun/share/xKp7QrS2mNt5  📋   │
 │                                                        │
 │  访问此 URL 的任何人（无需登录）将能：                  │
 │                                                        │
@@ -874,7 +877,7 @@ export const demoSkill: SkillDefinition = {
   name: "demo-skill",
   displayName: "Demo 代码生成 & 部署",
   description:
-    "生成可运行的前端 Demo（HTML/React SPA），编译、预览、发布到公开 URL；通过 ImageBase SDK 读写 workspace 内声明的 Table 数据。",
+    "生成可运行的前端 Demo（HTML/React SPA），编译、预览、发布到公开 URL；通过 Funature Demo SDK 读写 workspace 内声明的 Table 数据。",
   artifacts: ["demo"],
   softDeps: ["table-skill", "analyst-skill"],
   when:
@@ -912,9 +915,9 @@ export const demoSkill: SkillDefinition = {
 5. Demo 可在 /workspace/:workspaceId/demo/:demoId 预览
 6. 用户满意后：publish_demo(demoId) 生成公开 URL
 
-## ImageBase SDK（生成 Demo 代码时使用）
+## Funature Demo SDK（生成 Demo 代码时使用）
 
-注入在全局的 window.ImageBase。根据声明的 capabilities 动态生成。SDK 签名：
+注入在全局的 `window.ImageBase`（legacy namespace）。根据声明的 capabilities 动态生成。SDK 签名：
 
 interface ImageBase {
   demoId: string;
@@ -1133,12 +1136,12 @@ export const vibeCodingSkill: SkillDefinition = {
 - React 18 + TypeScript
 - Tailwind CSS（CDN：<script src="https://cdn.tailwindcss.com"></script>）
 - 状态管理：useState / useReducer 够用时不上 zustand / redux
-- 请求：`fetch` + window.ImageBase SDK
+- 请求：`fetch` + Funature Demo SDK (`window.ImageBase`)
 
 ### 数据接入流程（必须）
 1. 写代码前先调 get_data_dictionary(workspaceId) 或 describe_table 了解字段
 2. 决定要用哪些 tableId → 调 update_demo_capabilities 声明
-3. 代码里用 window.ImageBase SDK 读写（不要硬编码假数据）
+3. 代码里用 Funature Demo SDK（`window.ImageBase`）读写（不要硬编码假数据）
 4. 写入类操作必须声明对应 capability（create/update/delete）
 
 ### CRUD 代码模式（example）

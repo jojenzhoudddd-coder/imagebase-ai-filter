@@ -2,16 +2,24 @@
 
 ## 1. 产品概述
 
-AI Filter 是一个飞书多维表格（Lark Base）克隆项目，核心亮点是**AI 智能筛选**——用户通过自然语言描述即可生成结构化筛选条件。系统采用前后端分离架构，前端 React + TypeScript，后端 Express + PostgreSQL + Prisma。
+Funature（Future + Nature）是一个面向未来的原生 AI 平台。当前已落地的 **Work** 板块覆盖多维表格、文档、画布、Demo 生成与 Agent 工作流；早期的 AI 智能筛选能力已经演进为其中一个基础能力。系统采用前后端分离架构，前端 React + TypeScript，后端 Express + PostgreSQL + Prisma。
+
+Funature 的产品路线分为三块：
+
+| 板块 | 定位 | 当前状态 |
+|------|------|----------|
+| **Work** | AI-native 多维表格 + 文档 + 画布 + Demo + Agent | 已实现并持续扩展 |
+| **Home** | AI-native 生活空间 | 规划中 |
+| **Muse** | AI-native 创意工作室 | 规划中 |
 
 ### 1.1 目标用户
 - 需要管理结构化数据的团队成员（PM、研发、测试）
 - 不熟悉复杂筛选条件语法的普通用户
 
 ### 1.2 核心价值
-- 自然语言 → 结构化筛选，降低使用门槛
-- 多字段类型支持，覆盖主流数据管理场景
-- 撤销/重做保障操作安全性
+- 用自然语言驱动表格、文档、分析、Demo 生成等工作流，降低复杂工具的使用门槛
+- 多字段类型、多文档形态、多 Agent 能力协同，覆盖从结构化数据到创意产物的完整工作场景
+- 撤销/重做、实时同步、二次确认、权限声明等机制保障操作安全性
 
 ---
 
@@ -659,7 +667,7 @@ GET /api/sync/documents/:docId/events?clientId=xxx
 ```
 用户浏览器
   ↓ HTTP
-Nginx (163.7.1.94:443) → www.imagebase.cc
+Nginx (163.7.1.94:443) → www.funature.fun
   ↓ Reverse Proxy
 Express (port 3001)
   ├── Serves static frontend (Vite build)
@@ -669,7 +677,7 @@ Express (port 3001)
   └── PostgreSQL (Prisma)
 
 Process Manager: PM2
-Branch Strategy: feat/cell-selection (preview) → main (stable)
+Branch Strategy: AIWorkBeta (active) → main/stable release branch
 
 Nginx SSE 配置：
   location /api/sync/ {

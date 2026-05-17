@@ -28,7 +28,7 @@
 **改动**:
 - 新建 `backend/src/services/storage/blobStorage.ts`(interface)
 - 实现 `LocalFsStorage`(`fs.promises` + stream)
-- env 切换 `BLOB_STORAGE_BACKEND=local|s3` + `IMAGEBASE_HOME`
+- env 切换 `BLOB_STORAGE_BACKEND=local|s3` + `FUNATURE_HOME`（兼容旧 `IMAGEBASE_HOME`）
 - 收口现有 7 处 `fs.*` 调用(`agentService` / `demoRoutes` / `tasteRoutes` / `analyst/*`),**两个例外**:`agent-worktrees/`(git worktree 必须本地 inode)+ `analyst/sessions/*.duckdb`(DuckDB 需本地 fs)
 - 单元测试 LocalFsStorage
 

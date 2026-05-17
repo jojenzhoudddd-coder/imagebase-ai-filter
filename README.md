@@ -34,8 +34,8 @@ Funature 覆盖三大板块：
 
 ```bash
 # 克隆仓库
-git clone https://github.com/jojenzhoudddd-coder/ai-filter-lark.git
-cd ai-filter-lark
+git clone https://github.com/jojenzhoudddd-coder/imagebase-ai-filter.git
+cd imagebase-ai-filter
 
 # 安装依赖
 npm run install:all
@@ -62,7 +62,10 @@ npm run start
 
 ## 在线体验
 
-https://www.imagebase.cc
+https://www.funature.fun
+
+> 说明：仓库、服务器目录、部分内部 SDK namespace 仍保留早期代号
+> `ai-filter` / `imagebase`，它们是兼容性标识，不代表当前产品名。
 
 ## 技术栈
 
@@ -96,6 +99,8 @@ https://www.imagebase.cc
 ├── CLAUDE.md           # Claude Code 项目指南
 └── package.json        # 根目录脚本
 ```
+
+更多命名约定见 [docs/branding.md](docs/branding.md)。
 
 ## License
 

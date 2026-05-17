@@ -1,8 +1,11 @@
-# ImageBase 正式上线 Checklist V2
+# Funature 正式上线 Checklist V2
 
 > **基线**：2026-05-11，109K 行代码，27 个 Prisma 模型，395 个源文件
 > **目标**：支撑 **10 万 DAU**，全球访问，数据不丢，费用可控，安全合规
 > **当前状态**：单机雅加达 163.7.1.94（7.5GB RAM）+ Docker PG + PM2 单进程
+>
+> 命名说明：对外品牌统一为 **Funature**。当前 `~/.imagebase/`
+> 是历史内部存储路径，迁移到对象存储前继续保留。
 
 ---
 
@@ -181,7 +184,7 @@
 
 **代码改动（我来做）**：
 - [ ] **Helmet**：一键加默认安全 headers
-- [ ] **CORS**：严格 origin `https://www.imagebase.cc`
+- [ ] **CORS**：严格 origin `https://www.funature.fun`
 - [ ] **CSP**：先 Report-Only 跑两周再强制
 - [ ] **Body limit**：全局 1MB，idea content 256KB，demo file 1MB
 - [ ] **Login 限频**：per-IP 10/min 失败锁 15min（走 Redis）

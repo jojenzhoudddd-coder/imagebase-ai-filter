@@ -1,7 +1,10 @@
-# ImageBase 上线 Hardening Checklist
+# Funature 上线 Hardening Checklist
 
 > 现状(2026-04-27 V2.9.11):single-region (雅加达 / 163.7.1.94) + docker postgres + ssh+pm2 部署 + 无 CDN + 无监控
 > 目标:能扛 1k DAU、跨大洲访问、数据不丢、错误可观测、滥用不烧钱
+>
+> 命名说明：产品对外统一为 **Funature**。当前本地文件系统根目录仍是
+> `~/.imagebase/`，属于早期代号遗留的内部路径，不在本 checklist 中强制迁移。
 
 ---
 
@@ -40,7 +43,7 @@
   }
   ```
 - [ ] 实现 `LocalFsStorage`(`fs.promises` + 流式 `createReadStream/WriteStream`)
-- [ ] env 切换:`BLOB_STORAGE_BACKEND=local|s3`(默认 local),`IMAGEBASE_HOME` 控制本地根目录
+- [ ] env 切换:`BLOB_STORAGE_BACKEND=local|s3`(默认 local),`FUNATURE_HOME` 控制本地根目录；兼容旧 `IMAGEBASE_HOME`
 - [ ] 收口现有 `fs.*` 调用(分两批,每批一个 PR):
   - 批次 1:`agentService.ts`(soul / profile / config / memory / state)
   - 批次 2:`demoRoutes.ts`(files / dist / published / preview)+ `tasteRoutes.ts`(SVG)+ `analyst/*`
@@ -88,7 +91,7 @@
 > 这一节里以 ⏸ 标记的项目说明"PR4-prep 已经做完,launch 时无需重做"。
 
 **👤 你来做**
-- [ ] 开 **S3 bucket**(或阿里 OSS):`imagebase-prod-{agents,skills,demos,idea-attachments,analyst,worktrees}` 分别一个
+- [ ] 开 **S3 bucket**(或阿里 OSS):`funature-prod-{agents,skills,demos,idea-attachments,analyst,worktrees}` 分别一个
 - [ ] 开 **跨区复制 (CRR)** 雅加达 → 新加坡
 - [ ] 开 **Object Versioning**(误删恢复)
 - [ ] 开 **Lifecycle**:90 天前的 worktree / analyst snapshot 自动转 Glacier
@@ -110,12 +113,12 @@
 
 | 资产 | 当前路径 | 目标 bucket | key prefix |
 |---|---|---|---|
-| Agent identity / memory / state | `~/.imagebase/agents/<id>/...` | `imagebase-prod-agents` | `<agentId>/...` |
-| Agent skills (PR4 fs 化) | `~/.imagebase/agents/<id>/skills/<skillId>/...` | `imagebase-prod-skills` | `<agentId>/<skillId>/...` |
-| Demo files / dist / published | `~/.imagebase/demos/<id>/...` | `imagebase-prod-demos` | `<demoId>/...` |
-| Idea attachments (PR5) | `~/.imagebase/idea-attachments/<wsId>/<hash>.<ext>` | `imagebase-prod-idea-attachments` | `<wsId>/<hash>.<ext>` |
-| Taste SVG | `~/.imagebase/.../tastes/*.svg` | `imagebase-prod-tastes` | `<designId>/<tasteId>.svg` |
-| Analyst snapshots / cache | `~/.imagebase/analyst/...` | `imagebase-prod-analyst` | `snapshots/...` / `cache/...` |
+| Agent identity / memory / state | `~/.imagebase/agents/<id>/...` | `funature-prod-agents` | `<agentId>/...` |
+| Agent skills (PR4 fs 化) | `~/.imagebase/agents/<id>/skills/<skillId>/...` | `funature-prod-skills` | `<agentId>/<skillId>/...` |
+| Demo files / dist / published | `~/.imagebase/demos/<id>/...` | `funature-prod-demos` | `<demoId>/...` |
+| Idea attachments (PR5) | `~/.imagebase/idea-attachments/<wsId>/<hash>.<ext>` | `funature-prod-idea-attachments` | `<wsId>/<hash>.<ext>` |
+| Taste SVG | `~/.imagebase/.../tastes/*.svg` | `funature-prod-tastes` | `<designId>/<tasteId>.svg` |
+| Analyst snapshots / cache | `~/.imagebase/analyst/...` | `funature-prod-analyst` | `snapshots/...` / `cache/...` |
 | Analyst sessions (.duckdb) | `~/.imagebase/analyst/sessions/conv_*.duckdb` | **不上 S3**(同 worktree 例外,DuckDB 需要本地 fs) | — |
 
 **应用层改动量**:
@@ -192,7 +195,7 @@
 ### 0.6 Sentry + 结构化日志
 
 **👤 你来做**
-- [ ] 注册 Sentry,创建两个 project:`imagebase-backend` / `imagebase-frontend`
+- [ ] 注册 Sentry,创建两个 project:`funature-backend` / `funature-frontend`
 - [ ] 拿到 DSN,放 secrets manager
 - [ ] (可选)开 Sentry Performance(APM 替代品,够用 + 便宜)
 
@@ -230,7 +233,7 @@
 - [ ] **CSP**(渐进):先 `Content-Security-Policy-Report-Only`,跑两周收报告再改成强制
   - 主域:`default-src 'self'; script-src 'self' 'unsafe-inline' cdn.tailwindcss.com esm.sh`
   - `/share/:slug/*` 严格隔离:`default-src 'self'; connect-src 'self' /api/demo-runtime/`
-- [ ] **CORS**:目前没看到严格配置,加 `cors({ origin: "https://www.imagebase.cc", credentials: true })`
+- [ ] **CORS**:目前没看到严格配置,加 `cors({ origin: "https://www.funature.fun", credentials: true })`
 - [ ] **Helmet**:加 `helmet()` 一锅端默认 headers
 - [ ] **Login 限频**:`/api/auth/login` per-IP 5/min 失败锁定 15min
 - [ ] **Cookie**:`HttpOnly + Secure + SameSite=Lax`,session 7 天
@@ -262,8 +265,8 @@
 ### 1.1 Cloudflare 全站接入
 
 **👤 你来做**
-- [ ] `imagebase.cc` 域名 NS 改到 Cloudflare(免费 plan 够用,Pro $20/月有更细规则)
-- [ ] 开 **Proxy(橙色云)** for `www.imagebase.cc`
+- [ ] `funature.fun` 域名 NS 改到 Cloudflare(免费 plan 够用,Pro $20/月有更细规则)
+- [ ] 开 **Proxy(橙色云)** for `www.funature.fun`
 - [ ] 开 **Argo Smart Routing**($5 + $0.1/GB,显著降全球延迟)
 - [ ] 开 **Tiered Cache**(免费,边缘命中率 +30%)
 - [ ] 开 **Bot Fight Mode**(免费防爬虫)
@@ -271,7 +274,7 @@
   - block 非中国/东南亚以外的 `/api/auth/login` POST(可选,看你客户群)
   - rate limit `/api/*` per IP 100/min
   - challenge `/share/:slug/*` if Cloudflare 检测 bot
-- [ ] **DNS**:`@` + `www` proxy on,`api.imagebase.cc` 也 proxy
+- [ ] **DNS**:`@` + `www` proxy on,`api.funature.fun` 也 proxy
 
 **🛠 我来做**
 - [ ] 静态资源 fingerprint(Vite 默认有)→ nginx `/assets/*` 加 `Cache-Control: public, max-age=31536000, immutable`
@@ -297,10 +300,10 @@
 - [ ] `.github/workflows/deploy.yml`:手动触发,拉指定 sha,SSH 到 prod 跑 pull image + blue-green
 - [ ] **blue-green 脚本**(不上 k8s 的简化版):
   ```
-  pm2 start ecosystem.config.js --name ai-filter-green
+  pm2 start ecosystem.config.js --name funature-green
   curl http://localhost:3002/healthz  # 新实例
   if 200, nginx switch upstream → green
-  pm2 delete ai-filter-blue
+  pm2 delete funature-blue
   ```
 - [ ] **healthz endpoint**:`GET /healthz` 返 `{db: ok, redis: ok, version: <sha>}`,DB / Redis 任一挂返 503
 - [ ] **Migration 自动化**:CI 跑 `prisma migrate diff --to-schema-datamodel ./prisma/schema.prisma`,如果有破坏性变更(drop col / non-null no default),PR 上贴 ⚠️ comment 要求 reviewer 手动确认

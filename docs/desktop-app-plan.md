@@ -11,11 +11,11 @@
 
 ## 推荐路径:Electron Thin-Client
 
-主进程 `loadURL("https://www.imagebase.cc")`,Electron 装一个 persistent session 让登录态跨重启保留。零后端改动,等于"app 化的浏览器标签页"。
+主进程 `loadURL("https://www.funature.fun")`,Electron 装一个 persistent session 让登录态跨重启保留。零后端改动,等于"app 化的浏览器标签页"。
 
 ```js
 new BrowserWindow({
-  webPreferences: { partition: 'persist:imagebase' }
+  webPreferences: { partition: 'persist:funature' }
 })
 ```
 
@@ -25,7 +25,7 @@ new BrowserWindow({
 |------|------|------|------|
 | Phase 0 验证 | 1 天 | Electron 壳载入线上域名,跑通登录 / SSE / 文件上传 | 本机 .app 双击能用 |
 | Phase 1 MVP | 4-6 天 | electron-builder 配置 + macOS DMG + Win exe(unsigned) + 系统托盘 + 菜单栏 | 可分发的 alpha 版 |
-| Phase 2 上线 | 4-6 天 | Apple notarization + Win 签名(可选) + auto-update(electron-updater + GitHub Releases) + Deep link `imagebase://` | 正式发布版 |
+| Phase 2 上线 | 4-6 天 | Apple notarization + Win 签名(可选) + auto-update(electron-updater + GitHub Releases) + Deep link `funature://` | 正式发布版 |
 | Phase 3 加分项 | 按需 | 后台常驻 + 系统通知 + 全局快捷键 + 离线只读缓存 + 原生文件 drag | 真正"app 感"的版本 |
 
 **单人全栈** ~2 周完成 Phase 1+2,Phase 3 按需追加。
@@ -37,7 +37,7 @@ new BrowserWindow({
 1. **系统通知** —— habit 完成 / agent 主动来消息直接弹原生通知(浏览器通知体验差)
 2. **全局快捷键** —— `Cmd+Shift+I` 任意位置唤起 chat
 3. **后台常驻** —— 关窗不退出,系统托盘看 agent 活动
-4. **Deep link** —— `imagebase://share/xxx` 从 IM / 邮件跳转直接落桌面 app
+4. **Deep link** —— `funature://share/xxx` 从 IM / 邮件跳转直接落桌面 app
 5. **自动更新** —— 必备
 6. **离线只读缓存** —— 断网仍能查最近内容(难,3-5 天)
 
@@ -63,14 +63,14 @@ new BrowserWindow({
 | 问题 | 解法 | 工作量 |
 |------|------|--------|
 | 跨域 (CORS) | `loadURL` 同域加载,零后端改动 | 0 |
-| 登录态持久化 | `partition: 'persist:imagebase'` | 5 分钟 |
+| 登录态持久化 | `partition: 'persist:funature'` | 5 分钟 |
 | SSE 长连接 | Electron 原生支持 | 0 |
 | 文件上传 | 走原生 file dialog,比浏览器顺 | 0 |
 | 系统通知接入 | 后端 SSE event → main process → `Notification` API | 1 天 |
 | 全局快捷键 | `globalShortcut.register` | 半天 |
 | 后台常驻 | `app.on('window-all-closed')` 不退出 + tray | 半天 |
 | 自动更新 | electron-updater + GitHub Releases | 1-2 天 |
-| Deep link | `app.setAsDefaultProtocolClient('imagebase')` | 半天 |
+| Deep link | `app.setAsDefaultProtocolClient('funature')` | 半天 |
 | 离线只读缓存 | 拦截 fetch / SSE 写 IndexedDB,断网回放 | 3-5 天(可选)|
 
 ## 启动条件

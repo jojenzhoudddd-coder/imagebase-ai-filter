@@ -1,7 +1,9 @@
-# AI Filter 更新日志
+# Funature 更新日志
 
 ## 格式说明
 每条记录包含：日期、commit hash、改动类型（feat/fix/style/docs）、改动说明。
+
+说明：2026-04 月早期条目中出现的 `AI Filter` / `ImageBase` 是项目早期代号或内部 namespace；当前产品对外名称统一为 **Funature**。
 
 ---
 
@@ -192,7 +194,7 @@ Phase 3 上线后续优化:
 
 HTTP/2 在单个 TCP 连接上多路复用,**没有 6 条上限**。SSE 全部走在同一条 TCP 连接的不同 stream 上,sidebar 的 fetch 与 SSE 流并行,不再相互饿死。
 
-**验证**:`curl -I https://www.imagebase.cc/...` 返回 `HTTP/2 200` ✅。
+**验证**:`curl -I https://www.funature.fun/...` 返回 `HTTP/2 200` ✅。
 
 **未做**:HTTP/3 / QUIC(nginx 主线版要 1.25+ 才稳)留给未来。HTTP/2 已经覆盖 99% 的浏览器场景。
 

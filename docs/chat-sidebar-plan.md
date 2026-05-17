@@ -34,8 +34,10 @@
 │                                             │ MCP Client (stdio)│
 │                                             ▼                  │
 │                                 ┌──────────────────────────┐  │
-│                                 │   ai-filter-mcp-server   │  │
-│                                 │   (independent process)  │  │
+│                                 │   funature-mcp-server     │  │
+│                                 │   (independent process;  │  │
+│                                 │    package may retain    │  │
+│                                 │    legacy ai-filter name)│  │
 │                                 │   - 20+ table tools      │  │
 │                                 │   - calls dataStore       │  │
 │                                 └──────────────────────────┘  │
