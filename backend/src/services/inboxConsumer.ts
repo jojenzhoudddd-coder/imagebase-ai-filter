@@ -23,6 +23,35 @@ import {
 } from "./suggestionService.js";
 import type { EvaluateCronResult } from "./cronScheduler.js";
 
+const HABIT_RUN_TIMEOUT_MS = 8 * 60 * 1000;
+
+async function drainAgentRunWithTimeout(
+  ctx: AgentContext,
+  prompt: string,
+  timeoutMs = HABIT_RUN_TIMEOUT_MS,
+): Promise<void> {
+  const abort = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    abort.abort();
+  }, timeoutMs);
+  timer.unref?.();
+
+  try {
+    for await (const _event of runAgent(ctx, prompt, abort.signal)) {
+      // discard — no frontend to stream to
+    }
+  } catch (err) {
+    if (timedOut) {
+      throw new Error(`habit run timed out after ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Resolve which workspace a habit run should land in. Old code hard-coded
  * `doc_default` as fallback,但所有非 default 用户的 agent 也会 fall back,
@@ -244,12 +273,14 @@ async function consumeOne(
     const errors: string[] = [];
 
     for (const workspaceId of workspaceIds) {
+      const startedAt = Date.now();
+      let conv: Awaited<ReturnType<typeof findConversationByAnchor>> = null;
       try {
         // 1. Reuse the same per-habit conversation across fires —— 用户期望:
         //    每个 habit 一条长对话,跨天积累上下文(类似 Slack 频道)。除非用户
         //    手动删了对话(delete cascade),否则永远 reuse。新 habit / 删除后
         //    重新触发 → 会落到 createConversation 创建新的。
-        let conv = await findConversationByAnchor({
+        conv = await findConversationByAnchor({
           agentId,
           workspaceId,
           attachedToType: "habit",
@@ -272,9 +303,7 @@ async function consumeOne(
         };
 
         // 3. Run agent — drain the async generator (no SSE consumer)
-        for await (const _event of runAgent(ctx, prompt)) {
-          // discard — no frontend to stream to
-        }
+        await drainAgentRunWithTimeout(ctx, prompt);
 
         completed++;
         console.log(
@@ -283,6 +312,14 @@ async function consumeOne(
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         errors.push(`${workspaceId}: ${message}`);
+        if (conv) {
+          await appendMessage(conv.id, {
+            role: "assistant",
+            content: `Habit run failed before completion: ${message}`,
+            durationMs: Date.now() - startedAt,
+            source: `habit:${jobId}`,
+          }).catch(() => undefined);
+        }
         console.error(
           `[inbox-consumer] habit "${displayName}" failed for ws=${workspaceId}:`,
           message,
