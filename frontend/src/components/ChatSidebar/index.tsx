@@ -1679,13 +1679,13 @@ export default function ChatSidebar({
     if (!cur) return;
     try {
       // 拉最新 list 判断 sibling
-      const list = await listConversations(workspaceId);
+      const list = await listConversations(workspaceId, undefined, "updatedAt");
       if (list.length <= 1) {
         toast.error(t("chat.toast.deleteOnlyOne"));
         return;
       }
       const idx = list.findIndex((c) => c.id === cur);
-      // 优先 createdAt desc 顺序的下一条 (idx+1,createdAt 更老),没有就上一条 (idx-1,更新)
+      // 优先 updatedAt desc 顺序的下一条 (idx+1,更早更新),没有就上一条。
       const neighbor = list[idx + 1] ?? list[idx - 1];
       await apiDeleteConversation(cur);
       toast.success(t("chat.toast.deleted"));
@@ -1725,7 +1725,7 @@ export default function ChatSidebar({
   // Delete/clear any conversation from the list popover
   const handleDeleteConversation = useCallback(async (convId: string) => {
     try {
-      const list = await listConversations(workspaceId);
+      const list = await listConversations(workspaceId, undefined, "updatedAt");
       if (list.length <= 1) { toast.error(t("chat.toast.deleteOnlyOne")); return; }
       await apiDeleteConversation(convId);
       toast.success(t("chat.toast.deleted"));
@@ -1780,7 +1780,7 @@ export default function ChatSidebar({
     const seq = ++convFetchSeqRef.current;
     setConvListLoading(true);
     try {
-      const list = await listConversations(workspaceId);
+      const list = await listConversations(workspaceId, undefined, "updatedAt");
       // 如果期间又点过 → 用最新的 seq 覆盖,这次 stale 直接丢
       if (seq !== convFetchSeqRef.current) return;
       setConvList(list);

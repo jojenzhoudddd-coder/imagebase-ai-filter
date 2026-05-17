@@ -100,7 +100,9 @@ export const cronTools: ToolDefinition[] = [
           ? args.description.trim() : undefined,
         type: "user",
         enabled: true,
-        workspaceId: typeof args.workspaceId === "string" ? args.workspaceId : undefined,
+        workspaceId: typeof args.workspaceId === "string" && args.workspaceId.trim()
+          ? args.workspaceId.trim()
+          : ctx?.workspaceId,
         skills: Array.isArray(args.skills)
           ? args.skills.filter((s: unknown) => typeof s === "string")
           : undefined,

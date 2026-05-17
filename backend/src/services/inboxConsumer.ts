@@ -28,23 +28,31 @@ import type { EvaluateCronResult } from "./cronScheduler.js";
  * `doc_default` as fallback,但所有非 default 用户的 agent 也会 fall back,
  * 把他们的 habit 对话都倒进 user_default 的 doc_default workspace —— 用户
  * 在自己的 chat 里看到一堆别人 agent 的"Habit: ..."conv,且自己历史对话
- * 被淹没。修复:走 agent → owning user → user 的第一个 workspace 链路。
+ * 被淹没。现在:显式 workspace 优先;系统 habit 无显式 workspace 时
+ * fan out 到该用户的所有 workspace;自定义 habit fallback 到第一个 workspace。
  */
-async function resolveWorkspaceIdForAgent(
+async function resolveWorkspaceIdsForHabit(
   agentId: string,
   inboxMeta: InboxMessage["meta"],
-): Promise<string | null> {
+  job: FiredJob["job"],
+): Promise<string[]> {
   // 1. inbox.meta.workspaceId 优先(如果 cron job 显式指定了)
   const fromMeta = inboxMeta?.workspaceId;
-  if (typeof fromMeta === "string" && fromMeta) return fromMeta;
-  // 2. agent → user → user's primary workspace
+  if (typeof fromMeta === "string" && fromMeta) return [fromMeta];
+  // 2. job.workspaceId 兼容老数据 / 直接写 cron.json 的场景
+  if (typeof job.workspaceId === "string" && job.workspaceId) return [job.workspaceId];
+  // 3. system habits are workspace-scoped product behaviors. If the user has
+  // multiple workspaces, each workspace should get its own Habit conversation
+  // and "current workspace" snapshot; otherwise the history only appears in
+  // whichever workspace was created first.
   try {
     const agent = await getAgent(agentId);
-    if (!agent) return null;
+    if (!agent) return [];
     const wss = await listUserWorkspaces(agent.userId);
-    return wss[0]?.id ?? null;
+    if (job.type === "system") return wss.map((ws) => ws.id);
+    return wss[0]?.id ? [wss[0].id] : [];
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -128,10 +136,10 @@ async function consumeOne(
 ): Promise<void> {
   const jobId = job.id;
   const prompt = inboxMessage.body || inboxMessage.subject;
-  const workspaceId = await resolveWorkspaceIdForAgent(agentId, inboxMessage.meta);
-  if (!workspaceId) {
+  const workspaceIds = await resolveWorkspaceIdsForHabit(agentId, inboxMessage.meta, job);
+  if (workspaceIds.length === 0) {
     console.warn(
-      `[inbox-consumer] habit "${jobId}" agent=${agentId}: no resolvable workspace, skipping`,
+      `[inbox-consumer] habit "${jobId}" agent=${agentId}: no resolvable workspaces, skipping`,
     );
     // Ack the message so we don't keep retrying — the agent has no workspace
     // (orphaned account?) and there's nothing to do.
@@ -232,42 +240,65 @@ async function consumeOne(
   console.log(`[inbox-consumer] executing habit "${displayName}" (${jobId})`);
 
   try {
-    // 1. Reuse the same per-habit conversation across fires —— 用户期望:
-    //    每个 habit 一条长对话,跨天积累上下文(类似 Slack 频道)。除非用户
-    //    手动删了对话(delete cascade),否则永远 reuse。新 habit / 删除后
-    //    重新触发 → 会落到 createConversation 创建新的。
-    let conv = await findConversationByAnchor({
-      agentId,
-      workspaceId,
-      attachedToType: "habit",
-      attachedToId: jobId,
-    });
-    if (!conv) {
-      conv = await createConversation(
-        workspaceId,
-        `Habit: ${displayName}`,
-        agentId,
-        { type: "habit", id: jobId },
-      );
+    let completed = 0;
+    const errors: string[] = [];
+
+    for (const workspaceId of workspaceIds) {
+      try {
+        // 1. Reuse the same per-habit conversation across fires —— 用户期望:
+        //    每个 habit 一条长对话,跨天积累上下文(类似 Slack 频道)。除非用户
+        //    手动删了对话(delete cascade),否则永远 reuse。新 habit / 删除后
+        //    重新触发 → 会落到 createConversation 创建新的。
+        let conv = await findConversationByAnchor({
+          agentId,
+          workspaceId,
+          attachedToType: "habit",
+          attachedToId: jobId,
+        });
+        if (!conv) {
+          conv = await createConversation(
+            workspaceId,
+            `Habit: ${displayName}`,
+            agentId,
+            { type: "habit", id: jobId },
+          );
+        }
+
+        // 2. Build headless AgentContext (no HTTP request, no auth token)
+        const ctx: AgentContext = {
+          conversationId: conv.id,
+          workspaceId,
+          agentId,
+        };
+
+        // 3. Run agent — drain the async generator (no SSE consumer)
+        for await (const _event of runAgent(ctx, prompt)) {
+          // discard — no frontend to stream to
+        }
+
+        completed++;
+        console.log(
+          `[inbox-consumer] habit "${displayName}" completed (ws=${workspaceId}, conv=${conv.id})`,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        errors.push(`${workspaceId}: ${message}`);
+        console.error(
+          `[inbox-consumer] habit "${displayName}" failed for ws=${workspaceId}:`,
+          message,
+        );
+      }
     }
 
-    // 2. Build headless AgentContext (no HTTP request, no auth token)
-    const ctx: AgentContext = {
-      conversationId: conv.id,
-      workspaceId,
-      agentId,
-    };
-
-    // 3. Run agent — drain the async generator (no SSE consumer)
-    for await (const _event of runAgent(ctx, prompt)) {
-      // discard — no frontend to stream to
+    // 4. Mark inbox message as read. If every workspace failed, leave it
+    // unread so orphan recovery retries next heartbeat. If some succeeded,
+    // ack to avoid duplicating those successful conversation writes forever.
+    if (completed > 0 || errors.length === 0) {
+      await ackInboxMessage(agentId, inboxMessage.id);
     }
-
-    // 4. Mark inbox message as read
-    await ackInboxMessage(agentId, inboxMessage.id);
 
     console.log(
-      `[inbox-consumer] habit "${displayName}" completed (conv=${conv.id})`,
+      `[inbox-consumer] habit "${displayName}" batch done (${completed}/${workspaceIds.length} workspaces)`,
     );
   } catch (err) {
     console.error(
