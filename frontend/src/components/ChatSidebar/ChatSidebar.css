@@ -1553,7 +1553,7 @@
   background: var(--surface-2);          /* matches .chat-expand-card-icon tile */
   border: 0.5px solid var(--border-default);
   border-radius: 8px;
-  color: var(--warning);               /* amber glyph stays for the warning cue */
+  color: var(--icon-primary);
 }
 .chat-confirm-card-title {
   flex: 1 1 0;
