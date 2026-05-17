@@ -3500,7 +3500,7 @@ async function* runAgentImpl(
               context: { path: "parallel_subagent" },
             });
           }
-          return { callId: fc.callId, output: out, success: true };
+          return { callId: fc.callId, output: out, success: !reportedError };
         } catch (err) {
           logAgentToolFailure({
             kind: "agent_tool_error",
@@ -3790,9 +3790,13 @@ async function* runAgentImpl(
       }
 
       const reportedToolError = extractToolOutputError(toolOutput);
+      const hadReportedToolError = Boolean(reportedToolError);
+      if (success && reportedToolError) {
+        success = false;
+      }
       if (!success || reportedToolError) {
         logAgentToolFailure({
-          kind: success ? "agent_tool_result_error" : "agent_tool_error",
+          kind: hadReportedToolError ? "agent_tool_result_error" : "agent_tool_error",
           conversationId,
           agentId,
           workspaceId,
@@ -4242,9 +4246,11 @@ async function* resumeAfterConfirmImpl(
     output = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
   }
   const resumeReportedError = extractToolOutputError(output);
+  const hadResumeReportedError = Boolean(resumeReportedError);
   if (success && resumeReportedError) {
+    success = false;
     logAgentToolFailure({
-      kind: "agent_tool_result_error",
+      kind: hadResumeReportedError ? "agent_tool_result_error" : "agent_tool_error",
       conversationId: ctx.conversationId,
       agentId: resumeAgentId,
       workspaceId: ctx.workspaceId,
@@ -4315,6 +4321,31 @@ function buildConfirmedToolMessage(tool: string, output: string, success: boolea
     if (start && end) lines.push(`- 时间：${start} - ${end}`);
     if (eventId) lines.push(`- event_id：${eventId}`);
     if (link) lines.push(`- 链接：${link}`);
+    return lines.join("\n");
+  }
+  if (providerKey === "lark" && integrationTool === "lark_calendar_update_event") {
+    const event = readNested(result, ["data", "event"]);
+    const normalized = readNested(result, ["normalized"]);
+    const summary = readString(event, "summary") || "飞书日程";
+    const eventId = readString(event, "event_id") || readString(normalized, "eventId");
+    const calendarId = readString(normalized, "calendarId");
+    const start = readString(normalized, "startTime");
+    const end = readString(normalized, "endTime");
+    const fields = readNested(normalized, ["updatedFields"]);
+    const lines = [`已更新${summary}。`];
+    if (start && end) lines.push(`- 时间：${start} - ${end}`);
+    if (eventId) lines.push(`- event_id：${eventId}`);
+    if (calendarId) lines.push(`- calendar_id：${calendarId}`);
+    if (Array.isArray(fields) && fields.length) lines.push(`- 更新字段：${fields.join(", ")}`);
+    return lines.join("\n");
+  }
+  if (providerKey === "lark" && integrationTool === "lark_calendar_delete_event") {
+    const normalized = readNested(result, ["normalized"]);
+    const eventId = readString(normalized, "eventId");
+    const calendarId = readString(normalized, "calendarId");
+    const lines = ["已删除飞书日程。"];
+    if (eventId) lines.push(`- event_id：${eventId}`);
+    if (calendarId) lines.push(`- calendar_id：${calendarId}`);
     return lines.join("\n");
   }
   if (providerKey === "lark" && integrationTool === "lark_api_post") {

@@ -131,6 +131,10 @@ export function extractToolOutputError(output: unknown): string | null {
   if (record.error !== undefined && record.error !== null) {
     return stringifyShort(record.error);
   }
+  const apiCode = readFailureCode(record.code ?? record.errcode ?? record.error_code);
+  if (apiCode !== null) {
+    return stringifyShort(record.msg ?? record.message ?? record.reason ?? record);
+  }
   if (record.ok === false) {
     return stringifyShort(record.message ?? record.reason ?? record);
   }
@@ -139,6 +143,16 @@ export function extractToolOutputError(output: unknown): string | null {
   }
   if (record.success === false) {
     return stringifyShort(record.message ?? record.reason ?? record);
+  }
+  return null;
+}
+
+function readFailureCode(value: unknown): string | number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value !== 0) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === "0") return null;
+    if (/^-?\d+$/.test(trimmed) && Number(trimmed) !== 0) return trimmed;
   }
   return null;
 }

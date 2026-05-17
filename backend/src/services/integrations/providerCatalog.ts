@@ -328,7 +328,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_api_post",
         description:
-          "Call a Lark Open Platform POST endpoint through lark-cli. This may write third-party data; only delete-like endpoints require confirmation. For calendar event creation, prefer lark_calendar_create_event so the backend converts time safely. If the result reports missing_scope, start incremental auth with start_integration_auth and the exact missing scope before retrying.",
+          "Call a Lark Open Platform write endpoint through lark-cli. Supports method POST/PATCH/PUT/DELETE; default POST. This may write third-party data; delete-like endpoints require confirmation. For calendar event create/update/delete, prefer the dedicated lark_calendar_* tools so time conversion and deletion confirmation stay centralized. If the result reports missing_scope, start incremental auth with start_integration_auth and the exact missing scope before retrying.",
         mode: "cli",
         readOnly: false,
         danger: true,
@@ -338,10 +338,15 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
           type: "object",
           properties: {
             path: { type: "string", description: "Open API path, e.g. /open-apis/im/v1/messages." },
+            method: {
+              type: "string",
+              enum: ["POST", "PATCH", "PUT", "DELETE"],
+              description: "HTTP method. Default POST.",
+            },
             params: { type: "object", description: "Query parameters. Defaults to {}." },
-            data: { type: "object", description: "JSON request body." },
+            data: { type: "object", description: "JSON request body. Optional for DELETE." },
           },
-          required: ["path", "data"],
+          required: ["path"],
         },
       },
       {
@@ -403,6 +408,96 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
         },
       },
       {
+        name: "lark_calendar_update_event",
+        description:
+          "Update a Lark/Feishu calendar event. Use this instead of raw lark_api_post for schedule edits: pass eventId and optional ISO-8601 startTime/endTime, summary, description, location, reminderMinutes, or videoMeeting. If changing time, provide startTime and either endTime or durationMinutes.",
+        mode: "cli",
+        readOnly: false,
+        danger: true,
+        output: "json",
+        args: [],
+        inputSchema: {
+          type: "object",
+          properties: {
+            eventId: {
+              type: "string",
+              description: "Required event_id, e.g. xxxxx_0.",
+            },
+            calendarId: {
+              type: "string",
+              description: "Optional calendar_id. Omit to use the user's primary calendar.",
+            },
+            summary: { type: "string", description: "Optional new event title." },
+            startTime: {
+              type: "string",
+              description: "Optional ISO datetime with timezone, e.g. 2026-05-18T17:00:00+08:00. If supplied, endTime or durationMinutes is required.",
+            },
+            endTime: {
+              type: "string",
+              description: "Optional ISO datetime with timezone.",
+            },
+            durationMinutes: {
+              type: "number",
+              description: "Optional duration when startTime is supplied and endTime is omitted.",
+            },
+            timezone: {
+              type: "string",
+              description: "IANA timezone. Use the user timezone from system context. Default Asia/Shanghai only when no user timezone is available.",
+            },
+            description: { type: "string", description: "Optional event description." },
+            location: {
+              type: "object",
+              description: "Optional event location, e.g. {name, address}. Pass null/empty object to leave unchanged.",
+            },
+            reminderMinutes: {
+              type: "number",
+              description: "Optional reminder offset in minutes before start, e.g. 15.",
+            },
+            videoMeeting: {
+              type: "boolean",
+              description: "Set false to remove video meeting, true to request one.",
+            },
+            needNotification: {
+              type: "boolean",
+              description: "Whether to notify attendees. Default true.",
+            },
+            allowPast: {
+              type: "boolean",
+              description: "Only true when the user explicitly asks to move an event into the past.",
+            },
+          },
+          required: ["eventId"],
+        },
+      },
+      {
+        name: "lark_calendar_delete_event",
+        description:
+          "Delete a Lark/Feishu calendar event by eventId. This is delete-like and must ask the user for confirmation before execution. Omit calendarId to use the user's primary calendar.",
+        mode: "cli",
+        readOnly: false,
+        danger: true,
+        output: "json",
+        args: [],
+        inputSchema: {
+          type: "object",
+          properties: {
+            eventId: {
+              type: "string",
+              description: "Required event_id, e.g. xxxxx_0.",
+            },
+            calendarId: {
+              type: "string",
+              description: "Optional calendar_id. Omit to use the user's primary calendar.",
+            },
+            needNotification: {
+              type: "boolean",
+              description: "Whether to notify attendees. Default true.",
+            },
+          },
+          required: ["eventId"],
+        },
+      },
+      {
         name: "lark_cli",
         description:
           "Run an explicit lark-cli argv list for official shortcut/API commands, such as ['drive', '+search', '--query', ...] or ['base', '+...', ...]. Prefer lark_cli_guide before unfamiliar commands; for cloud search use drive +search rather than docs +search, and use --doc-types for document/resource type filters, never --type. Only delete-like commands require confirmation. For read/search commands, summarize returned rows or hits to the user instead of only reporting completion.",
@@ -426,13 +521,21 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       },
     ],
     triggers: ["lark", "feishu", "飞书", "多维表格", "Base", "Lark", "lark-cli"],
-    scopes: ["lark-cli", "docs", "base", "messenger"],
+    scopes: [
+      "lark-cli",
+      "docs",
+      "base",
+      "messenger",
+      "calendar:calendar",
+      "calendar:calendar.event:writeonly",
+      "calendar:calendar.event:delete",
+    ],
   },
   {
     key: "figma",
     displayName: "Figma",
     description:
-      "Read Figma files, selections, components, and design metadata through Figma MCP or REST-compatible tools.",
+      "Read Figma files, nodes, images, selections, components, and design metadata through Figma REST or an optional MCP endpoint.",
     homepage: "https://help.figma.com/hc/en-us/articles/39216419318551-Get-started-with-the-Figma-MCP-server",
     recommendedTransport: "mcp-http",
     transports: ["mcp-http", "mcp-stdio"],
@@ -442,7 +545,8 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
         label: "Figma token",
         type: "secret",
         required: false,
-        description: "Optional for local Dev Mode MCP; required for REST or hosted MCP deployments.",
+        description:
+          "Required for hosted REST access. Use scopes current_user:read and file_content:read for health checks, file JSON, nodes, and image renders. Optional for a separate Figma MCP endpoint that handles auth itself.",
       },
     ],
     defaultConfig: {
@@ -453,8 +557,72 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
     },
     defaultTools: [
       {
+        name: "figma_me",
+        description:
+          "Validate the saved Figma token and return the current Figma user/account metadata through Figma REST.",
+        mode: "mcp",
+        readOnly: true,
+        remoteName: "figma_me",
+        inputSchema: jsonSchemaObject,
+      },
+      {
+        name: "figma_file",
+        description:
+          "Read a Figma file JSON through Figma REST. Provide fileKey or figmaUrl. Use depth or ids to keep large files bounded.",
+        mode: "mcp",
+        readOnly: true,
+        remoteName: "figma_file",
+        inputSchema: {
+          type: "object",
+          properties: {
+            fileKey: { type: "string", description: "Figma file key. Optional if figmaUrl is provided." },
+            figmaUrl: { type: "string", description: "Figma file/design URL. Used to extract fileKey and optional node-id." },
+            ids: { type: "array", items: { type: "string" }, description: "Optional node ids to include." },
+            depth: { type: "number", description: "Optional traversal depth. Keep low for large files." },
+            version: { type: "string", description: "Optional Figma file version id." },
+          },
+        },
+      },
+      {
+        name: "figma_file_nodes",
+        description:
+          "Read selected nodes from a Figma file through Figma REST. Provide fileKey plus ids, or a figmaUrl with node-id.",
+        mode: "mcp",
+        readOnly: true,
+        remoteName: "figma_file_nodes",
+        inputSchema: {
+          type: "object",
+          properties: {
+            fileKey: { type: "string", description: "Figma file key. Optional if figmaUrl is provided." },
+            figmaUrl: { type: "string", description: "Figma node URL. Used to extract fileKey and node-id." },
+            ids: { type: "array", items: { type: "string" }, description: "Figma node ids, e.g. ['1:2']." },
+            depth: { type: "number", description: "Optional traversal depth." },
+            version: { type: "string", description: "Optional Figma file version id." },
+          },
+        },
+      },
+      {
+        name: "figma_images",
+        description:
+          "Render selected Figma nodes to image URLs through Figma REST. Provide fileKey plus ids, or a figmaUrl with node-id.",
+        mode: "mcp",
+        readOnly: true,
+        remoteName: "figma_images",
+        inputSchema: {
+          type: "object",
+          properties: {
+            fileKey: { type: "string", description: "Figma file key. Optional if figmaUrl is provided." },
+            figmaUrl: { type: "string", description: "Figma node URL. Used to extract fileKey and node-id." },
+            ids: { type: "array", items: { type: "string" }, description: "Figma node ids to render." },
+            format: { type: "string", enum: ["jpg", "png", "svg", "pdf"], description: "Image format. Default png." },
+            scale: { type: "number", description: "Render scale for bitmap formats. Default 1." },
+          },
+        },
+      },
+      {
         name: "figma_mcp_call",
-        description: "Call a Figma MCP server tool by remote tool name.",
+        description:
+          "Call a separately running Figma MCP server tool by remote tool name. This requires config.endpoint to be reachable from the backend server.",
         mode: "mcp",
         readOnly: true,
         remoteName: "",
@@ -469,7 +637,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       },
     ],
     triggers: ["figma", "Figma", "设计稿", "组件", "selection"],
-    scopes: ["files:read", "dev-mode"],
+    scopes: ["current_user:read", "file_content:read", "file_metadata:read", "dev-mode"],
   },
   {
     key: "custom-cli",

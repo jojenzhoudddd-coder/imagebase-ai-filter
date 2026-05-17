@@ -270,6 +270,13 @@ export async function testIntegration(integrationId: string, opts?: { requireAge
         needsAuth: !status.authorized,
       };
     }
+    if (integration.providerKey === "figma") {
+      const restDetail = await testFigmaRest(integration);
+      if (restDetail) {
+        await markIntegrationHealth(integration.id, "healthy", null);
+        return { ok: true, transport: integration.transport, detail: restDetail };
+      }
+    }
     let detail: unknown;
     if (integration.transport === "cli") {
       const tool = getCliHealthCheckTool(integration)
@@ -396,7 +403,7 @@ function parseLarkAuthFailureResult(result: unknown): null | { missingScopes: st
   const parsed = parseJsonLike(result);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
   const record = parsed as Record<string, any>;
-  if (record.ok !== false) return null;
+  if (record.ok !== false && !isNonZeroApiCode(record.code ?? record.errcode ?? record.error_code)) return null;
   const error = record.error;
   const errorType = typeof error?.type === "string" ? error.type : "";
   const message = [
@@ -404,6 +411,8 @@ function parseLarkAuthFailureResult(result: unknown): null | { missingScopes: st
     typeof error?.message === "string" ? error.message : "",
     typeof error?.hint === "string" ? error.hint : "",
     typeof record.message === "string" ? record.message : "",
+    typeof record.msg === "string" ? record.msg : "",
+    typeof record.reason === "string" ? record.reason : "",
   ].filter(Boolean).join("\n");
   const lower = message.toLowerCase();
   if (errorType === "missing_scope" || lower.includes("missing_scope") || lower.includes("missing required scope")) {
@@ -420,6 +429,15 @@ function parseLarkAuthFailureResult(result: unknown): null | { missingScopes: st
     return { missingScopes: [] };
   }
   return null;
+}
+
+function isNonZeroApiCode(value: unknown): boolean {
+  if (typeof value === "number") return Number.isFinite(value) && value !== 0;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return Boolean(trimmed && trimmed !== "0");
+  }
+  return false;
 }
 
 function parseGithubAuthFailure(message: string): boolean {
@@ -543,18 +561,35 @@ async function dispatch(
   if (
     integration.providerKey === "lark" &&
     integration.transport === "cli" &&
+    manifest.name === "lark_api_post"
+  ) {
+    return callLarkApi(integration, normalizeLarkWriteMethod(args.method), args);
+  }
+  if (integration.providerKey === "figma" && isFigmaRestTool(manifest.name)) {
+    return callFigmaRestTool(integration, manifest.name, args);
+  }
+  if (
+    integration.providerKey === "lark" &&
+    integration.transport === "cli" &&
     manifest.name === "lark_calendar_create_event"
   ) {
     return createLarkCalendarEvent(integration, args);
   }
+  if (
+    integration.providerKey === "lark" &&
+    integration.transport === "cli" &&
+    manifest.name === "lark_calendar_update_event"
+  ) {
+    return updateLarkCalendarEvent(integration, args);
+  }
+  if (
+    integration.providerKey === "lark" &&
+    integration.transport === "cli" &&
+    manifest.name === "lark_calendar_delete_event"
+  ) {
+    return deleteLarkCalendarEvent(integration, args);
+  }
   if (manifest.mode === "cli") {
-    if (
-      integration.providerKey === "lark" &&
-      integration.transport === "cli" &&
-      manifest.name === "lark_api_post"
-    ) {
-      guardLarkCalendarPost(args);
-    }
     const effectiveArgs = integration.providerKey === "lark" &&
       integration.transport === "cli" &&
       manifest.name === "lark_cli"
@@ -572,6 +607,258 @@ async function dispatch(
       ? args.arguments
       : args;
   return callMcpIntegrationTool(integration, remoteName, remoteArgs);
+}
+
+async function testFigmaRest(integration: AgentIntegrationRow): Promise<Record<string, unknown> | null> {
+  if (!(await hasFigmaToken(integration))) return null;
+  const me = await callFigmaRest(integration, "/me", {});
+  return { mode: "rest", me };
+}
+
+async function hasFigmaToken(integration: AgentIntegrationRow): Promise<boolean> {
+  const runtime = await resolveIntegrationRuntimeEnv(integration);
+  return Boolean(figmaToken(runtime));
+}
+
+function isFigmaRestTool(name: string): boolean {
+  return name === "figma_me" ||
+    name === "figma_file" ||
+    name === "figma_file_nodes" ||
+    name === "figma_images";
+}
+
+async function callFigmaRestTool(
+  integration: AgentIntegrationRow,
+  toolName: string,
+  args: Record<string, any>,
+): Promise<unknown> {
+  if (toolName === "figma_me") {
+    return callFigmaRest(integration, "/me", {});
+  }
+  const ref = resolveFigmaRef(args);
+  if (toolName === "figma_file") {
+    const ids = cleanFigmaIds(args.ids) ?? (ref.nodeId ? [ref.nodeId] : undefined);
+    return callFigmaRest(integration, `/files/${encodeURIComponent(ref.fileKey)}`, {
+      version: cleanOptionalString(args.version),
+      ids: ids?.join(","),
+      depth: cleanPositiveInt(args.depth),
+    });
+  }
+  if (toolName === "figma_file_nodes") {
+    const ids = cleanFigmaIds(args.ids) ?? (ref.nodeId ? [ref.nodeId] : []);
+    if (!ids.length) throw new Error("Figma node ids are required. Pass ids or a figmaUrl with node-id.");
+    return callFigmaRest(integration, `/files/${encodeURIComponent(ref.fileKey)}/nodes`, {
+      ids: ids.join(","),
+      version: cleanOptionalString(args.version),
+      depth: cleanPositiveInt(args.depth),
+    });
+  }
+  if (toolName === "figma_images") {
+    const ids = cleanFigmaIds(args.ids) ?? (ref.nodeId ? [ref.nodeId] : []);
+    if (!ids.length) throw new Error("Figma node ids are required. Pass ids or a figmaUrl with node-id.");
+    return callFigmaRest(integration, `/images/${encodeURIComponent(ref.fileKey)}`, {
+      ids: ids.join(","),
+      format: cleanFigmaImageFormat(args.format),
+      scale: cleanFigmaScale(args.scale),
+    });
+  }
+  throw new Error(`unknown Figma REST tool: ${toolName}`);
+}
+
+async function callFigmaRest(
+  integration: AgentIntegrationRow,
+  path: string,
+  params: Record<string, string | number | undefined>,
+): Promise<unknown> {
+  const runtime = await resolveIntegrationRuntimeEnv(integration);
+  const token = figmaToken(runtime);
+  if (!token) {
+    throw new Error(
+      "Figma token is missing. Save FIGMA_TOKEN for hosted REST access, or configure a backend-reachable MCP endpoint.",
+    );
+  }
+  const apiBase = typeof integration.config.apiBaseUrl === "string" && integration.config.apiBaseUrl.trim()
+    ? integration.config.apiBaseUrl.trim()
+    : "https://api.figma.com/v1";
+  const url = new URL(path.replace(/^\/+/, ""), apiBase.endsWith("/") ? apiBase : `${apiBase}/`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
+  }
+  const res = await fetch(url, {
+    headers: {
+      "X-Figma-Token": token,
+      "Accept": "application/json",
+    },
+  });
+  const text = await res.text();
+  const body = parseJsonOrText(text);
+  if (!res.ok) {
+    const message = typeof body === "object" && body && "err" in body
+      ? String((body as any).err)
+      : typeof body === "object" && body && "message" in body
+        ? String((body as any).message)
+        : text.slice(0, 300);
+    throw new Error(`Figma REST ${res.status}: ${message || res.statusText}`);
+  }
+  return body;
+}
+
+function figmaToken(runtime: Awaited<ReturnType<typeof resolveIntegrationRuntimeEnv>>): string {
+  const fromHeader = runtime.headers["X-Figma-Token"];
+  if (typeof fromHeader === "string" && fromHeader.trim()) return fromHeader.trim();
+  const fromCredential = runtime.credentials.FIGMA_TOKEN;
+  return typeof fromCredential === "string" ? fromCredential.trim() : "";
+}
+
+function parseJsonOrText(text: string): unknown {
+  if (!text.trim()) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
+function resolveFigmaRef(args: Record<string, any>): { fileKey: string; nodeId?: string } {
+  const fromUrl = parseFigmaUrl(args.figmaUrl ?? args.url);
+  const fileKey = cleanFigmaFileKey(args.fileKey) ?? fromUrl?.fileKey;
+  if (!fileKey) throw new Error("Figma fileKey is required. Pass fileKey or figmaUrl.");
+  return { fileKey, nodeId: fromUrl?.nodeId };
+}
+
+function parseFigmaUrl(value: unknown): { fileKey: string; nodeId?: string } | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return null;
+  }
+  if (!/(\.|^)figma\.com$/i.test(url.hostname)) return null;
+  const [, fileKey] = url.pathname.match(/\/(?:file|design|proto|board)\/([a-zA-Z0-9_-]+)/) ?? [];
+  if (!fileKey) return null;
+  const rawNodeId = url.searchParams.get("node-id") ?? undefined;
+  const nodeId = rawNodeId ? normalizeFigmaNodeId(rawNodeId) : undefined;
+  return { fileKey, nodeId };
+}
+
+function cleanFigmaFileKey(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const key = value.trim();
+  if (!key) return undefined;
+  if (!/^[a-zA-Z0-9_-]+$/.test(key)) throw new Error("Figma fileKey has invalid characters.");
+  return key;
+}
+
+function cleanFigmaIds(value: unknown): string[] | undefined {
+  if (typeof value === "string" && value.trim()) {
+    return value.split(",").map(normalizeFigmaNodeId).filter(Boolean);
+  }
+  if (!Array.isArray(value)) return undefined;
+  const ids = value
+    .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+    .map(normalizeFigmaNodeId);
+  return ids.length ? ids : undefined;
+}
+
+function normalizeFigmaNodeId(value: string): string {
+  const id = decodeURIComponent(value).trim().replace(/-/g, ":");
+  if (!/^[A-Za-z0-9]+:[A-Za-z0-9]+(?:;[A-Za-z0-9]+:[A-Za-z0-9]+)*$/.test(id)) {
+    throw new Error(`Invalid Figma node id: ${value}`);
+  }
+  return id;
+}
+
+function cleanPositiveInt(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) throw new Error("Expected a positive number.");
+  return Math.floor(n);
+}
+
+function cleanFigmaImageFormat(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const raw = String(value).trim().toLowerCase();
+  if (raw === "jpg" || raw === "png" || raw === "svg" || raw === "pdf") return raw;
+  throw new Error("Figma image format must be jpg, png, svg, or pdf.");
+}
+
+function cleanFigmaScale(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0 || n > 4) throw new Error("Figma image scale must be between 0 and 4.");
+  return n;
+}
+
+async function callLarkApi(
+  integration: AgentIntegrationRow,
+  method: "POST" | "PATCH" | "PUT" | "DELETE",
+  args: Record<string, any>,
+): Promise<unknown> {
+  const path = cleanLarkApiPath(args.path);
+  const params = normalizeRecord(args.params);
+  const data = normalizeRecord(args.data);
+  if (isCalendarCreatePath(path) && method === "POST") {
+    guardLarkCalendarPost({ path, data });
+  }
+
+  const runtime = await resolveIntegrationRuntimeEnv(integration);
+  const argv = ["api", method, path, "--format", "json"];
+  const identity = normalizeLarkIdentity(args.as);
+  if (identity) argv.push("--as", identity);
+  if (Object.keys(params).length) argv.push("--params", JSON.stringify(params));
+  if (method !== "DELETE" && Object.keys(data).length) {
+    argv.push("--data", JSON.stringify(data));
+  }
+
+  const result = await withIntegrationMutex(runtime.mutexKey, () =>
+    runCliCommand(larkCommand(integration), argv, {
+      env: runtime.env,
+      cwd: runtime.cwd,
+      timeoutMs: 60_000,
+    })
+  );
+  const stdout = result.stdout.trim();
+  if (!stdout) return { ok: true };
+  return parseJsonOrText(stdout);
+}
+
+function normalizeLarkWriteMethod(value: unknown): "POST" | "PATCH" | "PUT" | "DELETE" {
+  const raw = typeof value === "string" ? value.trim().toUpperCase() : "POST";
+  if (raw === "PATCH" || raw === "PUT" || raw === "DELETE") return raw;
+  return "POST";
+}
+
+function cleanLarkApiPath(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("Lark OpenAPI path is required");
+  }
+  const path = value.trim();
+  if (/^https?:\/\//i.test(path)) {
+    throw new Error("Lark OpenAPI path must be a path, not a full URL");
+  }
+  if (path.includes("\u0000") || /[\r\n]/.test(path)) {
+    throw new Error("Lark OpenAPI path may not contain control characters");
+  }
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+function larkCommand(integration: AgentIntegrationRow): string {
+  const command = String(integration.config.command || "lark-cli").trim();
+  if (!command || /[;&|`$<>]/.test(command)) {
+    throw new Error("lark-cli command must be a binary/path, not a shell expression");
+  }
+  return command;
+}
+
+function normalizeLarkIdentity(value: unknown): "user" | "bot" | undefined {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (raw === "user" || raw === "bot") return raw;
+  return undefined;
+}
+
+function isCalendarCreatePath(path: string): boolean {
+  return /\/open-apis\/calendar\/v4\/calendars\/[^/]+\/events\/?$/.test(path);
 }
 
 async function callGithubApi(
@@ -797,7 +1084,7 @@ async function createLarkCalendarEvent(
   args: Record<string, any>,
 ): Promise<unknown> {
   const summary = cleanString(args.summary, "summary");
-  const timezone = cleanOptionalString(args.timezone) || "Asia/Shanghai";
+  const timezone = cleanTimeZone(args.timezone);
   const start = parseDateTime(args.startTime, "startTime", timezone);
   const durationMinutes = normalizeDurationMinutes(args.durationMinutes);
   const end = args.endTime === undefined || args.endTime === null || args.endTime === ""
@@ -807,8 +1094,8 @@ async function createLarkCalendarEvent(
     throw new Error("endTime must be after startTime");
   }
   if (args.allowPast !== true && start.getTime() < Date.now() - 5 * 60_000) {
-    throw new Error(
-      `Refusing to create a calendar event in the past: ${formatShanghai(start)}. ` +
+      throw new Error(
+      `Refusing to create a calendar event in the past: ${formatInTimeZone(start, timezone)}. ` +
       "Recompute the intended future date from the current date and call the tool again, " +
       "or pass allowPast=true only when the user explicitly asks for a past event.",
     );
@@ -863,10 +1150,108 @@ async function createLarkCalendarEvent(
     normalized: {
       calendarId,
       summary,
-      startTime: formatShanghai(start),
-      endTime: formatShanghai(end),
+      startTime: formatInTimeZone(start, timezone),
+      endTime: formatInTimeZone(end, timezone),
       timezone,
       idempotencyKey,
+    },
+  };
+}
+
+async function updateLarkCalendarEvent(
+  integration: AgentIntegrationRow,
+  args: Record<string, any>,
+): Promise<unknown> {
+  const eventId = cleanLarkEventId(args.eventId);
+  const timezone = cleanTimeZone(args.timezone);
+  const calendarId = cleanOptionalString(args.calendarId) || await getLarkPrimaryCalendarId(integration);
+  const data: Record<string, unknown> = {};
+
+  const summary = cleanOptionalString(args.summary);
+  if (summary) data.summary = summary;
+  const description = cleanOptionalString(args.description);
+  if (description !== undefined) data.description = description;
+  if (args.location !== undefined) {
+    const location = normalizeLocation(args.location);
+    if (location) data.location = location;
+  }
+  if (args.reminderMinutes !== undefined && args.reminderMinutes !== null && args.reminderMinutes !== "") {
+    data.reminders = [{ minutes: normalizeReminderMinutes(args.reminderMinutes) }];
+  }
+  if (args.videoMeeting === false) data.vchat = { vc_type: "no_meeting" };
+  if (args.videoMeeting === true) data.vchat = { vc_type: "vc" };
+
+  const hasStart = args.startTime !== undefined && args.startTime !== null && args.startTime !== "";
+  const hasEnd = args.endTime !== undefined && args.endTime !== null && args.endTime !== "";
+  if (hasEnd && !hasStart) {
+    throw new Error("startTime is required when updating endTime; Lark requires start_time and end_time together.");
+  }
+  if (hasStart) {
+    const start = parseDateTime(args.startTime, "startTime", timezone);
+    if (!hasEnd && (args.durationMinutes === undefined || args.durationMinutes === null || args.durationMinutes === "")) {
+      throw new Error("durationMinutes or endTime is required when updating startTime.");
+    }
+    const end = hasEnd
+      ? parseDateTime(args.endTime, "endTime", timezone)
+      : new Date(start.getTime() + normalizeDurationMinutes(args.durationMinutes) * 60_000);
+    if (end.getTime() <= start.getTime()) {
+      throw new Error("endTime must be after startTime");
+    }
+    if (args.allowPast !== true && start.getTime() < Date.now() - 5 * 60_000) {
+      throw new Error(
+        `Refusing to move a calendar event into the past: ${formatInTimeZone(start, timezone)}. ` +
+        "Recompute the intended future date from the current date and call the tool again, " +
+        "or pass allowPast=true only when the user explicitly asks for a past event.",
+      );
+    }
+    data.start_time = {
+      timestamp: String(Math.floor(start.getTime() / 1000)),
+      timezone,
+    };
+    data.end_time = {
+      timestamp: String(Math.floor(end.getTime() / 1000)),
+      timezone,
+    };
+  }
+
+  if (!Object.keys(data).length) {
+    throw new Error("No calendar event update fields were provided.");
+  }
+
+  const result = await callLarkApi(integration, "PATCH", {
+    path: `/open-apis/calendar/v4/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    params: larkNotificationParams(args.needNotification),
+    data,
+  });
+  return {
+    ...normalizeLarkApiResult(result),
+    normalized: {
+      calendarId,
+      eventId,
+      updatedFields: Object.keys(data),
+      timezone,
+      startTime: hasStart && data.start_time ? formatInTimeZone(startFromLarkTime(data.start_time), timezone) : undefined,
+      endTime: hasStart && data.end_time ? formatInTimeZone(startFromLarkTime(data.end_time), timezone) : undefined,
+    },
+  };
+}
+
+async function deleteLarkCalendarEvent(
+  integration: AgentIntegrationRow,
+  args: Record<string, any>,
+): Promise<unknown> {
+  const eventId = cleanLarkEventId(args.eventId);
+  const calendarId = cleanOptionalString(args.calendarId) || await getLarkPrimaryCalendarId(integration);
+  const result = await callLarkApi(integration, "DELETE", {
+    path: `/open-apis/calendar/v4/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    params: larkNotificationParams(args.needNotification),
+  });
+  return {
+    ...normalizeLarkApiResult(result),
+    normalized: {
+      calendarId,
+      eventId,
+      deleted: true,
     },
   };
 }
@@ -900,21 +1285,66 @@ function normalizeLarkApiResult(result: unknown): Record<string, any> {
   return { raw: result };
 }
 
+function cleanLarkEventId(value: unknown): string {
+  const eventId = cleanString(value, "eventId");
+  if (eventId.includes("\u0000") || /[\r\n/]/.test(eventId)) {
+    throw new Error("eventId may not contain slashes or control characters.");
+  }
+  return eventId;
+}
+
+function larkNotificationParams(value: unknown): Record<string, string> {
+  if (value === undefined || value === null || value === "") return {};
+  return { need_notification: value === false ? "false" : "true" };
+}
+
 function parseDateTime(value: unknown, field: string, timezone: string): Date {
   const raw = cleanString(value, field).replace(" ", "T");
-  let normalized = raw;
   const bareLocal = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(raw);
   if (bareLocal) {
-    if (timezone !== "Asia/Shanghai" && timezone !== "UTC+08:00") {
-      throw new Error(`${field} must include a timezone offset, for example 2026-05-18T17:00:00+08:00`);
-    }
-    normalized = `${raw.length === 16 ? `${raw}:00` : raw}+08:00`;
+    return parseLocalDateTimeInTimeZone(raw, timezone);
   }
-  const ms = Date.parse(normalized);
+  const ms = Date.parse(raw);
   if (!Number.isFinite(ms)) {
     throw new Error(`${field} must be an ISO-8601 datetime, for example 2026-05-18T17:00:00+08:00`);
   }
   return new Date(ms);
+}
+
+function cleanTimeZone(value: unknown): string {
+  const timezone = cleanOptionalString(value) || "Asia/Shanghai";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
+    return timezone;
+  } catch {
+    throw new Error(`Invalid timezone: ${timezone}`);
+  }
+}
+
+function parseLocalDateTimeInTimeZone(value: string, timezone: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (!match) throw new Error(`Invalid local datetime: ${value}`);
+  const [, year, month, day, hour, minute, second = "00"] = match;
+  const localUtcMs = Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  );
+  let candidateMs = localUtcMs - offsetMsForTimeZone(new Date(localUtcMs), timezone);
+  for (let i = 0; i < 3; i += 1) {
+    const next = localUtcMs - offsetMsForTimeZone(new Date(candidateMs), timezone);
+    if (Math.abs(next - candidateMs) < 1000) break;
+    candidateMs = next;
+  }
+  const candidate = new Date(candidateMs);
+  const rendered = formatLocalParts(candidate, timezone);
+  if (rendered !== `${year}-${month}-${day}T${hour}:${minute}:${second}`) {
+    throw new Error(`Local datetime ${value} does not exist in timezone ${timezone}. Include an explicit offset.`);
+  }
+  return candidate;
 }
 
 function normalizeDurationMinutes(value: unknown): number {
@@ -957,8 +1387,8 @@ function cleanString(value: unknown, field: string): string {
   return value.trim();
 }
 
-function cleanOptionalString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+function cleanOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function readPath(obj: unknown, path: string[]): unknown {
@@ -970,9 +1400,9 @@ function readPath(obj: unknown, path: string[]): unknown {
   return cur;
 }
 
-function formatShanghai(date: Date): string {
+function formatInTimeZone(date: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Asia/Shanghai",
+    timeZone: timezone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -981,5 +1411,55 @@ function formatShanghai(date: Date): string {
     second: "2-digit",
     hour12: false,
   }).format(date);
-  return `${parts.replace(" ", "T")}+08:00`;
+  return `${parts.replace(" ", "T")}${formatOffsetForTimeZone(date, timezone)}`;
+}
+
+function formatLocalParts(date: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
+  return parts.replace(" ", "T");
+}
+
+function formatOffsetForTimeZone(date: Date, timezone: string): string {
+  const offsetMs = offsetMsForTimeZone(date, timezone);
+  const sign = offsetMs < 0 ? "-" : "+";
+  const abs = Math.abs(offsetMs);
+  const hours = Math.floor(abs / 3_600_000);
+  const minutes = Math.floor((abs % 3_600_000) / 60_000);
+  return `${sign}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function offsetMsForTimeZone(date: Date, timezone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    timeZoneName: "longOffset",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const value = parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+  if (value === "GMT" || value === "UTC") return 0;
+  const match = value.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (!match) throw new Error(`Unable to resolve timezone offset for ${timezone}`);
+  const [, sign, hours, minutes = "00"] = match;
+  const ms = (Number(hours) * 60 + Number(minutes)) * 60_000;
+  return sign === "-" ? -ms : ms;
+}
+
+function startFromLarkTime(value: unknown): Date {
+  const timestamp = readPath(value, ["timestamp"]);
+  if (typeof timestamp !== "string" && typeof timestamp !== "number") {
+    throw new Error("Lark time payload is missing timestamp");
+  }
+  const ms = Number(timestamp) * 1000;
+  if (!Number.isFinite(ms)) throw new Error("Lark time timestamp is invalid");
+  return new Date(ms);
 }

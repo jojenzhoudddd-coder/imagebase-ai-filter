@@ -21,6 +21,14 @@ export interface LarkDisplayResult {
 export function normalizeLarkToolResult(result: unknown): LarkDisplayResult | null {
   const value = unwrapLarkResult(result);
   if (isMissingOrPendingAuth(value)) return null;
+  const apiError = extractLarkApiError(value);
+  if (apiError) {
+    return {
+      kind: "object",
+      preview: objectPreview(value),
+      message: `执行失败：${apiError}`,
+    };
+  }
   const items = findLarkResultItems(value);
   if (items) {
     const displayItems = items.slice(0, 20).map(toDisplayItem);
@@ -191,6 +199,18 @@ function isMissingOrPendingAuth(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
   return record.status === "pending" || record.errorType === "missing_scope";
+}
+
+function extractLarkApiError(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const code = record.code ?? record.errcode ?? record.error_code;
+  const failed = typeof code === "number"
+    ? Number.isFinite(code) && code !== 0
+    : typeof code === "string" && code.trim() !== "" && code.trim() !== "0";
+  if (!failed) return null;
+  const message = readFirstStringDeep(record, ["msg", "message", "reason", "error_description"]);
+  return message || `Lark API returned code ${String(code)}`;
 }
 
 function formatScalarPreview(value: unknown): string {
