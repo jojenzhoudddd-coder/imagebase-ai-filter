@@ -21,7 +21,7 @@ export const integrationSkill: SkillDefinition = {
 - 默认优先使用官方 provider preset；Lark/飞书使用官方 lark-cli，Figma 仍使用本地 MCP，GitHub 默认使用 gh CLI。
 - CLI 只通过 manifest 白名单暴露具体命令，不直接拼 shell。
 - CLI 和 stdio MCP 都运行在按 agent/integration 隔离的 runtime sandbox 中，HOME/XDG/TMPDIR 不共享。
-- Lark CLI 不要求用户 SSH 到服务器，也不默认要求用户输入 App ID/Secret。test_integration 返回 needsConfig 或 needsAuth 时，调用 start_lark_auth；如果返回 phase=config，把 verificationUrl 或 qrCodeText 发给用户完成应用配置；如果返回 phase=auth，把 verificationUrl 和 userCode 发给用户完成登录授权；用户完成后调用 poll_lark_auth。
+- Lark CLI 不要求用户 SSH 到服务器，也不默认要求用户输入 App ID/Secret。test_integration 返回 needsConfig 或 needsAuth 时，调用 start_lark_auth；如果返回 phase=config，把 verificationUrl 或 qrCodeText 发给用户完成应用配置；如果返回 phase=auth，把 verificationUrl 原样发给用户完成登录授权，推荐用只包含原始 URL 的代码块，不要改写、URL encode/decode、转 Markdown 链接或附加标点；用户完成后调用 poll_lark_auth。poll 返回 pending 时继续等待用户，不要重新 start_lark_auth；只有 expired/missing 且 auth status 未成功时才重新发起。
 - 不直接执行用户随口给出的任意命令。需要读取 CLI help 时使用 inspect_cli_help，并走确认流。
 - credentials 只能通过 create_integration / update_integration 写入，工具结果不会回显密钥明文。
 - 每个 integration 安装后会变成一个动态 Skill，名字形如 integration-<id>；激活后可看到该 integration 的具名工具。

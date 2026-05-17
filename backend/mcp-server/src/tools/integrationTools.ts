@@ -208,7 +208,7 @@ export const integrationTools: ToolDefinition[] = [
   {
     name: "start_lark_auth",
     description:
-      "为 Lark CLI integration 启动配置或授权流程。缺 config 时返回 phase=config 的 URL/二维码；已有 config 时返回 phase=auth 的 verificationUrl/userCode。Agent 必须把这些信息发给用户。",
+      "为 Lark CLI integration 启动配置或授权流程。缺 config 时返回 phase=config 的 URL/二维码；已有 config 时返回 phase=auth 的 verificationUrl/userCode。Agent 必须把 URL 原样发给用户；不要在 pending 时重复启动新流程。",
     inputSchema: {
       type: "object",
       properties: {
@@ -247,11 +247,12 @@ export const integrationTools: ToolDefinition[] = [
   {
     name: "poll_lark_auth",
     description:
-      "用户完成 Lark 配置或授权后，用 authSessionId 轮询 lark-cli。config 阶段完成后会自动进入 auth 阶段并返回新的授权 URL/code；auth 阶段成功后 health 变为 healthy。",
+      "用户完成 Lark 配置或授权后，用 authSessionId 轮询 lark-cli。pending 表示继续等待用户完成，不要重新 start_lark_auth；config 阶段完成后会自动进入 auth 阶段并返回新的授权 URL/code；auth 阶段成功后 health 变为 healthy。服务重启后会尽量恢复 auth session 或用 integrationId 校验已登录状态。",
     inputSchema: {
       type: "object",
       properties: {
         agentId: { type: "string", description: "可选；权限校验用" },
+        integrationId: { type: "string", description: "可选；session 丢失时用于兜底检查 lark-cli auth status" },
         authSessionId: { type: "string" },
       },
       required: ["authSessionId"],
@@ -260,6 +261,7 @@ export const integrationTools: ToolDefinition[] = [
       try {
         const result = await pollLarkAuth(String(args.authSessionId ?? ""), {
           requireAgentId: resolveAgentId(args, ctx),
+          integrationId: typeof args.integrationId === "string" && args.integrationId.trim() ? args.integrationId.trim() : undefined,
         });
         return JSON.stringify(result);
       } catch (err) {
