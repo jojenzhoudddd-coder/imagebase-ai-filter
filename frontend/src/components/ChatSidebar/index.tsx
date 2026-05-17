@@ -20,7 +20,7 @@ import SubagentBlock from "./ChatMessage/SubagentBlock";
 import WorkflowBlock from "./ChatMessage/WorkflowBlock";
 import ToolCallGroup from "./ChatMessage/ToolCallGroup";
 import ConfirmCard from "./ChatMessage/ConfirmCard";
-import { extractLarkAuthPayload, type LarkAuthPayload } from "./ChatMessage/LarkAuthCard";
+import LarkAuthCard, { extractLarkAuthPayload, type LarkAuthPayload } from "./ChatMessage/LarkAuthCard";
 import ChatModelPicker from "./ChatModelPicker";
 import BlockCloseButton from "../BlockCloseButton";
 import AgentNamePill from "./AgentNamePill";
@@ -2521,22 +2521,35 @@ function MessageBlock({
               thinking={msg.thinking}
             />
           )}
-          {groups.map((g, i) =>
-            g.items.length === 1 ? (
-              <ToolCallCard
-                key={g.items[0].callId}
-                call={g.items[0]}
-                onLarkAuthContinue={onLarkAuthContinue}
-                authContinueDisabled={authContinueDisabled}
-              />
-            ) : (
+          {groups.map((g, i) => {
+            if (g.items.length === 1) {
+              const call = g.items[0];
+              const larkAuthPayload = extractLarkAuthPayload(call.result);
+              if (larkAuthPayload) {
+                return (
+                  <LarkAuthCard
+                    key={call.callId}
+                    payload={larkAuthPayload}
+                    onContinue={onLarkAuthContinue}
+                    disabled={authContinueDisabled}
+                  />
+                );
+              }
+              return (
+                <ToolCallCard
+                  key={call.callId}
+                  call={call}
+                />
+              );
+            }
+            return (
               <ToolCallGroup
                 key={`tg-${msg.id}-${i}`}
                 tool={g.tool}
                 items={g.items}
               />
-            )
-          )}
+            );
+          })}
           {orchestrationEntries.map((entry) =>
             entry.kind === "workflow"
               ? (

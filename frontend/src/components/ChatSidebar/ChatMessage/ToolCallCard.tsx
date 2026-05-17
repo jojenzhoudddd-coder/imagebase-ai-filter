@@ -3,7 +3,6 @@ import type { ChatToolCall } from "../../../api";
 import { useTranslation } from "../../../i18n";
 import ChatTableBlock from "./ChatTableBlock";
 import { ToolCategoryIcon } from "./toolCategoryIcons";
-import LarkAuthCard, { extractLarkAuthPayload, type LarkAuthPayload } from "./LarkAuthCard";
 
 /**
  * ToolCallCard — a single tool invocation rendered as an expandable card.
@@ -23,14 +22,10 @@ export default function ToolCallCard({
   call,
   expanded: controlledExpanded,
   onExpandedChange,
-  onLarkAuthContinue,
-  authContinueDisabled,
 }: {
   call: ChatToolCall;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
-  onLarkAuthContinue?: (payload: LarkAuthPayload) => void;
-  authContinueDisabled?: boolean;
 }) {
   const { t } = useTranslation();
   const status = call.status || "running";
@@ -47,10 +42,6 @@ export default function ToolCallCard({
   const targetTag = extractTargetTag(call.args);
   const statusTitle = t(
     `chat.tool.status.${status === "awaiting_confirmation" ? "awaiting" : status}`
-  );
-  const larkAuthPayload = useMemo(
-    () => call.tool === "start_lark_auth" ? extractLarkAuthPayload(call.result) : null,
-    [call.result, call.tool],
   );
 
   // Analyst preview: if this tool returned {preview:{columns, rows, rowCount, truncated}}
@@ -78,13 +69,6 @@ export default function ToolCallCard({
         <StatusDot status={status} title={statusTitle} />
         <Chevron expanded={expanded} />
       </button>
-      {larkAuthPayload && (
-        <LarkAuthCard
-          payload={larkAuthPayload}
-          onContinue={onLarkAuthContinue}
-          disabled={authContinueDisabled}
-        />
-      )}
       {expanded && (
         <div className="chat-expand-card-body chat-tool-body">
           {/* V2.9 #12: 进度条移入展开 body,默认折叠不再露出。
