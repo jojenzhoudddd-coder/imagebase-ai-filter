@@ -202,7 +202,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_calendar_create_event",
         description:
-          "Create a Lark/Feishu calendar event. Prefer this over lark_api_post for schedules: pass ISO-8601 startTime/endTime, never hand-write Unix timestamps. If endTime is omitted, durationMinutes defaults to 60. Relative dates must be resolved from the current Asia/Shanghai date in the system context.",
+          "Create a Lark/Feishu calendar event. Prefer this over lark_api_post for schedules: pass ISO-8601 startTime/endTime, never hand-write Unix timestamps. If endTime is omitted, durationMinutes defaults to 60. Relative dates must be resolved from the current user timezone in the system context.",
         mode: "cli",
         readOnly: false,
         danger: true,
@@ -226,7 +226,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
             },
             timezone: {
               type: "string",
-              description: "IANA timezone. Default Asia/Shanghai.",
+              description: "IANA timezone. Use the user timezone from system context. Default Asia/Shanghai only when no user timezone is available.",
             },
             calendarId: {
               type: "string",

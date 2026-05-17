@@ -38,6 +38,7 @@ import type { Message, ToolCall } from "./conversationStore.js";
 import * as store from "./dbStore.js";
 import { readSoul, readProfile, getAgent } from "./agentService.js";
 import * as agentSvc from "./agentService.js";
+import { readUserPreferences, type UserPreferences } from "./authService.js";
 import {
   resolveModelForCall,
   resolveCustomModel,
@@ -71,6 +72,7 @@ import * as wfStore from "./workflowRunStore.js";
 // Pushed up from 10 per user request. Seed can chain dozens of tool calls in
 // a single CRM-build turn; cap is only a last-resort runaway guard.
 const MAX_TOOL_ROUNDS = 50;
+const DEFAULT_TIME_ZONE = "Asia/Shanghai";
 // Day 4: once working.jsonl holds this many turns, the next turn triggers a
 // compression pass that folds them into one episodic memory file.
 const WORKING_MEMORY_COMPRESS_THRESHOLD = 10;
@@ -823,10 +825,65 @@ function buildRuntimeLayer(
   return lines.join("\n");
 }
 
-function buildCurrentTimeLayer(): string {
+function normalizeTimeZone(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const timeZone = value.trim();
+  if (!timeZone) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
+    return timeZone;
+  } catch {
+    return null;
+  }
+}
+
+function formatOffsetForTimeZone(date: Date, timeZone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      timeZoneName: "longOffset",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(date);
+    const value = parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+    if (value === "GMT" || value === "UTC") return "+00:00";
+    const match = value.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/);
+    if (!match) return "";
+    const [, sign, hours, minutes] = match;
+    return `${sign}${hours.padStart(2, "0")}:${minutes ?? "00"}`;
+  } catch {
+    return "";
+  }
+}
+
+async function resolveContextTimeZone(ctx: AgentContext, ownerUserId: string | null): Promise<string> {
+  const explicit = normalizeTimeZone(ctx.userPreferences?.timezone);
+  if (explicit) return explicit;
+
+  if (ownerUserId) {
+    try {
+      const prefs = await readUserPreferences(ownerUserId);
+      const ownerTimeZone = normalizeTimeZone(prefs.timezone);
+      if (ownerTimeZone) return ownerTimeZone;
+    } catch (err) {
+      logAgent({
+        event: "timezone_preferences_load_failed",
+        agentId: ctx.agentId ?? DEFAULT_AGENT_ID,
+        ownerUserId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  return DEFAULT_TIME_ZONE;
+}
+
+function buildCurrentTimeLayer(timeZone = DEFAULT_TIME_ZONE): string {
   const now = new Date();
+  const resolvedTimeZone = normalizeTimeZone(timeZone) ?? DEFAULT_TIME_ZONE;
   const dateTime = new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Asia/Shanghai",
+    timeZone: resolvedTimeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -836,13 +893,14 @@ function buildCurrentTimeLayer(): string {
     hour12: false,
   }).format(now);
   const weekday = new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
+    timeZone: resolvedTimeZone,
     weekday: "long",
   }).format(now);
+  const offset = formatOffsetForTimeZone(now, resolvedTimeZone);
   return [
     "# 当前日期时间",
-    `当前时间（Asia/Shanghai）：${dateTime.replace(" ", "T")}+08:00，${weekday}。`,
-    "处理“今天/明天/周一/下周”等相对日期时必须以这一行作为基准；需要第三方 API 时间戳时优先让专用工具或后端转换，不要心算 Unix timestamp。",
+    `当前时间（用户设置时区 ${resolvedTimeZone}）：${dateTime.replace(" ", "T")}${offset}，${weekday}。`,
+    "处理“今天/明天/周一/下周”等相对日期时必须以这一行的用户设置时区作为基准；需要第三方 API 时间戳时优先让专用工具或后端转换，不要心算 Unix timestamp。",
   ].join("\n");
 }
 
@@ -1147,6 +1205,8 @@ export interface PrebuiltSystemLayers {
   };
   /** PR2: Turn-Context block describing user's @ mentions in this turn. */
   userMentions?: string | null;
+  /** User preference timezone used for relative date/time reasoning. */
+  timeZone?: string;
 }
 
 /**
@@ -1251,7 +1311,7 @@ export function buildSystemText(
       buildRuntimeLayer(layers.runtime.model, layers.runtime.requestedId, layers.runtime.usedFallback)
     );
   }
-  layer3Parts.push(buildCurrentTimeLayer());
+  layer3Parts.push(buildCurrentTimeLayer(layers.timeZone));
   layer3Parts.push(layers.snapshot);
   if (layers.recalled) layer3Parts.push(layers.recalled);
   if (layers.recalledKnowledge) layer3Parts.push(layers.recalledKnowledge);
@@ -1327,6 +1387,8 @@ async function assembleInput(
   availableSkillsByName: Record<string, SkillDefinition> = skillsByName,
   /** Vision: structured image attachments for the current user message. */
   attachments?: AgentContext["attachments"],
+  /** Resolved user timezone for current-time system context. */
+  timeZone?: string,
 ): Promise<{ input: ArkInputItem[]; layers: PrebuiltSystemLayers; summaryBlocked: boolean }> {
   const [identity, snapshot, recalled, recalledKnowledge, analystHandles] = await Promise.all([
     buildIdentityLayer(agentId),
@@ -1342,6 +1404,7 @@ async function assembleInput(
   const layers: PrebuiltSystemLayers = {
     identity, snapshot, recalled, recalledKnowledge, analystHandles, runtime,
     userMentions: userMentionsText,
+    timeZone,
   };
   const systemText = buildSystemText(layers, activeSkillNames, availableSkills, availableSkillsByName);
 
@@ -1662,6 +1725,9 @@ export interface AgentContext {
   authToken?: string;
   /** PR2: structured @ mentions extracted from the user's raw message. */
   userMentions?: UserMention[];
+  /** Current user's persisted UI preferences. Chat routes pass this directly;
+   * headless jobs fall back to the owning agent user's preferences. */
+  userPreferences?: Pick<UserPreferences, "timezone" | "locale">;
   /** Vision: structured image attachments for this turn. */
   attachments?: Array<{
     kind: "image";
@@ -2250,6 +2316,7 @@ async function* runAgentImpl(
   // 也能正确归属）。
   const ownerAgent = await getAgent(agentId);
   const ownerUserId = ownerAgent?.userId ?? null;
+  const resolvedTimeZone = await resolveContextTimeZone(ctx, ownerUserId);
 
   // Look up owner user for access control (model gating + admin tool injection)
   let isOwnerAdmin = false;
@@ -2448,6 +2515,7 @@ async function* runAgentImpl(
     agentId,
     conversationId,
     workspaceId,
+    timeZone: resolvedTimeZone,
     activeSkills: [...skillState.active],
     availableSkills: availableSkillsForTurn,
     availableSkillsByName: availableSkillsByNameForTurn,
@@ -2831,6 +2899,7 @@ async function* runAgentImpl(
     availableSkillsForTurn,
     availableSkillsByNameForTurn,
     effectiveAttachments,
+    resolvedTimeZone,
   );
   // Track which skills the system prompt currently reflects so we only
   // rebuild when the set actually changes (cheap guard; string concat is
@@ -2878,6 +2947,7 @@ async function* runAgentImpl(
     requestedModel: storedModelId,
     activeSkills: [...skillState.active],
     turnIndex: skillState.turnIndex,
+    timeZone: resolvedTimeZone,
   });
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -3640,6 +3710,9 @@ async function* resumeAfterConfirmImpl(
   // user-skill-defined danger tool。一并构建 per-resume 的 tools 查找
   // 表,把 user skill 工具合并进去。
   const resumeAgentId = ctx.agentId || DEFAULT_AGENT_ID;
+  const resumeOwnerAgent = await getAgent(resumeAgentId);
+  const resumeOwnerUserId = resumeOwnerAgent?.userId ?? null;
+  const resumeTimeZone = await resolveContextTimeZone(ctx, resumeOwnerUserId);
   // Reuse the per-conversation skill state so that if the confirmed tool
   // happens to be a skill-router tool (today none are danger=true, but keep
   // it defensively consistent), activation callbacks still mutate the same
@@ -3680,6 +3753,7 @@ async function* resumeAfterConfirmImpl(
   const resumeAvailableSkillsByName = buildAvailableSkillsByName(resumeDynamicSkills);
   const resumeToolCtx: ToolContext = {
     agentId: resumeAgentId,
+    timeZone: resumeTimeZone,
     activeSkills: [...resumeSkillState.active],
     onActivateSkill: (name: string) => {
       if (!resumeAvailableSkillsByName[name]) return;

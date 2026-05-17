@@ -29,6 +29,8 @@ export interface ToolContext {
   /** Per-turn full skill catalog, including user skills and integration skills. */
   availableSkills?: SkillDefinition[];
   availableSkillsByName?: Record<string, SkillDefinition>;
+  /** Resolved user timezone for date/time-aware tools. */
+  timeZone?: string;
   /**
    * Analyst P1: the conversation this tool call belongs to. Analyst tools
    * key their DuckDB session off this — same conversation, same .duckdb file.

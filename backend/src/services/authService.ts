@@ -181,6 +181,8 @@ export async function updateUserProfile(
 export interface UserPreferences {
   theme?: "light" | "dark" | "system";
   locale?: "zh" | "en";
+  /** IANA timezone identifier, e.g. "Asia/Shanghai", "America/New_York". */
+  timezone?: string;
   deleteProtection?: boolean;
   /** Magic Canvas 布局快照(blocks + layout 树 + per-block state)。
    *  形状由 frontend canvas/types.ts CanvasState 决定;后端不解析,JSON 透传。 */

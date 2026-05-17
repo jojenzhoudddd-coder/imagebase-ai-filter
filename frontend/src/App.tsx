@@ -917,13 +917,21 @@ export default function App() {
   // 刷新后会回到 end —— 后续要持久化"首行"需要在 backend 加 order 字段。
   const handleAddRecord = useCallback(async (position: "start" | "end" = "end"): Promise<string> => {
     const tableId = activeTableIdRef.current;
-    const record = await createRecord(tableId, {});
-    setAllRecords(prev => {
-      if (prev.some(r => r.id === record.id)) return prev;
-      return position === "start" ? [record, ...prev] : [...prev, record];
-    });
-    return record.id;
-  }, []);
+    try {
+      const record = await createRecord(tableId, {});
+      setAllRecords(prev => {
+        if (prev.some(r => r.id === record.id)) return prev;
+        return position === "start" ? [record, ...prev] : [...prev, record];
+      });
+      if (filterRecords([record], filter, fields).length === 0) {
+        toast.info(t("toast.createdRecordHiddenByFilter"));
+      }
+      return record.id;
+    } catch (err) {
+      toast.error((err as Error).message || t("toast.createRecordFailed"));
+      throw err;
+    }
+  }, [fields, filter, toast, t]);
 
   // ── Batch clear cells (Delete key on selected cells) ──
   const executeClearCells = useCallback((cells: Array<{ recordId: string; fieldId: string }>, toastLabel?: string) => {

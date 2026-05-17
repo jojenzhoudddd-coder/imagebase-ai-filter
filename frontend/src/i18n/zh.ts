@@ -285,6 +285,8 @@ export const zh: TranslationKeys = {
   "toast.deletedFields": "已删除 {{count}} 个字段",
   "toast.clearedCells": "已清除 {{count}} 个单元格",
   "toast.clearedRecords": "已清除 {{count}} 条记录",
+  "toast.createdRecordHiddenByFilter": "记录已添加，但因当前筛选条件被隐藏",
+  "toast.createRecordFailed": "新增记录失败，请重试",
   "toast.failedDeleteFields": "字段删除失败",
   "toast.undo": "撤销",
 

@@ -392,13 +392,21 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
 
   // ── Add record ──
   const handleAddRecord = useCallback(async (position: "start" | "end" = "end"): Promise<string> => {
-    const record = await withClientId(instanceClientId, () => createRecord(tableId, {}));
-    setAllRecords((prev) => {
-      if (prev.some((r) => r.id === record.id)) return prev;
-      return position === "start" ? [record, ...prev] : [...prev, record];
-    });
-    return record.id;
-  }, [tableId, instanceClientId]);
+    try {
+      const record = await withClientId(instanceClientId, () => createRecord(tableId, {}));
+      setAllRecords((prev) => {
+        if (prev.some((r) => r.id === record.id)) return prev;
+        return position === "start" ? [record, ...prev] : [...prev, record];
+      });
+      if (filterRecords([record], filter, fields).length === 0) {
+        toast.info(t("toast.createdRecordHiddenByFilter"));
+      }
+      return record.id;
+    } catch (err) {
+      toast.error((err as Error).message || t("toast.createRecordFailed"));
+      throw err;
+    }
+  }, [fields, filter, tableId, instanceClientId, toast, t]);
 
   // ── Undo ──
   const performUndo = useCallback(async () => {

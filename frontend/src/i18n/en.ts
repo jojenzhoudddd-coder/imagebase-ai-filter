@@ -283,6 +283,8 @@ export const en = {
   "toast.deletedFields": "Deleted {{count}} field(s)",
   "toast.clearedCells": "Cleared {{count}} cell(s)",
   "toast.clearedRecords": "Cleared {{count}} record(s)",
+  "toast.createdRecordHiddenByFilter": "Record added, but it is hidden by the current filter",
+  "toast.createRecordFailed": "Failed to add record, please retry",
   "toast.failedDeleteFields": "Failed to delete fields",
   "toast.undo": "Undo",
 

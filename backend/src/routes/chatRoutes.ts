@@ -32,6 +32,7 @@ import {
   refreshGoalSuggestions,
   DEFAULT_GOAL_SUGGESTIONS,
 } from "../services/suggestionService.js";
+import { currentUser, readUserPreferences } from "../services/authService.js";
 
 const router = express.Router();
 
@@ -62,6 +63,18 @@ function resetAbortController(conversationId: string): AbortController {
   const state = getOrCreateTurnState(conversationId);
   state.abortController = new AbortController();
   return state.abortController;
+}
+
+async function getRequestUserPreferences(req: Request): Promise<AgentContext["userPreferences"] | undefined> {
+  const user = currentUser(req);
+  if (!user) return undefined;
+  try {
+    const prefs = await readUserPreferences(user.id);
+    return { timezone: prefs.timezone, locale: prefs.locale };
+  } catch (err) {
+    console.warn("[chatRoutes] read user preferences failed:", err);
+    return undefined;
+  }
 }
 
 // ─── SSE helpers ─────────────────────────────────────────────────────────
@@ -461,6 +474,7 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
     // 不会真"挂尸"。换 conv / 刷新都是用户预期保留进度的场景,这个 trade
     // 是值的。
     let responseEnded = false;
+    const userPreferences = await getRequestUserPreferences(req);
 
     const ctx: AgentContext = {
       conversationId: req.params.id,
@@ -472,6 +486,7 @@ router.post("/conversations/:id/messages", async (req: Request, res: Response) =
       // PR2: passthrough — chatAgentService.runAgent reads this to compose
       // routing hints into the system prompt's Turn Context block.
       userMentions: Array.isArray(mentions) ? mentions : undefined,
+      userPreferences,
       // Vision: structured image attachments for this turn
       attachments: Array.isArray(attachments) ? attachments : undefined,
     };
@@ -545,6 +560,7 @@ router.post("/conversations/:id/confirm", async (req: Request, res: Response) =>
     // V3.0 后台运行:不再 res.on("close") → ac.abort()。同上方 messages
     // 端点的注释逻辑 —— 切换对话 / 刷新 / 关 tab 都不该 abort turn。
     let responseEnded = false;
+    const userPreferences = await getRequestUserPreferences(req);
 
     const ctx: AgentContext = {
       conversationId: req.params.id,
@@ -552,6 +568,7 @@ router.post("/conversations/:id/confirm", async (req: Request, res: Response) =>
       agentId: conv.agentId ?? undefined,
       pendingConfirmations: state.pendingConfirmations,
       authToken: (req as any).cookies?.ibase_auth,
+      userPreferences,
     };
 
     try {
