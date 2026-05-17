@@ -22,7 +22,20 @@ export async function callIntegrationTool(
   if (!integration.enabled) throw new Error(`integration is disabled: ${integration.displayName}`);
   const manifest = integration.toolManifest.find((t) => t.name === toolName);
   if (!manifest) throw new Error(`unknown integration tool: ${toolName}`);
-  const result = await dispatch(integration, manifest, args);
+  let result: unknown;
+  try {
+    result = await dispatch(integration, manifest, args);
+  } catch (err) {
+    const message = errorMessage(err);
+    const missingScopes = integration.providerKey === "lark" && integration.transport === "cli"
+      ? parseLarkMissingScopes(message)
+      : [];
+    if (missingScopes.length) {
+      await markIntegrationUsed(integration.id).catch(() => {});
+      return larkMissingScopeResponse(integration, manifest.name, message, missingScopes);
+    }
+    throw err;
+  }
   await markIntegrationUsed(integration.id).catch(() => {});
   return result;
 }
@@ -81,6 +94,81 @@ function getCliHealthCheckTool(integration: AgentIntegrationRow): IntegrationToo
     };
   }
   return null;
+}
+
+function larkMissingScopeResponse(
+  integration: AgentIntegrationRow,
+  toolName: string,
+  detail: string,
+  missingScopes: string[],
+): Record<string, unknown> {
+  const scope = missingScopes.join(" ");
+  return {
+    ok: false,
+    errorType: "missing_scope",
+    message: `Missing Lark OAuth scope(s): ${scope}`,
+    detail,
+    missingScopes,
+    nextAction: {
+      tool: "start_lark_auth",
+      arguments: {
+        integrationId: integration.id,
+        scope,
+        recommend: false,
+      },
+    },
+    retry: {
+      tool: toolName,
+      after: "poll_lark_auth returns authorized=true",
+    },
+    instructions:
+      "Call start_lark_auth with nextAction.arguments, send the returned verificationUrl to the user unchanged, poll_lark_auth after the user completes authorization, then retry the original Lark tool.",
+  };
+}
+
+function parseLarkMissingScopes(message: string): string[] {
+  const scopes = new Set<string>();
+  const parsed = parseEmbeddedJson(message);
+  const error = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, any>).error
+    : null;
+  if (error && typeof error === "object" && (error as Record<string, any>).type === "missing_scope") {
+    collectScopes(scopes, String((error as Record<string, any>).message ?? ""));
+    collectScopes(scopes, String((error as Record<string, any>).hint ?? ""));
+  }
+  if (!scopes.size && message.toLowerCase().includes("missing_scope")) {
+    collectScopes(scopes, message);
+  }
+  return [...scopes];
+}
+
+function parseEmbeddedJson(message: string): unknown | null {
+  const start = message.indexOf("{");
+  const end = message.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(message.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+function collectScopes(scopes: Set<string>, text: string): void {
+  const fromFlag = /--scope\s+["']([^"']+)["']/.exec(text);
+  if (fromFlag) addScopeList(scopes, fromFlag[1]);
+  const fromMessage = /missing required scope\(s\):\s*([^\n"`]+)/i.exec(text);
+  if (fromMessage) addScopeList(scopes, fromMessage[1]);
+}
+
+function addScopeList(scopes: Set<string>, raw: string): void {
+  for (const item of raw.replace(/[，;]/g, ",").split(/[\s,]+/)) {
+    const scope = item.trim().replace(/^["']|["']$/g, "");
+    if (/^[a-zA-Z0-9_.:-]+$/.test(scope)) scopes.add(scope);
+  }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 async function dispatch(

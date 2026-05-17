@@ -166,7 +166,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_api_get",
         description:
-          "Call a read-only Lark Open Platform GET endpoint through lark-cli. Use for APIs that do not have a narrower shortcut in the manifest.",
+          "Call a read-only Lark Open Platform GET endpoint through lark-cli. Use for APIs that do not have a narrower shortcut in the manifest. If the result reports missing_scope, start incremental Lark auth with the exact missing scope before retrying.",
         mode: "cli",
         readOnly: true,
         output: "json",
@@ -183,7 +183,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_api_post",
         description:
-          "Call a Lark Open Platform POST endpoint through lark-cli. This may write third-party data and requires confirmation. For calendar event creation, prefer lark_calendar_create_event so the backend converts time safely.",
+          "Call a Lark Open Platform POST endpoint through lark-cli. This may write third-party data and requires confirmation. For calendar event creation, prefer lark_calendar_create_event so the backend converts time safely. If the result reports missing_scope, start incremental Lark auth with the exact missing scope before retrying.",
         mode: "cli",
         readOnly: false,
         danger: true,

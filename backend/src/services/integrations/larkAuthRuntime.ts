@@ -146,8 +146,8 @@ export async function startLarkAuth(
   }
 
   const argv = ["auth", "login", "--no-wait", "--json"];
-  if (authOptions.recommend !== false) argv.push("--recommend");
   if (authOptions.scope) argv.push("--scope", authOptions.scope);
+  if (!authOptions.scope && authOptions.recommend !== false) argv.push("--recommend");
   for (const domain of authOptions.domains ?? []) {
     if (typeof domain === "string" && domain.trim()) argv.push("--domain", domain.trim());
   }

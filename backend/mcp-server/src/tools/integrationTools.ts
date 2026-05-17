@@ -208,7 +208,7 @@ export const integrationTools: ToolDefinition[] = [
   {
     name: "start_lark_auth",
     description:
-      "为 Lark CLI integration 启动配置或授权流程。缺 config 时返回 phase=config 的 URL/二维码；已有 config 时返回 phase=auth 的 verificationUrl/userCode。Agent 必须把 URL 原样发给用户；不要在 pending 时重复启动新流程。",
+      "为 Lark CLI integration 启动配置或授权流程。缺 config 时返回 phase=config 的 URL/二维码；已有 config 时返回 phase=auth 的 verificationUrl/userCode。Lark 工具返回 missing_scope 时，用报错里的精确 scope 调用本工具做增量授权。Agent 必须把 URL 原样发给用户；不要在 pending 时重复启动新流程。",
     inputSchema: {
       type: "object",
       properties: {
@@ -216,7 +216,7 @@ export const integrationTools: ToolDefinition[] = [
         integrationId: { type: "string" },
         recommend: {
           type: "boolean",
-          description: "是否使用 lark-cli --recommend 推荐权限；默认 true",
+          description: "是否使用 lark-cli --recommend 推荐权限；默认 true。传入 scope 时运行时会优先使用显式 scope。",
         },
         domains: {
           type: "array",
@@ -225,7 +225,7 @@ export const integrationTools: ToolDefinition[] = [
         },
         scope: {
           type: "string",
-          description: "可选；显式 OAuth scope，留空时依赖 recommend/domains",
+          description: "可选；显式 OAuth scope。missing_scope 时传报错中的精确 scope，例如 search:docs:read；留空时依赖 recommend/domains。",
         },
       },
       required: ["integrationId"],

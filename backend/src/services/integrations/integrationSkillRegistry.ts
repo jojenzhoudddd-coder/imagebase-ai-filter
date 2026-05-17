@@ -61,8 +61,10 @@ function buildIntegrationTool(
         args,
         { requireAgentId: ctx?.agentId },
       );
+      const ok = !(result && typeof result === "object" && !Array.isArray(result) &&
+        (result as Record<string, unknown>).ok === false);
       return JSON.stringify({
-        ok: true,
+        ok,
         integrationId: integration.id,
         providerKey: integration.providerKey,
         tool: manifest.name,
@@ -98,6 +100,7 @@ function buildPromptFragment(integration: AgentIntegrationRow): string {
   if (integration.providerKey === "lark") {
     lines.push(
       "飞书日程创建必须优先使用 lark_calendar_create_event，并传 ISO-8601 时间（例如 2026-05-18T17:00:00+08:00）。不要自己计算 Unix timestamp；相对日期必须按系统上下文里的当前 Asia/Shanghai 日期解析。",
+      "Lark CLI 默认推荐授权不覆盖所有 API。若工具结果包含 errorType=missing_scope 或 missingScopes，调用 start_lark_auth 并传入缺失的精确 scope；把返回的 verificationUrl 原样发给用户，poll_lark_auth 成功后再重试原工具。",
     );
   }
   return [
