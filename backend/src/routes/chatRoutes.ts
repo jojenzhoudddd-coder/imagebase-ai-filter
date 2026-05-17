@@ -24,9 +24,11 @@ import { listSubagentRunsForConversation } from "../services/subagentRunStore.js
 import { listWorkflowRunsForConversation } from "../services/workflowRunStore.js";
 import {
   getSuggestions,
+  getPersistedSuggestions,
   refreshSuggestions,
   DEFAULT_SUGGESTIONS,
   getGoalSuggestions,
+  getPersistedGoalSuggestions,
   refreshGoalSuggestions,
   DEFAULT_GOAL_SUGGESTIONS,
 } from "../services/suggestionService.js";
@@ -136,9 +138,14 @@ router.get("/context-snapshot", async (req: Request, res: Response) => {
 // Returns the cached 3-5 AI-generated prompt suggestions for the document's
 // welcome page. On cache-miss, kicks off an async refresh and returns
 // defaults so the UI never shows an empty state.
-router.get("/suggestions", (req: Request, res: Response) => {
+router.get("/suggestions", async (req: Request, res: Response) => {
   const workspaceId = (req.query.workspaceId as string) || DEFAULT_WORKSPACE_ID;
-  const entry = getSuggestions(workspaceId);
+  const cached = getSuggestions(workspaceId);
+  const persisted = await getPersistedSuggestions(workspaceId).catch(() => null);
+  const entry =
+    persisted && (!cached || persisted.updatedAt > cached.updatedAt || cached.signature.startsWith("default:"))
+      ? persisted
+      : cached;
   if (entry) {
     res.json({
       workspaceId,
@@ -165,7 +172,7 @@ router.get("/suggestions", (req: Request, res: Response) => {
 router.post("/suggestions/refresh", async (req: Request, res: Response) => {
   const { workspaceId = DEFAULT_WORKSPACE_ID } = (req.body as { workspaceId?: string }) || {};
   try {
-    const suggestions = await refreshSuggestions(workspaceId);
+    const suggestions = await refreshSuggestions(workspaceId, { force: true });
     const entry = getSuggestions(workspaceId);
     res.json({
       workspaceId,
@@ -185,7 +192,12 @@ router.post("/suggestions/refresh", async (req: Request, res: Response) => {
 // Returns AI-generated goal recommendations for the High Agency Block.
 router.get("/goal-suggestions", async (req: Request, res: Response) => {
   const workspaceId = (req.query.workspaceId as string) || DEFAULT_WORKSPACE_ID;
-  const entry = getGoalSuggestions(workspaceId);
+  const cached = getGoalSuggestions(workspaceId);
+  const persisted = await getPersistedGoalSuggestions(workspaceId).catch(() => null);
+  const entry =
+    persisted && (!cached || persisted.updatedAt > cached.updatedAt || cached.signature.startsWith("default:"))
+      ? persisted
+      : cached;
   if (entry) {
     res.json({ workspaceId, goals: entry.goals, updatedAt: entry.updatedAt, stale: false });
   } else {

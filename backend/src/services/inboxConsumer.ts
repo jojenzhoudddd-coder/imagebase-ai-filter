@@ -9,13 +9,18 @@
  * block the re-entrancy guard. A module-level lock prevents overlapping runs.
  */
 
-import { createConversation, findConversationByAnchor } from "./conversationStore.js";
+import { appendMessage, createConversation, findConversationByAnchor } from "./conversationStore.js";
 import { ackInboxMessage, readInbox, getAgent, type InboxMessage } from "./agentService.js";
 import { listUserWorkspaces } from "./authService.js";
 import { listCronJobs } from "./cronScheduler.js";
 import { runAgent, type AgentContext } from "./chatAgentService.js";
 import { generateForWorkspace } from "./workspaceSummaryService.js";
-import { refreshSuggestions, refreshGoalSuggestions } from "./suggestionService.js";
+import {
+  formatTodoSuggestionRun,
+  refreshSuggestions,
+  refreshGoalSuggestions,
+  SUGGESTION_MODEL_ID,
+} from "./suggestionService.js";
 import type { EvaluateCronResult } from "./cronScheduler.js";
 
 /**
@@ -176,9 +181,41 @@ async function consumeOne(
       const workspaces = agent ? await listUserWorkspaces(agent.userId) : [];
       let refreshed = 0;
       for (const ws of workspaces) {
+        const startedAt = Date.now();
         try {
-          await refreshSuggestions(ws.id);
-          await refreshGoalSuggestions(ws.id);
+          const suggestions = await refreshSuggestions(ws.id, { force: true });
+          const goals = await refreshGoalSuggestions(ws.id, { force: true });
+          let conv = await findConversationByAnchor({
+            agentId,
+            workspaceId: ws.id,
+            attachedToType: "habit",
+            attachedToId: jobId,
+          });
+          if (!conv) {
+            conv = await createConversation(
+              ws.id,
+              `Habit: ${displayName}`,
+              agentId,
+              { type: "habit", id: jobId },
+            );
+          }
+          await appendMessage(conv.id, {
+            role: "user",
+            content: prompt,
+            source: `habit:${jobId}`,
+          });
+          await appendMessage(conv.id, {
+            role: "assistant",
+            content: formatTodoSuggestionRun({
+              workspaceId: ws.id,
+              generatedAt: new Date().toISOString(),
+              suggestions,
+              goals,
+            }),
+            durationMs: Date.now() - startedAt,
+            modelId: SUGGESTION_MODEL_ID,
+            source: `habit:${jobId}`,
+          });
           refreshed++;
         } catch (err) {
           console.warn(`[inbox-consumer] suggest ws=${ws.id} failed:`, err);

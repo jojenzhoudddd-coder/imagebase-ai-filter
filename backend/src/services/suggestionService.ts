@@ -33,6 +33,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 const ARK_BASE_URL = process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 const SEED_MODEL = process.env.SEED_MODEL || process.env.ARK_MODEL || "ep-20260412192731-vwdh7";
+export const SUGGESTION_MODEL_ID = SEED_MODEL;
 
 const __pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const __adapter = new PrismaPg(__pool);
@@ -57,26 +58,165 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<Suggestion[]>>();
 
+const TODO_SUGGESTION_MARKER = "funature:todo-suggestions:v1";
+
+export interface TodoSuggestionRun {
+  workspaceId: string;
+  generatedAt: string;
+  suggestions: Suggestion[];
+  goals: GoalSuggestion[];
+}
+
+function clipText(text: string | null | undefined, max = 180): string {
+  const s = (text ?? "").replace(/\s+/g, " ").trim();
+  return s.length > max ? `${s.slice(0, max)}...` : s;
+}
+
+function extractJsonObjects(raw: string): unknown[] {
+  const out: unknown[] = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+      continue;
+    }
+    if (ch === "}") {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        try {
+          out.push(JSON.parse(raw.slice(start, i + 1)));
+        } catch {
+          // Ignore malformed object fragments; callers validate the count.
+        }
+        start = -1;
+      }
+    }
+  }
+  return out;
+}
+
+function parseJsonArrayLike(raw: string): unknown[] {
+  let s = raw.trim();
+  s = s.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+  const start = s.indexOf("[");
+  const end = s.lastIndexOf("]");
+  if (start >= 0 && end > start) s = s.slice(start, end + 1);
+
+  try {
+    const parsed = JSON.parse(s) as unknown;
+    if (Array.isArray(parsed)) return parsed;
+    throw new Error("Not a JSON array");
+  } catch (err) {
+    const objects = extractJsonObjects(s);
+    if (objects.length > 0) return objects;
+    throw err;
+  }
+}
+
 /** Stable, low-entropy summary of what tables/fields exist in the document.
  * Used both as model input AND as the cache signature — identical signature
  * means re-running would waste tokens. */
 async function buildWorkspaceOutline(workspaceId: string): Promise<{ outline: string; signature: string }> {
   try {
-    const tables = await store.listTablesForWorkspace(workspaceId);
-    if (!tables || tables.length === 0) {
-      return {
-        outline: `文档 ${workspaceId} 目前没有任何数据表。`,
-        signature: `empty:${workspaceId}`,
-      };
-    }
+    const [tables, ideas, designs, demos, conversations] = await Promise.all([
+      store.listTablesForWorkspace(workspaceId),
+      __prisma.idea.findMany({
+        where: { workspaceId },
+        orderBy: { updatedAt: "desc" },
+        take: 8,
+        select: { name: true, content: true, updatedAt: true },
+      }),
+      __prisma.design.findMany({
+        where: { workspaceId },
+        orderBy: { updatedAt: "desc" },
+        take: 8,
+        select: { name: true, updatedAt: true },
+      }),
+      __prisma.demo.findMany({
+        where: { workspaceId },
+        orderBy: { updatedAt: "desc" },
+        take: 8,
+        select: { name: true, updatedAt: true, lastBuildStatus: true, publishedAt: true },
+      }),
+      __prisma.conversation.findMany({
+        where: { workspaceId },
+        orderBy: { updatedAt: "desc" },
+        take: 8,
+        select: {
+          title: true,
+          updatedAt: true,
+          messages: {
+            orderBy: { timestamp: "desc" },
+            take: 2,
+            select: { role: true, content: true },
+          },
+        },
+      }),
+    ]);
     const lines: string[] = [];
     const sigParts: string[] = [];
-    for (const t of tables) {
+    if (!tables || tables.length === 0) {
+      lines.push(`文档 ${workspaceId} 目前没有任何数据表。`);
+      sigParts.push(`empty-tables:${workspaceId}`);
+    }
+    for (const t of tables ?? []) {
       const detail = await store.getTable(t.id);
       if (!detail) continue;
       const fieldNames = detail.fields.map((f) => f.name).join("、");
       lines.push(`- ${detail.name}（${detail.records.length} 条记录）：${fieldNames}`);
       sigParts.push(`${detail.name}:${detail.fields.length}:${detail.records.length}`);
+    }
+    if (ideas.length > 0) {
+      lines.push("\n# Ideas");
+      for (const idea of ideas) {
+        lines.push(`- ${idea.name}: ${clipText(idea.content)}`);
+        sigParts.push(`idea:${idea.name}:${idea.updatedAt.getTime()}:${idea.content.length}`);
+      }
+    }
+    if (designs.length > 0) {
+      lines.push("\n# Designs");
+      for (const design of designs) {
+        lines.push(`- ${design.name}`);
+        sigParts.push(`design:${design.name}:${design.updatedAt.getTime()}`);
+      }
+    }
+    if (demos.length > 0) {
+      lines.push("\n# Demos");
+      for (const demo of demos) {
+        lines.push(`- ${demo.name}${demo.lastBuildStatus ? `（build: ${demo.lastBuildStatus}）` : ""}${demo.publishedAt ? "（published）" : ""}`);
+        sigParts.push(`demo:${demo.name}:${demo.updatedAt.getTime()}:${demo.lastBuildStatus ?? ""}:${demo.publishedAt?.getTime() ?? ""}`);
+      }
+    }
+    if (conversations.length > 0) {
+      lines.push("\n# Recent conversations");
+      for (const conv of conversations) {
+        const snippets = conv.messages
+          .slice()
+          .reverse()
+          .map((m) => `${m.role}: ${clipText(m.content, 120)}`)
+          .join(" / ");
+        lines.push(`- ${conv.title}: ${snippets}`);
+        sigParts.push(`conv:${conv.title}:${conv.updatedAt.getTime()}`);
+      }
     }
     return {
       outline: lines.join("\n"),
@@ -188,15 +328,7 @@ async function callArkForSuggestions(
  * return a bare JSON array, but real-world output sometimes has a
  * ```json ``` fence or leading prose — strip those before JSON.parse. */
 function parseSuggestions(raw: string): Suggestion[] {
-  let s = raw.trim();
-  // Strip common Markdown fencing
-  s = s.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-  // Take the first JSON array substring if there's surrounding prose
-  const start = s.indexOf("[");
-  const end = s.lastIndexOf("]");
-  if (start >= 0 && end > start) s = s.slice(start, end + 1);
-
-  const parsed = JSON.parse(s) as unknown;
+  const parsed = parseJsonArrayLike(raw);
   if (!Array.isArray(parsed)) throw new Error("Not a JSON array");
   const out: Suggestion[] = [];
   for (const item of parsed) {
@@ -216,8 +348,115 @@ export function getSuggestions(workspaceId: string): CacheEntry | null {
   return cache.get(workspaceId) ?? null;
 }
 
+function parseTodoSuggestionRun(content: string): TodoSuggestionRun | null {
+  const markerIndex = content.indexOf(TODO_SUGGESTION_MARKER);
+  if (markerIndex < 0) return null;
+  const jsonStart = markerIndex + TODO_SUGGESTION_MARKER.length;
+  const commentEnd = content.indexOf("-->", jsonStart);
+  const raw = content
+    .slice(jsonStart, commentEnd >= 0 ? commentEnd : undefined)
+    .replace(/^[:\s]*/, "")
+    .trim();
+  try {
+    const parsed = JSON.parse(raw) as Partial<TodoSuggestionRun>;
+    const suggestions = Array.isArray(parsed.suggestions)
+      ? parsed.suggestions
+          .map((s) => ({
+            label: typeof s?.label === "string" ? s.label.trim() : "",
+            prompt: typeof s?.prompt === "string" ? s.prompt.trim() : "",
+          }))
+          .filter((s) => s.label && s.prompt)
+      : [];
+    const goals = Array.isArray(parsed.goals)
+      ? parsed.goals
+          .map((g) => ({
+            goal: typeof g?.goal === "string" ? g.goal.trim() : "",
+            todos: Array.isArray(g?.todos) ? g.todos.map(String).filter(Boolean) : undefined,
+          }))
+          .filter((g) => g.goal)
+      : [];
+    if (!parsed.workspaceId || !parsed.generatedAt || suggestions.length === 0) return null;
+    return {
+      workspaceId: parsed.workspaceId,
+      generatedAt: parsed.generatedAt,
+      suggestions,
+      goals,
+    };
+  } catch {
+    // Older messages before this marker existed are ignored.
+    return null;
+  }
+}
+
+export function formatTodoSuggestionRun(run: TodoSuggestionRun): string {
+  const chatLines = run.suggestions.map((s, idx) => `${idx + 1}. ${s.label} — ${s.prompt}`);
+  const goalLines = run.goals.map((g, idx) => {
+    const todos = g.todos?.length ? `\n   ${g.todos.map((t) => `- ${t}`).join("\n   ")}` : "";
+    return `${idx + 1}. ${g.goal}${todos}`;
+  });
+  return [
+    "已刷新 Todo Suggestions。",
+    "",
+    "Chat 欢迎页推荐：",
+    ...chatLines,
+    "",
+    "High Agency 目标建议：",
+    ...goalLines,
+    "",
+    `<!-- ${TODO_SUGGESTION_MARKER}`,
+    JSON.stringify(run),
+    "-->",
+  ].join("\n");
+}
+
+export async function getPersistedTodoSuggestionRun(workspaceId: string): Promise<TodoSuggestionRun | null> {
+  const conversations = await __prisma.conversation.findMany({
+    where: {
+      workspaceId,
+      attachedToType: "habit",
+      attachedToId: "habit_system_suggest",
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 5,
+    select: { id: true },
+  });
+  for (const conv of conversations) {
+    const messages = await __prisma.message.findMany({
+      where: {
+        conversationId: conv.id,
+        role: "assistant",
+        content: { contains: TODO_SUGGESTION_MARKER },
+      },
+      orderBy: { timestamp: "desc" },
+      take: 5,
+      select: { content: true },
+    });
+    for (const msg of messages) {
+      const run = parseTodoSuggestionRun(msg.content);
+      if (run) return run;
+    }
+  }
+  return null;
+}
+
+export async function getPersistedSuggestions(workspaceId: string): Promise<CacheEntry | null> {
+  const run = await getPersistedTodoSuggestionRun(workspaceId);
+  if (!run || run.suggestions.length === 0) return null;
+  const updatedAt = Date.parse(run.generatedAt) || Date.now();
+  const entry = {
+    suggestions: run.suggestions,
+    updatedAt,
+    signature: `persisted:${run.generatedAt}`,
+  };
+  const current = cache.get(workspaceId);
+  if (!current || updatedAt > current.updatedAt || current.signature.startsWith("default:")) {
+    cache.set(workspaceId, entry);
+  }
+  return entry;
+}
+
 /** Force a refresh; deduplicates concurrent calls for the same document. */
-export async function refreshSuggestions(workspaceId: string): Promise<Suggestion[]> {
+export async function refreshSuggestions(workspaceId: string, opts: { force?: boolean } = {}): Promise<Suggestion[]> {
   const existing = inflight.get(workspaceId);
   if (existing) return existing;
 
@@ -225,7 +464,7 @@ export async function refreshSuggestions(workspaceId: string): Promise<Suggestio
     const { outline, signature } = await buildWorkspaceOutline(workspaceId);
     // Skip if signature unchanged — saves tokens when the doc didn't shift
     const cached = cache.get(workspaceId);
-    if (cached && cached.signature === signature) {
+    if (!opts.force && cached && cached.signature === signature) {
       return cached.suggestions;
     }
     try {
@@ -251,6 +490,8 @@ export async function refreshSuggestions(workspaceId: string): Promise<Suggestio
       return suggestions;
     } catch (err) {
       console.warn(`[suggestionService] refresh failed for ${workspaceId}:`, err instanceof Error ? err.message : err);
+      const persisted = await getPersistedSuggestions(workspaceId).catch(() => null);
+      if (persisted) return persisted.suggestions;
       // Keep previous cache on failure; expose defaults only if we have nothing
       if (!cached) {
         cache.set(workspaceId, {
@@ -404,13 +645,7 @@ async function callArkForGoals(
 }
 
 function parseGoalSuggestions(raw: string): GoalSuggestion[] {
-  let s = raw.trim();
-  s = s.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-  const start = s.indexOf("[");
-  const end = s.lastIndexOf("]");
-  if (start >= 0 && end > start) s = s.slice(start, end + 1);
-
-  const parsed = JSON.parse(s) as unknown;
+  const parsed = parseJsonArrayLike(raw);
   if (!Array.isArray(parsed)) throw new Error("Not a JSON array");
   const out: GoalSuggestion[] = [];
   for (const item of parsed) {
@@ -430,14 +665,30 @@ export function getGoalSuggestions(workspaceId: string): GoalCacheEntry | null {
   return goalCache.get(workspaceId) ?? null;
 }
 
-export async function refreshGoalSuggestions(workspaceId: string): Promise<GoalSuggestion[]> {
+export async function getPersistedGoalSuggestions(workspaceId: string): Promise<GoalCacheEntry | null> {
+  const run = await getPersistedTodoSuggestionRun(workspaceId);
+  if (!run || run.goals.length === 0) return null;
+  const updatedAt = Date.parse(run.generatedAt) || Date.now();
+  const entry = {
+    goals: run.goals,
+    updatedAt,
+    signature: `persisted:${run.generatedAt}`,
+  };
+  const current = goalCache.get(workspaceId);
+  if (!current || updatedAt > current.updatedAt || current.signature.startsWith("default:")) {
+    goalCache.set(workspaceId, entry);
+  }
+  return entry;
+}
+
+export async function refreshGoalSuggestions(workspaceId: string, opts: { force?: boolean } = {}): Promise<GoalSuggestion[]> {
   const existing = goalInflight.get(workspaceId);
   if (existing) return existing;
 
   const p = (async () => {
     const { outline, signature } = await buildWorkspaceOutline(workspaceId);
     const cached = goalCache.get(workspaceId);
-    if (cached && cached.signature === signature) return cached.goals;
+    if (!opts.force && cached && cached.signature === signature) return cached.goals;
 
     try {
       let ownerUserId: string | null = null;
@@ -452,6 +703,8 @@ export async function refreshGoalSuggestions(workspaceId: string): Promise<GoalS
       return goals;
     } catch (err) {
       console.warn(`[suggestionService] goal refresh failed for ${workspaceId}:`, err instanceof Error ? err.message : err);
+      const persisted = await getPersistedGoalSuggestions(workspaceId).catch(() => null);
+      if (persisted) return persisted.goals;
       if (!cached) {
         goalCache.set(workspaceId, { goals: DEFAULT_GOAL_SUGGESTIONS, updatedAt: Date.now(), signature: `default:${signature}` });
       }
