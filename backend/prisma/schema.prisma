@@ -23,7 +23,9 @@ model User {
   passwordHash String?
   /// Per-user UI preferences. Currently holds:
   ///   { theme?: "light"|"dark"|"system", locale?: "zh"|"en",
-  ///     deleteProtection?: boolean }
+  ///     timezone?: string, deleteProtection?: boolean,
+  ///     workspaceOrder?: string[], canvasLayout?: Json,
+  ///     canvasLayouts?: Record<string, Json> }
   /// Empty {} means "fall back to browser localStorage / system default".
   /// 详见 docs/per-user-preferences.md。
   preferences Json @default("{}")

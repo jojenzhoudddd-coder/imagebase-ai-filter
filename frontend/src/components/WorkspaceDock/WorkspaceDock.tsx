@@ -41,11 +41,17 @@ export default function WorkspaceDock({
   // dropSide: "before" = line above target, "after" = line below target
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<{ idx: number; side: "before" | "after" } | null>(null);
+  const dropTargetRef = useRef<{ idx: number; side: "before" | "after" } | null>(null);
+  const updateDropTarget = (next: { idx: number; side: "before" | "after" } | null) => {
+    dropTargetRef.current = next;
+    setDropTarget(next);
+  };
 
   const handleDragStart = (e: React.DragEvent, idx: number) => {
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", orderedWorkspaces[idx]?.id ?? "");
     setDragIdx(idx);
+    updateDropTarget(null);
   };
   const handleDragOver = (e: React.DragEvent, idx: number) => {
     e.preventDefault();
@@ -54,22 +60,26 @@ export default function WorkspaceDock({
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const midY = rect.top + rect.height / 2;
     const side = e.clientY < midY ? "before" : "after";
-    setDropTarget({ idx, side });
+    updateDropTarget({ idx, side });
   };
   const handleDrop = () => {
-    if (dragIdx === null || !dropTarget) { setDragIdx(null); setDropTarget(null); return; }
+    const target = dropTargetRef.current;
+    if (dragIdx === null || !target) { setDragIdx(null); updateDropTarget(null); return; }
     const reordered = [...orderedWorkspaces];
     const [moved] = reordered.splice(dragIdx, 1);
     // Calculate insert position accounting for removal shift
-    let insertAt = dropTarget.side === "before" ? dropTarget.idx : dropTarget.idx + 1;
+    let insertAt = target.side === "before" ? target.idx : target.idx + 1;
     if (dragIdx < insertAt) insertAt--;
     reordered.splice(insertAt, 0, moved);
     const newOrder = reordered.map((w) => w.id);
-    patchPreferences({ workspaceOrder: newOrder });
     setDragIdx(null);
-    setDropTarget(null);
+    updateDropTarget(null);
+    patchPreferences({ workspaceOrder: newOrder }).catch((err) => {
+      console.error("[WorkspaceDock] failed to persist workspace order", err);
+      toast.error(t("toast.reorderFailed"));
+    });
   };
-  const handleDragEnd = () => { setDragIdx(null); setDropTarget(null); };
+  const handleDragEnd = () => { setDragIdx(null); updateDropTarget(null); };
 
   // ── Context menu ──
   const [ctxMenu, setCtxMenu] = useState<{ wsId: string; x: number; y: number } | null>(null);

@@ -184,9 +184,13 @@ export interface UserPreferences {
   /** IANA timezone identifier, e.g. "Asia/Shanghai", "America/New_York". */
   timezone?: string;
   deleteProtection?: boolean;
+  /** Ordered workspace IDs for dock display. Persisted per user. */
+  workspaceOrder?: string[];
   /** Magic Canvas 布局快照(blocks + layout 树 + per-block state)。
    *  形状由 frontend canvas/types.ts CanvasState 决定;后端不解析,JSON 透传。 */
   canvasLayout?: unknown;
+  /** Per-workspace canvas layouts: { [workspaceId]: CanvasState } */
+  canvasLayouts?: Record<string, unknown>;
   /** 预留字段:Magic Canvas 布局预设(将来支持) */
   canvasPresets?: unknown;
 }
@@ -196,11 +200,21 @@ const DEFAULT_USER_PREFERENCES: UserPreferences = {
 };
 
 function normalizeUserPreferences(preferences: unknown): UserPreferences {
-  return {
+  const normalized: UserPreferences = {
     ...DEFAULT_USER_PREFERENCES,
     ...((preferences as UserPreferences) || {}),
     deleteProtection: false,
   };
+  if (normalized.workspaceOrder !== undefined) {
+    if (Array.isArray(normalized.workspaceOrder)) {
+      normalized.workspaceOrder = normalized.workspaceOrder.filter(
+        (id): id is string => typeof id === "string" && id.length > 0,
+      );
+    } else {
+      delete normalized.workspaceOrder;
+    }
+  }
+  return normalized;
 }
 
 export async function readUserPreferences(id: string): Promise<UserPreferences> {
@@ -236,6 +250,28 @@ export async function updateUserPreferences(
     data: { preferences: next as any },
   });
   return next;
+}
+
+export function sortWorkspacesByPreference<T extends { id: string }>(
+  workspaces: T[],
+  preferences: Pick<UserPreferences, "workspaceOrder"> | null | undefined,
+): T[] {
+  const order = preferences?.workspaceOrder;
+  if (!Array.isArray(order) || order.length === 0) return workspaces;
+
+  const byId = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+  const sorted: T[] = [];
+  const seen = new Set<string>();
+  for (const id of order) {
+    if (seen.has(id)) continue;
+    const workspace = byId.get(id);
+    if (!workspace) continue;
+    sorted.push(workspace);
+    seen.add(id);
+    byId.delete(id);
+  }
+  for (const workspace of byId.values()) sorted.push(workspace);
+  return sorted;
 }
 
 export async function setUserPassword(id: string, plain: string) {
