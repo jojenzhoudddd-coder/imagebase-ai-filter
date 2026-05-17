@@ -16,6 +16,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -39,7 +40,47 @@ interface Props {
   leaveDelay?: number;
   /** Disable tooltip entirely. */
   disabled?: boolean;
+  /** Gap between trigger and tooltip (px). Default 6. */
+  gap?: number;
   children: ReactNode;
+}
+
+function calcPosition(
+  trigger: DOMRect,
+  tipRect: DOMRect,
+  placement: TooltipPlacement,
+  gap: number,
+): { top: number; left: number; actualPlacement: TooltipPlacement } {
+  const viewW = window.innerWidth;
+  const viewH = window.innerHeight;
+  let actualPlacement = placement;
+  let top = 0;
+  let left = 0;
+
+  if (placement === "top" || placement === "bottom") {
+    left = trigger.left + trigger.width / 2 - tipRect.width / 2;
+    if (placement === "top") {
+      top = trigger.top - tipRect.height - gap;
+      if (top < 4) { actualPlacement = "bottom"; top = trigger.bottom + gap; }
+    } else {
+      top = trigger.bottom + gap;
+      if (top + tipRect.height > viewH - 4) { actualPlacement = "top"; top = trigger.top - tipRect.height - gap; }
+    }
+  } else {
+    top = trigger.top + trigger.height / 2 - tipRect.height / 2;
+    if (placement === "left") {
+      left = trigger.left - tipRect.width - gap;
+      if (left < 4) { actualPlacement = "right"; left = trigger.right + gap; }
+    } else {
+      left = trigger.right + gap;
+      if (left + tipRect.width > viewW - 4) { actualPlacement = "left"; left = trigger.left - tipRect.width - gap; }
+    }
+  }
+
+  left = Math.max(4, Math.min(left, viewW - tipRect.width - 4));
+  top = Math.max(4, Math.min(top, viewH - tipRect.height - 4));
+
+  return { top, left, actualPlacement };
 }
 
 export default function Tooltip({
@@ -49,6 +90,7 @@ export default function Tooltip({
   enterDelay = 200,
   leaveDelay = 100,
   disabled,
+  gap = 6,
   children,
 }: Props) {
   const [visible, setVisible] = useState(false);
@@ -73,52 +115,39 @@ export default function Tooltip({
     leaveTimer.current = setTimeout(() => setVisible(false), leaveDelay);
   }, [leaveDelay]);
 
-  // Position calculation
+  // Reposition after tooltip mounts / updates
+  useLayoutEffect(() => {
+    if (!visible) { setPos(null); return; }
+    // Need a rAF because the portal may not be in the DOM yet during layoutEffect
+    const raf = requestAnimationFrame(() => {
+      if (!triggerRef.current || !tooltipRef.current) return;
+      const trig = triggerRef.current.getBoundingClientRect();
+      const tip = tooltipRef.current.getBoundingClientRect();
+      setPos(calcPosition(trig, tip, placement, gap));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [visible, placement, gap]);
+
+  // Also reposition on scroll/resize while visible
   useEffect(() => {
-    if (!visible || !triggerRef.current) return;
-    const trigger = triggerRef.current.getBoundingClientRect();
-    const tooltip = tooltipRef.current;
-    if (!tooltip) return;
+    if (!visible) return;
+    const reposition = () => {
+      if (!triggerRef.current || !tooltipRef.current) return;
+      const trig = triggerRef.current.getBoundingClientRect();
+      const tip = tooltipRef.current.getBoundingClientRect();
+      setPos(calcPosition(trig, tip, placement, gap));
+    };
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [visible, placement, gap]);
 
-    const tipRect = tooltip.getBoundingClientRect();
-    const GAP = 6;
-    const viewW = window.innerWidth;
-    const viewH = window.innerHeight;
-
-    let actualPlacement = placement;
-    let top = 0;
-    let left = 0;
-
-    // Try preferred placement, flip if needed
-    if (placement === "top" || placement === "bottom") {
-      left = trigger.left + trigger.width / 2 - tipRect.width / 2;
-      if (placement === "top") {
-        top = trigger.top - tipRect.height - GAP;
-        if (top < 4) { actualPlacement = "bottom"; top = trigger.bottom + GAP; }
-      } else {
-        top = trigger.bottom + GAP;
-        if (top + tipRect.height > viewH - 4) { actualPlacement = "top"; top = trigger.top - tipRect.height - GAP; }
-      }
-    } else {
-      top = trigger.top + trigger.height / 2 - tipRect.height / 2;
-      if (placement === "left") {
-        left = trigger.left - tipRect.width - GAP;
-        if (left < 4) { actualPlacement = "right"; left = trigger.right + GAP; }
-      } else {
-        left = trigger.right + GAP;
-        if (left + tipRect.width > viewW - 4) { actualPlacement = "left"; left = trigger.left - tipRect.width - GAP; }
-      }
-    }
-
-    // Clamp horizontal
-    left = Math.max(4, Math.min(left, viewW - tipRect.width - 4));
-    // Clamp vertical
-    top = Math.max(4, Math.min(top, viewH - tipRect.height - 4));
-
-    setPos({ top, left, actualPlacement });
-  }, [visible, placement]);
-
-  const style: CSSProperties | undefined = pos ? { top: pos.top, left: pos.left } : { visibility: "hidden", top: 0, left: 0 };
+  const style: CSSProperties = pos
+    ? { top: pos.top, left: pos.left }
+    : { visibility: "hidden" as const, top: -9999, left: -9999 };
 
   return (
     <>
@@ -142,7 +171,7 @@ export default function Tooltip({
             onMouseLeave={hide}
           >
             <div className="tooltip-content">
-              {typeof tooltipContent === "string" ? tooltipContent : tooltipContent}
+              {tooltipContent}
             </div>
             <div className="tooltip-arrow" />
           </div>,

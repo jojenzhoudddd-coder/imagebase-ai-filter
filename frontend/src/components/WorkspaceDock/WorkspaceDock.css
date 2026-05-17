@@ -1,0 +1,320 @@
+/* ─── Workspace Dock: macOS Sequoia liquid-glass style ─── */
+
+/* Outer wrapper: handles width transition + full-height border/shadow.
+   overflow-x clips content during width animation; overflow-y allows scroll. */
+.workspace-dock {
+  width: 0;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background:
+    linear-gradient(to left, rgba(0, 0, 0, 0.045), transparent 36px) right / 36px 100% no-repeat,
+    var(--color-white);
+}
+
+[data-theme="dark"] .workspace-dock {
+  background:
+    linear-gradient(to left, rgba(0, 0, 0, 0.12), transparent 36px) right / 36px 100% no-repeat,
+    var(--color-white);
+}
+
+.workspace-dock--open {
+  width: 88px;
+}
+
+
+
+/* The visible glass pill — vertically centered, scrolls when exceeding
+   viewport height minus 60px top + 60px bottom = 120px reserved. */
+.dock-glass {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px;
+  position: relative;
+  z-index: 1;
+  margin: auto 0;
+  border-radius: 20px;
+  background: rgba(240, 240, 245, 0.6);
+  backdrop-filter: blur(40px) saturate(1.6);
+  -webkit-backdrop-filter: blur(40px) saturate(1.6);
+  border: 0.5px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04);
+  min-width: 68px;
+  flex-shrink: 0;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.dock-glass::-webkit-scrollbar {
+  display: none;
+}
+
+[data-theme="dark"] .dock-glass {
+  background: rgba(40, 40, 44, 0.55);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+}
+
+/* ─── Sections ─── */
+
+.dock-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.dock-section-label {
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: rgba(255, 255, 255, 0.5);
+  user-select: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="light"] .dock-section-label {
+  color: rgba(0, 0, 0, 0.35);
+  text-shadow: none;
+}
+
+.dock-items {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ─── Divider between sections ─── */
+
+.dock-divider {
+  width: 32px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 2px 0;
+  flex-shrink: 0;
+  border-radius: 0.5px;
+}
+
+[data-theme="light"] .dock-divider {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* ─── Tiles (workspace icons) ─── */
+
+.dock-tile {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.dock-tile:hover {
+  transform: scale(1.15) translateY(-2px);
+}
+
+.dock-tile:active {
+  transform: scale(0.92);
+  transition-duration: 0.1s;
+}
+
+/* Individual icon glass card */
+.dock-tile-inner {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  /* Glass highlight on each icon */
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: border-radius 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dock-tile:hover .dock-tile-inner {
+  border-radius: 14px;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.dock-tile--active .dock-tile-inner {
+  border-radius: 14px;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+/* Specular highlight overlay (top-left to center gradient) */
+.dock-tile-inner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0.08) 40%,
+    transparent 60%
+  );
+  pointer-events: none;
+}
+
+.dock-tile-initials {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.5px;
+  user-select: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  position: relative;
+  z-index: 1;
+}
+
+/* Wrapper keeps the indicator outside the tile's transform */
+.dock-tile-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Active indicator dot (left side, like macOS dock).
+   Lives in dock-tile-wrap, unaffected by tile hover transform. */
+.dock-tile-indicator {
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.6);
+  z-index: 1;
+  pointer-events: none;
+}
+
+[data-theme="light"] .dock-tile-indicator {
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.15);
+}
+
+/* ─── Add tile (dashed placeholder) ─── */
+
+.dock-tile--add {
+  width: 48px;
+  height: 48px;
+  border: 1.5px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.4);
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+[data-theme="light"] .dock-tile--add {
+  border-color: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.03);
+  color: rgba(0, 0, 0, 0.3);
+}
+
+.dock-tile--add:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+[data-theme="light"] .dock-tile--add:hover:not(:disabled) {
+  border-color: var(--color-primary, #4080FF);
+  background: rgba(20, 86, 240, 0.06);
+  color: var(--color-primary, #4080FF);
+}
+
+.dock-tile--add:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.dock-tile--add:hover {
+  transform: scale(1.08);
+}
+
+/* ─── Avatar image tile ─── */
+
+.dock-tile-inner--img {
+  background: none !important;
+  padding: 0;
+  overflow: hidden;
+}
+
+.dock-tile-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+/* ─── Dock tooltip (fixed position, portaled to body) ─── */
+
+.dock-tooltip-portal {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+.dock-tooltip-arrow {
+  width: 0;
+  height: 0;
+  border: 5px solid transparent;
+  border-right-color: #4A4D52;
+  border-left: none;
+  flex-shrink: 0;
+}
+
+.dock-tooltip-body {
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: #4A4D52;
+  color: #fff;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .dock-tooltip-body {
+  background: #3A3A3C;
+  color: #F5F5F7;
+}
+
+[data-theme="dark"] .dock-tooltip-arrow {
+  border-right-color: #3A3A3C;
+}
+

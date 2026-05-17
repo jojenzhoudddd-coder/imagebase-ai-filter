@@ -169,6 +169,7 @@ model Workspace {
   createdById String
   name        String
   description String?
+  avatarUrl   String?
   /// AI 生成的工作区一句话摘要（~50 字）。null 表示尚未生成；前端会
   /// 显示一个静态默认。每日 04:00 UTC+8 由 heartbeat 异步刷新（见
   /// services/workspaceSummaryService.ts）。

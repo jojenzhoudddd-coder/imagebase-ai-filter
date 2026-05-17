@@ -49,6 +49,8 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { mockTable } from "./mockData.js";
 import { connectDB, loadTable, getTable, getWorkspace, updateWorkspace, listTablesForWorkspace, ensureDefaults, backfillUserFields } from "./services/dbStore.js";
+import { generateId } from "./services/idGenerator.js";
+import { listUserWorkspaces } from "./services/authService.js";
 import { eventBus } from "./services/eventBus.js";
 import { startSuggestionScheduler } from "./services/suggestionService.js";
 import { ensureDefaultAgent } from "./services/agentService.js";
@@ -218,6 +220,67 @@ app.put("/api/workspaces/:workspaceId", async (req, res) => {
     payload: { workspaceId: ws.id, name: ws.name },
   });
   res.json(ws);
+});
+
+// POST /api/workspaces — create a new workspace for the current user
+app.post("/api/workspaces", async (req, res) => {
+  const user = (req as any).user;
+  if (!user) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const { name, locale } = req.body;
+  const username = user.name || user.username || "User";
+  const hasExplicitLocale = typeof locale === "string" && (locale === "zh" || locale === "en");
+  const isZh = hasExplicitLocale
+    ? locale === "zh"
+    : (typeof req.headers["accept-language"] === "string" && req.headers["accept-language"].startsWith("zh"));
+  const defaultName = isZh ? `${username}的工作空间` : `${username}'s Workspace`;
+  const requestedName = (typeof name === "string" && name.trim()) ? name.trim() : defaultName;
+  // Find the user's org (first one they own)
+  const orgMember = await prismaForStats.orgMember.findFirst({ where: { userId: user.id, role: "owner" } });
+  if (!orgMember) { res.status(400).json({ error: "No org found" }); return; }
+  // Deduplicate name: "X" → "X 2" → "X 3" ...
+  const existing = await listUserWorkspaces(user.id);
+  const existingNames = new Set(existing.map((w: any) => w.name));
+  let wsName = requestedName;
+  let counter = 1;
+  while (existingNames.has(wsName)) {
+    counter++;
+    wsName = `${requestedName} ${counter}`;
+  }
+  const wsId = await generateId("workspace");
+  const ws = await prismaForStats.workspace.create({
+    data: { id: wsId, orgId: orgMember.orgId, createdById: user.id, name: wsName },
+  });
+  // Return updated workspace list
+  const workspaces = await listUserWorkspaces(user.id);
+  res.json({ workspace: { id: ws.id, name: ws.name, avatarUrl: ws.avatarUrl }, workspaces });
+});
+
+// DELETE /api/workspaces/:workspaceId — delete workspace and all its artifacts
+app.delete("/api/workspaces/:workspaceId", async (req, res) => {
+  const user = (req as any).user;
+  if (!user) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const { workspaceId } = req.params;
+  const ws = await prismaForStats.workspace.findUnique({ where: { id: workspaceId } });
+  if (!ws) { res.status(404).json({ error: "Workspace not found" }); return; }
+  if (ws.createdById !== user.id) { res.status(403).json({ error: "Not the workspace owner" }); return; }
+  // Check user has at least one other workspace
+  const all = await listUserWorkspaces(user.id);
+  if (all.length <= 1) { res.status(400).json({ error: "Cannot delete your only workspace" }); return; }
+  // Cascade delete (Prisma onDelete: Cascade handles tables/ideas/designs/demos/folders)
+  await prismaForStats.workspace.delete({ where: { id: workspaceId } });
+  const workspaces = await listUserWorkspaces(user.id);
+  res.json({ ok: true, workspaces });
+});
+
+// PATCH /api/workspaces/:workspaceId/avatar — update workspace avatar
+app.patch("/api/workspaces/:workspaceId/avatar", async (req, res) => {
+  const { avatarUrl } = req.body;
+  if (typeof avatarUrl !== "string") { res.status(400).json({ error: "avatarUrl required" }); return; }
+  const ws = await prismaForStats.workspace.update({
+    where: { id: req.params.workspaceId },
+    data: { avatarUrl },
+  });
+  res.json({ id: ws.id, name: ws.name, avatarUrl: ws.avatarUrl });
 });
 
 // GET /api/workspaces/:workspaceId/tables — list tables in workspace
