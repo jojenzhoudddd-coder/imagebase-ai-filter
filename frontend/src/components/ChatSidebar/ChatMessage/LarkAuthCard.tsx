@@ -45,13 +45,14 @@ export default function LarkAuthCard({ payload, onContinue, disabled }: Props) {
       </div>
       <div className="chat-lark-auth-actions">
         {payload.verificationUrl && (
-          <button
-            type="button"
+          <a
             className="chat-lark-auth-btn secondary"
-            onClick={() => window.open(payload.verificationUrl || "", "_blank", "noopener,noreferrer")}
+            href={payload.verificationUrl}
+            target="_blank"
+            rel="noopener noreferrer"
           >
             打开授权页
-          </button>
+          </a>
         )}
         <button
           type="button"
