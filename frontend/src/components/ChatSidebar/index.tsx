@@ -448,6 +448,7 @@ export default function ChatSidebar({
   useEffect(() => { streamingRef.current = streaming; }, [streaming]);
 
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Thin document summary shown on the welcome page after a refresh, so the
   // user knows what the Agent will see before their first prompt. Kept
@@ -1049,6 +1050,7 @@ export default function ChatSidebar({
       },
       onConfirm: (pending) => {
         setPendingConfirm(pending);
+        setConfirmSubmitting(false);
       },
       // ── PR3 Subagent event handlers ──
       // Each subagent run is a separate UI block under the assistant message
@@ -1433,8 +1435,9 @@ export default function ChatSidebar({
 
   const handleConfirm = useCallback(
     (confirmed: boolean) => {
-      if (!activeConv || !pendingConfirm) return;
+      if (!activeConv || !pendingConfirm || confirmSubmitting) return;
       const pc = pendingConfirm;
+      setConfirmSubmitting(true);
       setPendingConfirm(null);
       setStreaming(true);
 
@@ -1518,6 +1521,7 @@ export default function ChatSidebar({
           });
         },
         onError: (code, message) => {
+          setConfirmSubmitting(false);
           setError(friendlyError(code, message));
           // Mirror the sendMessage path: flip any tool that was still
           // running when the resume stream died into `error` so cards
@@ -1547,6 +1551,7 @@ export default function ChatSidebar({
         },
         onDone: () => {
           cancelRef.current = null;
+          setConfirmSubmitting(false);
           setStreaming(false);
           // Belt-and-braces sanitisation; same reasoning as the main flow.
           setMessages((prev) =>
@@ -1568,7 +1573,7 @@ export default function ChatSidebar({
         },
       });
     },
-    [activeConv, pendingConfirm, onActiveTableChange, onDemoCreated, agentId]
+    [activeConv, pendingConfirm, confirmSubmitting, onActiveTableChange, onDemoCreated, agentId]
   );
 
   const handleStop = useCallback(() => {
@@ -2213,7 +2218,7 @@ export default function ChatSidebar({
                       pending={pendingConfirm}
                       onConfirm={() => handleConfirm(true)}
                       onCancel={() => handleConfirm(false)}
-                      disabled={streaming}
+                      disabled={confirmSubmitting}
                     />
                   ) : undefined}
                 />

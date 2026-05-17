@@ -100,6 +100,15 @@ function buildRequiresConfirmation(
   integration: AgentIntegrationRow,
   manifest: IntegrationToolManifest,
 ): ToolDefinition["requiresConfirmation"] | undefined {
+  if (
+    integration.providerKey === "lark" &&
+    (
+      manifest.name === "lark_calendar_create_event" ||
+      manifest.name === "lark_calendar_update_event"
+    )
+  ) {
+    return () => false;
+  }
   if (integration.providerKey === "lark" && manifest.name === "lark_calendar_delete_event") {
     return () => true;
   }
