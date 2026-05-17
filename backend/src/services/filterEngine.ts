@@ -16,6 +16,18 @@ function isEmpty(value: unknown): boolean {
   return false;
 }
 
+function normalizeFilterOperator(operator: unknown): FilterOperator | string {
+  if (operator === "is_empty" || operator === "empty") return "isEmpty";
+  if (
+    operator === "is_not_empty" ||
+    operator === "not_empty" ||
+    operator === "non_empty"
+  ) {
+    return "isNotEmpty";
+  }
+  return String(operator ?? "");
+}
+
 // ─── Date Resolution ───
 
 function resolveDateRange(value: CellValue): { start: number; end: number } | null {
@@ -82,7 +94,7 @@ const LINK_TYPES: FieldType[] = ["SingleLink", "DuplexLink"];
 
 function evaluateCondition(record: TableRecord, cond: FilterCondition, field: Field): boolean {
   const raw = record.cells[cond.fieldId];
-  const op = cond.operator;
+  const op = normalizeFilterOperator(cond.operator);
 
   // Universal operators
   if (op === "isEmpty") return isEmpty(raw);
@@ -254,7 +266,7 @@ export function filterRecords(
   // Skip conditions whose value is not yet assigned (unless operator needs no value)
   const NO_VALUE_OPS: Set<FilterOperator> = new Set(["isEmpty", "isNotEmpty", "checked", "unchecked"]);
   const activeConditions = filter.conditions.filter((cond) => {
-    if (NO_VALUE_OPS.has(cond.operator)) return true;
+    if (NO_VALUE_OPS.has(normalizeFilterOperator(cond.operator) as FilterOperator)) return true;
     if (cond.value === null || cond.value === undefined) return false;
     if (typeof cond.value === "string" && cond.value.trim() === "") return false;
     return true;

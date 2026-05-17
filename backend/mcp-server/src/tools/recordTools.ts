@@ -9,7 +9,7 @@ export const recordTools: ToolDefinition[] = [
   {
     name: "query_records",
     description:
-      "查询指定表的记录，支持 filter/sort。返回 { records, total }。filter 格式：{ logic:'and'|'or', conditions:[{id,fieldId,operator,value}] }。",
+      "查询指定表的记录，支持 filter/sort。返回 { records, total }。filter 格式：{ logic:'and'|'or', conditions:[{id,fieldId,operator,value}] }。operator 使用 isEmpty/isNotEmpty/eq/neq/contains/notContains/gt/gte/lt/lte/after/before/checked/unchecked；is_empty、empty、is_not_empty、non_empty 会兼容归一。",
     inputSchema: {
       type: "object",
       properties: {
