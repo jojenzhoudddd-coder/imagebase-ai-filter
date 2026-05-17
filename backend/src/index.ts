@@ -49,7 +49,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { mockTable } from "./mockData.js";
 import { connectDB, loadTable, getTable, getWorkspace, updateWorkspace, listTablesForWorkspace, ensureDefaults, backfillUserFields } from "./services/dbStore.js";
-import { generateId } from "./services/idGenerator.js";
+import { generateId, generateIdSync } from "./services/idGenerator.js";
 import { listUserWorkspaces } from "./services/authService.js";
 import { eventBus } from "./services/eventBus.js";
 import { startSuggestionScheduler } from "./services/suggestionService.js";
@@ -249,6 +249,32 @@ app.post("/api/workspaces", async (req, res) => {
   const wsId = await generateId("workspace");
   const ws = await prismaForStats.workspace.create({
     data: { id: wsId, orgId: orgMember.orgId, createdById: user.id, name: wsName },
+  });
+  // Create onboarding artifacts: 1 Table + 5 empty records + 1 Design + 1 Idea
+  const defaultFieldId = generateIdSync("field");
+  const defaultViewId = generateIdSync("view");
+  const tableId = await generateId("table");
+  await prismaForStats.table.create({
+    data: {
+      id: tableId,
+      workspaceId: wsId,
+      name: "Table",
+      fields: [{ id: defaultFieldId, tableId, name: "文本", type: "Text", isPrimary: true, config: {} }] as any,
+      views: [{ id: defaultViewId, tableId, name: "Grid", type: "grid", filter: { logic: "and", conditions: [] }, fieldOrder: [defaultFieldId], hiddenFields: [] }] as any,
+      autoNumberCounters: {},
+      order: 0,
+    },
+  });
+  for (let i = 0; i < 5; i++) {
+    await prismaForStats.record.create({
+      data: { id: await generateId("record"), tableId, cells: { [defaultFieldId]: null } as any },
+    });
+  }
+  await prismaForStats.design.create({
+    data: { id: await generateId("design"), workspaceId: wsId, name: "Taste", order: 1 },
+  });
+  await prismaForStats.idea.create({
+    data: { id: await generateId("idea"), workspaceId: wsId, name: "Idea", order: 2 },
   });
   // Return updated workspace list
   const workspaces = await listUserWorkspaces(user.id);
