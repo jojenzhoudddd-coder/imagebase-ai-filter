@@ -7,6 +7,23 @@
 
 ---
 
+## 2026-05-17 (Fix · Chat History Popover)
+
+### fix(chat): 历史对话 popover 右侧边界自适应
+
+Commit: pending deployment commit.
+
+- 历史对话 popover 默认继续与 history icon 左边对齐。
+- 当右侧空间不足时，自动左移，保证距离页面右侧至少 20px。
+- 窄屏下限制 popover 最大宽度为 `calc(100vw - 40px)`，避免横向溢出。
+- 打开后监听 resize / scroll，页面布局变化时重新计算位置。
+
+本地验收：
+- frontend `npm run build` 通过。
+- `git diff --check` 通过。
+
+---
+
 ## 2026-05-17 (Feature · Agent Integration MCP/CLI)
 
 ### feat(agent-integration): 打通 GitHub / Lark / Figma / Custom CLI integration 基建

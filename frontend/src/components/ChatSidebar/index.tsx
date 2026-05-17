@@ -116,6 +116,37 @@ interface UiMessage {
   };
 }
 
+const CONV_LIST_POPOVER_WIDTH = 260;
+const CONV_LIST_POPOVER_VIEWPORT_GAP = 20;
+
+type ConvListPopoverPosition = {
+  top: number;
+  left: number;
+  width: number;
+};
+
+function getConvListPopoverPosition(anchorRect: DOMRect): ConvListPopoverPosition {
+  const viewportWidth = window.innerWidth;
+  const width = Math.max(
+    0,
+    Math.min(
+      CONV_LIST_POPOVER_WIDTH,
+      viewportWidth - CONV_LIST_POPOVER_VIEWPORT_GAP * 2,
+    ),
+  );
+  const maxLeft = viewportWidth - width - CONV_LIST_POPOVER_VIEWPORT_GAP;
+  const left = Math.max(
+    CONV_LIST_POPOVER_VIEWPORT_GAP,
+    Math.min(anchorRect.left, maxLeft),
+  );
+
+  return {
+    top: anchorRect.bottom + 4,
+    left,
+    width,
+  };
+}
+
 export interface UiWorkflowRun {
   runId: string;
   templateId?: string;
@@ -442,6 +473,7 @@ export default function ChatSidebar({
   const [convListLoading, setConvListLoading] = useState(false);
   const convListBtnRef = useRef<HTMLButtonElement>(null);
   const convListPanelRef = useRef<HTMLDivElement>(null);
+  const [convListPopoverPos, setConvListPopoverPos] = useState<ConvListPopoverPosition | null>(null);
   const convSearchInputRef = useRef<HTMLInputElement>(null);
   const [convSearchActive, setConvSearchActive] = useState(false);
   const [convSearchQuery, setConvSearchQuery] = useState("");
@@ -1733,8 +1765,16 @@ export default function ChatSidebar({
   //     与 setConvListOpen 的 setState 异步性叠加导致"经常加载不出来" race。
   //     改为:点开就总是 fetch,设 loading + 拿数据 + 取消 stale 响应。
   const convFetchSeqRef = useRef(0);
+  const updateConvListPopoverPosition = useCallback(() => {
+    const anchor = convListBtnRef.current;
+    if (!anchor) return;
+    setConvListPopoverPos(getConvListPopoverPosition(anchor.getBoundingClientRect()));
+  }, []);
+
   const openConvList = useCallback(async () => {
     const willOpen = !convListOpen;
+    if (willOpen) updateConvListPopoverPosition();
+    else setConvListPopoverPos(null);
     setConvListOpen(willOpen);
     if (!willOpen) return;  // 只在打开时拉
     const seq = ++convFetchSeqRef.current;
@@ -1751,7 +1791,19 @@ export default function ChatSidebar({
     } finally {
       if (seq === convFetchSeqRef.current) setConvListLoading(false);
     }
-  }, [convListOpen, workspaceId]);
+  }, [convListOpen, updateConvListPopoverPosition, workspaceId]);
+
+  useEffect(() => {
+    if (!convListOpen) return;
+
+    updateConvListPopoverPosition();
+    window.addEventListener("resize", updateConvListPopoverPosition);
+    window.addEventListener("scroll", updateConvListPopoverPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateConvListPopoverPosition);
+      window.removeEventListener("scroll", updateConvListPopoverPosition, true);
+    };
+  }, [convListOpen, updateConvListPopoverPosition]);
 
   // Conversation search: debounced server-side search + immediate pinyin filter on titles
   const convSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1789,6 +1841,7 @@ export default function ChatSidebar({
   // Close conv list: reset search state
   const closeConvList = useCallback(() => {
     setConvListOpen(false);
+    setConvListPopoverPos(null);
     setConvSearchActive(false);
     setConvSearchQuery("");
     setConvSearchResults(null);
@@ -1923,6 +1976,7 @@ export default function ChatSidebar({
       {convListOpen && convListBtnRef.current && (() => {
         const displayList = convSearchResults ?? convList;
         const anchorRect = convListBtnRef.current!.getBoundingClientRect();
+        const popoverPos = convListPopoverPos ?? getConvListPopoverPosition(anchorRect);
         const handleConvKeyDown = (e: React.KeyboardEvent) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -1944,7 +1998,7 @@ export default function ChatSidebar({
           <div
             ref={convListPanelRef}
             className="conv-list-popover"
-            style={{ top: anchorRect.bottom + 4, left: anchorRect.left }}
+            style={{ top: popoverPos.top, left: popoverPos.left, width: popoverPos.width }}
             onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={handleConvKeyDown}
           >
