@@ -82,6 +82,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [streaming, setStreaming] = useState(false);
   const [mode, setMode] = useState<"source" | "preview">("preview");
+  const [modeSwitching, setModeSwitching] = useState(false);
   const [blocks, setBlocks] = useState<IdeaBlockBrief[]>([]);
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
   const [autoEditBlockId, setAutoEditBlockId] = useState<string | null>(null);
@@ -97,6 +98,8 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const blockListRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef(content);
   useEffect(() => { contentRef.current = content; }, [content]);
+  const blocksRef = useRef<IdeaBlockBrief[]>([]);
+  useEffect(() => { blocksRef.current = blocks; }, [blocks]);
 
   // PR-C: track focused block + pending remote updates for conflict resolution
   const focusBlockIdRef = useRef<string | null>(null);
@@ -123,6 +126,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   const saveTimerRef = useRef<number | null>(null);
   const modeRef = useRef(mode);
   useEffect(() => { modeRef.current = mode; }, [mode]);
+  const modeSwitchingRef = useRef(false);
 
   const streamSessionIdRef = useRef<string | null>(null);
   const streamBaseRef = useRef("");
@@ -421,6 +425,22 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       const md = previewRef.current?.getMarkdown();
       if (md) contentRef.current = md;
     } catch { /* editor not ready */ }
+    scheduleSave();
+  }, [scheduleSave]);
+
+  const handleSourceBlockChange = useCallback((blockId: string, nextContent: string) => {
+    const prevBlocks = blocksRef.current;
+    const idx = prevBlocks.findIndex((b) => b.id === blockId);
+    if (idx === -1 || prevBlocks[idx].content === nextContent) return;
+
+    const nextBlocks = prevBlocks.map((b) =>
+      b.id === blockId ? { ...b, content: nextContent } : b,
+    );
+    const nextFullContent = nextBlocks.map((b) => b.content).join("");
+    blocksRef.current = nextBlocks;
+    contentRef.current = nextFullContent;
+    setBlocks(nextBlocks);
+    setContent(nextFullContent);
     scheduleSave();
   }, [scheduleSave]);
 
@@ -1137,6 +1157,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
   // ── Mode toggle with cursor preservation ──
   const caretOffsetRef = useRef(0);
   const toggleMode = useCallback(() => {
+    if (modeSwitchingRef.current) return;
     // Save scroll state: first visible block + its offset from viewport top
     let visibleBlockId: string | null = null;
     let blockOffsetFromViewTop = 0;
@@ -1155,14 +1176,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
       }
     }
 
-    setMode((m) => {
-      if (m === "source") {
-        fetchIdeaBlocks(ideaId).then((res) => {
-          setBlocks(res.blocks);
-        }).catch(() => {});
-      } else {
-        setContent(contentRef.current);
-      }
+    const restoreScroll = () => {
       // Restore scroll: position the same block at the same offset from viewport top
       if (visibleBlockId) {
         setTimeout(() => {
@@ -1177,9 +1191,44 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
           sp.scrollTop += currentOffset - blockOffsetFromViewTop;
         }, 100);
       }
-      return m === "source" ? "preview" : "source";
-    });
-  }, [ideaId]);
+    };
+
+    if (modeRef.current === "source") {
+      modeSwitchingRef.current = true;
+      setModeSwitching(true);
+      void (async () => {
+        try {
+          if (saveTimerRef.current) {
+            window.clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = null;
+          }
+          if (dirtyRef.current) {
+            await flushSave();
+          }
+          const res = await fetchIdeaBlocks(ideaId);
+          blocksRef.current = res.blocks;
+          setBlocks(res.blocks);
+          const nextContent = res.blocks.map((b: IdeaBlockBrief) => b.content).join("");
+          contentRef.current = nextContent;
+          setContent(nextContent);
+          versionRef.current = res.version;
+          setMode("preview");
+          restoreScroll();
+        } catch (err) {
+          console.warn("[IdeaEditor] source -> preview sync failed:", err);
+          setSaveStatus("offline");
+        } finally {
+          modeSwitchingRef.current = false;
+          setModeSwitching(false);
+        }
+      })();
+      return;
+    }
+
+    setContent(contentRef.current);
+    setMode("source");
+    restoreScroll();
+  }, [ideaId, flushSave]);
 
   useEffect(() => {
     const offset = caretOffsetRef.current;
@@ -1223,6 +1272,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
             className="idea-editor-topbar-btn"
             onClick={toggleMode}
             title={t("idea.toggleHint")}
+            disabled={modeSwitching}
           >
             {mode === "source" ? PREVIEW_ICON : SOURCE_ICON}
             {mode === "source" ? t("idea.preview") : t("idea.source")}
@@ -1368,6 +1418,7 @@ export default function IdeaEditor({ ideaId, ideaName, workspaceId, clientId, on
                         ideaId={ideaId}
                         readOnly={streaming}
                         sourceMode={isSourceMode}
+                        onSourceChange={handleSourceBlockChange}
                         autoFocus={autoEditBlockId === block.id}
                         focusTrigger={focusBlockId === block.id ? focusTrigger : 0}
                         focusCursorPos={focusBlockId === block.id ? focusCursorPos : null}

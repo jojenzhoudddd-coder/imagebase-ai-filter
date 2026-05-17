@@ -89,6 +89,8 @@ export interface BlockItemProps {
   editLocked?: boolean;
   /** Source mode: always show raw markdown, click to focus (no two-click flow). */
   sourceMode?: boolean;
+  /** Source mode: report the live raw block content to the parent document model. */
+  onSourceChange?: (blockId: string, content: string) => void;
   /** Callback when user initiates drag from selected state. */
   onDragStart?: (blockId: string) => void;
   /** Whether this block is currently being dragged (hide it). */
@@ -115,6 +117,7 @@ const BlockItem = memo(function BlockItem({
   onEditBlocked,
   editLocked = false,
   sourceMode = false,
+  onSourceChange,
   focusTrigger = 0,
   focusCursorPos = null,
   onDragStart,
@@ -353,13 +356,29 @@ const BlockItem = memo(function BlockItem({
     } finally {
       setSaving(false);
     }
-  }, [editing, saving, editValue, block.content, block.id, ideaId, onSaved, onConflict, onFocusChange]);
+  }, [editing, saving, editValue, block.content, block.id, ideaId, onSaved, onConflict, onFocusChange, sourceMode]);
 
   // Source mode: auto-save on blur (unless block is being deleted/navigated away)
   const handleBlur = useCallback(() => {
     if (deletingRef.current) return;
-    if (sourceMode && editing) void commitEdit();
+    // Source mode is saved by the parent full-document autosave. Committing
+    // individual blocks on blur races with source -> preview refetch and can
+    // render stale/empty preview content.
+    if (sourceMode) return;
+    if (editing) void commitEdit();
   }, [sourceMode, editing, commitEdit]);
+
+  const toStoredBlockContent = useCallback((value: string) => (
+    value.replace(/\n+$/, "") + "\n"
+  ), []);
+
+  const handleTextareaChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const next = e.target.value;
+    setEditValue(next);
+    if (sourceMode) {
+      onSourceChange?.(block.id, toStoredBlockContent(next));
+    }
+  }, [sourceMode, onSourceChange, block.id, toStoredBlockContent]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Escape") {
@@ -524,7 +543,7 @@ const BlockItem = memo(function BlockItem({
           ref={textareaRef}
           rows={1}
           value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
+          onChange={handleTextareaChange}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
           onInput={handleTextareaInput}
