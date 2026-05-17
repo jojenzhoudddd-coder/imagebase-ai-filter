@@ -23,6 +23,31 @@ function run() {
   assert.equal(s.assistant.content, "hello world");
   assert.equal(s.lastSeq, 4);
 
+  let queued = createInitialTurnSnapshot({
+    turnRunId: "tr_queued",
+    conversationId: "cv_test",
+    requestText: "queued query",
+    userMessageId: "user_queued",
+    status: "queued",
+    now: 2_000,
+  });
+  queued = reduceChatTurnSnapshot(
+    queued,
+    "turn_promoted",
+    { messageId: "user_queued", modelId: "claude-test" },
+    { seq: 1, now: 2_100 },
+  );
+  assert.equal(queued.status, "doing");
+  assert.equal(queued.userMessageId, "user_queued");
+  assert.equal(queued.assistant.messageId, null);
+  queued = reduceChatTurnSnapshot(
+    queued,
+    "start",
+    { messageId: "asst_queued", model: "claude-test" },
+    { seq: 2, now: 2_200 },
+  );
+  assert.equal(queued.assistant.messageId, "asst_queued");
+
   s = reduceChatTurnSnapshot(s, "tool_start", {
     callId: "call_1",
     tool: "create_table",

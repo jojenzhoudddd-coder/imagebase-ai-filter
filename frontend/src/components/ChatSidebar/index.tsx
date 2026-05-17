@@ -601,7 +601,13 @@ export default function ChatSidebar({
     const active = live.activeTurnRuns.some((r) =>
       r.status === "queued" || r.status === "doing" || r.status === "awaiting_confirmation"
     );
-    setMessages((prev) => active ? mergeServerWithLocal(merged, prev) : serverUi);
+    const liveRunMessageIds = collectLiveRunMessageIds(live.activeTurnRuns);
+    setMessages((prev) => active
+      ? mergeServerWithLocal(merged, prev, {
+          preferServerMessageIds: cancelRef.current ? undefined : liveRunMessageIds,
+          preserveLocalStreaming: Boolean(cancelRef.current),
+        })
+      : serverUi);
     setStreaming(active);
     const pending = live.activeTurnRuns
       .map((r) => r.snapshotJson?.pendingConfirm)
@@ -2356,11 +2362,13 @@ function mergeLiveRunsIntoMessages(serverMessages: UiMessage[], runs: any[]): Ui
     if (!snapshot) continue;
     const userId = snapshot.userMessageId || run.userMessageId || `turn_user_${run.id}`;
     const assistantId = snapshot.assistant?.messageId || run.assistantMessageId || `turn_asst_${run.id}`;
-    if (!next.some((m) => m.id === userId)) {
+    const requestText = snapshot.requestText || run.requestText || "";
+    const userIdx = findLiveRunUserIndex(next, userId, requestText);
+    if (userIdx < 0) {
       next.push({
         id: userId,
         role: "user",
-        content: snapshot.requestText || run.requestText || "",
+        content: requestText,
         timestamp: snapshot.updatedAt || Date.now(),
         toolCalls: [],
       });
@@ -2415,12 +2423,35 @@ function mergeLiveRunsIntoMessages(serverMessages: UiMessage[], runs: any[]): Ui
     if (existingIdx >= 0) {
       next = next.map((m, idx) => idx === existingIdx ? { ...m, ...assistant } : m);
     } else {
-      const userIdx = next.findIndex((m) => m.id === userId);
+      const userIdx = findLiveRunUserIndex(next, userId, requestText);
       if (userIdx >= 0) next.splice(userIdx + 1, 0, assistant);
       else next.push(assistant);
     }
   }
   return next;
+}
+
+function collectLiveRunMessageIds(runs: any[]): Set<string> {
+  const ids = new Set<string>();
+  for (const run of runs) {
+    const snapshot = run?.snapshotJson;
+    const userId = snapshot?.userMessageId || run?.userMessageId;
+    const assistantId = snapshot?.assistant?.messageId || run?.assistantMessageId;
+    if (typeof userId === "string") ids.add(userId);
+    if (typeof assistantId === "string") ids.add(assistantId);
+  }
+  return ids;
+}
+
+function findLiveRunUserIndex(messages: UiMessage[], userId: string, requestText: string): number {
+  const byId = messages.findIndex((m) => m.id === userId);
+  if (byId >= 0) return byId;
+  if (!requestText) return -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "user" && m.content === requestText) return i;
+  }
+  return -1;
 }
 
 /**
@@ -2441,13 +2472,21 @@ function mergeLiveRunsIntoMessages(serverMessages: UiMessage[], runs: any[]): Ui
  * Pure: takes new (server) + old (local), returns merged array preserving
  * server order, with any orphan-streaming local entries appended at the end.
  */
-function mergeServerWithLocal(server: UiMessage[], local: UiMessage[]): UiMessage[] {
+function mergeServerWithLocal(
+  server: UiMessage[],
+  local: UiMessage[],
+  opts: {
+    preferServerMessageIds?: Set<string>;
+    preserveLocalStreaming?: boolean;
+  } = {},
+): UiMessage[] {
   const localById = new Map(local.map((m) => [m.id, m]));
   const serverIds = new Set(server.map((s) => s.id));
+  const preserveLocalStreaming = opts.preserveLocalStreaming ?? true;
   const merged = server.map((s) => {
     const l = localById.get(s.id);
     if (!l) return s;
-    if (l.streaming) return l; // keep streaming local intact
+    if (l.streaming && !opts.preferServerMessageIds?.has(s.id)) return l; // keep active fetch stream intact
     // 保留 subagentRuns / workflowRuns 二者中"非空"的一方:
     //   server 已 join 到 → 用 server (canonical)
     //   server 没 → 用 local (streaming-tail race)
@@ -2464,7 +2503,7 @@ function mergeServerWithLocal(server: UiMessage[], local: UiMessage[]): UiMessag
   //     assistant 整条丢掉
   //   - 加这一段后,local-only streaming 消息会被 keep,UI 维持显示
   for (const l of local) {
-    if (l.streaming && !serverIds.has(l.id)) {
+    if (preserveLocalStreaming && l.streaming && !serverIds.has(l.id)) {
       merged.push(l);
     }
   }

@@ -10,7 +10,6 @@
  * 所有 turn 都通过 publishChatEvent 广播,passive listener (其他 chat block) 能同步。
  */
 
-import { v4 as uuidv4 } from "uuid";
 import {
   type InflightTurn,
   type PendingMessage,
@@ -22,6 +21,7 @@ import { runAgent, type AgentContext, type SseEvent } from "./chatAgentService.j
 import { getModel } from "./modelRegistry.js";
 import * as agentSvc from "./agentService.js";
 import * as turnRunStore from "./chatTurnRunStore.js";
+import { generateId } from "./idGenerator.js";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Public entry — called by chatRoutes for every POST /messages
@@ -49,6 +49,7 @@ export async function* dispatchMessage(
   const effectiveModelId = mentionedModelId
     || modelOverride
     || (await agentSvc.getSelectedModel(agentId));
+  const userMessageId = await generateId("message");
 
   const inflight = getTurn(convId);
   const turnRun = await turnRunStore.createTurnRun({
@@ -57,9 +58,9 @@ export async function* dispatchMessage(
     agentId,
     requestText: userMessage,
     modelId: effectiveModelId,
+    userMessageId,
     status: inflight ? "queued" : "doing",
   });
-  const pendingUserMessageId = `pending_${convId}_${Date.now()}`;
 
   // 每条进来的 user message 都先 emit "message_persisted" 让 listener 立即看到 user bubble
   // (即使后续被入队,UI 不依赖 routing 决定才看到用户消息)
@@ -70,7 +71,7 @@ export async function* dispatchMessage(
       role: "user",
       content: userMessage,
       modelId: effectiveModelId,
-      messageId: pendingUserMessageId,
+      messageId: userMessageId,
     },
   };
   yield persistedEv;
@@ -78,7 +79,7 @@ export async function* dispatchMessage(
   // Case A: idle → 起新主线 (drain queue inline)
   if (!inflight) {
     yield* runTurnAndDrainQueue({
-      ctx: { ...ctx, turnRunId: turnRun.id },
+      ctx: { ...ctx, turnRunId: turnRun.id, userMessageId },
       userMessage,
       modelId: effectiveModelId,
       abortSignal,
@@ -88,7 +89,7 @@ export async function* dispatchMessage(
 
   // Case B: 有 inflight (主线 or 队列正在跑) → 入队,立刻关流
   const pending: PendingMessage = {
-    userMessageId: `msg_${uuidv4()}`,
+    userMessageId,
     turnRunId: turnRun.id,
     queryText: userMessage,
     modelId: effectiveModelId,
@@ -158,7 +159,12 @@ async function* runTurnAndDrainQueue(opts: {
       };
       yield promotedEv;
 
-      yield* runOneTurn({ ...ctx, turnRunId: next.turnRunId }, next.queryText, next.modelId, ac.signal);
+      yield* runOneTurn(
+        { ...ctx, turnRunId: next.turnRunId, userMessageId: next.userMessageId },
+        next.queryText,
+        next.modelId,
+        ac.signal,
+      );
     }
   } finally {
     deleteTurn(convId);

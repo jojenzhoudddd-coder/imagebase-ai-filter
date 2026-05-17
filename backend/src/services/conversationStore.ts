@@ -312,6 +312,7 @@ export async function updateConversation(
 export async function appendMessage(
   conversationId: string,
   msg: Omit<Message, "id" | "conversationId" | "timestamp"> & {
+    id?: string;
     timestamp?: number;
     // V3.0 multi-conv 字段
     branchTag?: string | null;
@@ -344,7 +345,7 @@ export async function appendMessage(
 
     const row = await tx.message.create({
       data: {
-        id: await generateId("message"),
+        id: msg.id ?? await generateId("message"),
         conversationId,
         role: msg.role,
         content: msg.content,

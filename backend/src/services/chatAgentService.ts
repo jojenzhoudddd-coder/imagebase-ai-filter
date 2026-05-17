@@ -1844,6 +1844,8 @@ export interface AgentContext {
   conversationId: string;
   /** Persistent ChatTurnRun id for the currently executing user turn. */
   turnRunId?: string;
+  /** Real Message.id for the user bubble that belongs to this turn. */
+  userMessageId?: string;
   workspaceId: string;
   /** Authenticated user represented by this agent turn. */
   userId?: string;
@@ -3182,6 +3184,7 @@ async function* runAgentImpl(
   // the pre-existing window. Subsequent turns will see this message on their
   // next reload.
   await convStore.appendMessage(conversationId, {
+    id: ctx.userMessageId,
     role: "user",
     content: userMessage,
     attachments: ctx.attachments ?? null,

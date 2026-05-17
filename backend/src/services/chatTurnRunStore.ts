@@ -71,6 +71,7 @@ export async function createTurnRun(input: {
   agentId?: string | null;
   requestText: string;
   modelId?: string | null;
+  userMessageId?: string | null;
   status: Extract<ChatTurnStatus, "queued" | "doing">;
 }): Promise<ChatTurnRunRow> {
   const id = await generateId("chatTurnRun");
@@ -80,6 +81,7 @@ export async function createTurnRun(input: {
     conversationId: input.conversationId,
     requestText: input.requestText,
     modelId: input.modelId ?? null,
+    userMessageId: input.userMessageId ?? null,
     status: input.status,
     now,
   });
@@ -91,6 +93,7 @@ export async function createTurnRun(input: {
       agentId: input.agentId ?? null,
       status: input.status,
       requestText: input.requestText,
+      userMessageId: input.userMessageId ?? null,
       modelId: input.modelId ?? null,
       startedAt: input.status === "doing" ? new Date(now) : null,
       snapshotJson: snapshot as never,
@@ -190,6 +193,7 @@ export async function appendTurnEvent(input: {
               where: { id: turnRunId },
               data: {
                 status,
+                userMessageId: snapshot.userMessageId ?? run.userMessageId,
                 lastSeq: seq,
                 snapshotJson: snapshot as never,
                 assistantMessageId: snapshot.assistant.messageId ?? run.assistantMessageId,

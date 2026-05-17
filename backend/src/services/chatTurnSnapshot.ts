@@ -196,7 +196,12 @@ export function reduceChatTurnSnapshot(
       next.turnMeta.phase = "queued";
       break;
     }
-    case "turn_promoted":
+    case "turn_promoted": {
+      setDoing();
+      if (typeof data.messageId === "string") next.userMessageId = data.messageId;
+      if (typeof data.modelId === "string") next.modelId = data.modelId;
+      break;
+    }
     case "start": {
       setDoing();
       if (typeof data.messageId === "string") next.assistant.messageId = data.messageId;
