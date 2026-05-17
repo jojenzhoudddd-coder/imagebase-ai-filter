@@ -48,6 +48,15 @@ const md = new MarkdownIt({
   linkify: true,
 });
 
+function resizeTextareaToContent(ta: HTMLTextAreaElement): void {
+  ta.style.height = "auto";
+  ta.style.height = `${ta.scrollHeight}px`;
+  // Chrome can preserve an internal textarea scroll position after pasting a
+  // long markdown source. Since the textarea is auto-grown and overflow is
+  // hidden, that clips the first line until the component remounts.
+  ta.scrollTop = 0;
+}
+
 // All links open in new tab
 const defaultRender = md.renderer.rules.link_open || ((tokens: any, idx: any, options: any, _env: any, self: any) => self.renderToken(tokens, idx, options));
 md.renderer.rules.link_open = (tokens: any, idx: any, options: any, env: any, self: any) => {
@@ -260,9 +269,7 @@ const BlockItem = memo(function BlockItem({
   // Auto-grow textarea height to fit content
   useEffect(() => {
     if (!editing || !textareaRef.current) return;
-    const ta = textareaRef.current;
-    ta.style.height = "auto";
-    ta.style.height = ta.scrollHeight + "px";
+    resizeTextareaToContent(textareaRef.current);
   }, [editing, editValue]);
 
   // Focus textarea when entering edit mode (non-source only)
@@ -443,8 +450,7 @@ const BlockItem = memo(function BlockItem({
   const handleTextareaInput = useCallback(() => {
     const ta = textareaRef.current;
     if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = ta.scrollHeight + "px";
+    resizeTextareaToContent(ta);
   }, []);
 
   // Drag handle pointerdown — initiates drag directly (no need for selected state)
