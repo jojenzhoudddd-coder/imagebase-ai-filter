@@ -1376,8 +1376,12 @@ export default function ChatSidebar({
   const handleLarkAuthContinue = useCallback((payload: LarkAuthPayload) => {
     const phaseText = payload.phase === "config" ? "应用配置" : "授权";
     const integrationText = payload.integrationId ? `，integrationId=${payload.integrationId}` : "";
+    const providerText = payload.providerKey === "lark" || !payload.providerKey
+      ? "飞书"
+      : (payload.displayName || "外部集成");
+    const pollTool = payload.pollTool || "poll_integration_auth";
     handleSend(
-      `我已完成飞书${phaseText}。请调用 poll_lark_auth 检查状态：authSessionId=${payload.authSessionId}${integrationText}。如果状态成功，请继续执行刚才因飞书授权暂停的操作。`,
+      `我已完成${providerText}${phaseText}。请调用 ${pollTool} 检查状态：authSessionId=${payload.authSessionId}${integrationText}。如果状态成功，请继续执行刚才因授权暂停的操作。`,
     );
   }, [handleSend]);
 
@@ -2679,7 +2683,9 @@ function groupConsecutiveTools(
 }
 
 function isStandaloneToolCall(call: ChatToolCall): boolean {
-  return call.tool === "start_lark_auth" || Boolean(extractLarkAuthPayload(call.result));
+  return call.tool === "start_lark_auth" ||
+    call.tool === "start_integration_auth" ||
+    Boolean(extractLarkAuthPayload(call.result));
 }
 
 /**

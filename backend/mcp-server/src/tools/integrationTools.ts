@@ -17,7 +17,10 @@ import {
   IntegrationValidationError,
 } from "../../../src/services/integrations/integrationStore.js";
 import { callIntegrationTool, testIntegration } from "../../../src/services/integrations/integrationRuntime.js";
-import { pollLarkAuth, startLarkAuth } from "../../../src/services/integrations/larkAuthRuntime.js";
+import {
+  pollIntegrationAuth,
+  startIntegrationAuth,
+} from "../../../src/services/integrations/integrationAuthRuntime.js";
 import { listIntegrationPresets } from "../../../src/services/integrations/providerCatalog.js";
 import { confirmationRequired } from "../dataStoreClient.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
@@ -41,6 +44,18 @@ function errJson(err: unknown): string {
     code: "INTERNAL",
     error: err instanceof Error ? err.message : String(err),
   });
+}
+
+function startAuthOptions(args: Record<string, any>, ctx?: ToolContext) {
+  return {
+    requireAgentId: resolveAgentId(args, ctx),
+    recommend: typeof args.recommend === "boolean" ? args.recommend : undefined,
+    domains: Array.isArray(args.domains) ? args.domains.map(String) : undefined,
+    scope: typeof args.scope === "string" && args.scope.trim() ? args.scope.trim() : undefined,
+    providerOptions: args.providerOptions && typeof args.providerOptions === "object" && !Array.isArray(args.providerOptions)
+      ? args.providerOptions as Record<string, unknown>
+      : undefined,
+  };
 }
 
 export const integrationTools: ToolDefinition[] = [
@@ -185,7 +200,7 @@ export const integrationTools: ToolDefinition[] = [
   {
     name: "test_integration",
     description:
-      "测试 Integration 连通性。MCP transport 会 listTools；CLI transport 会运行健康检查。Lark CLI 会返回 needsConfig/needsAuth，用于触发 start_lark_auth 配置/授权流程。",
+      "测试 Integration 连通性。MCP transport 会 listTools；CLI transport 会运行健康检查。Lark CLI 会返回 needsConfig/needsAuth，用于触发 start_integration_auth 配置/授权流程。",
     inputSchema: {
       type: "object",
       properties: {
@@ -206,9 +221,72 @@ export const integrationTools: ToolDefinition[] = [
     },
   },
   {
+    name: "start_integration_auth",
+    description:
+      "为一个 Integration 启动通用交互式配置/授权流程。当前 Lark CLI adapter 会返回 phase=config 的 URL/二维码或 phase=auth 的 verificationUrl/userCode；其他 provider 可逐步接入同一协议。missing_scope 时传报错中的精确 scope。Agent 必须把 URL 原样发给用户；pending 时不要重复启动新流程。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "可选；权限校验用" },
+        integrationId: { type: "string" },
+        recommend: {
+          type: "boolean",
+          description: "是否使用 provider 推荐权限；Lark 默认 true。传入 scope 时运行时会优先使用显式 scope。",
+        },
+        domains: {
+          type: "array",
+          items: { type: "string" },
+          description: "可选；provider 相关 domain 列表。Lark 会传给 lark-cli auth login --domain。",
+        },
+        scope: {
+          type: "string",
+          description: "可选；显式 OAuth scope。missing_scope 时传报错中的精确 scope，例如 search:docs:read。",
+        },
+        providerOptions: {
+          type: "object",
+          description: "可选；未来 provider adapter 的扩展参数。",
+        },
+      },
+      required: ["integrationId"],
+    },
+    handler: async (args, ctx) => {
+      try {
+        const result = await startIntegrationAuth(String(args.integrationId ?? ""), startAuthOptions(args, ctx));
+        return JSON.stringify(result);
+      } catch (err) {
+        return errJson(err);
+      }
+    },
+  },
+  {
+    name: "poll_integration_auth",
+    description:
+      "用户完成 Integration 配置或授权后，用 authSessionId 轮询通用授权流程。pending 表示继续等待用户完成，不要重新 start_integration_auth；成功后再重试原 integration 工具。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agentId: { type: "string", description: "可选；权限校验用" },
+        integrationId: { type: "string", description: "可选但推荐；用于选择 provider auth adapter 以及 session 丢失兜底检查" },
+        authSessionId: { type: "string" },
+      },
+      required: ["authSessionId"],
+    },
+    handler: async (args, ctx) => {
+      try {
+        const result = await pollIntegrationAuth(String(args.authSessionId ?? ""), {
+          requireAgentId: resolveAgentId(args, ctx),
+          integrationId: typeof args.integrationId === "string" && args.integrationId.trim() ? args.integrationId.trim() : undefined,
+        });
+        return JSON.stringify(result);
+      } catch (err) {
+        return errJson(err);
+      }
+    },
+  },
+  {
     name: "start_lark_auth",
     description:
-      "为 Lark CLI integration 启动配置或授权流程。缺 config 时返回 phase=config 的 URL/二维码；已有 config 时返回 phase=auth 的 verificationUrl/userCode。Lark 工具返回 missing_scope 时，用报错里的精确 scope 调用本工具做增量授权。Agent 必须把 URL 原样发给用户；不要在 pending 时重复启动新流程。",
+      "兼容别名：为 Lark CLI integration 启动配置或授权流程。新实现优先使用 start_integration_auth；缺 config 时返回 phase=config 的 URL/二维码；已有 config 时返回 phase=auth 的 verificationUrl/userCode。Lark 工具返回 missing_scope 时，用报错里的精确 scope 做增量授权。",
     inputSchema: {
       type: "object",
       properties: {
@@ -232,12 +310,7 @@ export const integrationTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       try {
-        const result = await startLarkAuth(String(args.integrationId ?? ""), {
-          requireAgentId: resolveAgentId(args, ctx),
-          recommend: typeof args.recommend === "boolean" ? args.recommend : undefined,
-          domains: Array.isArray(args.domains) ? args.domains.map(String) : undefined,
-          scope: typeof args.scope === "string" && args.scope.trim() ? args.scope.trim() : undefined,
-        });
+        const result = await startIntegrationAuth(String(args.integrationId ?? ""), startAuthOptions(args, ctx));
         return JSON.stringify(result);
       } catch (err) {
         return errJson(err);
@@ -247,7 +320,7 @@ export const integrationTools: ToolDefinition[] = [
   {
     name: "poll_lark_auth",
     description:
-      "用户完成 Lark 配置或授权后，用 authSessionId 轮询 lark-cli。pending 表示继续等待用户完成，不要重新 start_lark_auth；config 阶段完成后会自动进入 auth 阶段并返回新的授权 URL/code；auth 阶段成功后 health 变为 healthy。服务重启后会尽量恢复 auth session 或用 integrationId 校验已登录状态。",
+      "兼容别名：用户完成 Lark 配置或授权后，用 authSessionId 轮询 lark-cli。新实现优先使用 poll_integration_auth；pending 表示继续等待用户完成，不要重新 start_integration_auth。",
     inputSchema: {
       type: "object",
       properties: {
@@ -259,7 +332,7 @@ export const integrationTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       try {
-        const result = await pollLarkAuth(String(args.authSessionId ?? ""), {
+        const result = await pollIntegrationAuth(String(args.authSessionId ?? ""), {
           requireAgentId: resolveAgentId(args, ctx),
           integrationId: typeof args.integrationId === "string" && args.integrationId.trim() ? args.integrationId.trim() : undefined,
         });

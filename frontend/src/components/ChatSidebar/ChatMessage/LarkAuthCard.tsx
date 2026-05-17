@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import * as QRCode from "qrcode";
 import { useToast } from "../../Toast";
 import { Chevron } from "./cardCommon";
 
@@ -6,7 +7,11 @@ export interface LarkAuthPayload {
   phase: "auth" | "config";
   authSessionId: string;
   integrationId?: string;
+  providerKey?: string;
+  displayName?: string;
+  pollTool?: string;
   verificationUrl?: string | null;
+  qrCodeText?: string | null;
   userCode?: string | null;
   expiresAt?: string | null;
 }
@@ -21,21 +26,52 @@ export default function LarkAuthCard({ payload, onContinue, disabled }: Props) {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const toast = useToast();
-  const title = payload.phase === "config" ? "飞书应用配置" : "飞书授权";
+  const providerLabel = providerDisplayName(payload);
+  const title = payload.phase === "config" ? `${providerLabel}应用配置` : `${providerLabel}授权`;
   const description = payload.phase === "config"
-    ? "需要先完成飞书应用配置，完成后会继续进入用户授权。"
-    : "需要在飞书页面完成授权，完成后回到这里继续执行。";
+    ? `需要先完成${providerLabel}应用配置，完成后会继续进入用户授权。`
+    : `需要在${providerLabel}页面完成授权，完成后回到这里继续执行。`;
   const expires = formatExpiresAt(payload.expiresAt);
-  const copyLabel = copied ? "已复制链接" : "复制授权链接";
+  const extractedQrUrl = useMemo(() => extractFirstUrl(payload.qrCodeText), [payload.qrCodeText]);
+  const authLink = payload.verificationUrl || extractedQrUrl;
+  const qrPayload = authLink || payload.qrCodeText || "";
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const copyTarget = authLink || payload.qrCodeText || "";
+  const copyLabel = copied ? "已复制" : (authLink ? "复制授权链接" : "复制配置文本");
+  useEffect(() => {
+    let cancelled = false;
+    if (!qrPayload) {
+      setQrDataUrl(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    QRCode.toDataURL(qrPayload, {
+      width: 120,
+      margin: 1,
+      errorCorrectionLevel: "M",
+      color: {
+        dark: "#111827",
+        light: "#ffffff",
+      },
+    }).then((url) => {
+      if (!cancelled) setQrDataUrl(url);
+    }).catch(() => {
+      if (!cancelled) setQrDataUrl(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [qrPayload]);
   const handleCopy = async () => {
-    if (!payload.verificationUrl) return;
-    const ok = await copyText(payload.verificationUrl);
+    if (!copyTarget) return;
+    const ok = await copyText(copyTarget);
     if (!ok) {
       toast.error("复制失败，请手动复制链接");
       return;
     }
     setCopied(true);
-    toast.success("已复制授权链接");
+    toast.success(authLink ? "已复制授权链接" : "已复制配置文本");
     window.setTimeout(() => setCopied(false), 1600);
   };
 
@@ -73,9 +109,17 @@ export default function LarkAuthCard({ payload, onContinue, disabled }: Props) {
                 )}
               </div>
             )}
+            {qrDataUrl && (
+              <div className="chat-lark-auth-qr-wrap">
+                <img className="chat-lark-auth-qr-image" src={qrDataUrl} alt={`${title}二维码`} />
+              </div>
+            )}
+            {!qrDataUrl && !payload.verificationUrl && payload.qrCodeText && (
+              <pre className="chat-lark-auth-qr">{payload.qrCodeText}</pre>
+            )}
           </div>
           <div className="chat-confirm-actions chat-lark-auth-actions">
-            {payload.verificationUrl && (
+            {copyTarget && (
               <button
                 type="button"
                 className="chat-lark-auth-copy-btn"
@@ -86,10 +130,10 @@ export default function LarkAuthCard({ payload, onContinue, disabled }: Props) {
                 <CopyIcon />
               </button>
             )}
-            {payload.verificationUrl && (
+            {authLink && (
               <a
                 className="chat-confirm-btn secondary chat-lark-auth-open"
-                href={payload.verificationUrl}
+                href={authLink}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -102,7 +146,7 @@ export default function LarkAuthCard({ payload, onContinue, disabled }: Props) {
               onClick={() => onContinue?.(payload)}
               disabled={disabled}
             >
-              我已完成授权
+              {payload.phase === "config" ? "我已完成配置" : "我已完成授权"}
             </button>
           </div>
         </>
@@ -178,10 +222,26 @@ export function extractLarkAuthPayload(result: unknown): LarkAuthPayload | null 
     phase: record.phase,
     authSessionId: record.authSessionId.trim(),
     integrationId: typeof record.integrationId === "string" ? record.integrationId : undefined,
+    providerKey: typeof record.providerKey === "string" ? record.providerKey : undefined,
+    displayName: typeof record.displayName === "string" ? record.displayName : undefined,
+    pollTool: typeof record.pollTool === "string" ? record.pollTool : undefined,
     verificationUrl,
+    qrCodeText,
     userCode: typeof record.userCode === "string" ? record.userCode : null,
     expiresAt: typeof record.expiresAt === "string" ? record.expiresAt : null,
   };
+}
+
+function providerDisplayName(payload: Pick<LarkAuthPayload, "providerKey" | "displayName">): string {
+  if (payload.providerKey === "lark" || !payload.providerKey) return "飞书";
+  return payload.displayName?.trim() || "外部集成";
+}
+
+function extractFirstUrl(value?: string | null): string | null {
+  if (!value) return null;
+  const match = value.match(/https?:\/\/[^\s"'<>]+/);
+  if (!match) return null;
+  return match[0].replace(/[),.;，。；）]+$/g, "");
 }
 
 function parseJsonLike(value: unknown): unknown {

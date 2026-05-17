@@ -137,12 +137,35 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_auth_status",
         description:
-          "Check whether lark-cli is installed, configured, and logged in inside this integration sandbox. If setup or login is missing, use start_lark_auth and send the returned URL/QR/code to the user.",
+          "Check whether lark-cli is installed, configured, and logged in inside this integration sandbox. If setup or login is missing, use start_integration_auth and send the returned URL/QR/code to the user.",
         mode: "cli",
         readOnly: true,
         output: "text",
         args: ["auth", "status"],
         inputSchema: jsonSchemaObject,
+      },
+      {
+        name: "lark_cli_guide",
+        description:
+          "Get distilled official lark-cli skill guidance for a domain/operation, including command usage, result shapes, and auth handling. Call before unfamiliar Lark CLI shortcuts; use lark_schema for raw OpenAPI methods.",
+        mode: "cli",
+        readOnly: true,
+        output: "json",
+        args: [],
+        inputSchema: {
+          type: "object",
+          properties: {
+            topic: {
+              type: "string",
+              enum: ["shared", "search", "docs", "drive", "base", "calendar", "im", "contact", "results", "auth", "schema"],
+              description: "Guidance topic. Use search/drive for cloud document discovery.",
+            },
+            operation: {
+              type: "string",
+              description: "Optional operation name, e.g. search, fetch, record-list, create-event.",
+            },
+          },
+        },
       },
       {
         name: "lark_schema",
@@ -166,7 +189,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_api_get",
         description:
-          "Call a read-only Lark Open Platform GET endpoint through lark-cli. Use for APIs that do not have a narrower shortcut in the manifest. If the result reports missing_scope, start incremental Lark auth with the exact missing scope before retrying. On successful read/search responses, summarize returned data to the user.",
+          "Call a read-only Lark Open Platform GET endpoint through lark-cli. Use for APIs that do not have a narrower shortcut in the manifest. If the result reports missing_scope, start incremental auth with start_integration_auth and the exact missing scope before retrying. On successful read/search responses, summarize returned data to the user.",
         mode: "cli",
         readOnly: true,
         output: "json",
@@ -183,7 +206,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_api_post",
         description:
-          "Call a Lark Open Platform POST endpoint through lark-cli. This may write third-party data and requires confirmation. For calendar event creation, prefer lark_calendar_create_event so the backend converts time safely. If the result reports missing_scope, start incremental Lark auth with the exact missing scope before retrying.",
+          "Call a Lark Open Platform POST endpoint through lark-cli. This may write third-party data and requires confirmation. For calendar event creation, prefer lark_calendar_create_event so the backend converts time safely. If the result reports missing_scope, start incremental auth with start_integration_auth and the exact missing scope before retrying.",
         mode: "cli",
         readOnly: false,
         danger: true,
@@ -260,7 +283,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_cli",
         description:
-          "Run an explicit lark-cli argv list for official shortcut/API commands, such as ['base', '+...', ...] or ['docs', '+search', ...]. Writes and broad commands require confirmation. For read/search commands, summarize returned rows or hits to the user instead of only reporting completion.",
+          "Run an explicit lark-cli argv list for official shortcut/API commands, such as ['drive', '+search', '--query', ...] or ['base', '+...', ...]. Prefer lark_cli_guide before unfamiliar commands; for cloud search use drive +search rather than docs +search. Writes and broad commands require confirmation. For read/search commands, summarize returned rows or hits to the user instead of only reporting completion.",
         mode: "cli",
         readOnly: false,
         danger: true,

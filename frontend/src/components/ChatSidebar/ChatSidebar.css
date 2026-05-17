@@ -1712,6 +1712,33 @@
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
 }
+.chat-lark-auth-qr-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+.chat-lark-auth-qr-image {
+  display: block;
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  background: #ffffff;
+}
+.chat-lark-auth-qr {
+  max-height: 180px;
+  overflow: auto;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 0.5px solid var(--border-default);
+  color: var(--text-primary);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .chat-lark-auth-actions {
   align-items: center;
 }

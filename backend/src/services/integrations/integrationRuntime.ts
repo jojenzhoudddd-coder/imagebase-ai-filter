@@ -6,7 +6,9 @@ import {
   markIntegrationHealth,
   markIntegrationUsed,
 } from "./integrationStore.js";
-import { getLarkAuthStatus, startLarkAuth } from "./larkAuthRuntime.js";
+import { startIntegrationAuth } from "./integrationAuthRuntime.js";
+import { getLarkAuthStatus } from "./larkAuthRuntime.js";
+import { getLarkCliGuide } from "./larkCliGuide.js";
 import type { AgentIntegrationRow, IntegrationToolManifest } from "./types.js";
 
 export async function callIntegrationTool(
@@ -41,7 +43,7 @@ export async function callIntegrationTool(
     : null;
   if (larkAuthFailure) {
     await markIntegrationUsed(integration.id).catch(() => {});
-    return startLarkAuth(integration.id, {
+    return startIntegrationAuth(integration.id, {
       requireAgentId: opts?.requireAgentId,
       scope: larkAuthFailure.missingScopes.length ? larkAuthFailure.missingScopes.join(" ") : undefined,
       recommend: larkAuthFailure.missingScopes.length ? false : undefined,
@@ -121,19 +123,20 @@ function larkMissingScopeResponse(
     detail,
     missingScopes,
     nextAction: {
-      tool: "start_lark_auth",
+      tool: "start_integration_auth",
       arguments: {
         integrationId: integration.id,
         scope,
         recommend: false,
       },
+      legacyTool: "start_lark_auth",
     },
     retry: {
       tool: toolName,
-      after: "poll_lark_auth returns authorized=true",
+      after: "poll_integration_auth returns authorized=true",
     },
     instructions:
-      "Call start_lark_auth with nextAction.arguments, send the returned verificationUrl to the user unchanged, poll_lark_auth after the user completes authorization, then retry the original Lark tool.",
+      "Call start_integration_auth with nextAction.arguments, send the returned verificationUrl to the user unchanged, poll_integration_auth after the user completes authorization, then retry the original Lark tool.",
   };
 }
 
@@ -227,6 +230,13 @@ async function dispatch(
   manifest: IntegrationToolManifest,
   args: Record<string, any>,
 ): Promise<unknown> {
+  if (
+    integration.providerKey === "lark" &&
+    integration.transport === "cli" &&
+    manifest.name === "lark_cli_guide"
+  ) {
+    return getLarkCliGuide(args);
+  }
   if (
     integration.providerKey === "lark" &&
     integration.transport === "cli" &&

@@ -28,6 +28,7 @@ interface LarkBaseAuthSession {
   id: string;
   integrationId: string;
   agentId: string;
+  displayName: string;
   phase: "config" | "auth";
   verificationUrl: string | null;
   userCode: string | null;
@@ -95,7 +96,7 @@ export async function getLarkAuthStatus(
       authorized: false,
       detail: {
         needsConfig: true,
-        message: `${config.message} Call start_lark_auth to start lark-cli config init and send the returned URL/QR code to the user.`,
+        message: `${config.message} Call start_integration_auth to start lark-cli config init and send the returned URL/QR code to the user.`,
       },
     };
   }
@@ -172,11 +173,15 @@ export async function startLarkAuth(
     phase: "auth",
     authSessionId: session.id,
     integrationId: integration.id,
+    providerKey: "lark",
+    displayName: integration.displayName,
+    pollTool: "poll_integration_auth",
+    legacyPollTool: "poll_lark_auth",
     verificationUrl: normalized.verificationUrl,
     userCode: normalized.userCode,
     expiresAt: new Date(expiresAt).toISOString(),
     instructions:
-      "请把 verificationUrl 原样发给用户，推荐使用只包含原始 URL 的代码块，不要改写、URL encode/decode、转成 Markdown 链接或附加标点。用户完成 Lark 授权后，只调用 poll_lark_auth(authSessionId)；pending 时等待用户完成，不要重新 start_lark_auth。",
+      "请把 verificationUrl 原样发给用户，推荐使用只包含原始 URL 的代码块，不要改写、URL encode/decode、转成 Markdown 链接或附加标点。用户完成 Lark 授权后，优先调用 poll_integration_auth(authSessionId)；pending 时等待用户完成，不要重新 start_integration_auth。",
     raw: redactDeviceCode(raw),
   };
 }
@@ -348,6 +353,7 @@ async function startLarkConfigSession(
     id,
     integrationId: integration.id,
     agentId: integration.agentId,
+    displayName: integration.displayName,
     phase: "config",
     verificationUrl: null,
     userCode: null,
@@ -489,6 +495,7 @@ async function spawnLarkLoginSession(
     id: input.id,
     integrationId: integration.id,
     agentId: integration.agentId,
+    displayName: integration.displayName,
     phase: "auth",
     deviceCode: input.deviceCode,
     verificationUrl: input.verificationUrl,
@@ -585,12 +592,16 @@ function larkConfigPendingResponse(session: LarkConfigSession): unknown {
     phase: "config",
     authSessionId: session.id,
     integrationId: session.integrationId,
+    providerKey: "lark",
+    displayName: session.displayName,
+    pollTool: "poll_integration_auth",
+    legacyPollTool: "poll_lark_auth",
     verificationUrl: session.verificationUrl,
     userCode: session.userCode,
     expiresAt: new Date(session.expiresAt).toISOString(),
     qrCodeText: session.output,
     instructions:
-      "请把 verificationUrl 或 qrCodeText 发给用户。用户完成 Lark 应用配置后，调用 poll_lark_auth(authSessionId)；成功后会自动进入 auth login 阶段并返回下一步授权 URL/code。",
+      "请把 verificationUrl 或 qrCodeText 发给用户。用户完成 Lark 应用配置后，优先调用 poll_integration_auth(authSessionId)；成功后会自动进入 auth login 阶段并返回下一步授权 URL/code。",
   };
 }
 
