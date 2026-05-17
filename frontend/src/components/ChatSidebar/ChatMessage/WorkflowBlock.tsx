@@ -5,7 +5,7 @@
  * Workflow 特有内容是节点级 timeline(node_start / node_end / loop_iter /
  * branch_start)+ 模板 id pill。
  *
- * V2.3 C6: streaming 时自动展开,success 后自动折叠;error/aborted 保持展开。
+ * V2.3 C6: 默认折叠;running 转 error/aborted 时自动展开露出错误信息。
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -28,7 +28,7 @@ interface Props {
 
 export default function WorkflowBlock({ run, expanded: controlledExpanded, onExpandedChange }: Props) {
   const { t } = useCardTranslation();
-  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(run.status === "running");
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
   const expanded = controlledExpanded ?? uncontrolledExpanded;
   const setExpanded = (next: boolean) => {
     if (onExpandedChange) onExpandedChange(next);

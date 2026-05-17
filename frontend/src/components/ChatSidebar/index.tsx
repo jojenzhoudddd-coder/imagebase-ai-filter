@@ -2401,8 +2401,8 @@ function normalizeServerNodeEvent(e: any): UiWorkflowRun["nodeEvents"][number] |
  *   - Once the answer has begun to stream (or the message is finished) and
  *     a `thinking` transcript exists, show the COLLAPSED deepthink pill
  *     ("深度思考") above the answer text — node 6:5302.
- *   - Details cards render above the answer text and are controlled as a
- *     turn-level group from the meta row.
+ *   - Details cards render above the answer text. The meta row controls
+ *     whether the card list is visible; each card keeps its own expand state.
  */
 function MessageBlock({ msg, confirmSlot }: { msg: UiMessage; confirmSlot?: React.ReactNode }) {
   const { t } = useTranslation();
@@ -2494,8 +2494,6 @@ function MessageBlock({ msg, confirmSlot }: { msg: UiMessage; confirmSlot?: Reac
               mode="collapsed"
               label={t("chat.thinking.collapsed")}
               thinking={msg.thinking}
-              expanded={detailsExpanded}
-              onExpandedChange={setAllDetailsExpanded}
             />
           )}
           {groups.map((g, i) =>
@@ -2503,16 +2501,12 @@ function MessageBlock({ msg, confirmSlot }: { msg: UiMessage; confirmSlot?: Reac
               <ToolCallCard
                 key={g.items[0].callId}
                 call={g.items[0]}
-                expanded={detailsExpanded}
-                onExpandedChange={setAllDetailsExpanded}
               />
             ) : (
               <ToolCallGroup
                 key={`tg-${msg.id}-${i}`}
                 tool={g.tool}
                 items={g.items}
-                expanded={detailsExpanded}
-                onExpandedChange={setAllDetailsExpanded}
               />
             )
           )}
@@ -2522,16 +2516,12 @@ function MessageBlock({ msg, confirmSlot }: { msg: UiMessage; confirmSlot?: Reac
                 <WorkflowBlock
                   key={`wf-${entry.run.runId}`}
                   run={entry.run}
-                  expanded={detailsExpanded}
-                  onExpandedChange={setAllDetailsExpanded}
                 />
               )
               : (
                 <SubagentBlock
                   key={`sa-${entry.run.runId}`}
                   run={entry.run}
-                  expanded={detailsExpanded}
-                  onExpandedChange={setAllDetailsExpanded}
                 />
               )
           )}

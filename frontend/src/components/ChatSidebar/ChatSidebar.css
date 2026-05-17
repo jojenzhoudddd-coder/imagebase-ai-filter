@@ -2041,6 +2041,8 @@
   gap: 8px;
   width: 100%;
   min-width: 0;
+  /* Parent gap is 12px; offset it so details → answer text also lands at 8px. */
+  margin-bottom: -4px;
 }
 .chat-generating-meta.phase-generated .chat-generating-meta-logo {
   animation: none;

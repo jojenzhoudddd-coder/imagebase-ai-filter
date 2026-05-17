@@ -27,7 +27,7 @@ interface Props {
   label?: string;
   /** Full thinking transcript rendered inside the expanded card body. */
   thinking?: string;
-  /** Controlled expanded state for turn-level details toggles. */
+  /** Optional controlled state for callers that need to sync this card. */
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
 }

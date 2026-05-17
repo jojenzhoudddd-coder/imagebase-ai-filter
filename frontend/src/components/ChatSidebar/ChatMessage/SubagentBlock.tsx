@@ -6,9 +6,9 @@
  * 体现在 body:思考 / 工具调用 / 最终输出三段式。
  *
  * V2.3 行为细节:
- *   - C6: streaming 时自动展开,success 后自动折叠回 header
+ *   - 默认折叠,details 展开时只露出 card 列表
  *   - 完成后用户仍可手动展开看完整流程
- *   - 错误状态保持展开露出错误信息
+ *   - running 转 error 时自动展开露出错误信息
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -32,7 +32,7 @@ interface Props {
 
 export default function SubagentBlock({ run, expanded: controlledExpanded, onExpandedChange }: Props) {
   const { t } = useCardTranslation();
-  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(run.status === "running");
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
   const expanded = controlledExpanded ?? uncontrolledExpanded;
   const setExpanded = (next: boolean) => {
     if (onExpandedChange) onExpandedChange(next);
