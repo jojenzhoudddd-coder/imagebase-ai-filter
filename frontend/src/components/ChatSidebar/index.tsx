@@ -2595,12 +2595,12 @@ function interleaveOrchestration(
   return list;
 }
 
-/** Merge tool-only assistant messages into the preceding assistant message so
- * they render inside the same block (no 28px inter-message gap). This happens
- * after confirm-and-continue: the agent's post-confirmation tool calls land
- * in a new message that has no text content, only tool cards. */
+/** Merge tool-only assistant messages into an adjacent assistant block so
+ * they render inside the same reply. Confirmation flows can produce a
+ * tool-only pause row first, then a result row after the user clicks Run. */
 function mergeToolOnlyMessages(messages: UiMessage[]): UiMessage[] {
   const result: UiMessage[] = [];
+  let pendingLeadingToolOnly: UiMessage[] = [];
   for (const m of messages) {
     const prev = result[result.length - 1];
     const isToolOnly = m.role === "assistant" && !m.content && !m.thinking && m.toolCalls.length > 0;
@@ -2609,7 +2609,7 @@ function mergeToolOnlyMessages(messages: UiMessage[]): UiMessage[] {
       const merged: UiMessage = {
         ...prev,
         timestamp: m.timestamp ?? prev.timestamp,
-        toolCalls: [...prev.toolCalls, ...m.toolCalls],
+        toolCalls: mergeToolCallsForDisplay(prev.toolCalls, m.toolCalls),
         subagentRuns: [...(prev.subagentRuns ?? []), ...(m.subagentRuns ?? [])],
         workflowRuns: [...(prev.workflowRuns ?? []), ...(m.workflowRuns ?? [])],
         streaming: m.streaming || prev.streaming,
@@ -2618,11 +2618,46 @@ function mergeToolOnlyMessages(messages: UiMessage[]): UiMessage[] {
       // Keep turnMeta from the later message if it exists (more up-to-date)
       if (m.turnMeta) merged.turnMeta = m.turnMeta;
       result[result.length - 1] = merged;
+    } else if (isToolOnly) {
+      pendingLeadingToolOnly.push(m);
     } else {
-      result.push(m);
+      if (pendingLeadingToolOnly.length && m.role === "assistant") {
+        const leadingToolCalls = pendingLeadingToolOnly.flatMap((msg) => msg.toolCalls);
+        const leadingSubagents = pendingLeadingToolOnly.flatMap((msg) => msg.subagentRuns ?? []);
+        const leadingWorkflows = pendingLeadingToolOnly.flatMap((msg) => msg.workflowRuns ?? []);
+        result.push({
+          ...m,
+          toolCalls: mergeToolCallsForDisplay(leadingToolCalls, m.toolCalls),
+          subagentRuns: [...leadingSubagents, ...(m.subagentRuns ?? [])],
+          workflowRuns: [...leadingWorkflows, ...(m.workflowRuns ?? [])],
+          streaming: m.streaming || pendingLeadingToolOnly.some((msg) => msg.streaming),
+          detailsDefaultExpanded:
+            m.detailsDefaultExpanded || pendingLeadingToolOnly.some((msg) => msg.detailsDefaultExpanded),
+        });
+        pendingLeadingToolOnly = [];
+      } else {
+        if (pendingLeadingToolOnly.length) {
+          result.push(...pendingLeadingToolOnly);
+          pendingLeadingToolOnly = [];
+        }
+        result.push(m);
+      }
     }
   }
+  if (pendingLeadingToolOnly.length) result.push(...pendingLeadingToolOnly);
   return result;
+}
+
+function mergeToolCallsForDisplay(first: ChatToolCall[], second: ChatToolCall[]): ChatToolCall[] {
+  const order: string[] = [];
+  const byId = new Map<string, ChatToolCall>();
+  const add = (call: ChatToolCall) => {
+    if (!byId.has(call.callId)) order.push(call.callId);
+    byId.set(call.callId, call);
+  };
+  first.forEach(add);
+  second.forEach(add);
+  return order.map((id) => byId.get(id)!).filter(Boolean);
 }
 
 /** Run-length grouping by tool name — keeps ordering stable so the transcript

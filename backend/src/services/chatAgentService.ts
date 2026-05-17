@@ -3920,14 +3920,24 @@ function formatLarkResultItem(item: unknown): string {
     return truncateText(String(item ?? ""), 220) || "空结果";
   }
   const title = readFirstStringDeep(item, [
+    "title_highlighted",
     "title",
+    "name_highlighted",
     "name",
     "file_name",
     "doc_name",
     "sheet_name",
     "summary",
-  ]) || "未命名结果";
-  const type = readFirstStringDeep(item, ["type", "doc_type", "file_type", "obj_type", "resource_type"]);
+  ]);
+  const type = cleanLarkDisplayText(readFirstStringDeep(item, [
+    "entity_type",
+    "doc_types",
+    "type",
+    "doc_type",
+    "file_type",
+    "obj_type",
+    "resource_type",
+  ]));
   const link = readFirstStringDeep(item, ["url", "link", "app_link", "web_url", "share_url"]);
   const id = readFirstStringDeep(item, [
     "id",
@@ -3940,6 +3950,7 @@ function formatLarkResultItem(item: unknown): string {
     "obj_token",
   ]);
   const snippet = readFirstStringDeep(item, [
+    "summary_highlighted",
     "snippet",
     "excerpt",
     "description",
@@ -3947,11 +3958,16 @@ function formatLarkResultItem(item: unknown): string {
     "text",
     "preview",
   ]);
-  const parts = [title];
+  const owner = cleanLarkDisplayText(readFirstStringDeep(item, ["owner_name", "edit_user_name"]));
+  const updatedAt = cleanLarkDisplayText(readFirstStringDeep(item, ["update_time_iso", "last_open_time_iso"]));
+  const parts = [cleanLarkDisplayText(title) || "未命名结果"];
   if (type) parts.push(`类型：${type}`);
+  if (owner) parts.push(`所有者：${owner}`);
+  if (updatedAt) parts.push(`更新时间：${updatedAt}`);
   if (link) parts.push(`链接：${link}`);
-  if (id) parts.push(`标识：${id}`);
-  if (snippet && snippet !== title) parts.push(`摘要：${truncateText(snippet, 160)}`);
+  if (!link && id) parts.push(`标识：${id}`);
+  const cleanSnippet = cleanLarkDisplayText(snippet);
+  if (cleanSnippet && cleanSnippet !== parts[0]) parts.push(`摘要：${truncateText(cleanSnippet, 160)}`);
   return parts.join("\n   ");
 }
 
@@ -3996,6 +4012,38 @@ function readFirstStringDeep(value: unknown, keys: string[], depth = 0): string 
 function truncateText(value: string, max: number): string {
   const text = value.replace(/\s+/g, " ").trim();
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function cleanLarkDisplayText(value: string | null): string {
+  if (!value) return "";
+  return decodeHtmlEntities(value)
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, entity: string) => {
+    const named: Record<string, string> = {
+      amp: "&",
+      lt: "<",
+      gt: ">",
+      quot: "\"",
+      apos: "'",
+      nbsp: " ",
+    };
+    const lower = entity.toLowerCase();
+    if (named[lower]) return named[lower];
+    if (lower.startsWith("#x")) {
+      const code = Number.parseInt(lower.slice(2), 16);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+    }
+    if (lower.startsWith("#")) {
+      const code = Number.parseInt(lower.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+    }
+    return match;
+  });
 }
 
 function extractToolError(output: string): string {
