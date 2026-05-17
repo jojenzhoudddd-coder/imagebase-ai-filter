@@ -95,7 +95,8 @@ function toDisplayItem(input: unknown): GithubDisplayItem {
     return { title: truncateText(String(item ?? ""), 220) || "空结果" };
   }
   const record = item as Record<string, unknown>;
-  const fullName = readFirstOwnString(record, ["fullName", "nameWithOwner", "full_name"]);
+  const fullName = readFirstOwnString(record, ["fullName", "nameWithOwner", "full_name"]) ||
+    repoFullName(record);
   const title = cleanText(fullName ||
     readFirstOwnString(record, [
       "title",
@@ -108,9 +109,11 @@ function toDisplayItem(input: unknown): GithubDisplayItem {
       "subject",
     ])) || "未命名结果";
   const number = readFirstNumberDeep(item, ["number", "runNumber", "run_number"]);
-  const type = cleanText(readFirstStringDeep(item, ["__typename", "type", "event", "visibility"])) || undefined;
+  const type = repoVisibility(record) ||
+    cleanText(readFirstStringDeep(item, ["__typename", "type", "event", "visibility"])) ||
+    undefined;
   const state = cleanText(readFirstStringDeep(item, ["state", "status", "conclusion"])) || undefined;
-  const url = readFirstStringDeep(item, ["url", "html_url", "webUrl", "permalink", "app_url"]) ?? undefined;
+  const url = readFirstStringDeep(item, ["html_url", "url", "webUrl", "permalink", "app_url"]) ?? undefined;
   const repository = cleanText(
     readNestedString(record, ["repository", "nameWithOwner"]) ||
     readNestedString(record, ["repository", "fullName"]) ||
@@ -270,6 +273,23 @@ function readNestedString(record: Record<string, unknown>, path: string[]): stri
   }
   if (typeof cur === "string" && cur.trim()) return cur.trim();
   if (typeof cur === "number" || typeof cur === "boolean") return String(cur);
+  return null;
+}
+
+function repoFullName(record: Record<string, unknown>): string | null {
+  const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : "";
+  if (!name) return null;
+  const owner = readNestedString(record, ["owner", "login"]);
+  return owner ? `${owner}/${name}` : null;
+}
+
+function repoVisibility(record: Record<string, unknown>): string | null {
+  const visibility = typeof record.visibility === "string" && record.visibility.trim()
+    ? record.visibility.trim()
+    : "";
+  if (visibility) return visibility;
+  if (typeof record.isPrivate === "boolean") return record.isPrivate ? "private" : "public";
+  if (typeof record.private === "boolean") return record.private ? "private" : "public";
   return null;
 }
 
