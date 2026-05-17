@@ -16,21 +16,62 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
     transports: ["cli", "mcp-stdio", "mcp-http"],
     auth: [
       {
+        name: "GH_TOKEN",
+        label: "GitHub CLI token",
+        type: "secret",
+        required: false,
+        description: "Optional but recommended for headless server use. GitHub CLI reads GH_TOKEN first.",
+      },
+      {
         name: "GITHUB_TOKEN",
         label: "GitHub token",
         type: "secret",
         required: false,
-        description: "Optional when gh is already authenticated; required for many MCP server deployments.",
+        description: "Optional GH_TOKEN-compatible alias. The runtime mirrors GH_TOKEN/GITHUB_TOKEN for gh CLI.",
       },
     ],
     defaultConfig: {
       command: "gh",
+      hostname: "github.com",
       mcp: {
         command: "github-mcp-server",
         args: ["stdio"],
       },
     },
     defaultTools: [
+      {
+        name: "gh_auth_status",
+        description:
+          "Check whether gh is installed and authenticated inside this integration sandbox. If auth is missing, use start_integration_auth and send the returned GitHub URL/code to the user, or configure GH_TOKEN/GITHUB_TOKEN credentials.",
+        mode: "cli",
+        readOnly: true,
+        output: "text",
+        args: ["auth", "status", "--hostname", "github.com"],
+        inputSchema: jsonSchemaObject,
+      },
+      {
+        name: "github_cli_guide",
+        description:
+          "Get distilled official GitHub CLI guidance for a domain/operation, including auth handling, gh api usage, result shapes, and when to use generic github_cli. Call before unfamiliar GitHub CLI/API operations.",
+        mode: "cli",
+        readOnly: true,
+        output: "json",
+        args: [],
+        inputSchema: {
+          type: "object",
+          properties: {
+            topic: {
+              type: "string",
+              enum: ["shared", "auth", "repos", "issues", "pull_requests", "actions", "api", "results"],
+              description: "Guidance topic.",
+            },
+            operation: {
+              type: "string",
+              description: "Optional operation name, e.g. create-issue, list-prs, rerun-workflow.",
+            },
+          },
+        },
+      },
       {
         name: "gh_repo_view",
         description: "Read one GitHub repository summary using gh repo view.",
@@ -100,6 +141,87 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
             limit: { type: "number", description: "Maximum PRs to return. Default 20." },
           },
           required: ["repo"],
+        },
+      },
+      {
+        name: "github_api_get",
+        description:
+          "Call a read-only GitHub REST/GraphQL endpoint through gh api --method GET. Use for APIs that do not have a narrower manifest tool. On success, summarize returned data to the user with names/titles/states/URLs.",
+        mode: "cli",
+        readOnly: true,
+        output: "json",
+        args: [],
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "REST API path like /repos/OWNER/REPO/issues or /search/issues, or graphql. Do not pass a full URL.",
+            },
+            params: {
+              type: "object",
+              description: "Query parameters. Defaults to {}.",
+            },
+            paginate: {
+              type: "boolean",
+              description: "Whether to pass --paginate. Use only when the user asks for exhaustive pages.",
+            },
+          },
+          required: ["path"],
+        },
+      },
+      {
+        name: "github_api_post",
+        description:
+          "Call a GitHub REST/GraphQL write endpoint through gh api. Requires confirmation. Supports method POST/PATCH/PUT/DELETE, params as query fields, and data as JSON body. Prefer narrow read-only tools for reads.",
+        mode: "cli",
+        readOnly: false,
+        danger: true,
+        output: "json",
+        args: [],
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "REST API path like /repos/OWNER/REPO/issues/123/comments, or graphql. Do not pass a full URL.",
+            },
+            method: {
+              type: "string",
+              enum: ["POST", "PATCH", "PUT", "DELETE"],
+              description: "HTTP method. Default POST.",
+            },
+            params: {
+              type: "object",
+              description: "Query parameters. Defaults to {}.",
+            },
+            data: {
+              type: "object",
+              description: "JSON request body. Defaults to {}.",
+            },
+          },
+          required: ["path"],
+        },
+      },
+      {
+        name: "github_cli",
+        description:
+          "Run an explicit gh argv list for GitHub CLI commands. Do not include `gh`; each token must be a separate array item and no shell syntax is allowed. Prefer github_cli_guide before unfamiliar commands and request --json where supported. Writes require confirmation.",
+        mode: "cli",
+        readOnly: false,
+        danger: true,
+        output: "json",
+        args: ["{{argv}}"],
+        inputSchema: {
+          type: "object",
+          properties: {
+            argv: {
+              type: "array",
+              items: { type: "string" },
+              description: "Arguments after `gh`; each token must be separate, e.g. ['pr','view','123','--repo','owner/repo','--json','number,title,url'].",
+            },
+          },
+          required: ["argv"],
         },
       },
       {

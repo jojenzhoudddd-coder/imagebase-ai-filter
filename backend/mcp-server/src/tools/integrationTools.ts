@@ -102,7 +102,7 @@ export const integrationTools: ToolDefinition[] = [
         config: { type: "object", description: "transport 配置，如 command/args/endpoint/envMap" },
         toolManifest: { type: "array", items: { type: "object" }, description: "显式工具白名单 manifest" },
         scopes: { type: "array", items: { type: "string" } },
-        credentials: { type: "object", description: "密钥键值，如 GITHUB_TOKEN/FIGMA_TOKEN。Lark CLI 默认走扫码/URL 授权，不需要手填 App ID/Secret。" },
+        credentials: { type: "object", description: "密钥键值，如 GH_TOKEN/GITHUB_TOKEN/FIGMA_TOKEN。Lark CLI 默认走扫码/URL 授权，不需要手填 App ID/Secret。" },
       },
       required: ["providerKey"],
     },
@@ -200,7 +200,7 @@ export const integrationTools: ToolDefinition[] = [
   {
     name: "test_integration",
     description:
-      "测试 Integration 连通性。MCP transport 会 listTools；CLI transport 会运行健康检查。Lark CLI 会返回 needsConfig/needsAuth，用于触发 start_integration_auth 配置/授权流程。",
+      "测试 Integration 连通性。MCP transport 会 listTools；CLI transport 会运行健康检查。Lark/GitHub CLI 会返回 needsConfig/needsAuth，用于触发 start_integration_auth 配置/授权流程。",
     inputSchema: {
       type: "object",
       properties: {
@@ -223,7 +223,7 @@ export const integrationTools: ToolDefinition[] = [
   {
     name: "start_integration_auth",
     description:
-      "为一个 Integration 启动通用交互式配置/授权流程。当前 Lark CLI adapter 会返回 phase=config 的 URL/二维码或 phase=auth 的 verificationUrl/userCode；其他 provider 可逐步接入同一协议。missing_scope 时传报错中的精确 scope。Agent 必须把 URL 原样发给用户；pending 时不要重复启动新流程。",
+      "为一个 Integration 启动通用交互式配置/授权流程。Lark CLI adapter 会返回 phase=config 的 URL/二维码或 phase=auth 的 verificationUrl/userCode；GitHub CLI adapter 会返回 device flow verificationUrl/userCode。missing_scope 时传报错中的精确 scope。Agent 必须把 URL/code 原样发给用户；pending 时不要重复启动新流程。",
     inputSchema: {
       type: "object",
       properties: {

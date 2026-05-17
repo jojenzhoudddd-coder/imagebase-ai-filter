@@ -1,5 +1,9 @@
 import crypto from "crypto";
-import { runCliIntegrationTool } from "./cliRuntime.js";
+import { runCliCommand, runCliIntegrationTool } from "./cliRuntime.js";
+import {
+  resolveIntegrationRuntimeEnv,
+  withIntegrationMutex,
+} from "./integrationRuntimeEnv.js";
 import { callMcpIntegrationTool, listMcpTools } from "./mcpRuntime.js";
 import {
   getAgentIntegration,
@@ -7,6 +11,8 @@ import {
   markIntegrationUsed,
 } from "./integrationStore.js";
 import { startIntegrationAuth } from "./integrationAuthRuntime.js";
+import { getGithubAuthStatus } from "./githubAuthRuntime.js";
+import { getGithubCliGuide } from "./githubCliGuide.js";
 import { getLarkAuthStatus } from "./larkAuthRuntime.js";
 import { getLarkCliGuide } from "./larkCliGuide.js";
 import type { AgentIntegrationRow, IntegrationToolManifest } from "./types.js";
@@ -35,6 +41,23 @@ export async function callIntegrationTool(
     if (missingScopes.length) {
       await markIntegrationUsed(integration.id).catch(() => {});
       return larkMissingScopeResponse(integration, manifest.name, message, missingScopes);
+    }
+    const githubMissingScopes = integration.providerKey === "github" && integration.transport === "cli"
+      ? parseGithubMissingScopes(message)
+      : [];
+    if (githubMissingScopes.length) {
+      await markIntegrationUsed(integration.id).catch(() => {});
+      return githubMissingScopeResponse(integration, manifest.name, message, githubMissingScopes);
+    }
+    if (
+      integration.providerKey === "github" &&
+      integration.transport === "cli" &&
+      parseGithubAuthFailure(message)
+    ) {
+      await markIntegrationUsed(integration.id).catch(() => {});
+      return startIntegrationAuth(integration.id, {
+        requireAgentId: opts?.requireAgentId,
+      });
     }
     throw err;
   }
@@ -73,6 +96,15 @@ export async function testIntegration(integrationId: string, opts?: { requireAge
         detail: status.detail,
         needsConfig: !status.configured,
         needsAuth: status.configured && !status.authorized,
+      };
+    }
+    if (integration.providerKey === "github" && integration.transport === "cli") {
+      const status = await getGithubAuthStatus(integration);
+      return {
+        ok: status.ok,
+        transport: integration.transport,
+        detail: status.detail,
+        needsAuth: !status.authorized,
       };
     }
     let detail: unknown;
@@ -140,6 +172,36 @@ function larkMissingScopeResponse(
   };
 }
 
+function githubMissingScopeResponse(
+  integration: AgentIntegrationRow,
+  toolName: string,
+  detail: string,
+  missingScopes: string[],
+): Record<string, unknown> {
+  const scope = missingScopes.join(",");
+  return {
+    ok: false,
+    errorType: "missing_scope",
+    providerKey: "github",
+    message: `Missing GitHub OAuth scope(s): ${scope}`,
+    detail,
+    missingScopes,
+    nextAction: {
+      tool: "start_integration_auth",
+      arguments: {
+        integrationId: integration.id,
+        scope,
+      },
+    },
+    retry: {
+      tool: toolName,
+      after: "poll_integration_auth returns authorized=true",
+    },
+    instructions:
+      "Call start_integration_auth with nextAction.arguments, send the returned GitHub verificationUrl and userCode to the user unchanged, poll_integration_auth after the user completes authorization, then retry the original GitHub tool.",
+  };
+}
+
 function parseLarkMissingScopes(message: string): string[] {
   const scopes = new Set<string>();
   const parsed = parseEmbeddedJson(message);
@@ -185,6 +247,46 @@ function parseLarkAuthFailureResult(result: unknown): null | { missingScopes: st
     return { missingScopes: [] };
   }
   return null;
+}
+
+function parseGithubAuthFailure(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("not logged into any github hosts") ||
+    lower.includes("to get started with github cli") ||
+    lower.includes("gh auth login") ||
+    lower.includes("authentication required") ||
+    lower.includes("requires authentication") ||
+    lower.includes("bad credentials") ||
+    lower.includes("http 401") ||
+    lower.includes("must authenticate") ||
+    lower.includes("no authentication token");
+}
+
+function parseGithubMissingScopes(message: string): string[] {
+  const scopes = new Set<string>();
+  const lower = message.toLowerCase();
+  if (
+    !lower.includes("scope") &&
+    !lower.includes("resource not accessible by personal access token") &&
+    !lower.includes("insufficient oauth")
+  ) {
+    return [];
+  }
+  const patterns = [
+    /requires?\s+(?:the\s+)?["'`]?([a-zA-Z0-9_:.-]+)["'`]?\s+scope/gi,
+    /missing\s+(?:the\s+)?["'`]?([a-zA-Z0-9_:.-]+)["'`]?\s+scope/gi,
+    /scope\s+["'`]?([a-zA-Z0-9_:.-]+)["'`]?/gi,
+  ];
+  for (const pattern of patterns) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(message))) {
+      const scope = match[1]?.trim();
+      if (scope && /^[a-zA-Z0-9_:.-]+$/.test(scope)) scopes.add(scope);
+    }
+  }
+  if (!scopes.size && lower.includes("workflow")) scopes.add("workflow");
+  if (!scopes.size && lower.includes("repo")) scopes.add("repo");
+  return [...scopes];
 }
 
 function parseJsonLike(value: unknown): unknown {
@@ -238,6 +340,34 @@ async function dispatch(
     return getLarkCliGuide(args);
   }
   if (
+    integration.providerKey === "github" &&
+    integration.transport === "cli" &&
+    manifest.name === "github_cli_guide"
+  ) {
+    return getGithubCliGuide(args);
+  }
+  if (
+    integration.providerKey === "github" &&
+    integration.transport === "cli" &&
+    manifest.name === "gh_auth_status"
+  ) {
+    return getGithubAuthStatus(integration);
+  }
+  if (
+    integration.providerKey === "github" &&
+    integration.transport === "cli" &&
+    manifest.name === "github_api_get"
+  ) {
+    return callGithubApi(integration, "GET", args);
+  }
+  if (
+    integration.providerKey === "github" &&
+    integration.transport === "cli" &&
+    manifest.name === "github_api_post"
+  ) {
+    return callGithubApi(integration, normalizeGithubWriteMethod(args.method), args);
+  }
+  if (
     integration.providerKey === "lark" &&
     integration.transport === "cli" &&
     manifest.name === "lark_calendar_create_event"
@@ -269,6 +399,118 @@ async function dispatch(
       ? args.arguments
       : args;
   return callMcpIntegrationTool(integration, remoteName, remoteArgs);
+}
+
+async function callGithubApi(
+  integration: AgentIntegrationRow,
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
+  args: Record<string, any>,
+): Promise<unknown> {
+  const path = cleanGithubApiPath(args.path);
+  const runtime = await resolveIntegrationRuntimeEnv(integration);
+  const argv = [
+    "api",
+    path,
+    "--hostname",
+    githubHostname(integration),
+    "--method",
+    method,
+    "--header",
+    "Accept: application/vnd.github+json",
+  ];
+  if (args.paginate === true && method === "GET") {
+    argv.push("--paginate", "--slurp");
+  }
+  appendGithubFields(argv, normalizeRecord(args.params));
+  const data = normalizeRecord(args.data);
+  let stdin: string | undefined;
+  if (method !== "GET" && Object.keys(data).length) {
+    argv.push("--input", "-");
+    stdin = JSON.stringify(data);
+  }
+  const result = await withIntegrationMutex(runtime.mutexKey, () =>
+    runCliCommand(githubCommand(integration), argv, {
+      env: runtime.env,
+      cwd: runtime.cwd,
+      stdin,
+      timeoutMs: 60_000,
+    })
+  );
+  const stdout = result.stdout.trim();
+  if (!stdout) return { ok: true };
+  try {
+    return JSON.parse(stdout);
+  } catch {
+    return { raw: stdout, note: "GitHub API output was not valid JSON; returned raw text." };
+  }
+}
+
+function normalizeGithubWriteMethod(value: unknown): "POST" | "PATCH" | "PUT" | "DELETE" {
+  const raw = typeof value === "string" ? value.trim().toUpperCase() : "POST";
+  if (raw === "PATCH" || raw === "PUT" || raw === "DELETE") return raw;
+  return "POST";
+}
+
+function cleanGithubApiPath(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("GitHub API path is required");
+  }
+  const path = value.trim();
+  if (/^https?:\/\//i.test(path)) {
+    throw new Error("GitHub API path must be a REST path or graphql, not a full URL");
+  }
+  if (path.includes("\u0000") || /[\r\n]/.test(path)) {
+    throw new Error("GitHub API path may not contain control characters");
+  }
+  if (path === "graphql") return path;
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+function appendGithubFields(argv: string[], record: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(record)) {
+    appendGithubField(argv, key, value);
+  }
+}
+
+function appendGithubField(argv: string[], key: string, value: unknown): void {
+  const cleanKey = key.trim();
+  if (!cleanKey || cleanKey.includes("\u0000")) return;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      appendGithubField(argv, `${cleanKey}[]`, item);
+    }
+    if (!value.length) argv.push("-F", `${cleanKey}[]`);
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+      appendGithubField(argv, `${cleanKey}[${childKey}]`, childValue);
+    }
+    return;
+  }
+  if (value === undefined) return;
+  argv.push("-F", `${cleanKey}=${String(value)}`);
+}
+
+function normalizeRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function githubCommand(integration: AgentIntegrationRow): string {
+  const command = String(integration.config.command || "gh").trim();
+  if (!command || /[;&|`$<>]/.test(command)) {
+    throw new Error("gh command must be a binary/path, not a shell expression");
+  }
+  return command;
+}
+
+function githubHostname(integration: AgentIntegrationRow): string {
+  const hostname = String(integration.config.hostname || "github.com").trim();
+  if (!hostname || /[\s/\\]/.test(hostname)) {
+    throw new Error("GitHub hostname must be a host name, not a URL");
+  }
+  return hostname;
 }
 
 function normalizeLarkCliArgs(args: Record<string, any>): Record<string, any> {

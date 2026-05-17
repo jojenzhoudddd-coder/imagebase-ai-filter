@@ -1,4 +1,5 @@
 import { getAgentIntegration } from "./integrationStore.js";
+import { pollGithubAuth, startGithubAuth } from "./githubAuthRuntime.js";
 import { pollLarkAuth, startLarkAuth } from "./larkAuthRuntime.js";
 
 export interface StartIntegrationAuthOptions {
@@ -30,6 +31,12 @@ export async function startIntegrationAuth(
       scope: opts?.scope,
     });
   }
+  if (integration.providerKey === "github" && integration.transport === "cli") {
+    return startGithubAuth(integration.id, {
+      requireAgentId: opts?.requireAgentId,
+      scope: opts?.scope,
+    });
+  }
   return unsupportedAuthAdapter({
     integrationId: integration.id,
     providerKey: integration.providerKey,
@@ -53,6 +60,12 @@ export async function pollIntegrationAuth(
         integrationId: integration.id,
       });
     }
+    if (integration.providerKey === "github" && integration.transport === "cli") {
+      return pollGithubAuth(authSessionId, {
+        requireAgentId: opts?.requireAgentId,
+        integrationId: integration.id,
+      });
+    }
     return unsupportedAuthAdapter({
       integrationId: integration.id,
       providerKey: integration.providerKey,
@@ -63,6 +76,11 @@ export async function pollIntegrationAuth(
 
   if (authSessionId.startsWith("las_")) {
     return pollLarkAuth(authSessionId, {
+      requireAgentId: opts?.requireAgentId,
+    });
+  }
+  if (authSessionId.startsWith("gas_")) {
+    return pollGithubAuth(authSessionId, {
       requireAgentId: opts?.requireAgentId,
     });
   }

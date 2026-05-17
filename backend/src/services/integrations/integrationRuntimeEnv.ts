@@ -49,6 +49,7 @@ export async function resolveIntegrationRuntimeEnv(
     ...credentials,
     ...resolveEnvMap(integration.config.envMap, credentials),
   };
+  applyProviderEnvDefaults(integration, runtimeEnv, sandboxRoot);
   if (opts?.includeProcessEnv) {
     Object.assign(runtimeEnv, toStringMap(process.env), runtimeEnv);
   }
@@ -67,6 +68,28 @@ export async function resolveIntegrationRuntimeEnv(
     credentials,
     mutexKey: `${integration.providerKey}:${integration.agentId}:${integration.id}`,
   };
+}
+
+function applyProviderEnvDefaults(
+  integration: AgentIntegrationRow,
+  runtimeEnv: Record<string, string>,
+  sandboxRoot: string,
+): void {
+  if (integration.providerKey !== "github") return;
+  runtimeEnv.GH_CONFIG_DIR ||= path.join(sandboxRoot, ".config", "gh");
+  runtimeEnv.GH_PROMPT_DISABLED ||= "1";
+  if (runtimeEnv.GITHUB_TOKEN && !runtimeEnv.GH_TOKEN) {
+    runtimeEnv.GH_TOKEN = runtimeEnv.GITHUB_TOKEN;
+  }
+  if (runtimeEnv.GH_TOKEN && !runtimeEnv.GITHUB_TOKEN) {
+    runtimeEnv.GITHUB_TOKEN = runtimeEnv.GH_TOKEN;
+  }
+  const hostname = typeof integration.config.hostname === "string" && integration.config.hostname.trim()
+    ? integration.config.hostname.trim()
+    : "";
+  if (hostname && hostname !== "github.com" && !runtimeEnv.GH_HOST) {
+    runtimeEnv.GH_HOST = hostname;
+  }
 }
 
 export async function withIntegrationMutex<T>(

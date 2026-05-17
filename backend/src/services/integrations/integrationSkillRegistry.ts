@@ -2,6 +2,8 @@ import type { SkillDefinition } from "../../../mcp-server/src/skills/types.js";
 import type { ToolDefinition } from "../../../mcp-server/src/tools/tableTools.js";
 import { callIntegrationTool } from "./integrationRuntime.js";
 import { listEnabledIntegrations } from "./integrationStore.js";
+import { buildGithubCliPromptFragment } from "./githubCliGuide.js";
+import { normalizeGithubToolResult } from "./githubResultNormalizer.js";
 import { buildLarkCliPromptFragment } from "./larkCliGuide.js";
 import { normalizeLarkToolResult } from "./larkResultNormalizer.js";
 import { getIntegrationPreset } from "./providerCatalog.js";
@@ -35,7 +37,7 @@ export function toIntegrationSkillDefinition(integration: AgentIntegrationRow): 
     ],
     tools,
     promptFragment: buildPromptFragment(integration),
-    evictionTurns: integration.providerKey === "lark" ? 1000 : 20,
+    evictionTurns: integration.providerKey === "lark" || integration.providerKey === "github" ? 1000 : 20,
   };
 }
 
@@ -74,9 +76,7 @@ function buildIntegrationTool(
       );
       const ok = !(result && typeof result === "object" && !Array.isArray(result) &&
         (result as Record<string, unknown>).ok === false);
-      const display = integration.providerKey === "lark"
-        ? normalizeLarkToolResult(result)
-        : null;
+      const display = normalizeIntegrationResult(integration.providerKey, result);
       return JSON.stringify({
         ok,
         integrationId: integration.id,
@@ -87,6 +87,12 @@ function buildIntegrationTool(
       });
     },
   };
+}
+
+function normalizeIntegrationResult(providerKey: string, result: unknown): unknown {
+  if (providerKey === "lark") return normalizeLarkToolResult(result);
+  if (providerKey === "github") return normalizeGithubToolResult(result);
+  return null;
 }
 
 function integrationToolName(integrationId: string, manifestName: string): string {
@@ -117,6 +123,13 @@ function buildPromptFragment(integration: AgentIntegrationRow): string {
       buildLarkCliPromptFragment(),
       "飞书日程创建必须优先使用 lark_calendar_create_event，并传 ISO-8601 时间（例如 2026-05-18T17:00:00+08:00）。不要自己计算 Unix timestamp；相对日期必须按系统上下文里的当前用户设置时区解析。",
       "飞书文档、搜索、读取类调用成功后，必须把工具返回的命中结果整理给用户（至少包含标题/名称、类型、链接或标识、摘要或关键字段）；不要只说“查询成功”或“执行完成”。如果结果为空，要明确说没有找到。",
+    );
+  }
+  if (integration.providerKey === "github") {
+    lines.push(
+      buildGithubCliPromptFragment(),
+      "GitHub 查询、搜索、列表类调用成功后，必须把工具返回的命中结果整理给用户（至少包含 repo/name 或 #number/title、state、author/owner、updatedAt、URL）；不要只说“查询成功”或“执行完成”。如果结果为空，要明确说没有找到。",
+      "GitHub 认证失败时优先走 start_integration_auth / poll_integration_auth；若用户或系统已配置 GH_TOKEN/GITHUB_TOKEN，sandbox 会自动映射给 gh CLI。",
     );
   }
   return [
