@@ -90,7 +90,7 @@ export const integrationTools: ToolDefinition[] = [
   {
     name: "create_integration",
     description:
-      "安装一个新的第三方 Integration。支持 providerKey=github/lark/figma/custom-cli，transport=mcp-stdio/mcp-http/cli。可传 config、toolManifest 和 credentials。credentials 会加密存储且不会回显。",
+      "安装或配置第三方 Integration。官方 provider（github/lark/figma）会复用现有系统卡，不创建重复卡；custom-cli 会创建新的自定义卡。可传 config、toolManifest 和 credentials。credentials 会加密存储且不会回显。",
     inputSchema: {
       type: "object",
       properties: {
@@ -168,7 +168,7 @@ export const integrationTools: ToolDefinition[] = [
     name: "delete_integration",
     danger: true,
     description:
-      "⚠️ 删除一个 Integration 及其加密凭据。不可撤销。只是临时停用时请用 update_integration({enabled:false})。",
+      "⚠️ 删除或断开一个 Integration。官方 provider（GitHub/Lark/Figma）只会清空配置和凭据、禁用并保留系统卡；custom-cli 会删除卡片及其加密凭据。",
     inputSchema: {
       type: "object",
       properties: {
@@ -184,14 +184,20 @@ export const integrationTools: ToolDefinition[] = [
         return confirmationRequired(
           "delete_integration",
           { integrationId, agentId: args.agentId },
-          `即将删除第三方集成 ${integrationId} 及其加密凭据，此操作不可撤销。`,
+          `即将处理集成 ${integrationId}：官方集成会清空配置并保留卡片，自定义集成会删除卡片及其加密凭据。`,
         );
       }
       try {
-        const ok = await deleteAgentIntegration(integrationId, {
+        const result = await deleteAgentIntegration(integrationId, {
           requireAgentId: resolveAgentId(args, ctx),
         });
-        return JSON.stringify({ ok, deletedIntegrationId: integrationId });
+        return JSON.stringify({
+          ok: result.ok,
+          action: result.action,
+          integration: result.integration,
+          deletedIntegrationId: result.action === "deleted" ? integrationId : undefined,
+          resetIntegrationId: result.action === "reset" ? integrationId : undefined,
+        });
       } catch (err) {
         return errJson(err);
       }

@@ -1,7 +1,14 @@
 import pg from "pg";
+import fsp from "fs/promises";
+import os from "os";
+import path from "path";
 import { generateId } from "../idGenerator.js";
 import { encryptSecret, previewSecret } from "./secretCrypto.js";
-import { getIntegrationPreset, listSystemIntegrationPresets } from "./providerCatalog.js";
+import {
+  getIntegrationPreset,
+  isSystemIntegrationProvider,
+  listSystemIntegrationPresets,
+} from "./providerCatalog.js";
 import type {
   AgentIntegrationRow,
   IntegrationStatus,
@@ -51,6 +58,12 @@ export interface UpdateIntegrationInput {
   credentials?: Record<string, string>;
 }
 
+export interface DeleteIntegrationResult {
+  ok: boolean;
+  action: "deleted" | "reset" | "not_found";
+  integration?: AgentIntegrationRow;
+}
+
 const VALID_TRANSPORTS = new Set<IntegrationTransport>(["mcp-stdio", "mcp-http", "cli"]);
 const VALID_STATUS = new Set<IntegrationStatus>(["not_configured", "healthy", "error", "disabled"]);
 
@@ -82,7 +95,10 @@ export async function listEnabledIntegrations(agentId: string): Promise<AgentInt
 }
 
 export async function ensureSystemIntegrations(agentId: string): Promise<void> {
-  const existing = await listAgentIntegrations(agentId);
+  let existing = await listAgentIntegrations(agentId);
+  if (await deleteDuplicateSystemIntegrations(existing)) {
+    existing = await listAgentIntegrations(agentId);
+  }
   for (const preset of listSystemIntegrationPresets()) {
     if (hasSystemPresetInstance(existing, preset.key, preset.recommendedTransport)) continue;
     const displayName = preset.key === "lark" && existing.some((integration) => integration.providerKey === "lark")
@@ -118,6 +134,75 @@ function hasSystemPresetInstance(
     );
   }
   return integrations.some((integration) => integration.providerKey === providerKey);
+}
+
+async function deleteDuplicateSystemIntegrations(
+  integrations: AgentIntegrationRow[],
+): Promise<boolean> {
+  let changed = false;
+  for (const preset of listSystemIntegrationPresets()) {
+    const matches = integrations.filter((integration) => {
+      if (integration.providerKey !== preset.key) return false;
+      if (preset.key === "lark") return integration.transport === preset.recommendedTransport;
+      return true;
+    });
+    if (matches.length <= 1) continue;
+
+    const keep = [...matches].sort(compareSystemIntegrationKeepPriority)[0];
+    const duplicateIds = matches
+      .filter((integration) => integration.id !== keep.id)
+      .map((integration) => integration.id);
+    if (duplicateIds.length === 0) continue;
+    await pool.query(
+      `DELETE FROM agent_integrations WHERE id = ANY($1::text[])`,
+      [duplicateIds],
+    );
+    await Promise.all(
+      matches
+        .filter((integration) => integration.id !== keep.id)
+        .map((integration) => deleteIntegrationSandbox(integration)),
+    );
+    changed = true;
+  }
+  return changed;
+}
+
+function compareSystemIntegrationKeepPriority(
+  a: AgentIntegrationRow,
+  b: AgentIntegrationRow,
+): number {
+  const scoreDiff = systemIntegrationScore(b) - systemIntegrationScore(a);
+  if (scoreDiff !== 0) return scoreDiff;
+  return timestampMs(b.updatedAt ?? b.createdAt) - timestampMs(a.updatedAt ?? a.createdAt);
+}
+
+function systemIntegrationScore(integration: AgentIntegrationRow): number {
+  return (integration.enabled ? 100 : 0)
+    + (integration.status === "healthy" ? 80 : 0)
+    + (integration.status === "error" ? 30 : 0)
+    + (integration.credentials.length > 0 ? 20 : 0)
+    + (integration.lastUsedAt ? 10 : 0);
+}
+
+function timestampMs(value: Date | string | null | undefined): number {
+  if (!value) return 0;
+  const ms = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+async function findReusableSystemIntegration(
+  agentId: string,
+  providerKey: string,
+  transport: IntegrationTransport,
+): Promise<AgentIntegrationRow | null> {
+  const integrations = await listAgentIntegrations(agentId);
+  const candidates = integrations.filter((integration) => {
+    if (integration.providerKey !== providerKey) return false;
+    if (providerKey === "lark") return integration.transport === transport;
+    return true;
+  });
+  if (candidates.length === 0) return null;
+  return [...candidates].sort(compareSystemIntegrationKeepPriority)[0];
 }
 
 export async function getAgentIntegration(
@@ -164,6 +249,53 @@ export async function createAgentIntegration(
     input.toolManifest ?? preset?.defaultTools ?? [],
   );
   const scopes = normalizeStringArray(input.scopes ?? preset?.scopes ?? []);
+  const reusableSystemIntegration = isSystemIntegrationProvider(providerKey)
+    ? await findReusableSystemIntegration(agentId, providerKey, transport)
+    : null;
+
+  if (reusableSystemIntegration) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `
+          UPDATE agent_integrations
+          SET "displayName" = $2,
+              transport = $3,
+              enabled = $4,
+              status = 'not_configured',
+              "lastError" = NULL,
+              "configJson" = $5::jsonb,
+              "toolManifest" = $6::jsonb,
+              scopes = $7::text[],
+              "updatedAt" = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `,
+        [
+          reusableSystemIntegration.id,
+          displayName,
+          transport,
+          input.enabled !== false,
+          JSON.stringify(config),
+          JSON.stringify(toolManifest),
+          scopes,
+        ],
+      );
+      if (input.credentials) {
+        await replaceCredentials(reusableSystemIntegration.id, input.credentials, client);
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
+    const updated = await getAgentIntegration(reusableSystemIntegration.id);
+    if (!updated) throw new IntegrationNotFoundError(reusableSystemIntegration.id);
+    return updated;
+  }
+
   const id = await generateId("integration", async (candidate) => {
     const r = await pool.query("SELECT 1 FROM agent_integrations WHERE id = $1", [candidate]);
     return (r.rowCount ?? 0) > 0;
@@ -259,14 +391,71 @@ export async function updateAgentIntegration(
   return updated;
 }
 
+async function resetSystemIntegration(
+  integration: AgentIntegrationRow,
+): Promise<AgentIntegrationRow> {
+  const preset = getIntegrationPreset(integration.providerKey);
+  const displayName = preset?.displayName ?? integration.displayName;
+  const config = normalizeObject(preset?.defaultConfig ?? {}, "config");
+  const toolManifest = validateToolManifest(preset?.defaultTools ?? []);
+  const scopes = normalizeStringArray(preset?.scopes ?? []);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `
+        UPDATE agent_integrations
+        SET "displayName" = $2,
+            transport = $3,
+            enabled = false,
+            status = 'not_configured',
+            "lastError" = NULL,
+            "configJson" = $4::jsonb,
+            "toolManifest" = $5::jsonb,
+            scopes = $6::text[],
+            "lastHealthAt" = NULL,
+            "lastUsedAt" = NULL,
+            "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = $1
+      `,
+      [
+        integration.id,
+        displayName,
+        preset?.recommendedTransport ?? integration.transport,
+        JSON.stringify(config),
+        JSON.stringify(toolManifest),
+        scopes,
+      ],
+    );
+    await deleteCredentials(integration.id, client);
+    await deleteIntegrationSandbox(integration);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+  const reset = await getAgentIntegration(integration.id);
+  if (!reset) throw new IntegrationNotFoundError(integration.id);
+  return reset;
+}
+
 export async function deleteAgentIntegration(
   id: string,
   opts?: { requireAgentId?: string },
-): Promise<boolean> {
+): Promise<DeleteIntegrationResult> {
   const existing = await getAgentIntegration(id, { requireAgentId: opts?.requireAgentId });
-  if (!existing) return false;
+  if (!existing) return { ok: false, action: "not_found" };
+  if (isSystemIntegrationProvider(existing.providerKey)) {
+    const integration = await resetSystemIntegration(existing);
+    return { ok: true, action: "reset", integration };
+  }
   const r = await pool.query("DELETE FROM agent_integrations WHERE id = $1", [id]);
-  return (r.rowCount ?? 0) > 0;
+  if ((r.rowCount ?? 0) > 0) {
+    await deleteIntegrationSandbox(existing);
+  }
+  return { ok: (r.rowCount ?? 0) > 0, action: "deleted" };
 }
 
 export async function markIntegrationHealth(
@@ -334,6 +523,33 @@ async function replaceCredentials(
       [id, integrationId, name, encryptSecret(rawValue), previewSecret(rawValue)],
     );
   }
+}
+
+async function deleteCredentials(
+  integrationId: string,
+  executor: QueryExecutor = pool,
+): Promise<void> {
+  await executor.query(
+    `DELETE FROM agent_integration_credentials WHERE "integrationId" = $1`,
+    [integrationId],
+  );
+}
+
+async function deleteIntegrationSandbox(integration: AgentIntegrationRow): Promise<void> {
+  const root = process.env.INTEGRATION_SANDBOX_ROOT ||
+    path.join(os.homedir(), ".imagebase", "integration-sandboxes");
+  const sandboxRoot = path.join(
+    root,
+    safeSandboxSegment(integration.providerKey),
+    safeSandboxSegment(integration.agentId),
+    safeSandboxSegment(integration.id),
+  );
+  await fsp.rm(sandboxRoot, { recursive: true, force: true });
+}
+
+function safeSandboxSegment(value: string): string {
+  const out = value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+  return out || "unknown";
 }
 
 function rowToIntegration(row: any): AgentIntegrationRow {

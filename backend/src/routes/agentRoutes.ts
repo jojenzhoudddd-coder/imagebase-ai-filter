@@ -883,8 +883,8 @@ router.post("/:agentId/integrations/:integrationId/test", async (req: Request, r
 router.delete("/:agentId/integrations/:integrationId", async (req: Request, res: Response) => {
   try {
     const { agentId, integrationId } = req.params;
-    const ok = await deleteAgentIntegration(integrationId, { requireAgentId: agentId });
-    if (!ok) {
+    const result = await deleteAgentIntegration(integrationId, { requireAgentId: agentId });
+    if (!result.ok) {
       res.status(404).json({ error: "integration not found" });
       return;
     }
