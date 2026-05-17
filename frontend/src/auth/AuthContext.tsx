@@ -40,8 +40,10 @@ export interface UserPreferences {
   theme?: "light" | "dark" | "system";
   locale?: "zh" | "en";
   deleteProtection?: boolean;
-  /** Magic Canvas 布局快照(blocks + layout 树 + per-block state) */
+  /** Magic Canvas 布局快照(blocks + layout 树 + per-block state) — legacy global */
   canvasLayout?: unknown;
+  /** Per-workspace canvas layouts: { [workspaceId]: CanvasState } */
+  canvasLayouts?: Record<string, unknown>;
   /** 预留:Magic Canvas 布局预设(将来支持) */
   canvasPresets?: unknown;
   /** IANA timezone identifier, e.g. "Asia/Shanghai", "America/New_York" */

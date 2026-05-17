@@ -2200,7 +2200,9 @@ export default function App() {
     <ArtifactViewProvider value={{ render: renderArtifactView }}>
     <ChatBlockProvider value={{ render: renderChatBlock }}>
     <CanvasProvider
-      initial={(authPreferences?.canvasLayout as CanvasState | null | undefined) ?? null}
+      key={WORKSPACE_ID}
+      workspaceId={WORKSPACE_ID}
+      initial={((authPreferences?.canvasLayouts as Record<string, unknown> | undefined)?.[WORKSPACE_ID] as CanvasState | null | undefined) ?? null}
       authPreferencesLoaded={authPreferences !== undefined}
     >
     <div className="app">

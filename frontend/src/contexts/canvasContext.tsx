@@ -69,9 +69,10 @@ function cryptoId(): string {
 
 // ─── Persistence ────────────────────────────────────────────────────────
 
-function readLocalCache(): CanvasState | null {
+function readLocalCache(workspaceId?: string): CanvasState | null {
   try {
-    const raw = localStorage.getItem("canvas_layout_v1");
+    const key = workspaceId ? `canvas_layout_v1_${workspaceId}` : "canvas_layout_v1";
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     return JSON.parse(raw) as CanvasState;
   } catch {
@@ -79,22 +80,33 @@ function readLocalCache(): CanvasState | null {
   }
 }
 
-function writeLocalCache(state: CanvasState): void {
+function writeLocalCache(state: CanvasState, workspaceId?: string): void {
   try {
-    localStorage.setItem("canvas_layout_v1", JSON.stringify(state));
+    const key = workspaceId ? `canvas_layout_v1_${workspaceId}` : "canvas_layout_v1";
+    localStorage.setItem(key, JSON.stringify(state));
   } catch {
     /* ignore */
   }
 }
 
-async function persistToBackend(state: CanvasState): Promise<void> {
+async function persistToBackend(state: CanvasState, workspaceId?: string): Promise<void> {
   try {
-    await fetch("/api/auth/preferences", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ canvasLayout: state }),
-    });
+    // Store per-workspace: { canvasLayouts: { [wsId]: state } }
+    if (workspaceId) {
+      await fetch("/api/auth/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ canvasLayouts: { [workspaceId]: state } }),
+      });
+    } else {
+      await fetch("/api/auth/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ canvasLayout: state }),
+      });
+    }
   } catch {
     /* fallback: localStorage only */
   }
@@ -160,29 +172,32 @@ const CanvasCtx = createContext<CanvasContextValue | null>(null);
 export function CanvasProvider({
   initial,
   authPreferencesLoaded,
+  workspaceId,
   children,
 }: {
   initial?: CanvasState | null;
   /** V2.9 #13: 显式告知"/me 已经返回",这样即使 initial=null(用户没保存过)
    *  也能进入 hydrated 状态,后续状态变更才会自动持久化。 */
   authPreferencesLoaded?: boolean;
+  /** Per-workspace scoped persistence */
+  workspaceId?: string;
   children: ReactNode;
 }) {
-  const [state, setState] = useState<CanvasState>(() => initial ?? readLocalCache() ?? defaultLayout());
+  const [state, setState] = useState<CanvasState>(() => initial ?? readLocalCache(workspaceId) ?? defaultLayout());
 
   // 防抖保存
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleSave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      writeLocalCache(state);
-      void persistToBackend(state);
+      writeLocalCache(state, workspaceId);
+      void persistToBackend(state, workspaceId);
     }, 800);
-  }, [state]);
+  }, [state, workspaceId]);
 
   useEffect(() => {
-    writeLocalCache(state);
-  }, [state]);
+    writeLocalCache(state, workspaceId);
+  }, [state, workspaceId]);
 
   // V2.9 #13: 任何 state 变化都自动 scheduleSave。之前只在 BlockShell 拖动落
   // 位时手动调,导致 sidebar 宽度 / sidebar 折叠 / activeItemType 切换等
@@ -193,7 +208,7 @@ export function CanvasProvider({
     if (!hydratedRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      void persistToBackend(state);
+      void persistToBackend(state, workspaceId);
     }, 800);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
