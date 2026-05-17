@@ -115,8 +115,10 @@ function topicGuidance(topic: LarkGuideTopic, operation: string): string[] {
     return [
       ...shared,
       "For calendar writes in this app, prefer the dedicated lark_calendar_create_event tool so time conversion and idempotency stay centralized.",
+      "For calendar edits, use lark_calendar_update_event. For calendar deletion, use lark_calendar_delete_event; it must go through delete confirmation.",
+      "Use raw lark_api_post only for calendar endpoints not covered by dedicated tools. It supports method POST/PATCH/PUT/DELETE.",
       "Use ISO-8601 datetime with timezone. Resolve relative dates from the user timezone in system context.",
-      "After creation, return title, start/end time, event_id, and app_link if present.",
+      "After creation/update/deletion, return title or event_id, calendar_id, changed time fields, and app_link if present.",
     ];
   }
   if (topic === "schema") {

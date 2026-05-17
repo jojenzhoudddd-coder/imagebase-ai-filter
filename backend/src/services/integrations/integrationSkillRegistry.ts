@@ -8,6 +8,7 @@ import { buildLarkCliPromptFragment } from "./larkCliGuide.js";
 import { normalizeLarkToolResult } from "./larkResultNormalizer.js";
 import { getIntegrationPreset } from "./providerCatalog.js";
 import type { AgentIntegrationRow, IntegrationToolManifest } from "./types.js";
+import { extractToolOutputError } from "../errorLogService.js";
 
 export async function loadIntegrationSkills(agentId: string): Promise<SkillDefinition[]> {
   if (!agentId) return [];
@@ -64,7 +65,10 @@ function buildIntegrationTool(
       const effectiveArgs = { ...args };
       if (
         integration.providerKey === "lark" &&
-        manifest.name === "lark_calendar_create_event" &&
+        (
+          manifest.name === "lark_calendar_create_event" ||
+          manifest.name === "lark_calendar_update_event"
+        ) &&
         typeof ctx?.timeZone === "string" &&
         (!effectiveArgs.timezone || typeof effectiveArgs.timezone !== "string")
       ) {
@@ -76,8 +80,8 @@ function buildIntegrationTool(
         effectiveArgs,
         { requireAgentId: ctx?.agentId },
       );
-      const ok = !(result && typeof result === "object" && !Array.isArray(result) &&
-        (result as Record<string, unknown>).ok === false);
+      const reportedError = extractToolOutputError(result);
+      const ok = !reportedError;
       const display = normalizeIntegrationResult(integration.providerKey, result);
       return JSON.stringify({
         ok,
@@ -85,6 +89,7 @@ function buildIntegrationTool(
         providerKey: integration.providerKey,
         tool: manifest.name,
         result,
+        ...(reportedError ? { error: reportedError } : {}),
         ...(display ? { display } : {}),
       });
     },
@@ -95,6 +100,12 @@ function buildRequiresConfirmation(
   integration: AgentIntegrationRow,
   manifest: IntegrationToolManifest,
 ): ToolDefinition["requiresConfirmation"] | undefined {
+  if (integration.providerKey === "lark" && manifest.name === "lark_calendar_delete_event") {
+    return () => true;
+  }
+  if (integration.providerKey === "lark" && manifest.name === "lark_api_post") {
+    return isDeleteLikeLarkApiWriteArgs;
+  }
   if (integration.providerKey === "lark" && manifest.name === "lark_cli") {
     return isDeleteLikeLarkCliArgs;
   }
@@ -108,6 +119,12 @@ export function isDeleteLikeLarkCliArgs(args: Record<string, any>): boolean {
   if (!Array.isArray(argv)) return false;
   if (!argv.every((item) => typeof item === "string")) return false;
   return argv.some((item) => LARK_DELETE_LIKE_RE.test(item));
+}
+
+export function isDeleteLikeLarkApiWriteArgs(args: Record<string, any>): boolean {
+  const method = typeof args?.method === "string" ? args.method.trim().toUpperCase() : "";
+  const path = typeof args?.path === "string" ? args.path : "";
+  return method === "DELETE" || LARK_DELETE_LIKE_RE.test(path);
 }
 
 function normalizeIntegrationResult(providerKey: string, result: unknown): unknown {
@@ -142,7 +159,7 @@ function buildPromptFragment(integration: AgentIntegrationRow): string {
   if (integration.providerKey === "lark") {
     lines.push(
       buildLarkCliPromptFragment(),
-      "飞书日程创建必须优先使用 lark_calendar_create_event，并传 ISO-8601 时间（例如 2026-05-18T17:00:00+08:00）。不要自己计算 Unix timestamp；相对日期必须按系统上下文里的当前用户设置时区解析。",
+      "飞书日程创建必须优先使用 lark_calendar_create_event；修改必须优先使用 lark_calendar_update_event；删除必须使用 lark_calendar_delete_event 并经过确认。时间参数优先传 ISO-8601（例如 2026-05-18T17:00:00+08:00）；如果只传本地时间，后端会按当前 ToolContext.timeZone 转换。不要自己计算 Unix timestamp；相对日期必须按系统上下文里的当前用户设置时区解析。",
       "飞书文档、搜索、读取类调用成功后，必须把工具返回的命中结果整理给用户（至少包含标题/名称、类型、链接或标识、摘要或关键字段）；不要只说“查询成功”或“执行完成”。如果结果为空，要明确说没有找到。",
     );
   }
