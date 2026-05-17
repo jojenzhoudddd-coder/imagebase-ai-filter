@@ -823,6 +823,29 @@ function buildRuntimeLayer(
   return lines.join("\n");
 }
 
+function buildCurrentTimeLayer(): string {
+  const now = new Date();
+  const dateTime = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(now);
+  const weekday = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    weekday: "long",
+  }).format(now);
+  return [
+    "# 当前日期时间",
+    `当前时间（Asia/Shanghai）：${dateTime.replace(" ", "T")}+08:00，${weekday}。`,
+    "处理“今天/明天/周一/下周”等相对日期时必须以这一行作为基准；需要第三方 API 时间戳时优先让专用工具或后端转换，不要心算 Unix timestamp。",
+  ].join("\n");
+}
+
 // ─── Analyst handles (context injection) ────────────────────────────────
 //
 // Cross-turn result references. tool_result payloads aren't replayed to the
@@ -1228,6 +1251,7 @@ export function buildSystemText(
       buildRuntimeLayer(layers.runtime.model, layers.runtime.requestedId, layers.runtime.usedFallback)
     );
   }
+  layer3Parts.push(buildCurrentTimeLayer());
   layer3Parts.push(layers.snapshot);
   if (layers.recalled) layer3Parts.push(layers.recalled);
   if (layers.recalledKnowledge) layer3Parts.push(layers.recalledKnowledge);
@@ -3681,6 +3705,10 @@ async function* resumeAfterConfirmImpl(
     output = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
   }
   yield { event: "tool_result", data: { callId, tool: pending.tool, success, result: output } };
+  const resumeMessage = buildConfirmedToolMessage(pending.tool, output, success);
+  if (resumeMessage) {
+    yield { event: "message", data: { text: resumeMessage, delta: false } };
+  }
   yield { event: "done", data: {} };
   // Persist the confirmed tool's final state as its own short assistant
   // turn, so the DB history reflects the resume. Without this, nothing the
@@ -3689,7 +3717,7 @@ async function* resumeAfterConfirmImpl(
   try {
     await convStore.appendMessage(ctx.conversationId, {
       role: "assistant",
-      content: "",
+      content: resumeMessage,
       toolCalls: [
         {
           callId,
@@ -3711,6 +3739,82 @@ async function* resumeAfterConfirmImpl(
       error: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+function buildConfirmedToolMessage(tool: string, output: string, success: boolean): string {
+  if (!success) {
+    return `执行失败：${extractToolError(output)}`;
+  }
+  const parsed = parseJsonObject(output);
+  const providerKey = typeof parsed?.providerKey === "string" ? parsed.providerKey : "";
+  const integrationTool = typeof parsed?.tool === "string" ? parsed.tool : tool;
+  const result = parsed?.result;
+  if (providerKey === "lark" && integrationTool === "lark_calendar_create_event") {
+    const event = readNested(result, ["data", "event"]);
+    const normalized = readNested(result, ["normalized"]);
+    const summary = readString(event, "summary") || readString(normalized, "summary") || "未命名日程";
+    const start = readString(normalized, "startTime") ||
+      readString(readNested(event, ["start_time"]), "timestamp");
+    const end = readString(normalized, "endTime") ||
+      readString(readNested(event, ["end_time"]), "timestamp");
+    const eventId = readString(event, "event_id");
+    const link = readString(event, "app_link");
+    const lines = [`已创建飞书日程：${summary}`];
+    if (start && end) lines.push(`- 时间：${start} - ${end}`);
+    if (eventId) lines.push(`- event_id：${eventId}`);
+    if (link) lines.push(`- 链接：${link}`);
+    return lines.join("\n");
+  }
+  if (providerKey === "lark" && integrationTool === "lark_api_post") {
+    const event = readNested(result, ["data", "event"]);
+    if (event && typeof event === "object") {
+      const summary = readString(event, "summary") || "未命名日程";
+      const eventId = readString(event, "event_id");
+      const link = readString(event, "app_link");
+      const lines = [`已执行成功。检测到返回的是飞书日程：${summary}`];
+      if (eventId) lines.push(`- event_id：${eventId}`);
+      if (link) lines.push(`- 链接：${link}`);
+      return lines.join("\n");
+    }
+  }
+  return "已执行完成。";
+}
+
+function extractToolError(output: string): string {
+  const parsed = parseJsonObject(output);
+  const candidates = [
+    readString(parsed, "error"),
+    readString(readNested(parsed, ["result"]), "error"),
+    readString(readNested(parsed, ["result", "error"]), "message"),
+    readString(readNested(parsed, ["result"]), "msg"),
+  ].filter(Boolean);
+  return candidates[0] || output.slice(0, 500) || "unknown error";
+}
+
+function parseJsonObject(text: string): Record<string, any> | null {
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, any>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readNested(obj: unknown, path: string[]): any {
+  let cur = obj;
+  for (const key of path) {
+    if (!cur || typeof cur !== "object" || Array.isArray(cur)) return undefined;
+    cur = (cur as Record<string, unknown>)[key];
+  }
+  return cur;
+}
+
+function readString(obj: unknown, key: string): string | null {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+  const value = (obj as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 // Re-export tool metadata for debugging/introspection endpoints.

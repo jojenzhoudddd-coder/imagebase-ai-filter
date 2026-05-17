@@ -183,7 +183,7 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
       {
         name: "lark_api_post",
         description:
-          "Call a Lark Open Platform POST endpoint through lark-cli. This may write third-party data and requires confirmation.",
+          "Call a Lark Open Platform POST endpoint through lark-cli. This may write third-party data and requires confirmation. For calendar event creation, prefer lark_calendar_create_event so the backend converts time safely.",
         mode: "cli",
         readOnly: false,
         danger: true,
@@ -197,6 +197,64 @@ export const INTEGRATION_PROVIDER_PRESETS: IntegrationProviderPreset[] = [
             data: { type: "object", description: "JSON request body." },
           },
           required: ["path", "data"],
+        },
+      },
+      {
+        name: "lark_calendar_create_event",
+        description:
+          "Create a Lark/Feishu calendar event. Prefer this over lark_api_post for schedules: pass ISO-8601 startTime/endTime, never hand-write Unix timestamps. If endTime is omitted, durationMinutes defaults to 60. Relative dates must be resolved from the current Asia/Shanghai date in the system context.",
+        mode: "cli",
+        readOnly: false,
+        danger: true,
+        output: "json",
+        args: [],
+        inputSchema: {
+          type: "object",
+          properties: {
+            summary: { type: "string", description: "Event title, e.g. LR - 字段搜索." },
+            startTime: {
+              type: "string",
+              description: "ISO datetime with timezone, e.g. 2026-05-18T17:00:00+08:00. Do not pass Unix timestamps.",
+            },
+            endTime: {
+              type: "string",
+              description: "Optional ISO datetime with timezone. If omitted, durationMinutes is used.",
+            },
+            durationMinutes: {
+              type: "number",
+              description: "Optional duration when endTime is omitted. Default 60.",
+            },
+            timezone: {
+              type: "string",
+              description: "IANA timezone. Default Asia/Shanghai.",
+            },
+            calendarId: {
+              type: "string",
+              description: "Optional calendar_id. Omit to use the user's primary calendar.",
+            },
+            description: { type: "string", description: "Optional event description." },
+            location: {
+              type: "object",
+              description: "Optional event location, e.g. {name, address}.",
+            },
+            reminderMinutes: {
+              type: "number",
+              description: "Optional reminder offset in minutes before start, e.g. 15.",
+            },
+            videoMeeting: {
+              type: "boolean",
+              description: "Set false to create without a video meeting.",
+            },
+            idempotencyKey: {
+              type: "string",
+              description: "Optional explicit idempotency key. Normally omit; backend derives one from title/time/calendar.",
+            },
+            allowPast: {
+              type: "boolean",
+              description: "Only true when the user explicitly asks to create a past event.",
+            },
+          },
+          required: ["summary", "startTime"],
         },
       },
       {
