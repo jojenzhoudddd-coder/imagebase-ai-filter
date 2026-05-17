@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type ChangeEvent, type ReactNode } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, type ChangeEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useAuth, type AuthWorkspace } from "../../auth/AuthContext";
 import { useTranslation } from "../../i18n/index";
@@ -18,9 +18,45 @@ export default function WorkspaceDock({
   currentWorkspaceId,
   onSelectWorkspace,
 }: Props) {
-  const { workspaces, refresh } = useAuth();
+  const { workspaces, refresh, preferences, patchPreferences } = useAuth();
   const { t, locale } = useTranslation();
   const toast = useToast();
+
+  // ── Ordered workspaces (user preference) ──
+  const orderedWorkspaces = useMemo(() => {
+    const order = preferences?.workspaceOrder;
+    if (!order || !Array.isArray(order)) return workspaces;
+    const byId = new Map(workspaces.map((w) => [w.id, w]));
+    const sorted: typeof workspaces = [];
+    for (const id of order) {
+      const ws = byId.get(id);
+      if (ws) { sorted.push(ws); byId.delete(id); }
+    }
+    // Append any workspaces not in the order list (newly created)
+    for (const ws of byId.values()) sorted.push(ws);
+    return sorted;
+  }, [workspaces, preferences?.workspaceOrder]);
+
+  // ── Drag-to-reorder ──
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const handleDragStart = (idx: number) => setDragIdx(idx);
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (dragIdx !== null && idx !== dragIdx) setDragOverIdx(idx);
+  };
+  const handleDrop = (idx: number) => {
+    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setDragOverIdx(null); return; }
+    const reordered = [...orderedWorkspaces];
+    const [moved] = reordered.splice(dragIdx, 1);
+    reordered.splice(idx, 0, moved);
+    const newOrder = reordered.map((w) => w.id);
+    patchPreferences({ workspaceOrder: newOrder });
+    setDragIdx(null);
+    setDragOverIdx(null);
+  };
+  const handleDragEnd = () => { setDragIdx(null); setDragOverIdx(null); };
 
   // ── Context menu ──
   const [ctxMenu, setCtxMenu] = useState<{ wsId: string; x: number; y: number } | null>(null);
@@ -120,11 +156,13 @@ export default function WorkspaceDock({
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Delete failed");
       }
-      await refresh();
+      // Navigate to previous workspace in dock order (or next if deleting first)
       if (wsId === currentWorkspaceId) {
-        const remaining = workspaces.filter((w) => w.id !== wsId);
-        if (remaining.length > 0) onSelectWorkspace(remaining[0].id);
+        const idx = orderedWorkspaces.findIndex((w) => w.id === wsId);
+        const prev = idx > 0 ? orderedWorkspaces[idx - 1] : orderedWorkspaces[idx + 1];
+        if (prev) onSelectWorkspace(prev.id);
       }
+      await refresh();
       toast.success(t("dock.workspaceDeleted"));
     } catch (err: any) {
       toast.error(err?.message || t("dock.deleteFailed"));
@@ -138,17 +176,23 @@ export default function WorkspaceDock({
         <div className="dock-section">
           <span className="dock-section-label">{t("dock.sectionWork")}</span>
           <div className="dock-items">
-            {workspaces.map((ws) => (
+            {orderedWorkspaces.map((ws, i) => (
               <WorkspaceTile
                 key={ws.id}
                 workspace={ws}
                 active={ws.id === currentWorkspaceId}
+                dragging={dragIdx === i}
+                dragOver={dragOverIdx === i}
                 onClick={() => onSelectWorkspace(ws.id)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                   setCtxMenu({ wsId: ws.id, x: rect.right + 4, y: rect.top });
                 }}
+                onDragStart={() => handleDragStart(i)}
+                onDragOver={(e) => handleDragOver(e, i)}
+                onDrop={() => handleDrop(i)}
+                onDragEnd={handleDragEnd}
               />
             ))}
             <DockTip label={t("dock.addWorkspace")}>
@@ -237,20 +281,39 @@ export default function WorkspaceDock({
 function WorkspaceTile({
   workspace,
   active,
+  dragging,
+  dragOver,
   onClick,
   onContextMenu,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: {
   workspace: AuthWorkspace;
   active: boolean;
+  dragging?: boolean;
+  dragOver?: boolean;
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  onDragStart?: () => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: () => void;
+  onDragEnd?: () => void;
 }) {
   const initials = getInitials(workspace.name);
   const gradient = getGradientForId(workspace.id);
 
   return (
     <DockTip label={workspace.name}>
-      <div className="dock-tile-wrap">
+      <div
+        className={`dock-tile-wrap ${dragging ? "dock-tile-wrap--dragging" : ""} ${dragOver ? "dock-tile-wrap--dragover" : ""}`}
+        draggable
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onDragEnd={onDragEnd}
+      >
         {active && <div className="dock-tile-indicator" />}
         <button
           className={`dock-tile ${active ? "dock-tile--active" : ""}`}

@@ -203,6 +203,26 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.dock-tile-wrap--dragging {
+  opacity: 0.4;
+}
+
+.dock-tile-wrap--dragover {
+  transform: scale(0.9);
+}
+
+.dock-tile-wrap--dragover::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--primary, #1456F0);
 }
 
 /* Active indicator dot (left side, like macOS dock).

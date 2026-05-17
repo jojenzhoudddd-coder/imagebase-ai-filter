@@ -396,9 +396,10 @@ async function start() {
   await connectDB();
   console.log("Connected to PostgreSQL");
 
-  // Seed mock data only if the table doesn't exist yet
+  // Seed mock data only if the table AND its workspace exist
   const existing = await getTable(mockTable.id);
-  if (!existing) {
+  const defaultWs = await getWorkspace("ws000000000001");
+  if (!existing && defaultWs) {
     await loadTable(mockTable);
     console.log("Mock data seeded (first run)");
   } else {
