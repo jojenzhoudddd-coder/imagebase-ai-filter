@@ -183,7 +183,8 @@ export function CanvasProvider({
   workspaceId?: string;
   children: ReactNode;
 }) {
-  const [state, setState] = useState<CanvasState>(() => initial ?? readLocalCache(workspaceId) ?? defaultLayout());
+  // Prefer localStorage (always current within session) over server initial (stale after /me)
+  const [state, setState] = useState<CanvasState>(() => readLocalCache(workspaceId) ?? initial ?? defaultLayout());
 
   // 防抖保存
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
