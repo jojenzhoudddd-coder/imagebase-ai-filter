@@ -234,21 +234,25 @@ export function CanvasProvider({
 
   // hydrate from initial 仅一次。后续 authPreferences 因为别的字段(theme/locale)
   // 变化而 re-render 不会复原 canvas state(否则用户拖了 block,patch 主题就回原)。
+  // localStorage 优先: 如果 localStorage 已有该 workspace 的缓存,跳过 server hydrate,
+  // 避免 stale server initial 覆盖 localStorage 的最新 state。
+  const hadLocalCache = useRef(!!readLocalCache(workspaceId));
   const hydratedRef = useRef(false);
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     if (hydratedRef.current) return;
-    if (initial && initial.layout) {
+    if (hadLocalCache.current) {
+      // localStorage already had a fresh cache — use it, skip server initial
+      hydratedRef.current = true;
+      setHydrated(true);
+    } else if (initial && initial.layout) {
       setState(initial);
       hydratedRef.current = true;
       setHydrated(true);
     } else if (authPreferencesLoaded) {
-      // V2.9 #13: /me 已返回但用户没存过 canvasLayout → 视为 hydrate 完成,
-      // state 走默认(readLocalCache 或 defaultLayout)。后续变更需要持久化。
       hydratedRef.current = true;
       setHydrated(true);
     }
-    // 否则 initial 还在加载中,继续等待
   }, [initial, authPreferencesLoaded]);
 
   const visibleBlockIds = useMemo(() => collectLeaves(state.layout), [state.layout]);
