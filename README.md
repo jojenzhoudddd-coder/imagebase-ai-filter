@@ -34,8 +34,8 @@ Funature 覆盖三大板块：
 
 ```bash
 # 克隆仓库
-git clone https://github.com/jojenzhoudddd-coder/imagebase-ai-filter.git
-cd imagebase-ai-filter
+git clone https://github.com/jojenzhoudddd-coder/Funature.fun.git
+cd Funature.fun
 
 # 安装依赖
 npm run install:all
@@ -64,8 +64,8 @@ npm run start
 
 https://www.funature.fun
 
-> 说明：仓库、服务器目录、部分内部 SDK namespace 仍保留早期代号
-> `ai-filter` / `imagebase`，它们是兼容性标识，不代表当前产品名。
+> 说明：服务器目录、部分内部 SDK namespace 仍保留历史兼容命名，
+> 不代表当前产品名。
 
 ## 技术栈
 
