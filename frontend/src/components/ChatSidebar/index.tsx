@@ -1653,23 +1653,58 @@ export default function ChatSidebar({
     const convId = activeConv?.id;
     if (!convId) return;
     let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+    let reloadInFlight = false;
+    let reloadQueued = false;
+    let disposed = false;
+    let lastReloadAt = 0;
+    const minReloadIntervalMs = 500;
 
-    // forceReload:不看 streamingRef,无条件触发(给 V3.0 multi-conv 事件用)
-    const forceReload = () => {
-      if (reloadTimer) clearTimeout(reloadTimer);
-      reloadTimer = setTimeout(async () => {
-        try {
-          await hydrateLiveState(convId);
-        } catch {
-          // ignore — 下次事件还会触发
+    const runReload = async () => {
+      if (disposed) return;
+      if (reloadTimer) {
+        clearTimeout(reloadTimer);
+        reloadTimer = null;
+      }
+      if (reloadInFlight) {
+        reloadQueued = true;
+        return;
+      }
+      reloadInFlight = true;
+      lastReloadAt = Date.now();
+      try {
+        await hydrateLiveState(convId);
+      } catch {
+        // ignore — 下次事件还会触发
+      } finally {
+        reloadInFlight = false;
+        if (reloadQueued && !disposed) {
+          reloadQueued = false;
+          scheduleReload();
         }
-      }, 200);
+      }
+    };
+
+    // forceReload:不看 streamingRef,无条件触发。这里必须是 throttle,不能
+    // 是 debounce:切回后 token 事件很密时,debounce 会一直被重置,直到
+    // done 才 hydrate,用户看到的就是"结束时刷一下全出来"。
+    const scheduleReload = () => {
+      if (disposed) return;
+      if (reloadInFlight) {
+        reloadQueued = true;
+        return;
+      }
+      const wait = Math.max(0, minReloadIntervalMs - (Date.now() - lastReloadAt));
+      if (wait === 0) {
+        void runReload();
+        return;
+      }
+      if (!reloadTimer) reloadTimer = setTimeout(() => { void runReload(); }, wait);
     };
 
     // gatedReload:streaming 期间不拉(避免和发起方自己的 fetch 抢)
     const gatedReload = () => {
       if (streamingRef.current) return;
-      forceReload();
+      scheduleReload();
     };
 
     const afterSeq = lastSeqByConvRef.current[convId] ?? 0;
@@ -1686,7 +1721,7 @@ export default function ChatSidebar({
         if (typeof data?.seq === "number") {
           lastSeqByConvRef.current[convId] = Math.max(lastSeqByConvRef.current[convId] ?? 0, data.seq);
         }
-        if (!cancelRef.current) forceReload();
+        if (!cancelRef.current) scheduleReload();
       },
       // V1 backward-compat events (assistant 流式 done / tool_result):
       // 仍走 gated reload(发起方 fetch SSE 已投递了真实事件)
@@ -1694,11 +1729,12 @@ export default function ChatSidebar({
         if (typeof data?.seq === "number") {
           lastSeqByConvRef.current[convId] = Math.max(lastSeqByConvRef.current[convId] ?? 0, data.seq);
         }
-        if (!cancelRef.current) forceReload();
+        if (!cancelRef.current) scheduleReload();
         else if (name === "done" || name === "tool_result" || name === "start") gatedReload();
       },
     }, { afterSeq });
     return () => {
+      disposed = true;
       off();
       if (reloadTimer) clearTimeout(reloadTimer);
     };
