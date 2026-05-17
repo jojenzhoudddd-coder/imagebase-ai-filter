@@ -3,24 +3,39 @@
  * Reuses the same DropdownMenu component as chat block's profile menu.
  */
 
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import DropdownMenu, { type MenuItem } from "../DropdownMenu";
 import { useTranslation } from "../../i18n";
+
+export interface CardMenuAction {
+  key: string;
+  label: string;
+  icon?: ReactNode;
+  disabled?: boolean;
+  onSelect: () => void;
+}
 
 interface Props {
   onViewActivities: () => void;
   label: string;
+  actions?: CardMenuAction[];
   /** If provided, shows a "Delete" option with swipe-to-delete */
   onDelete?: () => void;
   deleteLabel?: string;
 }
 
-export default function CardMoreMenu({ onViewActivities, label, onDelete, deleteLabel }: Props) {
+export default function CardMoreMenu({ onViewActivities, label, actions = [], onDelete, deleteLabel }: Props) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const items: MenuItem[] = [
+    ...actions.map((action) => ({
+      key: action.key,
+      label: action.label,
+      icon: action.icon,
+      disabled: action.disabled,
+    })),
     {
       key: "view-activities",
       label,
@@ -66,6 +81,8 @@ export default function CardMoreMenu({ onViewActivities, label, onDelete, delete
           items={items}
           onSelect={(key) => {
             setOpen(false);
+            const action = actions.find((item) => item.key === key);
+            if (action) action.onSelect();
             if (key === "view-activities") onViewActivities();
           }}
           onClose={() => setOpen(false)}
