@@ -24,14 +24,21 @@ interface Props {
 
 export default function AgentTabs({ activeTab, onTabChange }: Props) {
   const { t } = useTranslation();
+  const wrapRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [canPrev, setCanPrev] = useState(false);
   const [canNext, setCanNext] = useState(false);
 
   const updateScrollState = useCallback(() => {
     const el = scrollerRef.current;
-    if (!el) return;
-    const hasOverflow = el.scrollWidth > el.clientWidth + 4;
+    const wrap = wrapRef.current;
+    if (!el || !wrap) return;
+    const wrapStyle = window.getComputedStyle(wrap);
+    const wrapPadding =
+      parseFloat(wrapStyle.paddingLeft || "0") + parseFloat(wrapStyle.paddingRight || "0");
+    const availableWidth = wrap.clientWidth - wrapPadding;
+    const hasOverflow = el.scrollWidth > availableWidth + 4;
+    if (!hasOverflow && el.scrollLeft !== 0) el.scrollLeft = 0;
     setCanPrev(hasOverflow && el.scrollLeft > 4);
     setCanNext(hasOverflow && el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
   }, []);
@@ -39,10 +46,21 @@ export default function AgentTabs({ activeTab, onTabChange }: Props) {
   useEffect(() => {
     updateScrollState();
     const el = scrollerRef.current;
+    const wrap = wrapRef.current;
     if (!el) return;
+    let frame = 0;
+    const scheduleUpdate = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(updateScrollState);
+    };
+    const resizeObserver = new ResizeObserver(scheduleUpdate);
+    if (wrap) resizeObserver.observe(wrap);
+    resizeObserver.observe(el);
     el.addEventListener("scroll", updateScrollState);
     window.addEventListener("resize", updateScrollState);
     return () => {
+      cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
       el.removeEventListener("scroll", updateScrollState);
       window.removeEventListener("resize", updateScrollState);
     };
@@ -60,7 +78,7 @@ export default function AgentTabs({ activeTab, onTabChange }: Props) {
   };
 
   return (
-    <div className="ab-tabs-wrap">
+    <div className="ab-tabs-wrap" ref={wrapRef}>
       {canPrev && (
         <button
           type="button"
