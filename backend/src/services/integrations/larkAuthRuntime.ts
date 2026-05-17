@@ -33,6 +33,12 @@ interface LarkBaseAuthSession {
 
 interface LarkLoginSession extends LarkBaseAuthSession {
   phase: "auth";
+  child: ChildProcessWithoutNullStreams;
+  output: string;
+  error: string | null;
+  exitCode: number | null;
+  exitSignal: NodeJS.Signals | null;
+  detail: unknown;
 }
 
 interface LarkConfigSession extends Omit<LarkBaseAuthSession, "phase" | "deviceCode"> {
@@ -132,7 +138,20 @@ export async function startLarkAuth(
   }
   const id = `las_${crypto.randomBytes(9).toString("base64url")}`;
   const expiresAt = Date.now() + normalized.expiresIn * 1000;
-  sessions.set(id, {
+  const runtime = await resolveIntegrationRuntimeEnv(integration);
+  const child = spawn(larkCommand(integration), [
+    "auth",
+    "login",
+    "--device-code",
+    normalized.deviceCode,
+    "--json",
+  ], {
+    env: runtime.env,
+    cwd: runtime.cwd,
+    shell: false,
+    windowsHide: true,
+  });
+  const session: LarkLoginSession = {
     id,
     integrationId: integration.id,
     agentId: integration.agentId,
@@ -141,7 +160,30 @@ export async function startLarkAuth(
     verificationUrl: normalized.verificationUrl,
     userCode: normalized.userCode,
     expiresAt,
+    child,
+    output: "",
+    error: null,
+    exitCode: null,
+    exitSignal: null,
+    detail: null,
+  };
+  const appendOutput = (chunk: Buffer) => {
+    session.output = clampText(session.output + chunk.toString("utf8"), 12_000);
+  };
+  child.stdout.on("data", appendOutput);
+  child.stderr.on("data", appendOutput);
+  child.on("error", (err) => {
+    session.error = errorMessage(err);
   });
+  child.on("close", (code, signal) => {
+    session.exitCode = code;
+    session.exitSignal = signal;
+    session.detail = parseMaybeJson(session.output);
+    if (code !== 0 && !session.error) {
+      session.error = (session.output.trim() || `lark-cli auth login exited with ${code}${signal ? ` (${signal})` : ""}`).slice(0, 2000);
+    }
+  });
+  sessions.set(id, session);
   return {
     ok: true,
     status: "pending",
@@ -170,47 +212,20 @@ export async function pollLarkAuth(
     return { ok: false, status: "missing", error: "auth session not found" };
   }
   if (Date.now() > session.expiresAt) {
-    if (session.phase === "config") session.child.kill("SIGTERM");
-    sessions.delete(authSessionId);
-    return { ok: false, status: "expired", error: "Lark authorization session expired" };
+    if (session.phase === "config") {
+      session.child.kill("SIGTERM");
+      sessions.delete(authSessionId);
+      return { ok: false, status: "expired", error: "Lark authorization session expired" };
+    }
+    if (session.exitCode === null) {
+      session.error = "Lark authorization session expired";
+      session.child.kill("SIGTERM");
+    }
   }
   if (session.phase === "config") {
     return pollLarkConfigSession(session);
   }
-  const integration = await loadLarkCliIntegration(session.integrationId, session.agentId);
-  try {
-    const result = await runLarkCli(
-      integration,
-      ["auth", "login", "--device-code", session.deviceCode, "--json"],
-      { timeoutMs: 30_000 },
-    );
-    sessions.delete(authSessionId);
-    await markIntegrationHealth(integration.id, "healthy", null).catch(() => {});
-    return {
-      ok: true,
-      status: "authorized",
-      integrationId: integration.id,
-      detail: parseMaybeJson(result.stdout),
-    };
-  } catch (err) {
-    const message = errorMessage(err);
-    if (isAuthPending(message)) {
-      return {
-        ok: false,
-        status: "pending",
-        integrationId: integration.id,
-        expiresAt: new Date(session.expiresAt).toISOString(),
-        error: message,
-      };
-    }
-    await markIntegrationHealth(integration.id, "error", message).catch(() => {});
-    return {
-      ok: false,
-      status: "error",
-      integrationId: integration.id,
-      error: message,
-    };
-  }
+  return pollLarkLoginSession(session);
 }
 
 async function ensureLarkCliConfigured(
@@ -355,6 +370,54 @@ async function pollLarkConfigSession(session: LarkConfigSession): Promise<unknow
     integrationId: integration.id,
     error: message,
     output: session.output,
+  };
+}
+
+async function pollLarkLoginSession(session: LarkLoginSession): Promise<unknown> {
+  const integration = await loadLarkCliIntegration(session.integrationId, session.agentId);
+  if (session.exitCode === null && !session.error) {
+    return {
+      ok: false,
+      status: "pending",
+      phase: "auth",
+      integrationId: integration.id,
+      expiresAt: new Date(session.expiresAt).toISOString(),
+    };
+  }
+  if (session.exitCode === 0) {
+    sessions.delete(session.id);
+    await markIntegrationHealth(integration.id, "healthy", null).catch(() => {});
+    return {
+      ok: true,
+      status: "authorized",
+      phase: "auth",
+      integrationId: integration.id,
+      detail: session.detail,
+    };
+  }
+
+  const status = await getLarkAuthStatus(integration);
+  if (status.ok) {
+    sessions.delete(session.id);
+    return {
+      ok: true,
+      status: "authorized",
+      phase: "auth",
+      integrationId: integration.id,
+      detail: status.detail,
+      note: "auth session expired after login completed; verified by lark-cli auth status",
+    };
+  }
+
+  const message = session.error || "lark-cli auth login failed";
+  sessions.delete(session.id);
+  await markIntegrationHealth(integration.id, isAuthExpired(message) ? "not_configured" : "error", message).catch(() => {});
+  return {
+    ok: false,
+    status: isAuthExpired(message) ? "expired" : "error",
+    phase: "auth",
+    integrationId: integration.id,
+    error: message,
   };
 }
 
@@ -507,6 +570,14 @@ function redactKeys(value: unknown, keys: Set<string>): void {
 function cleanupExpiredSessions(): void {
   const now = Date.now();
   for (const [id, session] of sessions) {
+    if (session.phase === "auth") {
+      if (session.expiresAt <= now && session.exitCode === null) {
+        session.error = "Lark authorization session expired";
+        session.child.kill("SIGTERM");
+      }
+      if (session.expiresAt + 30 * 60_000 <= now) sessions.delete(id);
+      continue;
+    }
     if (session.expiresAt <= now) {
       if (session.phase === "config" && session.exitCode === null) session.child.kill("SIGTERM");
       sessions.delete(id);
@@ -533,6 +604,14 @@ function isAuthPending(message: string): boolean {
     lower.includes("slow_down") ||
     lower.includes("not complete") ||
     lower.includes("not completed");
+}
+
+function isAuthExpired(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("expired") ||
+    lower.includes("expire") ||
+    lower.includes("authorization_expired") ||
+    lower.includes("device code expired");
 }
 
 function errorMessage(err: unknown): string {
