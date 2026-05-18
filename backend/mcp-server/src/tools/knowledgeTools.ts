@@ -11,7 +11,7 @@ export const knowledgeTools: ToolDefinition[] = [
   {
     name: "learn_from_url",
     description:
-      "Store web page content as ONE complete document in the knowledge base. This is the ONLY correct tool for 'learning from URL' — never use create_memory. The content field has NO length limit — include the full page content, do NOT truncate.",
+      "Store web page content as ONE complete document in the current workspace knowledge base. This is the ONLY correct tool for 'learning from URL' — never use create_memory. The content field has NO length limit — include the full page content, do NOT truncate.",
     inputSchema: {
       type: "object",
       properties: {
@@ -33,6 +33,7 @@ export const knowledgeTools: ToolDefinition[] = [
             sourceUrl: args.url,
             sourceType: "web",
             tags: args.tags ?? [],
+            workspaceId: ctx?.workspaceId ?? null,
           },
         });
         return JSON.stringify({ ok: true, ...data as object });
@@ -44,7 +45,7 @@ export const knowledgeTools: ToolDefinition[] = [
   {
     name: "learn_from_text",
     description:
-      "Store knowledge as ONE complete document in the knowledge base. This is the ONLY correct tool for 'learning knowledge' — never use create_memory. The content field has NO length limit — write the full document, do NOT truncate or split.",
+      "Store knowledge as ONE complete document in the current workspace knowledge base. This is the ONLY correct tool for 'learning knowledge' — never use create_memory. The content field has NO length limit — write the full document, do NOT truncate or split.",
     inputSchema: {
       type: "object",
       properties: {
@@ -64,6 +65,7 @@ export const knowledgeTools: ToolDefinition[] = [
             content: args.content,
             sourceType: "chat",
             tags: args.tags ?? [],
+            workspaceId: ctx?.workspaceId ?? null,
           },
         });
         return JSON.stringify({ ok: true, ...data as object });
@@ -75,7 +77,7 @@ export const knowledgeTools: ToolDefinition[] = [
   {
     name: "search_knowledge",
     description:
-      "Search the agent's knowledge base using semantic similarity. Returns the most relevant entries for the given query. Use this when you need to recall previously learned information.",
+      "Search the current workspace's knowledge base using semantic similarity. Returns the most relevant entries for the given query. Use this when you need to recall previously learned information.",
     inputSchema: {
       type: "object",
       properties: {
@@ -87,8 +89,14 @@ export const knowledgeTools: ToolDefinition[] = [
     handler: async (args: Record<string, unknown>, ctx?: any) => {
       const agentId = ctx?.agentId ?? "agent_default";
       try {
+        const params = new URLSearchParams({
+          agentId,
+          query: String(args.query ?? ""),
+          limit: String(args.limit ?? 5),
+        });
+        if (ctx?.workspaceId) params.set("workspaceId", ctx.workspaceId);
         const data = await apiRequest<{ results: unknown[] }>(
-          `/api/knowledge/search?agentId=${encodeURIComponent(agentId)}&query=${encodeURIComponent(args.query as string)}&limit=${args.limit ?? 5}`,
+          `/api/knowledge/search?${params}`,
         );
         return JSON.stringify({ ok: true, results: data.results });
       } catch (err: any) {
@@ -98,7 +106,7 @@ export const knowledgeTools: ToolDefinition[] = [
   },
   {
     name: "list_knowledge",
-    description: "List knowledge entries in the agent's knowledge base (paginated, newest first).",
+    description: "List knowledge entries in the current workspace knowledge base (paginated, newest first).",
     inputSchema: {
       type: "object",
       properties: {
@@ -113,6 +121,7 @@ export const knowledgeTools: ToolDefinition[] = [
       if (args.limit) params.set("limit", String(args.limit));
       if (args.offset) params.set("offset", String(args.offset));
       if (args.tag) params.set("tag", args.tag as string);
+      if (ctx?.workspaceId) params.set("workspaceId", ctx.workspaceId);
       try {
         const data = await apiRequest(`/api/knowledge?${params}`);
         return JSON.stringify({ ok: true, ...data as object });
@@ -139,7 +148,7 @@ export const knowledgeTools: ToolDefinition[] = [
     },
     handler: async (args: Record<string, unknown>, ctx?: any) => {
       const agentId = ctx?.agentId ?? "agent_default";
-      const body: Record<string, unknown> = { agentId };
+      const body: Record<string, unknown> = { agentId, workspaceId: ctx?.workspaceId ?? null };
       if (args.title !== undefined) body.title = args.title;
       if (args.content !== undefined) body.content = args.content;
       if (args.sourceUrl !== undefined) body.sourceUrl = args.sourceUrl;
@@ -158,7 +167,7 @@ export const knowledgeTools: ToolDefinition[] = [
   },
   {
     name: "delete_knowledge",
-    description: "Delete a knowledge entry from the agent's knowledge base by its ID. Use update_knowledge instead if you want to revise an existing document — delete loses the stable parentId.",
+    description: "Delete a knowledge entry from the current workspace knowledge base by its ID. Use update_knowledge instead if you want to revise an existing document — delete loses the stable parentId.",
     inputSchema: {
       type: "object",
       properties: {
@@ -169,7 +178,9 @@ export const knowledgeTools: ToolDefinition[] = [
     handler: async (args: Record<string, unknown>, ctx?: any) => {
       const agentId = ctx?.agentId ?? "agent_default";
       try {
-        await apiRequest(`/api/knowledge/${args.id}?agentId=${encodeURIComponent(agentId)}`, {
+        const params = new URLSearchParams({ agentId });
+        if (ctx?.workspaceId) params.set("workspaceId", ctx.workspaceId);
+        await apiRequest(`/api/knowledge/${args.id}?${params}`, {
           method: "DELETE",
         });
         return JSON.stringify({ ok: true });

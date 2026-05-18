@@ -53,7 +53,7 @@ export default function NatureTab({ agentId }: Props) {
     try {
       const [id, mem] = await Promise.all([
         getAgentIdentity(agentId),
-        listAgentMemories(agentId).catch(() => ({ episodic: [], working: [] })),
+        listAgentMemories(agentId, { workspaceId }).catch(() => ({ episodic: [], working: [] })),
       ]);
       setIdentity(id);
       setEpisodic(mem.episodic ?? []);
@@ -65,7 +65,7 @@ export default function NatureTab({ agentId }: Props) {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [agentId]);
+  }, [agentId, workspaceId]);
 
   useEffect(() => {
     void loadNature(true);

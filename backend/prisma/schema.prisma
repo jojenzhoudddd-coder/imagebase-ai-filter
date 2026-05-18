@@ -820,6 +820,9 @@ model Demo {
 model KnowledgeEntry {
   id         String   @id @default(cuid())
   agentId    String
+  /// Workspace-scoped Acknowledge knowledge. null rows are legacy/global and
+  /// are intentionally not returned when a workspaceId is supplied.
+  workspaceId String?
   title      String
   content    String   // Markdown 正文（已分块）
   sourceUrl  String?  // 来源 URL
@@ -832,6 +835,7 @@ model KnowledgeEntry {
   updatedAt  DateTime @updatedAt
 
   @@index([agentId])
+  @@index([agentId, workspaceId])
   @@index([agentId, createdAt])
   @@map("knowledge_entries")
 }

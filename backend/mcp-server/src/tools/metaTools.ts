@@ -151,7 +151,7 @@ export const metaTools: ToolDefinition[] = [
   {
     name: "create_memory",
     description:
-      "写一条 episodic 长期记忆到 memory/episodic/。调用时机：这一轮发生了值得长期记住的事情（重要任务、关键决策、长程目标、里程碑、用户明确说的 '请记住…'）。title 一句话概括；body 写清楚背景 + 决策 + 后续要做什么；tags 用小写英文关键词便于以后检索。**不要** 把日常闲聊或已经写进 profile 的稳定事实塞进来。",
+      "写一条当前 workspace 内的 episodic 长期记忆。调用时机：这一轮发生了值得长期记住的事情（重要任务、关键决策、长程目标、里程碑、用户明确说的 '请记住…'）。title 一句话概括；body 写清楚背景 + 决策 + 后续要做什么；tags 用小写英文关键词便于以后检索。**不要** 把日常闲聊或已经写进 profile 的稳定事实塞进来。",
     inputSchema: {
       type: "object",
       properties: {
@@ -179,8 +179,10 @@ export const metaTools: ToolDefinition[] = [
       if (!title || !body.trim()) {
         return JSON.stringify({ ok: false, error: "title 和 body 都不能为空" });
       }
-      const { filename } = await appendEpisodicMemory(agentId, { title, body, tags });
-      return JSON.stringify({ ok: true, agentId, filename });
+      const { filename } = await appendEpisodicMemory(agentId, { title, body, tags }, {
+        workspaceId: ctx?.workspaceId ?? null,
+      });
+      return JSON.stringify({ ok: true, agentId, workspaceId: ctx?.workspaceId ?? null, filename });
     },
   },
 ];

@@ -33,7 +33,7 @@ export const memoryTools: ToolDefinition[] = [
   {
     name: "read_memory",
     description:
-      "读取你自己的长期 episodic 记忆。两种用法：(1) 不传 filename：列出最近的 memory 摘要（最多 limit 条，默认 20，最大 100），每条包含 filename / title / timestamp / tags / 正文前 200 字预览；(2) 传 filename：返回该文件完整正文。调用时机：用户提到过去的事 / 你不确定之前是否发生过某事 / 需要回溯长程目标。记忆按修改时间倒序，新的在前。",
+      "读取当前 workspace 内的长期 episodic 记忆。两种用法：(1) 不传 filename：列出最近的 memory 摘要（最多 limit 条，默认 20，最大 100），每条包含 filename / title / timestamp / tags / 正文前 200 字预览；(2) 传 filename：返回该文件完整正文。调用时机：用户提到过去的事 / 你不确定之前是否发生过某事 / 需要回溯长程目标。记忆按修改时间倒序，新的在前。",
     inputSchema: {
       type: "object",
       properties: {
@@ -64,11 +64,11 @@ export const memoryTools: ToolDefinition[] = [
       const filename = typeof args.filename === "string" ? args.filename.trim() : "";
       if (filename) {
         try {
-          const mem = await readEpisodicMemory(agentId, filename);
+          const mem = await readEpisodicMemory(agentId, filename, { workspaceId: ctx?.workspaceId ?? null });
           if (!mem) {
             return JSON.stringify({ ok: false, error: `memory not found: ${filename}` });
           }
-          return JSON.stringify({ ok: true, agentId, memory: mem });
+          return JSON.stringify({ ok: true, agentId, workspaceId: ctx?.workspaceId ?? null, memory: mem });
         } catch (err: any) {
           return JSON.stringify({ ok: false, error: err?.message || String(err) });
         }
@@ -76,10 +76,11 @@ export const memoryTools: ToolDefinition[] = [
 
       const limit = typeof args.limit === "number" ? args.limit : undefined;
       const tag = typeof args.tag === "string" && args.tag.trim() ? args.tag.trim().toLowerCase() : undefined;
-      const summaries = await listEpisodicMemories(agentId, { limit, tag });
+      const summaries = await listEpisodicMemories(agentId, { limit, tag, workspaceId: ctx?.workspaceId ?? null });
       return JSON.stringify({
         ok: true,
         agentId,
+        workspaceId: ctx?.workspaceId ?? null,
         count: summaries.length,
         memories: summaries,
       });
@@ -89,7 +90,7 @@ export const memoryTools: ToolDefinition[] = [
   {
     name: "recall_memory",
     description:
-      "用关键词 / 标签 / 近因的加权排序找最相关的 episodic 记忆（top-K 摘要）。调用时机：你要回答一个用户过去已经说过的问题，或在某个主题上延续之前的上下文（比不带参数列出全部更聚焦）。排序：3·关键词命中率 + 2·标签匹配率 + 1·近因衰减（半衰期约 10 天）。query 和 tags 至少传一个。不传时回退为纯近因排序（等价于 read_memory 无过滤）。",
+      "用关键词 / 标签 / 近因的加权排序找当前 workspace 内最相关的 episodic 记忆（top-K 摘要）。调用时机：你要回答一个用户过去已经说过的问题，或在某个主题上延续之前的上下文（比不带参数列出全部更聚焦）。排序：3·关键词命中率 + 2·标签匹配率 + 1·近因衰减（半衰期约 10 天）。query 和 tags 至少传一个。不传时回退为纯近因排序（等价于 read_memory 无过滤）。",
     inputSchema: {
       type: "object",
       properties: {
@@ -120,10 +121,11 @@ export const memoryTools: ToolDefinition[] = [
         ? args.tags.filter((t: unknown): t is string => typeof t === "string")
         : undefined;
       const limit = typeof args.limit === "number" ? args.limit : undefined;
-      const hits = await recallMemories(agentId, query, { tags, limit });
+      const hits = await recallMemories(agentId, query, { tags, limit, workspaceId: ctx?.workspaceId ?? null });
       return JSON.stringify({
         ok: true,
         agentId,
+        workspaceId: ctx?.workspaceId ?? null,
         count: hits.length,
         query,
         tags: tags || [],

@@ -52,6 +52,23 @@ async function drainAgentRunWithTimeout(
   }
 }
 
+function buildWorkspaceScopedHabitPrompt(
+  prompt: string,
+  workspaceId: string,
+  jobId: string,
+  displayName: string,
+): string {
+  return [
+    "你正在执行一个 workspace-scoped habit。",
+    `当前 habit: ${displayName} (${jobId})`,
+    `当前 workspaceId: ${workspaceId}`,
+    "边界要求：只读取、总结、记忆和写入当前 workspace；不要读取其他 workspace 的对话、memory、knowledge 或 artifact；不要用其他 workspace 的历史做去重依据。",
+    "所有工具调用都应使用当前 ToolContext 默认的 workspaceId；除非用户明确要求并确认，不要传入或推断其他 workspaceId。",
+    "",
+    prompt,
+  ].join("\n");
+}
+
 /**
  * Resolve which workspace a habit run should land in. Old code hard-coded
  * `doc_default` as fallback,但所有非 default 用户的 agent 也会 fall back,
@@ -188,18 +205,16 @@ async function consumeOne(
   if (jobId === "habit_system_slogan") {
     console.log(`[inbox-consumer] executing slogan habit "${jobId}"`);
     try {
-      const agent = await getAgent(agentId);
-      const workspaces = agent ? await listUserWorkspaces(agent.userId) : [];
       let refreshed = 0;
-      for (const ws of workspaces) {
+      for (const workspaceId of workspaceIds) {
         try {
-          await generateForWorkspace(ws.id);
+          await generateForWorkspace(workspaceId);
           refreshed++;
         } catch (err) {
-          console.warn(`[inbox-consumer] slogan ws=${ws.id} failed:`, err);
+          console.warn(`[inbox-consumer] slogan ws=${workspaceId} failed:`, err);
         }
       }
-      console.log(`[inbox-consumer] slogan habit done — ${refreshed}/${workspaces.length} workspaces refreshed`);
+      console.log(`[inbox-consumer] slogan habit done — ${refreshed}/${workspaceIds.length} workspaces refreshed`);
     } catch (err) {
       console.error(`[inbox-consumer] slogan habit failed:`, err);
     }
@@ -214,23 +229,21 @@ async function consumeOne(
   if (jobId === "habit_system_suggest") {
     console.log(`[inbox-consumer] executing suggest habit "${jobId}"`);
     try {
-      const agent = await getAgent(agentId);
-      const workspaces = agent ? await listUserWorkspaces(agent.userId) : [];
       let refreshed = 0;
-      for (const ws of workspaces) {
+      for (const workspaceId of workspaceIds) {
         const startedAt = Date.now();
         try {
-          const suggestions = await refreshSuggestions(ws.id, { force: true });
-          const goals = await refreshGoalSuggestions(ws.id, { force: true });
+          const suggestions = await refreshSuggestions(workspaceId, { force: true });
+          const goals = await refreshGoalSuggestions(workspaceId, { force: true });
           let conv = await findConversationByAnchor({
             agentId,
-            workspaceId: ws.id,
+            workspaceId,
             attachedToType: "habit",
             attachedToId: jobId,
           });
           if (!conv) {
             conv = await createConversation(
-              ws.id,
+              workspaceId,
               `Habit: ${displayName}`,
               agentId,
               { type: "habit", id: jobId },
@@ -238,13 +251,13 @@ async function consumeOne(
           }
           await appendMessage(conv.id, {
             role: "user",
-            content: prompt,
+            content: buildWorkspaceScopedHabitPrompt(prompt, workspaceId, jobId, displayName),
             source: `habit:${jobId}`,
           });
           await appendMessage(conv.id, {
             role: "assistant",
             content: formatTodoSuggestionRun({
-              workspaceId: ws.id,
+              workspaceId,
               generatedAt: new Date().toISOString(),
               suggestions,
               goals,
@@ -255,10 +268,10 @@ async function consumeOne(
           });
           refreshed++;
         } catch (err) {
-          console.warn(`[inbox-consumer] suggest ws=${ws.id} failed:`, err);
+          console.warn(`[inbox-consumer] suggest ws=${workspaceId} failed:`, err);
         }
       }
-      console.log(`[inbox-consumer] suggest habit done — ${refreshed}/${workspaces.length} workspaces refreshed`);
+      console.log(`[inbox-consumer] suggest habit done — ${refreshed}/${workspaceIds.length} workspaces refreshed`);
     } catch (err) {
       console.error(`[inbox-consumer] suggest habit failed:`, err);
     }
@@ -303,7 +316,10 @@ async function consumeOne(
         };
 
         // 3. Run agent — drain the async generator (no SSE consumer)
-        await drainAgentRunWithTimeout(ctx, prompt);
+        await drainAgentRunWithTimeout(
+          ctx,
+          buildWorkspaceScopedHabitPrompt(prompt, workspaceId, jobId, displayName),
+        );
 
         completed++;
         console.log(

@@ -293,7 +293,7 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
         u."createdAt", u."updatedAt", u."lastLoginAt",
         -- Agent (first per user)
         ag.name AS "agentName", ag."avatarUrl" AS "agentAvatarUrl",
-        -- Conversations & activities (through agents → conversations → messages)
+        -- Conversations & activities (sum across every workspace the user owns)
         COALESCE(conv_stats.conv_count, 0)::int AS "conversationCount",
         COALESCE(conv_stats.activity_count, 0)::int AS "activityCount",
         conv_stats.last_message_at AS "lastMessageAt",
@@ -316,10 +316,10 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
           COUNT(DISTINCT c.id)::int AS conv_count,
           COUNT(m.id) FILTER (WHERE m.role = 'user')::int AS activity_count,
           MAX(m.timestamp) FILTER (WHERE m.role = 'user') AS last_message_at
-        FROM agents a2
-        JOIN conversations c ON c."agentId" = a2.id
+        FROM workspaces w3
+        JOIN conversations c ON c."workspaceId" = w3.id
         LEFT JOIN messages m ON m."conversationId" = c.id
-        WHERE a2."userId" = u.id
+        WHERE w3."createdById" = u.id
       ) conv_stats ON true
       -- Token usage
       LEFT JOIN LATERAL (

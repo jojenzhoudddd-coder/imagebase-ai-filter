@@ -441,6 +441,7 @@ function addCoveredMarker(summary: string, count: number): string {
 async function generateConversationSummary(
   conversationId: string,
   agentId: string,
+  workspaceId: string | undefined,
   droppedMessages: Message[],
   existingSummary: string | undefined,
 ): Promise<void> {
@@ -522,7 +523,9 @@ async function generateConversationSummary(
 
       const tags = ["conversation-summary", ...topKeywords.slice(0, 3)];
 
-      await upsertConversationEpisodic(agentId, conversationId, { title, body: text.trim(), tags });
+      await upsertConversationEpisodic(agentId, conversationId, { title, body: text.trim(), tags }, {
+        workspaceId: workspaceId ?? null,
+      });
       await clearWorkingMemory(agentId, conversationId);
       logAgent({ event: "episodic_memory_upserted", conversationId, agentId });
     } catch (epErr) {
@@ -618,7 +621,7 @@ function logAgentToolFailure(params: {
 const META_SYSTEM_PROMPT = `# Layer 1 · Meta（OpenClaw Agent 元规则）
 
 你是一位 OpenClaw-style 的长期 Agent。你属于用户本人，不绑定任何单个工作空间；
-你的身份（soul）、用户画像（profile）、长期记忆（memory）都持久化在你的
+你的身份（soul）、用户画像（profile）是用户级共享；长期记忆（memory）按 workspace 隔离并持久化在你的
 文件系统里，会随着每一次协作演进。
 
 ## 身份与记忆的读取方式（非常重要，不要搞错）
@@ -630,6 +633,12 @@ const META_SYSTEM_PROMPT = `# Layer 1 · Meta（OpenClaw Agent 元规则）
   或 \`read_memory\`。
 - \`update_soul\` / \`update_profile\` / \`create_memory\` 是 **写入** 工具；读是已经
   通过 system prompt 注入完成的，不需要再调工具读。
+
+## Workspace 边界（多 workspace 下必须严格遵守）
+- 当前 turn 只绑定到 Layer 3 中标明的当前 workspace。你只能读取、总结、记忆和写入这个 workspace 的对话、memory、knowledge、artifact 和集成状态。
+- habit/cron 运行时也只代表当前 workspace；去重、检索和结论都只能基于当前 workspace 的 habit 对话与当前 workspace memory/knowledge。
+- 不要主动读取其他 workspace 的对话历史或数据；不要把其他 workspace 的内容用于当前 workspace 的输出。
+- 所有工具默认会带当前 workspaceId。除非用户明确要求跨 workspace，并且你已经向用户确认，否则不要传入或推断其他 workspaceId。
 
 ## 名字规则
 - 你的名字定义在 soul.md 顶部的 \`<!-- name: XXX -->\` 标签中。
@@ -849,15 +858,17 @@ const AUTO_RECALL_LIMIT = 3;
 
 export async function buildRecalledMemoriesSection(
   agentId: string,
-  userMessage: string
+  userMessage: string,
+  workspaceId?: string,
 ): Promise<string> {
   try {
     const hits = await agentSvc.recallMemories(agentId, userMessage, {
       limit: AUTO_RECALL_LIMIT,
+      workspaceId: workspaceId ?? null,
     });
     if (!hits.length) return "";
     const lines: string[] = [
-      `# 自动召回的相关长期记忆（top ${hits.length}，供参考，不一定都有关）`,
+      `# 自动召回的当前 workspace 长期记忆（top ${hits.length}，供参考，不一定都有关）`,
     ];
     for (const h of hits) {
       const ts = h.timestamp ? h.timestamp.slice(0, 10) : "(no-date)";
@@ -898,13 +909,16 @@ const KNOWLEDGE_PREVIEW_CHARS = 120;
 
 export async function buildRecalledKnowledgeSection(
   agentId: string,
-  userMessage: string
+  userMessage: string,
+  workspaceId?: string,
 ): Promise<string> {
   try {
-    const hits = await searchKnowledge(agentId, userMessage, AUTO_KNOWLEDGE_LIMIT);
+    const hits = await searchKnowledge(agentId, userMessage, AUTO_KNOWLEDGE_LIMIT, {
+      workspaceId: workspaceId ?? null,
+    });
     if (!hits.length) return "";
     const lines: string[] = [
-      `# 自动召回的知识库条目（top ${hits.length}，预览，未必相关）`,
+      `# 自动召回的当前 workspace 知识库条目（top ${hits.length}，预览，未必相关）`,
       `（如果跟当前问题相关，调用 \`search_knowledge\` 用更精准的关键词拿完整内容；多跳策略见工具指南）`,
     ];
     for (const h of hits) {
@@ -1526,10 +1540,10 @@ async function assembleInput(
   const [identity, snapshot, recalled, recalledKnowledge, analystHandles] = await Promise.all([
     buildIdentityLayer(agentId),
     buildWorkspaceSnapshot(workspaceId, conversationId),
-    buildRecalledMemoriesSection(agentId, newUserMessage),
+    buildRecalledMemoriesSection(agentId, newUserMessage, workspaceId),
     // Hybrid RAG layer 1 — runs in parallel with the other layers so the
     // added latency is bounded by the slowest (usually workspace snapshot).
-    buildRecalledKnowledgeSection(agentId, newUserMessage),
+    buildRecalledKnowledgeSection(agentId, newUserMessage, workspaceId),
     buildAnalystHandlesSection(conversationId),
   ]);
   // PR8.5: buildUserMentionsLayer is now async (block content fetch).
@@ -1586,7 +1600,7 @@ async function assembleInput(
     // Window is actually truncated and summary doesn't cover all dropped msgs.
     // Block on summary generation — the model NEEDS it this turn.
     const droppedMessages = history.slice(0, droppedCount);
-    summaryPromise = generateConversationSummary(conversationId, agentId, droppedMessages, conv?.summary);
+    summaryPromise = generateConversationSummary(conversationId, agentId, workspaceId, droppedMessages, conv?.summary);
     logAgent({
       event: "history_window_truncated",
       conversationId,
@@ -1602,7 +1616,7 @@ async function assembleInput(
     const preemptCount = Math.ceil(windowed.length * 0.3);
     const preemptMessages = windowed.slice(0, preemptCount);
     if (preemptMessages.length > 0 && alreadyCovered < preemptMessages.length) {
-      void generateConversationSummary(conversationId, agentId, preemptMessages, conv?.summary);
+      void generateConversationSummary(conversationId, agentId, workspaceId, preemptMessages, conv?.summary);
       logAgent({
         event: "history_window_preemptive_summary",
         conversationId,
@@ -2557,7 +2571,7 @@ async function* runAgentImpl(
   // unreachable and we substituted a sibling. Preference stays written as-is
   // in config.json — the very next turn auto-recovers when availability
   // flips back.
-  const storedModelId = await agentSvc.getSelectedModel(agentId);
+  const storedModelId = await agentSvc.getSelectedModel(agentId, workspaceId);
   let { resolved: initialModel, requested, usedFallback } = resolveModelForCall(storedModelId);
   // Token-usage 记账上下文 —— provider adapter 在 stream 结束时把 usage 写到
   // token_usage 表，TopBar 的统计用同一份数据展示。userId 从 Agent 行直接
@@ -2641,8 +2655,8 @@ async function* runAgentImpl(
   let integrationSkillsForTurn: SkillDefinition[] = [];
   let builtinSkillsForTurn: SkillDefinition[] = allSkills;
   try {
-    const agentConfig = await agentSvc.readConfig(agentId);
-    builtinSkillsForTurn = resolveEnabledBuiltinSkills(agentConfig);
+    const disabledBuiltinSkills = await agentSvc.getDisabledBuiltinSkills(agentId, workspaceId);
+    builtinSkillsForTurn = resolveEnabledBuiltinSkills({ disabledBuiltinSkills });
   } catch (err) {
     logAgent({
       event: "builtin_skills_config_load_failed",
@@ -2652,7 +2666,7 @@ async function* runAgentImpl(
     });
   }
   try {
-    userSkillsForTurn = await loadUserSkills(agentId);
+    userSkillsForTurn = await loadUserSkills(agentId, workspaceId);
   } catch (err) {
     logAgent({
       event: "user_skills_load_failed",
@@ -2662,7 +2676,7 @@ async function* runAgentImpl(
     });
   }
   try {
-    integrationSkillsForTurn = await loadIntegrationSkills(agentId);
+    integrationSkillsForTurn = await loadIntegrationSkills(agentId, workspaceId);
   } catch (err) {
     logAgent({
       event: "integration_skills_load_failed",
@@ -4152,18 +4166,18 @@ async function* resumeAfterConfirmImpl(
   let resumeIntegrationSkills: SkillDefinition[] = [];
   let resumeBuiltinSkills: SkillDefinition[] = allSkills;
   try {
-    const resumeAgentConfig = await agentSvc.readConfig(resumeAgentId);
-    resumeBuiltinSkills = resolveEnabledBuiltinSkills(resumeAgentConfig);
+    const disabledBuiltinSkills = await agentSvc.getDisabledBuiltinSkills(resumeAgentId, ctx.workspaceId);
+    resumeBuiltinSkills = resolveEnabledBuiltinSkills({ disabledBuiltinSkills });
   } catch {
     /* ignore */
   }
   try {
-    resumeUserSkills = await loadUserSkills(resumeAgentId);
+    resumeUserSkills = await loadUserSkills(resumeAgentId, ctx.workspaceId);
   } catch {
     /* ignore */
   }
   try {
-    resumeIntegrationSkills = await loadIntegrationSkills(resumeAgentId);
+    resumeIntegrationSkills = await loadIntegrationSkills(resumeAgentId, ctx.workspaceId);
   } catch {
     /* ignore */
   }

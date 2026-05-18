@@ -16,6 +16,7 @@ import {
   IntegrationNotFoundError,
   IntegrationValidationError,
 } from "../../../src/services/integrations/integrationStore.js";
+import { setIntegrationEnabledForWorkspace } from "../../../src/services/agentService.js";
 import { callIntegrationTool, testIntegration } from "../../../src/services/integrations/integrationRuntime.js";
 import {
   pollIntegrationAuth,
@@ -80,8 +81,8 @@ export const integrationTools: ToolDefinition[] = [
       try {
         const agentId = resolveAgentId(args, ctx);
         await ensureSystemIntegrations(agentId);
-        const integrations = await listAgentIntegrations(agentId);
-        return JSON.stringify({ ok: true, integrations });
+        const integrations = await listAgentIntegrations(agentId, { workspaceId: ctx?.workspaceId ?? null });
+        return JSON.stringify({ ok: true, workspaceId: ctx?.workspaceId ?? null, integrations });
       } catch (err) {
         return errJson(err);
       }
@@ -108,20 +109,29 @@ export const integrationTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       try {
+        const agentId = resolveAgentId(args, ctx);
+        const requestedEnabled = typeof args.enabled === "boolean" ? args.enabled : undefined;
         const integration = await createAgentIntegration({
-          agentId: resolveAgentId(args, ctx),
+          agentId,
           providerKey: String(args.providerKey ?? ""),
           displayName: typeof args.displayName === "string" ? args.displayName : undefined,
           transport: args.transport as any,
-          enabled: typeof args.enabled === "boolean" ? args.enabled : undefined,
+          enabled: ctx?.workspaceId ? false : requestedEnabled,
           config: args.config as any,
           toolManifest: args.toolManifest as any,
           scopes: args.scopes as any,
           credentials: args.credentials as any,
         });
+        if (ctx?.workspaceId && requestedEnabled !== undefined) {
+          await setIntegrationEnabledForWorkspace(agentId, ctx.workspaceId, integration.id, requestedEnabled);
+        }
         return JSON.stringify({
           ok: true,
-          integration,
+          workspaceId: ctx?.workspaceId ?? null,
+          integration: ctx?.workspaceId
+            ? (await listAgentIntegrations(agentId, { workspaceId: ctx.workspaceId }))
+              .find((item) => item.id === integration.id) ?? integration
+            : integration,
           note: `已安装。可 activate_skill("${`integration-${integration.id}`}") 立即调用该集成工具。`,
         });
       } catch (err) {
@@ -151,14 +161,35 @@ export const integrationTools: ToolDefinition[] = [
     handler: async (args, ctx) => {
       try {
         const integrationId = String(args.integrationId ?? "");
+        const agentId = resolveAgentId(args, ctx);
         const patch: Record<string, unknown> = {};
         for (const key of ["displayName", "transport", "enabled", "config", "toolManifest", "scopes", "credentials"]) {
           if (key in args) patch[key] = args[key];
         }
-        const integration = await updateAgentIntegration(integrationId, patch as any, {
-          requireAgentId: resolveAgentId(args, ctx),
-        });
-        return JSON.stringify({ ok: true, integration });
+        const workspaceEnabled =
+          ctx?.workspaceId && typeof patch.enabled === "boolean"
+            ? patch.enabled
+            : undefined;
+        if (workspaceEnabled !== undefined) {
+          const existing = (await listAgentIntegrations(agentId, { workspaceId: ctx!.workspaceId! }))
+            .find((item) => item.id === integrationId);
+          if (!existing) {
+            return JSON.stringify({ ok: false, code: "NOT_FOUND", error: `integration not found: ${integrationId}` });
+          }
+          await setIntegrationEnabledForWorkspace(agentId, ctx!.workspaceId!, integrationId, workspaceEnabled);
+          delete patch.enabled;
+        }
+        let integration = null;
+        if (Object.keys(patch).length > 0) {
+          integration = await updateAgentIntegration(integrationId, patch as any, {
+            requireAgentId: agentId,
+          });
+        }
+        if (ctx?.workspaceId) {
+          integration = (await listAgentIntegrations(agentId, { workspaceId: ctx.workspaceId }))
+            .find((item) => item.id === integrationId) ?? integration;
+        }
+        return JSON.stringify({ ok: true, workspaceId: ctx?.workspaceId ?? null, integration });
       } catch (err) {
         return errJson(err);
       }

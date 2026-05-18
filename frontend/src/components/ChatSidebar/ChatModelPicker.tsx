@@ -41,11 +41,12 @@ interface Props {
   /** Optional callback fired on successful selection change, so the parent
    * can surface "switched to X" / re-fetch context if it needs to. */
   onChange?: (next: AgentModelSelection) => void;
+  workspaceId?: string | null;
 }
 
 const GROUP_ORDER: string[] = ["anthropic", "openai", "volcano", "custom"];
 
-export default function ChatModelPicker({ agentId, open, disabled, onChange }: Props) {
+export default function ChatModelPicker({ agentId, open, disabled, onChange, workspaceId }: Props) {
   const { t } = useTranslation();
   const [models, setModels] = useState<ModelSummary[] | null>(null);
   const [selection, setSelection] = useState<AgentModelSelection | null>(null);
@@ -55,13 +56,13 @@ export default function ChatModelPicker({ agentId, open, disabled, onChange }: P
 
   const refresh = useCallback(async () => {
     try {
-      const [list, sel] = await Promise.all([listModels(), getAgentModel(agentId)]);
+      const [list, sel] = await Promise.all([listModels(), getAgentModel(agentId, workspaceId)]);
       setModels(list.models);
       setSelection(sel);
     } catch {
       // Non-fatal — we just leave the picker as-is. Next refresh retries.
     }
-  }, [agentId]);
+  }, [agentId, workspaceId]);
 
   useEffect(() => {
     if (!open) return;
@@ -77,13 +78,14 @@ export default function ChatModelPicker({ agentId, open, disabled, onChange }: P
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.agentId === agentId && detail?.selection) {
+      const sameWorkspace = (detail?.workspaceId ?? null) === (workspaceId ?? null);
+      if (detail?.agentId === agentId && sameWorkspace && detail?.selection) {
         setSelection(detail.selection);
       }
     };
     window.addEventListener("agent-model-changed", handler);
     return () => window.removeEventListener("agent-model-changed", handler);
-  }, [agentId]);
+  }, [agentId, workspaceId]);
 
   // Listen for custom model CRUD (add/remove via chat) and refetch list
   useEffect(() => {
@@ -101,17 +103,19 @@ export default function ChatModelPicker({ agentId, open, disabled, onChange }: P
       setPending(modelId);
       setMenuOpen(false);
       try {
-        const next = await setAgentModel(agentId, modelId);
+        const next = await setAgentModel(agentId, modelId, workspaceId);
         setSelection(next);
         onChange?.(next);
-        window.dispatchEvent(new CustomEvent("agent-model-changed", { detail: { agentId, selection: next } }));
+        window.dispatchEvent(new CustomEvent("agent-model-changed", {
+          detail: { agentId, workspaceId: workspaceId ?? null, selection: next },
+        }));
       } catch (err) {
         console.warn("[model-picker] set failed", err);
       } finally {
         setPending(null);
       }
     },
-    [agentId, selection, onChange]
+    [agentId, workspaceId, selection, onChange]
   );
 
   // Display label: what the user selected. If we're on a fallback, suffix a

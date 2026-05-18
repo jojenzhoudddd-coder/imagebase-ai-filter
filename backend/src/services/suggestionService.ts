@@ -433,7 +433,7 @@ export async function getPersistedTodoSuggestionRun(workspaceId: string): Promis
     });
     for (const msg of messages) {
       const run = parseTodoSuggestionRun(msg.content);
-      if (run) return run;
+      if (run?.workspaceId === workspaceId) return run;
     }
   }
   return null;

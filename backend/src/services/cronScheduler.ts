@@ -31,10 +31,13 @@ import {
   readCron,
   writeCron,
   appendInboxMessage,
+  getAgent,
+  getHabitOverride,
+  setHabitOverride,
   type CronJob,
-  type CronFile,
   type InboxMessage,
 } from "./agentService.js";
+import { listUserWorkspaces } from "./authService.js";
 
 // ─── Cron expression parsing ────────────────────────────────────────────
 
@@ -196,6 +199,29 @@ export function nextFireAfter(
 
 const evaluateLocks = new Map<string, Promise<EvaluateCronResult>>();
 
+function effectiveCronJob(
+  job: CronJob,
+  override: Awaited<ReturnType<typeof getHabitOverride>> | null,
+  workspaceId?: string,
+): CronJob {
+  return {
+    ...job,
+    workspaceId: workspaceId ?? job.workspaceId,
+    schedule: override?.schedule ?? job.schedule,
+    enabled: override?.enabled ?? job.enabled,
+    lastFiredAt: override?.lastFiredAt !== undefined ? override.lastFiredAt : job.lastFiredAt,
+  };
+}
+
+async function resolveJobWorkspaceIds(agentId: string, job: CronJob): Promise<Array<string | undefined>> {
+  if (job.workspaceId) return [job.workspaceId];
+  if (job.type !== "system") return [undefined];
+  const agent = await getAgent(agentId);
+  if (!agent?.userId) return [];
+  const workspaces = await listUserWorkspaces(agent.userId);
+  return workspaces.map((ws) => ws.id).filter(Boolean);
+}
+
 // ─── Evaluation (reads cron.json, fires due jobs) ───────────────────────
 
 export interface EvaluateCronResult {
@@ -248,44 +274,59 @@ async function evaluateCronImpl(
   let dirty = false;
 
   for (const job of cron.jobs) {
-    // Skip disabled habits
-    if ((job as any).enabled === false) {
+    const workspaceIds = await resolveJobWorkspaceIds(agentId, job);
+    if (workspaceIds.length === 0) {
       result.skipped.push({ job, reason: "disabled" });
       continue;
     }
-    const parsed = parseCron(job.schedule);
-    if (!parsed) {
-      result.skipped.push({ job, reason: "invalid-expression" });
-      continue;
+    for (const workspaceId of workspaceIds) {
+      const override = workspaceId ? await getHabitOverride(agentId, workspaceId, job.id) : null;
+      const effectiveJob = effectiveCronJob(job, override, workspaceId);
+      // Skip disabled habits
+      if ((effectiveJob as any).enabled === false) {
+        result.skipped.push({ job: effectiveJob, reason: "disabled" });
+        continue;
+      }
+      const parsed = parseCron(effectiveJob.schedule);
+      if (!parsed) {
+        result.skipped.push({ job: effectiveJob, reason: "invalid-expression" });
+        continue;
+      }
+      const lastFiredAt = effectiveJob.lastFiredAt ? new Date(effectiveJob.lastFiredAt) : null;
+      // Baseline = lastFiredAt, or an hour ago for freshly-created jobs so we
+      // don't back-fire through history.
+      const baseline = lastFiredAt ?? new Date(now.getTime() - 60 * 60 * 1000);
+      const next = nextFireAfter(parsed, baseline);
+      if (!next) {
+        result.skipped.push({ job: effectiveJob, reason: "never-fires" });
+        continue;
+      }
+      if (next.getTime() > now.getTime()) {
+        result.skipped.push({ job: effectiveJob, reason: "not-due" });
+        continue;
+      }
+      // Fire. Append inbox, bump lastFiredAt.
+      const inboxMessage = await appendInboxMessage(agentId, {
+        source: "cron",
+        subject: `Cron: ${effectiveJob.prompt}`,
+        body: effectiveJob.prompt,
+        meta: {
+          cronJobId: effectiveJob.id,
+          schedule: effectiveJob.schedule,
+          workspaceId: effectiveJob.workspaceId,
+          skills: effectiveJob.skills,
+        },
+      });
+      const firedAt = now.toISOString();
+      effectiveJob.lastFiredAt = firedAt;
+      if (workspaceId) {
+        await setHabitOverride(agentId, workspaceId, job.id, { lastFiredAt: firedAt });
+      } else {
+        job.lastFiredAt = firedAt;
+        dirty = true;
+      }
+      result.fired.push({ job: effectiveJob, inboxMessage });
     }
-    const lastFiredAt = job.lastFiredAt ? new Date(job.lastFiredAt) : null;
-    // Baseline = lastFiredAt, or an hour ago for freshly-created jobs so we
-    // don't back-fire through history.
-    const baseline = lastFiredAt ?? new Date(now.getTime() - 60 * 60 * 1000);
-    const next = nextFireAfter(parsed, baseline);
-    if (!next) {
-      result.skipped.push({ job, reason: "never-fires" });
-      continue;
-    }
-    if (next.getTime() > now.getTime()) {
-      result.skipped.push({ job, reason: "not-due" });
-      continue;
-    }
-    // Fire. Append inbox, bump lastFiredAt.
-    const inboxMessage = await appendInboxMessage(agentId, {
-      source: "cron",
-      subject: `Cron: ${job.prompt}`,
-      body: job.prompt,
-      meta: {
-        cronJobId: job.id,
-        schedule: job.schedule,
-        workspaceId: job.workspaceId,
-        skills: job.skills,
-      },
-    });
-    job.lastFiredAt = now.toISOString();
-    dirty = true;
-    result.fired.push({ job, inboxMessage });
   }
 
   if (dirty) await writeCron(agentId, cron);
@@ -331,7 +372,22 @@ export async function removeCronJob(agentId: string, jobId: string): Promise<boo
   return true;
 }
 
-export async function listCronJobs(agentId: string): Promise<CronJob[]> {
+export async function listCronJobs(
+  agentId: string,
+  opts?: { workspaceId?: string | null },
+): Promise<CronJob[]> {
   const cron = await readCron(agentId);
+  const workspaceId = typeof opts?.workspaceId === "string" && opts.workspaceId.trim()
+    ? opts.workspaceId.trim()
+    : "";
+  if (workspaceId) {
+    const jobs: CronJob[] = [];
+    for (const job of cron.jobs) {
+      if (job.workspaceId && job.workspaceId !== workspaceId) continue;
+      const override = await getHabitOverride(agentId, workspaceId, job.id);
+      jobs.push(effectiveCronJob(job, override, workspaceId));
+    }
+    return jobs;
+  }
   return cron.jobs.slice();
 }

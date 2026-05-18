@@ -76,7 +76,7 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
     try {
       const [data, sel] = await Promise.all([
         listModels(),
-        agentId ? getAgentModel(agentId) : Promise.resolve(null),
+        agentId ? getAgentModel(agentId, workspaceId) : Promise.resolve(null),
       ]);
       setModels(data.models);
       setSelection(sel);
@@ -85,7 +85,7 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [agentId]);
+  }, [agentId, workspaceId]);
 
   useEffect(() => {
     void loadModels(true);
@@ -101,13 +101,14 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.agentId === agentId && detail?.selection) {
+      const sameWorkspace = (detail?.workspaceId ?? null) === (workspaceId ?? null);
+      if (detail?.agentId === agentId && sameWorkspace && detail?.selection) {
         setSelection(detail.selection);
       }
     };
     window.addEventListener("agent-model-changed", handler);
     return () => window.removeEventListener("agent-model-changed", handler);
-  }, [agentId]);
+  }, [agentId, workspaceId]);
 
   // Listen for custom model CRUD (add/remove via chat) and refetch list
   useEffect(() => {

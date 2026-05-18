@@ -83,14 +83,14 @@ export default function SkillsTab({ agentId, blockId }: Props) {
   const loadSkills = useCallback(async (showLoading = false) => {
     if (showLoading) setLoading(true);
     try {
-      const data = await listAgentSkills(agentId);
+      const data = await listAgentSkills(agentId, workspaceId);
       setSkills(data.skills);
     } catch {
       setSkills([]);
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [agentId]);
+  }, [agentId, workspaceId]);
 
   useEffect(() => {
     void loadSkills(true);
@@ -107,7 +107,7 @@ export default function SkillsTab({ agentId, blockId }: Props) {
       prev.map((s) => (s.id === skillId ? { ...s, enabled } : s)),
     );
     try {
-      await toggleAgentSkill(agentId, skillId, enabled);
+      await toggleAgentSkill(agentId, skillId, enabled, workspaceId);
       toast.success(enabled ? t("agent.toast.skillEnabled") : t("agent.toast.skillDisabled"));
     } catch {
       setSkills((prev) =>
@@ -115,7 +115,7 @@ export default function SkillsTab({ agentId, blockId }: Props) {
       );
       toast.error(t("agent.toast.toggleFailed"));
     }
-  }, [agentId, toast, t]);
+  }, [agentId, workspaceId, toast, t]);
 
   const handleDeleteSkill = useCallback(async (skillId: string) => {
     const prev = skills;

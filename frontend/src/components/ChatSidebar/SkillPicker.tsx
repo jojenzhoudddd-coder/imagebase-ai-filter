@@ -11,13 +11,14 @@ import { useTranslation } from "../../i18n";
 
 interface Props {
   agentId: string;
+  workspaceId?: string | null;
   query: string;
   atRect: { left: number; right: number; top: number; bottom: number };
   onSelect: (skill: AgentSkillSummary) => void;
   onClose: () => void;
 }
 
-export default function SkillPicker({ agentId, query, atRect, onSelect, onClose }: Props) {
+export default function SkillPicker({ agentId, workspaceId, query, atRect, onSelect, onClose }: Props) {
   const { t } = useTranslation();
   const [skills, setSkills] = useState<AgentSkillSummary[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -26,10 +27,10 @@ export default function SkillPicker({ agentId, query, atRect, onSelect, onClose 
 
   // Load skills once
   useEffect(() => {
-    listAgentSkills(agentId)
+    listAgentSkills(agentId, workspaceId)
       .then((data) => setSkills(data.skills.filter((s) => s.enabled)))
       .catch(() => setSkills([]));
-  }, [agentId]);
+  }, [agentId, workspaceId]);
 
   // i18n-aware name/desc
   const localName = (s: AgentSkillSummary) => {

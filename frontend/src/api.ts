@@ -1819,6 +1819,7 @@ export interface AgentModelSelection {
   };
   requested: { id: string; displayName: string; available: boolean } | null;
   usedFallback: boolean;
+  workspaceId?: string | null;
 }
 
 export async function listModels(): Promise<{
@@ -1849,22 +1850,26 @@ export async function renameAgent(agentId: string, name: string): Promise<AgentM
   return res.json();
 }
 
-export async function getAgentModel(agentId: string): Promise<AgentModelSelection> {
-  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/model`);
+export async function getAgentModel(agentId: string, workspaceId?: string | null): Promise<AgentModelSelection> {
+  const params = new URLSearchParams();
+  if (workspaceId) params.set("workspaceId", workspaceId);
+  const qs = params.toString();
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/model${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("Failed to load agent model");
   return res.json();
 }
 
 export async function setAgentModel(
   agentId: string,
-  modelId: string
+  modelId: string,
+  workspaceId?: string | null,
 ): Promise<AgentModelSelection> {
   const res = await mutationFetch(
     `${BASE}/agents/${encodeURIComponent(agentId)}/model`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ modelId }),
+      body: JSON.stringify({ modelId, workspaceId }),
     }
   );
   if (!res.ok) {
@@ -1900,11 +1905,12 @@ export interface AgentMemoriesResponse {
 
 export async function listAgentMemories(
   agentId: string,
-  opts?: { limit?: number; tag?: string },
+  opts?: { limit?: number; tag?: string; workspaceId?: string | null },
 ): Promise<AgentMemoriesResponse> {
   const params = new URLSearchParams();
   if (opts?.limit) params.set("limit", String(opts.limit));
   if (opts?.tag) params.set("tag", opts.tag);
+  if (opts?.workspaceId) params.set("workspaceId", opts.workspaceId);
   const qs = params.toString();
   const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/memories${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("Failed to list memories");
@@ -1954,8 +1960,12 @@ export interface AgentSkillSummary {
 
 export async function listAgentSkills(
   agentId: string,
+  workspaceId?: string | null,
 ): Promise<{ skills: AgentSkillSummary[] }> {
-  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/skills`);
+  const params = new URLSearchParams();
+  if (workspaceId) params.set("workspaceId", workspaceId);
+  const qs = params.toString();
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/skills${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("Failed to list skills");
   return res.json();
 }
@@ -1964,13 +1974,14 @@ export async function toggleAgentSkill(
   agentId: string,
   skillId: string,
   enabled: boolean,
+  workspaceId?: string | null,
 ): Promise<void> {
   const res = await mutationFetch(
     `${BASE}/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(skillId)}/toggle`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ enabled, workspaceId }),
     },
   );
   if (!res.ok) {
@@ -1996,8 +2007,12 @@ export interface HabitSummary {
 
 export async function listHabits(
   agentId: string,
+  workspaceId?: string | null,
 ): Promise<{ habits: HabitSummary[] }> {
-  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/cron`);
+  const params = new URLSearchParams();
+  if (workspaceId) params.set("workspaceId", workspaceId);
+  const qs = params.toString();
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/cron${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("Failed to list habits");
   const data = await res.json();
   // Backend returns CronJob[] directly (array)
@@ -2025,13 +2040,14 @@ export async function toggleHabit(
   agentId: string,
   jobId: string,
   enabled: boolean,
+  workspaceId?: string | null,
 ): Promise<void> {
   const res = await mutationFetch(
     `${BASE}/agents/${encodeURIComponent(agentId)}/habits/${encodeURIComponent(jobId)}/toggle`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ enabled, workspaceId }),
     },
   );
   if (!res.ok) {
@@ -2136,8 +2152,12 @@ export async function listIntegrationPresets(
 
 export async function listAgentIntegrations(
   agentId: string,
+  workspaceId?: string | null,
 ): Promise<{ integrations: AgentIntegrationSummary[] }> {
-  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/integrations`);
+  const params = new URLSearchParams();
+  if (workspaceId) params.set("workspaceId", workspaceId);
+  const qs = params.toString();
+  const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/integrations${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("Failed to list integrations");
   return res.json();
 }
@@ -2145,13 +2165,14 @@ export async function listAgentIntegrations(
 export async function createAgentIntegration(
   agentId: string,
   input: CreateAgentIntegrationInput,
+  workspaceId?: string | null,
 ): Promise<AgentIntegrationSummary> {
   const res = await mutationFetch(
     `${BASE}/agents/${encodeURIComponent(agentId)}/integrations`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, workspaceId }),
     },
   );
   if (!res.ok) {
@@ -2165,13 +2186,14 @@ export async function toggleIntegration(
   agentId: string,
   integrationId: string,
   enabled: boolean,
+  workspaceId?: string | null,
 ): Promise<AgentIntegrationSummary> {
   const res = await mutationFetch(
     `${BASE}/agents/${encodeURIComponent(agentId)}/integrations/${encodeURIComponent(integrationId)}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ enabled, workspaceId }),
     },
   );
   if (!res.ok) {
@@ -2242,12 +2264,13 @@ export interface KnowledgeEntrySummary {
 
 export async function listKnowledgeEntries(
   agentId: string,
-  opts?: { limit?: number; offset?: number; tag?: string },
+  opts?: { limit?: number; offset?: number; tag?: string; workspaceId?: string | null },
 ): Promise<{ entries: KnowledgeEntrySummary[]; total: number; hasMore: boolean }> {
   const params = new URLSearchParams({ agentId });
   if (opts?.limit) params.set("limit", String(opts.limit));
   if (opts?.offset) params.set("offset", String(opts.offset));
   if (opts?.tag) params.set("tag", opts.tag);
+  if (opts?.workspaceId) params.set("workspaceId", opts.workspaceId);
   const res = await fetch(`${BASE}/knowledge?${params}`);
   if (!res.ok) throw new Error("Failed to list knowledge");
   return res.json();
@@ -2256,8 +2279,11 @@ export async function listKnowledgeEntries(
 export async function getKnowledgeEntry(
   agentId: string,
   id: string,
+  workspaceId?: string | null,
 ): Promise<KnowledgeEntrySummary> {
-  const res = await fetch(`${BASE}/knowledge/${id}?agentId=${encodeURIComponent(agentId)}`);
+  const params = new URLSearchParams({ agentId });
+  if (workspaceId) params.set("workspaceId", workspaceId);
+  const res = await fetch(`${BASE}/knowledge/${id}?${params}`);
   if (!res.ok) throw new Error("Failed to get knowledge entry");
   return res.json();
 }

@@ -42,14 +42,14 @@ export default function AcknowledgeTab({ agentId }: Props) {
   const loadKnowledge = useCallback(async (showLoading = false) => {
     if (showLoading) setLoading(true);
     try {
-      const data = await listKnowledgeEntries(agentId, { limit: 100 });
+      const data = await listKnowledgeEntries(agentId, { limit: 100, workspaceId });
       setEntries(data.entries);
     } catch {
       setEntries([]);
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [agentId]);
+  }, [agentId, workspaceId]);
 
   useEffect(() => {
     void loadKnowledge(true);
@@ -79,13 +79,13 @@ export default function AcknowledgeTab({ agentId }: Props) {
     setExpandedId(id);
     if (!fullContent[id]) {
       try {
-        const entry = await getKnowledgeEntry(agentId, id);
+        const entry = await getKnowledgeEntry(agentId, id, workspaceId);
         setFullContent((prev) => ({ ...prev, [id]: entry.content }));
       } catch {
         // fallback to truncated content
       }
     }
-  }, [expandedId, fullContent, agentId]);
+  }, [expandedId, fullContent, agentId, workspaceId]);
 
   if (loading) return <div className="ab-loading">{t("agent.block.loading")}</div>;
 

@@ -24,11 +24,9 @@ import { DEFAULT_WORKSPACE_ID } from "../services/dbStore.js";
 import { listSubagentRunsForConversation } from "../services/subagentRunStore.js";
 import { listWorkflowRunsForConversation } from "../services/workflowRunStore.js";
 import {
-  getSuggestions,
   getPersistedSuggestions,
   refreshSuggestions,
   DEFAULT_SUGGESTIONS,
-  getGoalSuggestions,
   getPersistedGoalSuggestions,
   refreshGoalSuggestions,
   DEFAULT_GOAL_SUGGESTIONS,
@@ -219,22 +217,19 @@ router.get("/context-snapshot", async (req: Request, res: Response) => {
 // defaults so the UI never shows an empty state.
 router.get("/suggestions", async (req: Request, res: Response) => {
   const workspaceId = (req.query.workspaceId as string) || DEFAULT_WORKSPACE_ID;
-  const cached = getSuggestions(workspaceId);
   const persisted = await getPersistedSuggestions(workspaceId).catch(() => null);
-  const entry =
-    persisted && (!cached || persisted.updatedAt > cached.updatedAt || cached.signature.startsWith("default:"))
-      ? persisted
-      : cached;
-  if (entry) {
+  if (persisted) {
     res.json({
       workspaceId,
-      suggestions: entry.suggestions,
-      updatedAt: entry.updatedAt,
+      suggestions: persisted.suggestions,
+      updatedAt: persisted.updatedAt,
       stale: false,
     });
     return;
   }
-  // Fire-and-forget refresh so the next call is warm
+  // Fire-and-forget refresh only warms the current workspace; the welcome
+  // page consumes persisted habit output, so until the habit writes its
+  // per-workspace conversation we return the default pack.
   void refreshSuggestions(workspaceId);
   res.json({
     workspaceId,
@@ -252,11 +247,10 @@ router.post("/suggestions/refresh", async (req: Request, res: Response) => {
   const { workspaceId = DEFAULT_WORKSPACE_ID } = (req.body as { workspaceId?: string }) || {};
   try {
     const suggestions = await refreshSuggestions(workspaceId, { force: true });
-    const entry = getSuggestions(workspaceId);
     res.json({
       workspaceId,
       suggestions,
-      updatedAt: entry?.updatedAt ?? Date.now(),
+      updatedAt: Date.now(),
       stale: false,
     });
   } catch (err) {
@@ -271,16 +265,13 @@ router.post("/suggestions/refresh", async (req: Request, res: Response) => {
 // Returns AI-generated goal recommendations for the High Agency Block.
 router.get("/goal-suggestions", async (req: Request, res: Response) => {
   const workspaceId = (req.query.workspaceId as string) || DEFAULT_WORKSPACE_ID;
-  const cached = getGoalSuggestions(workspaceId);
   const persisted = await getPersistedGoalSuggestions(workspaceId).catch(() => null);
-  const entry =
-    persisted && (!cached || persisted.updatedAt > cached.updatedAt || cached.signature.startsWith("default:"))
-      ? persisted
-      : cached;
-  if (entry) {
-    res.json({ workspaceId, goals: entry.goals, updatedAt: entry.updatedAt, stale: false });
+  if (persisted) {
+    res.json({ workspaceId, goals: persisted.goals, updatedAt: persisted.updatedAt, stale: false });
   } else {
-    // Cache miss — return defaults and kick off background refresh
+    // Cache miss — return defaults and kick off a current-workspace refresh.
+    // The High Agency UI consumes persisted Todo Suggestions habit output,
+    // not a cross-workspace/global cache.
     void refreshGoalSuggestions(workspaceId);
     res.json({ workspaceId, goals: DEFAULT_GOAL_SUGGESTIONS, updatedAt: Date.now(), stale: true });
   }

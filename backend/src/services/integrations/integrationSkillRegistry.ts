@@ -10,9 +10,12 @@ import { getIntegrationPreset } from "./providerCatalog.js";
 import type { AgentIntegrationRow, IntegrationToolManifest } from "./types.js";
 import { extractToolOutputError } from "../errorLogService.js";
 
-export async function loadIntegrationSkills(agentId: string): Promise<SkillDefinition[]> {
+export async function loadIntegrationSkills(
+  agentId: string,
+  workspaceId?: string | null,
+): Promise<SkillDefinition[]> {
   if (!agentId) return [];
-  const integrations = await listEnabledIntegrations(agentId);
+  const integrations = await listEnabledIntegrations(agentId, workspaceId);
   return integrations.map(toIntegrationSkillDefinition);
 }
 

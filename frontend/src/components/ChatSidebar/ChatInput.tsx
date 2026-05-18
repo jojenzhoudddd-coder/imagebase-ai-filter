@@ -600,6 +600,7 @@ export default function ChatInput({
           {skillState && agentId && (
             <SkillPicker
               agentId={agentId}
+              workspaceId={workspaceId}
               query={skillState.query}
               atRect={skillState.rect}
               onSelect={handleSkillSelect}

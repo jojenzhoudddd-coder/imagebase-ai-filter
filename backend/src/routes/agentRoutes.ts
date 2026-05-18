@@ -58,6 +58,10 @@ import {
   setModelStrengthOverride,
   getDisabledBuiltinSkills,
   setBuiltinSkillEnabled,
+  getUserSkillEnabledOverride,
+  setUserSkillEnabledForWorkspace,
+  setIntegrationEnabledForWorkspace,
+  setHabitOverride,
   type AgentConfig,
 } from "../services/agentService.js";
 
@@ -69,7 +73,7 @@ import {
   listCronJobs,
 } from "../services/cronScheduler.js";
 import { listActivities } from "../services/conversationStore.js";
-import { listEpisodicMemories, readWorkingMemory } from "../services/agentService.js";
+import { listEpisodicMemories, readWorkingMemory, readWorkingMemoryForWorkspace } from "../services/agentService.js";
 import pg from "pg";
 import { allSkills } from "../../mcp-server/src/skills/index.js";
 
@@ -97,6 +101,14 @@ import {
 import { currentUser, requireAuth } from "../services/authService.js";
 
 const router = express.Router();
+
+function readWorkspaceId(req: Request): string | undefined {
+  const queryValue = req.query.workspaceId;
+  const bodyValue = (req.body as any)?.workspaceId;
+  const raw = typeof queryValue === "string" ? queryValue : typeof bodyValue === "string" ? bodyValue : "";
+  const trimmed = raw.trim();
+  return trimmed || undefined;
+}
 
 // ─── Metadata ───
 
@@ -370,7 +382,8 @@ router.get("/:agentId/model", async (req: Request, res: Response) => {
     }
     const user = (req as any).user;
     const isRelated = !!user?.related;
-    const selected = await getSelectedModel(agent.id);
+    const workspaceId = readWorkspaceId(req);
+    const selected = await getSelectedModel(agent.id, workspaceId);
     let { resolved, requested, usedFallback } = resolveModelForCall(selected);
 
     // If builtin resolution fell back, try loading as a custom model
@@ -407,6 +420,7 @@ router.get("/:agentId/model", async (req: Request, res: Response) => {
           }
         : null,
       usedFallback,
+      workspaceId: workspaceId ?? null,
     });
   } catch (err: any) {
     console.error("[agents] get model error:", err);
@@ -442,7 +456,8 @@ router.put("/:agentId/model", async (req: Request, res: Response) => {
       res.status(404).json({ error: "agent not found" });
       return;
     }
-    await setSelectedModel(agent.id, modelId);
+    const workspaceId = readWorkspaceId(req);
+    await setSelectedModel(agent.id, modelId, workspaceId);
     res.json({
       selected: modelId,
       resolved: {
@@ -453,6 +468,7 @@ router.put("/:agentId/model", async (req: Request, res: Response) => {
         available: entry.available !== false,
       },
       usedFallback: false,
+      workspaceId: workspaceId ?? null,
     });
   } catch (err: any) {
     console.error("[agents] set model error:", err);
@@ -561,7 +577,7 @@ router.get("/:agentId/cron", async (req: Request, res: Response) => {
       res.status(404).json({ error: "agent not found" });
       return;
     }
-    const jobs = await listCronJobs(agent.id);
+    const jobs = await listCronJobs(agent.id, { workspaceId: readWorkspaceId(req) });
     res.json(jobs);
   } catch (err: any) {
     console.error("[agents] cron list error:", err);
@@ -650,12 +666,15 @@ router.get("/:agentId/memories", async (req: Request, res: Response) => {
     const { agentId } = req.params;
     const limit = parseInt(req.query.limit as string) || 50;
     const tag = (req.query.tag as string) || undefined;
+    const workspaceId = readWorkspaceId(req);
 
     // Episodic (compressed long-term)
-    const episodic = await listEpisodicMemories(agentId, { limit, tag });
+    const episodic = await listEpisodicMemories(agentId, { limit, tag, workspaceId });
 
     // Working (recent turns not yet compressed)
-    const working = await readWorkingMemory(agentId);
+    const working = workspaceId
+      ? await readWorkingMemoryForWorkspace(agentId, workspaceId)
+      : await readWorkingMemory(agentId);
 
     res.json({ episodic, working });
   } catch (err: any) {
@@ -685,21 +704,24 @@ router.get("/:agentId/activities", async (req: Request, res: Response) => {
 router.get("/:agentId/skills", async (req: Request, res: Response) => {
   try {
     const { agentId } = req.params;
+    const workspaceId = readWorkspaceId(req);
 
     // Query last-used time for builtin skills from message source field
     // source stores "skill:table-skill,analyst-skill" etc.
     const skillLastUsedMap = new Map<string, string>();
     try {
-      const { rows: sourceRows } = await _agentPool.query(`
+      const sourceSql = `
         SELECT m.source, MAX(m.timestamp) AS last_ts
         FROM messages m
         JOIN conversations c ON m."conversationId" = c.id
         WHERE c."agentId" = $1
+          ${workspaceId ? `AND c."workspaceId" = $2` : ""}
           AND m.source IS NOT NULL
           AND m.source LIKE 'skill:%'
           AND m.role = 'assistant'
         GROUP BY m.source
-      `, [agentId]);
+      `;
+      const { rows: sourceRows } = await _agentPool.query(sourceSql, workspaceId ? [agentId, workspaceId] : [agentId]);
       for (const row of sourceRows) {
         const skills = (row.source as string).replace("skill:", "").split(",");
         const ts = row.last_ts instanceof Date ? row.last_ts.toISOString() : String(row.last_ts);
@@ -711,7 +733,7 @@ router.get("/:agentId/skills", async (req: Request, res: Response) => {
     } catch { /* non-fatal */ }
 
     // Builtin skills. The enabled state is per-agent/user config, not global.
-    const disabledBuiltinSkills = new Set(await getDisabledBuiltinSkills(agentId));
+    const disabledBuiltinSkills = new Set(await getDisabledBuiltinSkills(agentId, workspaceId));
     const builtinSkills = allSkills.map((s) => ({
       id: s.name,
       name: s.name,
@@ -732,16 +754,21 @@ router.get("/:agentId/skills", async (req: Request, res: Response) => {
     }> = [];
     try {
       const rows = await listUserSkills({ ownerType: "agent", ownerId: agentId });
-      userSkills = rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        displayName: r.name,
-        description: r.description,
-        triggers: r.triggers.slice(0, 10),
-        lastUsed: r.lastInvokedAt?.toISOString() ?? null,
-        type: "user" as const,
-        enabled: r.enabled,
-      }));
+      for (const r of rows) {
+        const override = workspaceId
+          ? await getUserSkillEnabledOverride(agentId, workspaceId, r.id)
+          : undefined;
+        userSkills.push({
+          id: r.id,
+          name: r.name,
+          displayName: r.name,
+          description: r.description,
+          triggers: r.triggers.slice(0, 10),
+          lastUsed: r.lastInvokedAt?.toISOString() ?? null,
+          type: "user" as const,
+          enabled: override ?? r.enabled,
+        });
+      }
     } catch {
       // If user skill loading fails, still return builtins
     }
@@ -762,14 +789,24 @@ router.put("/:agentId/skills/:skillId/toggle", async (req: Request, res: Respons
       res.status(400).json({ error: "enabled must be boolean" });
       return;
     }
+    const workspaceId = readWorkspaceId(req);
     const builtin = allSkills.find((s) => s.name === skillId);
     if (builtin) {
-      await setBuiltinSkillEnabled(agentId, builtin.name, enabled);
-      res.json({ ok: true, type: "builtin", skillId: builtin.name, enabled });
+      await setBuiltinSkillEnabled(agentId, builtin.name, enabled, workspaceId);
+      res.json({ ok: true, type: "builtin", skillId: builtin.name, enabled, workspaceId: workspaceId ?? null });
       return;
     }
-    await updateUserSkill(skillId, { enabled }, { requireOwnerId: agentId });
-    res.json({ ok: true, type: "user", skillId, enabled });
+    if (workspaceId) {
+      const rows = await listUserSkills({ ownerType: "agent", ownerId: agentId });
+      if (!rows.some((row) => row.id === skillId)) {
+        res.status(404).json({ error: "skill not found" });
+        return;
+      }
+      await setUserSkillEnabledForWorkspace(agentId, workspaceId, skillId, enabled);
+    } else {
+      await updateUserSkill(skillId, { enabled }, { requireOwnerId: agentId });
+    }
+    res.json({ ok: true, type: "user", skillId, enabled, workspaceId: workspaceId ?? null });
   } catch (err: any) {
     console.error("[agents] skill toggle error:", err);
     res.status(err.statusCode ?? 500).json({ error: err.message ?? "internal error" });
@@ -812,7 +849,7 @@ router.get("/:agentId/integrations", async (req: Request, res: Response) => {
       return;
     }
     await ensureSystemIntegrations(agent.id);
-    const integrations = await listAgentIntegrations(agent.id);
+    const integrations = await listAgentIntegrations(agent.id, { workspaceId: readWorkspaceId(req) });
     res.json({ integrations });
   } catch (err: any) {
     console.error("[agents] integrations list error:", err);
@@ -828,17 +865,26 @@ router.post("/:agentId/integrations", async (req: Request, res: Response) => {
       res.status(404).json({ error: "agent not found" });
       return;
     }
+    const workspaceId = readWorkspaceId(req);
+    const requestedEnabled = typeof req.body?.enabled === "boolean" ? req.body.enabled : undefined;
     const integration = await createAgentIntegration({
       agentId: agent.id,
       providerKey: String(req.body?.providerKey ?? ""),
       displayName: typeof req.body?.displayName === "string" ? req.body.displayName : undefined,
       transport: req.body?.transport,
-      enabled: typeof req.body?.enabled === "boolean" ? req.body.enabled : undefined,
+      enabled: workspaceId ? false : requestedEnabled,
       config: req.body?.config,
       toolManifest: req.body?.toolManifest,
       scopes: req.body?.scopes,
       credentials: req.body?.credentials,
     });
+    if (workspaceId && typeof requestedEnabled === "boolean") {
+      await setIntegrationEnabledForWorkspace(agent.id, workspaceId, integration.id, requestedEnabled);
+      const effective = (await listAgentIntegrations(agent.id, { workspaceId }))
+        .find((item) => item.id === integration.id) ?? integration;
+      res.status(201).json(effective);
+      return;
+    }
     res.status(201).json(integration);
   } catch (err: any) {
     console.error("[agents] integration create error:", err);
@@ -851,13 +897,31 @@ router.post("/:agentId/integrations", async (req: Request, res: Response) => {
 router.put("/:agentId/integrations/:integrationId", async (req: Request, res: Response) => {
   try {
     const { agentId, integrationId } = req.params;
+    const workspaceId = readWorkspaceId(req);
     const patch: Record<string, unknown> = {};
     for (const key of ["displayName", "transport", "enabled", "config", "toolManifest", "scopes", "credentials"]) {
       if (key in (req.body ?? {})) patch[key] = req.body[key];
     }
-    const integration = await updateAgentIntegration(integrationId, patch as any, {
-      requireAgentId: agentId,
-    });
+    if (workspaceId && typeof patch.enabled === "boolean") {
+      const existing = (await listAgentIntegrations(agentId, { workspaceId }))
+        .find((item) => item.id === integrationId);
+      if (!existing) {
+        res.status(404).json({ error: "integration not found" });
+        return;
+      }
+      await setIntegrationEnabledForWorkspace(agentId, workspaceId, integrationId, patch.enabled);
+      delete patch.enabled;
+    }
+    let integration = null;
+    if (Object.keys(patch).length > 0) {
+      integration = await updateAgentIntegration(integrationId, patch as any, {
+        requireAgentId: agentId,
+      });
+    }
+    if (workspaceId) {
+      integration = (await listAgentIntegrations(agentId, { workspaceId }))
+        .find((item) => item.id === integrationId) ?? integration;
+    }
     res.json(integration);
   } catch (err: any) {
     console.error("[agents] integration update error:", err);
@@ -905,7 +969,7 @@ router.put("/:agentId/habits/:jobId/toggle", async (req: Request, res: Response)
       res.status(400).json({ error: "enabled must be boolean" });
       return;
     }
-    // Read cron.json, find job, toggle enabled, write back
+    const workspaceId = readWorkspaceId(req);
     const { readCron, writeCron } = await import("../services/agentService.js");
     const cronFile = await readCron(agentId);
     const job = cronFile.jobs.find((j: any) => j.id === jobId);
@@ -913,9 +977,13 @@ router.put("/:agentId/habits/:jobId/toggle", async (req: Request, res: Response)
       res.status(404).json({ error: "job not found" });
       return;
     }
-    job.enabled = enabled;
-    await writeCron(agentId, cronFile);
-    res.json({ ok: true });
+    if (workspaceId) {
+      await setHabitOverride(agentId, workspaceId, jobId, { enabled });
+    } else {
+      job.enabled = enabled;
+      await writeCron(agentId, cronFile);
+    }
+    res.json({ ok: true, workspaceId: workspaceId ?? null });
   } catch (err: any) {
     console.error("[agents] habit toggle error:", err);
     res.status(500).json({ error: err.message ?? "internal error" });
@@ -937,6 +1005,7 @@ router.put("/:agentId/habits/:jobId/schedule", async (req: Request, res: Respons
       res.status(400).json({ error: "Invalid cron expression" });
       return;
     }
+    const workspaceId = readWorkspaceId(req);
     const { readCron, writeCron } = await import("../services/agentService.js");
     const cronFile = await readCron(agentId);
     const job = cronFile.jobs.find((j: any) => j.id === jobId);
@@ -944,9 +1013,14 @@ router.put("/:agentId/habits/:jobId/schedule", async (req: Request, res: Respons
       res.status(404).json({ error: "job not found" });
       return;
     }
-    job.schedule = schedule.trim();
-    await writeCron(agentId, cronFile);
-    res.json({ ok: true, schedule: job.schedule });
+    const nextSchedule = schedule.trim();
+    if (workspaceId) {
+      await setHabitOverride(agentId, workspaceId, jobId, { schedule: nextSchedule });
+    } else {
+      job.schedule = nextSchedule;
+      await writeCron(agentId, cronFile);
+    }
+    res.json({ ok: true, schedule: nextSchedule, workspaceId: workspaceId ?? null });
   } catch (err: any) {
     console.error("[agents] habit schedule update error:", err);
     res.status(500).json({ error: err.message ?? "internal error" });

@@ -29,6 +29,10 @@ import {
   UserSkillPermissionError,
   type UserSkillRow,
 } from "../../../src/services/userSkill/userSkillStore.js";
+import {
+  getUserSkillEnabledOverride,
+  setUserSkillEnabledForWorkspace,
+} from "../../../src/services/agentService.js";
 import { getWorkflowRun } from "../../../src/services/workflowRunStore.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
@@ -75,13 +79,13 @@ function buildAssetSummary(row: UserSkillRow): string {
 }
 
 /** Compact dto for list output (Agent friendly — no raw workflowDocs). */
-function rowToListDto(row: UserSkillRow) {
+function rowToListDto(row: UserSkillRow, enabledOverride?: boolean) {
   return {
     id: row.id,
     name: row.name,
     description: row.description,
     triggers: row.triggers,
-    enabled: row.enabled,
+    enabled: enabledOverride ?? row.enabled,
     invokedCount: row.invokedCount,
     lastInvokedAt: row.lastInvokedAt?.toISOString() ?? null,
     assetSummary: buildAssetSummary(row),
@@ -92,9 +96,9 @@ function rowToListDto(row: UserSkillRow) {
 }
 
 /** Get-detail dto (includes raw workflowDocs / promptFragment / toolWhitelist). */
-function rowToDetailDto(row: UserSkillRow) {
+function rowToDetailDto(row: UserSkillRow, enabledOverride?: boolean) {
   return {
-    ...rowToListDto(row),
+    ...rowToListDto(row, enabledOverride),
     promptFragment: row.promptFragment,
     workflowDocs: row.workflowDocs,
     toolWhitelist: row.toolWhitelist,
@@ -205,12 +209,21 @@ export const userSkillTools: ToolDefinition[] = [
         const rows = await listUserSkills({
           ownerType: "agent",
           ownerId,
-          onlyEnabled: !!args.onlyEnabled,
         });
+        const skills = [];
+        for (const row of rows) {
+          const override = ctx?.workspaceId
+            ? await getUserSkillEnabledOverride(ownerId, ctx.workspaceId, row.id)
+            : undefined;
+          const enabled = override ?? row.enabled;
+          if (args.onlyEnabled && !enabled) continue;
+          skills.push(rowToListDto(row, enabled));
+        }
         return JSON.stringify({
           ok: true,
-          total: rows.length,
-          skills: rows.map(rowToListDto),
+          workspaceId: ctx?.workspaceId ?? null,
+          total: skills.length,
+          skills,
         });
       } catch (err) {
         return errToToolJson(err);
@@ -293,10 +306,26 @@ export const userSkillTools: ToolDefinition[] = [
       if ("promptFragment" in args) patch.promptFragment = args.promptFragment;
       if ("workflowDocs" in args) patch.workflowDocs = args.workflowDocs;
       if ("toolWhitelist" in args) patch.toolWhitelist = args.toolWhitelist;
-      if ("enabled" in args) patch.enabled = args.enabled;
+      const workspaceEnabled =
+        ctx?.workspaceId && "enabled" in args && typeof args.enabled === "boolean"
+          ? args.enabled
+          : undefined;
+      if ("enabled" in args && workspaceEnabled === undefined) patch.enabled = args.enabled;
       try {
-        const row = await updateUserSkill(id, patch as any, { requireOwnerId });
-        return JSON.stringify({ ok: true, skill: rowToDetailDto(row) });
+        let row = await getUserSkill(id);
+        if (!row) {
+          return JSON.stringify({ ok: false, error: "skill not found", code: "NOT_FOUND" });
+        }
+        if (row.ownerId !== requireOwnerId) {
+          return JSON.stringify({ ok: false, error: "permission denied — this skill belongs to another agent", code: "PERMISSION" });
+        }
+        if (Object.keys(patch).length > 0) {
+          row = await updateUserSkill(id, patch as any, { requireOwnerId });
+        }
+        if (ctx?.workspaceId && workspaceEnabled !== undefined) {
+          await setUserSkillEnabledForWorkspace(requireOwnerId, ctx.workspaceId, id, workspaceEnabled);
+        }
+        return JSON.stringify({ ok: true, workspaceId: ctx?.workspaceId ?? null, skill: rowToDetailDto(row, workspaceEnabled) });
       } catch (err) {
         return errToToolJson(err);
       }
@@ -387,8 +416,23 @@ export const userSkillTools: ToolDefinition[] = [
         });
       }
       try {
+        if (ctx?.workspaceId) {
+          const row = await getUserSkill(id);
+          if (!row) {
+            return JSON.stringify({ ok: false, error: "skill not found", code: "NOT_FOUND" });
+          }
+          if (row.ownerId !== requireOwnerId) {
+            return JSON.stringify({ ok: false, error: "permission denied — this skill belongs to another agent", code: "PERMISSION" });
+          }
+          await setUserSkillEnabledForWorkspace(requireOwnerId, ctx.workspaceId, id, args.enabled);
+          return JSON.stringify({
+            ok: true,
+            workspaceId: ctx.workspaceId,
+            skill: rowToListDto(row, args.enabled),
+          });
+        }
         const row = await toggleUserSkillEnabled(id, args.enabled, { requireOwnerId });
-        return JSON.stringify({ ok: true, skill: rowToListDto(row) });
+        return JSON.stringify({ ok: true, workspaceId: null, skill: rowToListDto(row) });
       } catch (err) {
         return errToToolJson(err);
       }

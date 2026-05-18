@@ -7,6 +7,26 @@
 
 ---
 
+## 2026-05-18 (Feature · Workspace-scoped Agent State)
+
+### feat(agent): habits / memory / knowledge / settings 按 workspace 隔离
+
+Commit: pending deployment commit.
+
+- Habits 按 workspace 独立运行；系统 habit 无显式 workspace 时 fan-out 到用户所有 workspace，但每条触发只写入对应 workspace 的 habit conversation。
+- Todo Suggestions / Workspace Slogan 不再在消费侧二次遍历全部 workspace，避免多 workspace 下重复写入；Chat welcome prompt 和 High Agency goal 只读取当前 workspace 的 habit 结果。
+- Memory 与 Acknowledge 按 workspace 隔离：新 memory 进入 workspace 子目录，KnowledgeEntry 新增 `workspaceId`，当前 workspace 默认不读取 legacy/global rows。
+- Model / skill / habit / integration 的选择与开关新增 workspace override；旧 agent 级配置继续作为默认值，workspace 只存差异。
+- Admin 用户列表的 conversation/activity 统计改为按用户拥有的所有 workspace 聚合。
+
+本地验收：
+- `cd backend && npx prisma generate` 通过。
+- `cd frontend && npm run build` 通过。
+- `git diff --check` 通过。
+- 后端全量 `npx tsc --noEmit` 仍有既有 table/dbStore/ideaBlock/fieldSuggest 类型错误；本次涉及文件 targeted 过滤检查无新增错误。
+
+---
+
 ## 2026-05-17 (Fix · Chat History Popover)
 
 ### fix(chat): 历史对话 popover 右侧边界自适应

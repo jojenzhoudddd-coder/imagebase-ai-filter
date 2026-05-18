@@ -22,7 +22,12 @@ import {
   parseCron,
   nextFireAfter,
 } from "../../../src/services/cronScheduler.js";
-import { ensureAgentFiles, readCron, writeCron } from "../../../src/services/agentService.js";
+import {
+  ensureAgentFiles,
+  readCron,
+  writeCron,
+  setHabitOverride,
+} from "../../../src/services/agentService.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
 const DEFAULT_AGENT_ID = "agent_default";
@@ -129,10 +134,11 @@ export const cronTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const agentId = resolveAgentId(args, ctx);
-      const jobs = await listCronJobs(agentId);
+      const jobs = await listCronJobs(agentId, { workspaceId: ctx?.workspaceId ?? null });
       const now = new Date();
       return JSON.stringify({
         ok: true,
+        workspaceId: ctx?.workspaceId ?? null,
         count: jobs.length,
         jobs: jobs.map((j) => {
           const parsed = parseCron(j.schedule);
@@ -210,8 +216,12 @@ export const cronTools: ToolDefinition[] = [
       if (typeof args.schedule === "string" && args.schedule.trim()) {
         const parsed = parseCron(args.schedule.trim());
         if (!parsed) return JSON.stringify({ ok: false, error: `无效的 cron 表达式: ${args.schedule}` });
-        job.schedule = args.schedule.trim();
-        updates.push(`schedule → ${job.schedule}`);
+        if (ctx?.workspaceId) {
+          await setHabitOverride(agentId, ctx.workspaceId, jobId, { schedule: args.schedule.trim() });
+        } else {
+          job.schedule = args.schedule.trim();
+        }
+        updates.push(`schedule → ${args.schedule.trim()}`);
       }
       if (typeof args.prompt === "string" && args.prompt.trim()) {
         if (isSystem) {
@@ -235,21 +245,28 @@ export const cronTools: ToolDefinition[] = [
         updates.push("description updated");
       }
       if (typeof args.enabled === "boolean") {
-        job.enabled = args.enabled;
+        if (ctx?.workspaceId) {
+          await setHabitOverride(agentId, ctx.workspaceId, jobId, { enabled: args.enabled });
+        } else {
+          job.enabled = args.enabled;
+        }
         updates.push(`enabled → ${args.enabled}`);
       }
 
       if (updates.length === 0) return JSON.stringify({ ok: false, error: "没有传入任何要修改的字段" });
 
       await writeCron(agentId, cronFile);
-      const p = parseCron(job.schedule);
+      const effectiveSchedule = (typeof args.schedule === "string" && args.schedule.trim()) ? args.schedule.trim() : job.schedule;
+      const effectiveEnabled = typeof args.enabled === "boolean" ? args.enabled : (job.enabled ?? true);
+      const p = parseCron(effectiveSchedule);
       const nextFire = p ? nextFireAfter(p, new Date()) : null;
       return JSON.stringify({
         ok: true,
+        workspaceId: ctx?.workspaceId ?? null,
         jobId,
         updates,
-        schedule: job.schedule,
-        enabled: job.enabled ?? true,
+        schedule: effectiveSchedule,
+        enabled: effectiveEnabled,
         nextFireAt: nextFire?.toISOString() ?? null,
       });
     },

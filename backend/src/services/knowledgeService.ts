@@ -34,6 +34,7 @@ function chunkText(text: string): string[] {
 
 export interface KnowledgeCreateInput {
   agentId: string;
+  workspaceId?: string | null;
   title: string;
   content: string;
   sourceUrl?: string | null;
@@ -47,23 +48,37 @@ export interface KnowledgeCreateInput {
 // a separate entry. A simple promise-chain per agentId fixes this.
 const agentQueues = new Map<string, Promise<any>>();
 
-function enqueue<T>(agentId: string, fn: () => Promise<T>): Promise<T> {
-  const prev = agentQueues.get(agentId) ?? Promise.resolve();
+function queueKey(agentId: string, workspaceId?: string | null): string {
+  return `${agentId}:${workspaceId ?? "_global"}`;
+}
+
+function workspaceWhere(workspaceId?: string | null): Record<string, unknown> {
+  return workspaceId ? { workspaceId } : {};
+}
+
+function enqueue<T>(agentId: string, workspaceId: string | null | undefined, fn: () => Promise<T>): Promise<T> {
+  const key = queueKey(agentId, workspaceId);
+  const prev = agentQueues.get(key) ?? Promise.resolve();
   const next = prev.then(fn, fn);
-  agentQueues.set(agentId, next);
+  agentQueues.set(key, next);
   return next;
 }
 
 const MERGE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 export function addKnowledge(input: KnowledgeCreateInput) {
-  return enqueue(input.agentId, () => _addKnowledgeImpl(input));
+  return enqueue(input.agentId, input.workspaceId, () => _addKnowledgeImpl(input));
 }
 
 async function _addKnowledgeImpl(input: KnowledgeCreateInput) {
   const cutoff = new Date(Date.now() - MERGE_WINDOW_MS);
   const existing = await prisma.knowledgeEntry.findFirst({
-    where: { agentId: input.agentId, chunkIndex: 0, createdAt: { gte: cutoff } },
+    where: {
+      agentId: input.agentId,
+      ...workspaceWhere(input.workspaceId),
+      chunkIndex: 0,
+      createdAt: { gte: cutoff },
+    },
     orderBy: { createdAt: "desc" },
   });
 
@@ -97,7 +112,7 @@ async function _addKnowledgeImpl(input: KnowledgeCreateInput) {
         prisma.knowledgeEntry.create({
           data: {
             id: await generateId("knowledgeEntry"),
-            agentId: input.agentId, title: docTitle, content: chunk,
+            agentId: input.agentId, workspaceId: input.workspaceId ?? null, title: docTitle, content: chunk,
             sourceUrl: sourceUrl ?? null, sourceType: input.sourceType ?? existing.sourceType,
             tags: mergedTags, embedding: embeddings ? embeddings[i] : undefined,
             chunkIndex: i, parentId: chunks.length > 1 ? parentId : null,
@@ -117,7 +132,7 @@ async function _addKnowledgeImpl(input: KnowledgeCreateInput) {
       prisma.knowledgeEntry.create({
         data: {
           id: await generateId("knowledgeEntry"),
-          agentId: input.agentId, title: input.title, content: chunk,
+          agentId: input.agentId, workspaceId: input.workspaceId ?? null, title: input.title, content: chunk,
           sourceUrl: input.sourceUrl ?? null, sourceType: input.sourceType ?? "web",
           tags: (input.tags ?? []).slice(0, 5), embedding: embeddings ? embeddings[i] : undefined,
           chunkIndex: i, parentId: chunks.length > 1 ? parentId : null,
@@ -130,11 +145,11 @@ async function _addKnowledgeImpl(input: KnowledgeCreateInput) {
 
 export async function listKnowledge(
   agentId: string,
-  opts?: { limit?: number; offset?: number; tag?: string },
+  opts?: { limit?: number; offset?: number; tag?: string; workspaceId?: string | null },
 ) {
   const limit = Math.min(opts?.limit ?? 20, 100);
   const offset = opts?.offset ?? 0;
-  const where: any = { agentId, chunkIndex: 0 }; // Only return first chunk (parent)
+  const where: any = { agentId, ...workspaceWhere(opts?.workspaceId), chunkIndex: 0 }; // Only return first chunk (parent)
   if (opts?.tag) where.tags = { has: opts.tag };
 
   const [entries, total] = await Promise.all([
@@ -169,8 +184,13 @@ export async function listKnowledge(
 }
 
 export async function getKnowledge(agentId: string, id: string) {
+  return getKnowledgeScoped(agentId, id);
+}
+
+export async function getKnowledgeScoped(agentId: string, id: string, workspaceId?: string | null) {
   const entry = await prisma.knowledgeEntry.findUnique({ where: { id } });
   if (!entry || entry.agentId !== agentId) return null;
+  if (workspaceId && entry.workspaceId !== workspaceId) return null;
   if (entry.parentId) {
     const chunks = await prisma.knowledgeEntry.findMany({
       where: { parentId: entry.parentId },
@@ -178,10 +198,10 @@ export async function getKnowledge(agentId: string, id: string) {
       select: { content: true },
     });
     return { id: entry.id, title: entry.title, content: chunks.map((c) => c.content).join(""),
-      sourceUrl: entry.sourceUrl, sourceType: entry.sourceType, tags: entry.tags, createdAt: entry.createdAt.toISOString() };
+      sourceUrl: entry.sourceUrl, sourceType: entry.sourceType, tags: entry.tags, createdAt: entry.createdAt.toISOString(), workspaceId: entry.workspaceId };
   }
   return { id: entry.id, title: entry.title, content: entry.content,
-    sourceUrl: entry.sourceUrl, sourceType: entry.sourceType, tags: entry.tags, createdAt: entry.createdAt.toISOString() };
+    sourceUrl: entry.sourceUrl, sourceType: entry.sourceType, tags: entry.tags, createdAt: entry.createdAt.toISOString(), workspaceId: entry.workspaceId };
 }
 
 // ─── Update ─────────────────────────────────────────────────────────────
@@ -204,6 +224,7 @@ export async function getKnowledge(agentId: string, id: string) {
 
 export interface KnowledgeUpdateInput {
   agentId: string;
+  workspaceId?: string | null;
   id: string;
   title?: string;
   content?: string;
@@ -213,13 +234,13 @@ export interface KnowledgeUpdateInput {
 }
 
 export function updateKnowledge(input: KnowledgeUpdateInput) {
-  return enqueue(input.agentId, () => _updateKnowledgeImpl(input));
+  return enqueue(input.agentId, input.workspaceId, () => _updateKnowledgeImpl(input));
 }
 
 async function _updateKnowledgeImpl(input: KnowledgeUpdateInput) {
   // 1. Resolve target — id may be any chunk; we want the whole group.
   const probe = await prisma.knowledgeEntry.findUnique({ where: { id: input.id } });
-  if (!probe || probe.agentId !== input.agentId) {
+  if (!probe || probe.agentId !== input.agentId || (input.workspaceId && probe.workspaceId !== input.workspaceId)) {
     return { ok: false as const, error: "not found" };
   }
 
@@ -281,6 +302,7 @@ async function _updateKnowledgeImpl(input: KnowledgeUpdateInput) {
           data: {
             id: await generateId("knowledgeEntry"),
             agentId: input.agentId,
+            workspaceId: probe.workspaceId ?? input.workspaceId ?? null,
             title: newTitle,
             content: chunk,
             sourceUrl: newSourceUrl ?? null,
@@ -299,7 +321,7 @@ async function _updateKnowledgeImpl(input: KnowledgeUpdateInput) {
   const first = await prisma.knowledgeEntry.findFirst({
     where: stableParentId
       ? { parentId: stableParentId, chunkIndex: 0 }
-      : { agentId: input.agentId, title: newTitle, chunkIndex: 0 },
+      : { agentId: input.agentId, ...workspaceWhere(input.workspaceId), title: newTitle, chunkIndex: 0 },
     orderBy: { createdAt: "desc" },
     select: { id: true },
   });
@@ -315,9 +337,13 @@ async function _updateKnowledgeImpl(input: KnowledgeUpdateInput) {
 }
 
 export async function deleteKnowledge(agentId: string, id: string) {
+  return deleteKnowledgeScoped(agentId, id);
+}
+
+export async function deleteKnowledgeScoped(agentId: string, id: string, workspaceId?: string | null) {
   // Find entry to get parentId
   const entry = await prisma.knowledgeEntry.findUnique({ where: { id } });
-  if (!entry || entry.agentId !== agentId) return false;
+  if (!entry || entry.agentId !== agentId || (workspaceId && entry.workspaceId !== workspaceId)) return false;
 
   if (entry.parentId) {
     // Delete all chunks with same parentId
@@ -334,6 +360,7 @@ export async function searchKnowledge(
   agentId: string,
   query: string,
   limit = 5,
+  opts?: { workspaceId?: string | null },
 ) {
   const queryEmbedding = await embed([query]);
 
@@ -342,6 +369,7 @@ export async function searchKnowledge(
     const results = await prisma.knowledgeEntry.findMany({
       where: {
         agentId,
+        ...workspaceWhere(opts?.workspaceId),
         OR: [
           { title: { contains: query, mode: "insensitive" } },
           { content: { contains: query, mode: "insensitive" } },
@@ -356,7 +384,7 @@ export async function searchKnowledge(
 
   // Application-level cosine similarity (dev mode; prod uses pgvector)
   const allEntries = await prisma.knowledgeEntry.findMany({
-    where: { agentId, embedding: { not: null } } as any,
+    where: { agentId, ...workspaceWhere(opts?.workspaceId), embedding: { not: null } } as any,
     select: { id: true, title: true, content: true, sourceUrl: true, tags: true, embedding: true, createdAt: true },
   });
 

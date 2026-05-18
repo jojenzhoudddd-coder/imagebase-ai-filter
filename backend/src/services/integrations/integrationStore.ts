@@ -3,6 +3,7 @@ import fsp from "fs/promises";
 import os from "os";
 import path from "path";
 import { generateId } from "../idGenerator.js";
+import { getIntegrationEnabledOverride } from "../agentService.js";
 import { encryptSecret, previewSecret } from "./secretCrypto.js";
 import {
   getIntegrationPreset,
@@ -67,7 +68,10 @@ export interface DeleteIntegrationResult {
 const VALID_TRANSPORTS = new Set<IntegrationTransport>(["mcp-stdio", "mcp-http", "cli"]);
 const VALID_STATUS = new Set<IntegrationStatus>(["not_configured", "healthy", "error", "disabled"]);
 
-export async function listAgentIntegrations(agentId: string): Promise<AgentIntegrationRow[]> {
+export async function listAgentIntegrations(
+  agentId: string,
+  opts?: { workspaceId?: string | null },
+): Promise<AgentIntegrationRow[]> {
   const { rows } = await pool.query(
     `
       SELECT i.*,
@@ -86,12 +90,38 @@ export async function listAgentIntegrations(agentId: string): Promise<AgentInteg
     `,
     [agentId],
   );
-  return rows.map(rowToIntegration);
+  const integrations = rows.map(rowToIntegration);
+  return applyWorkspaceIntegrationState(agentId, integrations, opts?.workspaceId);
 }
 
-export async function listEnabledIntegrations(agentId: string): Promise<AgentIntegrationRow[]> {
-  const all = await listAgentIntegrations(agentId);
+export async function listEnabledIntegrations(
+  agentId: string,
+  workspaceId?: string | null,
+): Promise<AgentIntegrationRow[]> {
+  const all = await listAgentIntegrations(agentId, { workspaceId });
   return all.filter((i) => i.enabled);
+}
+
+async function applyWorkspaceIntegrationState(
+  agentId: string,
+  integrations: AgentIntegrationRow[],
+  workspaceId?: string | null,
+): Promise<AgentIntegrationRow[]> {
+  if (!workspaceId) return integrations;
+  const out: AgentIntegrationRow[] = [];
+  for (const integration of integrations) {
+    const override = await getIntegrationEnabledOverride(agentId, workspaceId, integration.id);
+    if (override === undefined) {
+      out.push(integration);
+      continue;
+    }
+    out.push({
+      ...integration,
+      enabled: override,
+      status: override ? integration.status : "disabled",
+    });
+  }
+  return out;
 }
 
 export async function ensureSystemIntegrations(agentId: string): Promise<void> {

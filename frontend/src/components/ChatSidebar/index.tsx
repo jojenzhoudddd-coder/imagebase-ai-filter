@@ -1996,7 +1996,7 @@ export default function ChatSidebar({
             refreshToken={agentRefreshToken}
             disabled={streaming}
           />
-          <ChatModelPicker agentId={agentId} open={open} disabled={streaming} />
+          <ChatModelPicker agentId={agentId} workspaceId={workspaceId} open={open} disabled={streaming} />
         </div>
         <div className="chat-header-actions">
           {/* Agent meta dropdown trigger —— 在 history icon 左侧,8px gap

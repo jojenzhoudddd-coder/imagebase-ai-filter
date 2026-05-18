@@ -126,17 +126,17 @@ export default function IntegrationsTab({ agentId, blockId }: Props) {
   const [testingId, setTestingId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    const integrationData = await listAgentIntegrations(agentId);
+    const integrationData = await listAgentIntegrations(agentId, workspaceId);
     setIntegrations(integrationData.integrations);
     setLoadError(false);
-  }, [agentId]);
+  }, [agentId, workspaceId]);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setLoadError(false);
     setIntegrations([]);
-    listAgentIntegrations(agentId)
+    listAgentIntegrations(agentId, workspaceId)
       .then((integrationData) => {
         if (!active) return;
         setIntegrations(integrationData.integrations);
@@ -153,7 +153,7 @@ export default function IntegrationsTab({ agentId, blockId }: Props) {
     return () => {
       active = false;
     };
-  }, [agentId]);
+  }, [agentId, workspaceId]);
 
   const refreshIntegrations = useCallback(() => {
     void reload().catch(() => setLoadError(true));
@@ -184,7 +184,7 @@ export default function IntegrationsTab({ agentId, blockId }: Props) {
       ),
     );
     try {
-      const updated = await toggleIntegration(agentId, integrationId, enabled);
+      const updated = await toggleIntegration(agentId, integrationId, enabled, workspaceId);
       setIntegrations((prev) =>
         prev.map((integration) => (integration.id === integrationId ? updated : integration)),
       );
@@ -197,7 +197,7 @@ export default function IntegrationsTab({ agentId, blockId }: Props) {
       );
       toast.error(t("agent.toast.toggleFailed"));
     }
-  }, [agentId, toast, t]);
+  }, [agentId, workspaceId, toast, t]);
 
   const handleDelete = useCallback(async (integrationId: string) => {
     const prev = integrations;

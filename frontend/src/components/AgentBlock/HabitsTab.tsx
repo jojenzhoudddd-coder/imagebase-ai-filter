@@ -140,14 +140,14 @@ export default function HabitsTab({ agentId, blockId }: Props) {
   const loadHabits = useCallback(async (showLoading = false) => {
     if (showLoading) setLoading(true);
     try {
-      const data = await listHabits(agentId);
+      const data = await listHabits(agentId, workspaceId);
       setHabits(data.habits);
     } catch {
       setHabits([]);
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [agentId]);
+  }, [agentId, workspaceId]);
 
   useEffect(() => {
     void loadHabits(true);
@@ -164,7 +164,7 @@ export default function HabitsTab({ agentId, blockId }: Props) {
       prev.map((h) => (h.id === jobId ? { ...h, enabled } : h)),
     );
     try {
-      await toggleHabit(agentId, jobId, enabled);
+      await toggleHabit(agentId, jobId, enabled, workspaceId);
       toast.success(enabled ? t("agent.toast.habitEnabled") : t("agent.toast.habitDisabled"));
     } catch {
       setHabits((prev) =>
@@ -172,7 +172,7 @@ export default function HabitsTab({ agentId, blockId }: Props) {
       );
       toast.error(t("agent.toast.toggleFailed"));
     }
-  }, [agentId, toast, t]);
+  }, [agentId, workspaceId, toast, t]);
 
   const handleDeleteHabit = useCallback(async (jobId: string) => {
     const prev = habits;

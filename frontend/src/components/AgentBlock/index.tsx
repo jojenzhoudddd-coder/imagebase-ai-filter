@@ -38,7 +38,7 @@ interface Props {
 
 export default function AgentBlock({ blockId }: Props) {
   const { state, patchBlockState } = useCanvas();
-  const { agentId } = useAuth();
+  const { agentId, workspaceId } = useAuth();
   const shell = useBlockShell();
   const { t } = useTranslation();
 
@@ -216,7 +216,7 @@ export default function AgentBlock({ blockId }: Props) {
           </div>
           <div className="ab-hero-chips">
             {resolvedAgentId && (
-              <ChatModelPicker agentId={resolvedAgentId} open={true} />
+              <ChatModelPicker agentId={resolvedAgentId} workspaceId={workspaceId} open={true} />
             )}
           </div>
         </div>

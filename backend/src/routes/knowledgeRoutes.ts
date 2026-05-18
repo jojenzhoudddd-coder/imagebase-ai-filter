@@ -3,19 +3,19 @@
  */
 
 import express, { type Request, type Response } from "express";
-import { addKnowledge, listKnowledge, getKnowledge, searchKnowledge, deleteKnowledge, updateKnowledge } from "../services/knowledgeService.js";
+import { addKnowledge, listKnowledge, getKnowledgeScoped, searchKnowledge, deleteKnowledgeScoped, updateKnowledge } from "../services/knowledgeService.js";
 
 const router = express.Router();
 
 /** POST /api/knowledge — add knowledge entry */
 router.post("/", async (req: Request, res: Response) => {
   try {
-    const { agentId, title, content, sourceUrl, sourceType, tags } = req.body ?? {};
+    const { agentId, workspaceId, title, content, sourceUrl, sourceType, tags } = req.body ?? {};
     if (!agentId || !title || !content) {
       res.status(400).json({ error: "agentId, title, content required" });
       return;
     }
-    const result = await addKnowledge({ agentId, title, content, sourceUrl, sourceType, tags });
+    const result = await addKnowledge({ agentId, workspaceId, title, content, sourceUrl, sourceType, tags });
     res.status(201).json(result);
   } catch (err: any) {
     console.error("[knowledge] add error:", err);
@@ -31,7 +31,8 @@ router.get("/", async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = parseInt(req.query.offset as string) || 0;
     const tag = (req.query.tag as string) || undefined;
-    const result = await listKnowledge(agentId, { limit, offset, tag });
+    const workspaceId = (req.query.workspaceId as string) || undefined;
+    const result = await listKnowledge(agentId, { limit, offset, tag, workspaceId });
     res.json(result);
   } catch (err: any) {
     console.error("[knowledge] list error:", err);
@@ -46,7 +47,8 @@ router.get("/search", async (req: Request, res: Response) => {
     const query = req.query.query as string;
     if (!agentId || !query) { res.status(400).json({ error: "agentId and query required" }); return; }
     const limit = parseInt(req.query.limit as string) || 5;
-    const results = await searchKnowledge(agentId, query, limit);
+    const workspaceId = (req.query.workspaceId as string) || undefined;
+    const results = await searchKnowledge(agentId, query, limit, { workspaceId });
     res.json({ results });
   } catch (err: any) {
     console.error("[knowledge] search error:", err);
@@ -59,7 +61,8 @@ router.get("/:id", async (req: Request, res: Response) => {
   try {
     const agentId = req.query.agentId as string;
     if (!agentId) { res.status(400).json({ error: "agentId required" }); return; }
-    const entry = await getKnowledge(agentId, req.params.id);
+    const workspaceId = (req.query.workspaceId as string) || undefined;
+    const entry = await getKnowledgeScoped(agentId, req.params.id, workspaceId);
     if (!entry) { res.status(404).json({ error: "not found" }); return; }
     res.json(entry);
   } catch (err: any) {
@@ -75,7 +78,7 @@ router.get("/:id", async (req: Request, res: Response) => {
  *  "原地修订",外部引用不变。 */
 router.put("/:id", async (req: Request, res: Response) => {
   try {
-    const { agentId, title, content, sourceUrl, tags, mode } = req.body ?? {};
+    const { agentId, workspaceId, title, content, sourceUrl, tags, mode } = req.body ?? {};
     if (!agentId) { res.status(400).json({ error: "agentId required" }); return; }
     if (mode && mode !== "replace" && mode !== "append") {
       res.status(400).json({ error: "mode must be 'replace' or 'append'" });
@@ -83,6 +86,7 @@ router.put("/:id", async (req: Request, res: Response) => {
     }
     const result = await updateKnowledge({
       agentId,
+      workspaceId,
       id: req.params.id,
       title,
       content,
@@ -106,7 +110,8 @@ router.delete("/:id", async (req: Request, res: Response) => {
   try {
     const agentId = req.query.agentId as string;
     if (!agentId) { res.status(400).json({ error: "agentId required" }); return; }
-    const ok = await deleteKnowledge(agentId, req.params.id);
+    const workspaceId = (req.query.workspaceId as string) || undefined;
+    const ok = await deleteKnowledgeScoped(agentId, req.params.id, workspaceId);
     if (!ok) { res.status(404).json({ error: "not found" }); return; }
     res.status(204).end();
   } catch (err: any) {

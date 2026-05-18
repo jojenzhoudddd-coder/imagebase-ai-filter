@@ -79,6 +79,7 @@ const DEFAULT_CONFIG = {
   maxOutputTokens: 20000,
   enabledSkills: [] as string[],
   disabledBuiltinSkills: [] as string[],
+  workspaceSettings: {} as Record<string, WorkspaceAgentSettings>,
 };
 
 /** Create the agent's filesystem skeleton if it doesn't exist. Idempotent. */
@@ -308,16 +309,34 @@ export interface AgentConfig {
   maxOutputTokens: number;
   enabledSkills: string[];
   disabledBuiltinSkills: string[];
+  workspaceSettings?: Record<string, WorkspaceAgentSettings>;
   [k: string]: unknown;
+}
+
+export interface WorkspaceAgentSettings {
+  /** Workspace-scoped model preference. Falls back to AgentConfig.model. */
+  model?: string;
+  /** Workspace-scoped builtin skill disabled list. Falls back to AgentConfig.disabledBuiltinSkills. */
+  disabledBuiltinSkills?: string[];
+  /** Workspace-scoped user skill effective enabled overrides keyed by UserSkill.id. */
+  userSkillEnabled?: Record<string, boolean>;
+  /** Workspace-scoped integration effective enabled overrides keyed by AgentIntegration.id. */
+  integrationEnabled?: Record<string, boolean>;
+  /** Workspace-scoped habit runtime state keyed by CronJob.id. */
+  habitOverrides?: Record<string, {
+    enabled?: boolean;
+    schedule?: string;
+    lastFiredAt?: string | null;
+  }>;
 }
 
 export async function readConfig(agentId: string): Promise<AgentConfig> {
   await ensureAgentFiles(agentId);
   const raw = await fs.readFile(path.join(agentDir(agentId), "config.json"), "utf8");
   try {
-    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+    return normalizeConfig({ ...DEFAULT_CONFIG, ...JSON.parse(raw) });
   } catch {
-    return { ...DEFAULT_CONFIG };
+    return normalizeConfig({ ...DEFAULT_CONFIG });
   }
 }
 
@@ -332,8 +351,102 @@ export function normalizeDisabledBuiltinSkills(value: unknown): string[] {
   );
 }
 
-export async function getDisabledBuiltinSkills(agentId: string): Promise<string[]> {
+function cleanWorkspaceId(workspaceId?: string | null): string | null {
+  if (typeof workspaceId !== "string") return null;
+  const trimmed = workspaceId.trim();
+  if (!trimmed) return null;
+  return trimmed;
+}
+
+function normalizeBoolMap(value: unknown): Record<string, boolean> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof k === "string" && k && typeof v === "boolean") out[k] = v;
+  }
+  return out;
+}
+
+function normalizeHabitOverrides(value: unknown): NonNullable<WorkspaceAgentSettings["habitOverrides"]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: NonNullable<WorkspaceAgentSettings["habitOverrides"]> = {};
+  for (const [jobId, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!jobId || !raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const item = raw as Record<string, unknown>;
+    const next: NonNullable<WorkspaceAgentSettings["habitOverrides"]>[string] = {};
+    if (typeof item.enabled === "boolean") next.enabled = item.enabled;
+    if (typeof item.schedule === "string" && item.schedule.trim()) next.schedule = item.schedule.trim();
+    if (typeof item.lastFiredAt === "string" || item.lastFiredAt === null) {
+      next.lastFiredAt = item.lastFiredAt;
+    }
+    if (Object.keys(next).length > 0) out[jobId] = next;
+  }
+  return out;
+}
+
+function normalizeWorkspaceSettings(value: unknown): Record<string, WorkspaceAgentSettings> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, WorkspaceAgentSettings> = {};
+  for (const [workspaceId, raw] of Object.entries(value as Record<string, unknown>)) {
+    const wsId = cleanWorkspaceId(workspaceId);
+    if (!wsId || !raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const item = raw as Record<string, unknown>;
+    const next: WorkspaceAgentSettings = {};
+    if (typeof item.model === "string" && item.model.trim()) next.model = item.model.trim();
+    if (Array.isArray(item.disabledBuiltinSkills)) {
+      next.disabledBuiltinSkills = normalizeDisabledBuiltinSkills(item.disabledBuiltinSkills);
+    }
+    next.userSkillEnabled = normalizeBoolMap(item.userSkillEnabled);
+    next.integrationEnabled = normalizeBoolMap(item.integrationEnabled);
+    next.habitOverrides = normalizeHabitOverrides(item.habitOverrides);
+    out[wsId] = next;
+  }
+  return out;
+}
+
+function normalizeConfig(cfg: AgentConfig): AgentConfig {
+  return {
+    ...cfg,
+    disabledBuiltinSkills: normalizeDisabledBuiltinSkills(cfg.disabledBuiltinSkills),
+    workspaceSettings: normalizeWorkspaceSettings(cfg.workspaceSettings),
+  };
+}
+
+export async function getWorkspaceAgentSettings(
+  agentId: string,
+  workspaceId?: string | null,
+): Promise<WorkspaceAgentSettings> {
+  const wsId = cleanWorkspaceId(workspaceId);
+  if (!wsId) return {};
   const cfg = await readConfig(agentId);
+  return normalizeWorkspaceSettings(cfg.workspaceSettings)[wsId] ?? {};
+}
+
+async function updateWorkspaceAgentSettings(
+  agentId: string,
+  workspaceId: string,
+  updater: (current: WorkspaceAgentSettings, cfg: AgentConfig) => WorkspaceAgentSettings,
+): Promise<WorkspaceAgentSettings> {
+  const wsId = cleanWorkspaceId(workspaceId);
+  if (!wsId) throw new Error("workspaceId is required");
+  const cfg = await readConfig(agentId);
+  const all = normalizeWorkspaceSettings(cfg.workspaceSettings);
+  const next = updater(all[wsId] ?? {}, cfg);
+  all[wsId] = next;
+  await writeConfig(agentId, { workspaceSettings: all } as Partial<AgentConfig>);
+  return next;
+}
+
+export async function getDisabledBuiltinSkills(
+  agentId: string,
+  workspaceId?: string | null,
+): Promise<string[]> {
+  const cfg = await readConfig(agentId);
+  const wsId = cleanWorkspaceId(workspaceId);
+  if (wsId) {
+    const ws = normalizeWorkspaceSettings(cfg.workspaceSettings)[wsId];
+    if (ws?.disabledBuiltinSkills) return normalizeDisabledBuiltinSkills(ws.disabledBuiltinSkills);
+  }
   return normalizeDisabledBuiltinSkills(cfg.disabledBuiltinSkills);
 }
 
@@ -341,16 +454,100 @@ export async function setBuiltinSkillEnabled(
   agentId: string,
   skillName: string,
   enabled: boolean,
+  workspaceId?: string | null,
 ): Promise<string[]> {
-  const disabled = new Set(await getDisabledBuiltinSkills(agentId));
+  const wsId = cleanWorkspaceId(workspaceId);
+  const disabled = new Set(await getDisabledBuiltinSkills(agentId, wsId));
   if (enabled) {
     disabled.delete(skillName);
   } else {
     disabled.add(skillName);
   }
   const next = [...disabled].sort();
-  await writeConfig(agentId, { disabledBuiltinSkills: next });
+  if (wsId) {
+    await updateWorkspaceAgentSettings(agentId, wsId, (current) => ({
+      ...current,
+      disabledBuiltinSkills: next,
+    }));
+  } else {
+    await writeConfig(agentId, { disabledBuiltinSkills: next });
+  }
   return next;
+}
+
+export async function getUserSkillEnabledOverride(
+  agentId: string,
+  workspaceId: string | null | undefined,
+  skillId: string,
+): Promise<boolean | undefined> {
+  const ws = await getWorkspaceAgentSettings(agentId, workspaceId);
+  const map = normalizeBoolMap(ws.userSkillEnabled);
+  return Object.prototype.hasOwnProperty.call(map, skillId) ? map[skillId] : undefined;
+}
+
+export async function setUserSkillEnabledForWorkspace(
+  agentId: string,
+  workspaceId: string,
+  skillId: string,
+  enabled: boolean,
+): Promise<Record<string, boolean>> {
+  const next = await updateWorkspaceAgentSettings(agentId, workspaceId, (current) => ({
+    ...current,
+    userSkillEnabled: {
+      ...normalizeBoolMap(current.userSkillEnabled),
+      [skillId]: enabled,
+    },
+  }));
+  return normalizeBoolMap(next.userSkillEnabled);
+}
+
+export async function getIntegrationEnabledOverride(
+  agentId: string,
+  workspaceId: string | null | undefined,
+  integrationId: string,
+): Promise<boolean | undefined> {
+  const ws = await getWorkspaceAgentSettings(agentId, workspaceId);
+  const map = normalizeBoolMap(ws.integrationEnabled);
+  return Object.prototype.hasOwnProperty.call(map, integrationId) ? map[integrationId] : undefined;
+}
+
+export async function setIntegrationEnabledForWorkspace(
+  agentId: string,
+  workspaceId: string,
+  integrationId: string,
+  enabled: boolean,
+): Promise<Record<string, boolean>> {
+  const next = await updateWorkspaceAgentSettings(agentId, workspaceId, (current) => ({
+    ...current,
+    integrationEnabled: {
+      ...normalizeBoolMap(current.integrationEnabled),
+      [integrationId]: enabled,
+    },
+  }));
+  return normalizeBoolMap(next.integrationEnabled);
+}
+
+export async function getHabitOverride(
+  agentId: string,
+  workspaceId: string | null | undefined,
+  jobId: string,
+): Promise<NonNullable<WorkspaceAgentSettings["habitOverrides"]>[string] | null> {
+  const ws = await getWorkspaceAgentSettings(agentId, workspaceId);
+  return normalizeHabitOverrides(ws.habitOverrides)[jobId] ?? null;
+}
+
+export async function setHabitOverride(
+  agentId: string,
+  workspaceId: string,
+  jobId: string,
+  patch: NonNullable<WorkspaceAgentSettings["habitOverrides"]>[string],
+): Promise<NonNullable<WorkspaceAgentSettings["habitOverrides"]>[string]> {
+  const next = await updateWorkspaceAgentSettings(agentId, workspaceId, (current) => {
+    const habitOverrides = normalizeHabitOverrides(current.habitOverrides);
+    habitOverrides[jobId] = { ...(habitOverrides[jobId] ?? {}), ...patch };
+    return { ...current, habitOverrides };
+  });
+  return normalizeHabitOverrides(next.habitOverrides)[jobId] ?? {};
 }
 
 // ─── Selected model (multi-model feature) ─────────────────────────────
@@ -374,8 +571,14 @@ const LEGACY_MODEL_ALIASES: Record<string, string> = {
  * NOT apply availability fallback — callers that need a runnable model
  * should pipe this id through `resolveModelForCall()` from modelRegistry.
  */
-export async function getSelectedModel(agentId: string): Promise<string> {
+export async function getSelectedModel(agentId: string, workspaceId?: string | null): Promise<string> {
   const cfg = await readConfig(agentId);
+  const wsId = cleanWorkspaceId(workspaceId);
+  if (wsId) {
+    const ws = normalizeWorkspaceSettings(cfg.workspaceSettings)[wsId];
+    const wsModel = (ws?.model || "").trim();
+    if (wsModel) return LEGACY_MODEL_ALIASES[wsModel] || wsModel;
+  }
   const raw = (cfg.model || "").trim();
   return LEGACY_MODEL_ALIASES[raw] || raw || "doubao-2.0";
 }
@@ -384,7 +587,16 @@ export async function getSelectedModel(agentId: string): Promise<string> {
  * Persist the agent's model preference. Caller is expected to have
  * validated the id against MODELS (REST handlers do this before calling).
  */
-export async function setSelectedModel(agentId: string, modelId: string): Promise<void> {
+export async function setSelectedModel(
+  agentId: string,
+  modelId: string,
+  workspaceId?: string | null,
+): Promise<void> {
+  const wsId = cleanWorkspaceId(workspaceId);
+  if (wsId) {
+    await updateWorkspaceAgentSettings(agentId, wsId, (current) => ({ ...current, model: modelId }));
+    return;
+  }
   await writeConfig(agentId, { model: modelId });
 }
 
@@ -437,7 +649,7 @@ export async function setModelStrengthOverride(
 /** Shallow-merge patch into config.json. Unknown keys preserved. */
 export async function writeConfig(agentId: string, patch: Partial<AgentConfig>): Promise<AgentConfig> {
   const current = await readConfig(agentId);
-  const next = { ...current, ...patch };
+  const next = normalizeConfig({ ...current, ...patch });
   const serialized = JSON.stringify(next, null, 2);
   assertSize(serialized, "config.json");
   await fs.writeFile(path.join(agentDir(agentId), "config.json"), serialized, "utf8");
@@ -452,12 +664,26 @@ export interface EpisodicMemoryInput {
   tags?: string[];
 }
 
+function safeWorkspaceSegment(workspaceId: string): string {
+  const out = workspaceId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
+  return out || "unknown";
+}
+
+function episodicMemoryDir(agentId: string, workspaceId?: string | null): string {
+  const wsId = cleanWorkspaceId(workspaceId);
+  if (!wsId) return path.join(agentDir(agentId), "memory", "episodic");
+  return path.join(agentDir(agentId), "memory", "episodic", "workspaces", safeWorkspaceSegment(wsId));
+}
+
 /** Append a markdown episode to memory/episodic/. Filename: YYYY-MM-DD_slug.md */
 export async function appendEpisodicMemory(
   agentId: string,
-  mem: EpisodicMemoryInput
+  mem: EpisodicMemoryInput,
+  opts?: { workspaceId?: string | null },
 ): Promise<{ path: string; filename: string }> {
   await ensureAgentFiles(agentId);
+  const dir = episodicMemoryDir(agentId, opts?.workspaceId);
+  await fs.mkdir(dir, { recursive: true });
   const stamp = new Date().toISOString().slice(0, 10);
   const slug = mem.title
     .toLowerCase()
@@ -466,7 +692,7 @@ export async function appendEpisodicMemory(
     .slice(0, 40) || "episode";
   const rand = Math.random().toString(36).slice(2, 6);
   const filename = `${stamp}_${slug}_${rand}.md`;
-  const full = path.join(agentDir(agentId), "memory", "episodic", filename);
+  const full = path.join(dir, filename);
   const body = [
     `# ${mem.title}`,
     "",
@@ -492,11 +718,14 @@ export async function upsertConversationEpisodic(
   agentId: string,
   conversationId: string,
   mem: EpisodicMemoryInput,
+  opts?: { workspaceId?: string | null },
 ): Promise<{ path: string; filename: string }> {
   await ensureAgentFiles(agentId);
+  const dir = episodicMemoryDir(agentId, opts?.workspaceId);
+  await fs.mkdir(dir, { recursive: true });
   const convSlug = conversationId.slice(-12);
   const filename = `conv-summary-${convSlug}.md`;
-  const full = path.join(agentDir(agentId), "memory", "episodic", filename);
+  const full = path.join(dir, filename);
   const body = [
     `# ${mem.title}`,
     "",
@@ -587,6 +816,22 @@ export async function readWorkingMemory(
     }
   } catch { /* dir not yet created */ }
   return [...flat, ...perConv].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+export async function readWorkingMemoryForWorkspace(
+  agentId: string,
+  workspaceId: string,
+): Promise<WorkingMemoryEntry[]> {
+  await ensureAgentFiles(agentId);
+  const conversations = await prisma.conversation.findMany({
+    where: { agentId, workspaceId },
+    select: { id: true },
+  });
+  const entries: WorkingMemoryEntry[] = [];
+  for (const conv of conversations) {
+    entries.push(...await readWorkingMemory(agentId, conv.id));
+  }
+  return entries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
 
 async function readJsonlSafe(p: string): Promise<WorkingMemoryEntry[]> {
@@ -853,10 +1098,10 @@ function parseEpisodicMemory(filename: string, raw: string): EpisodicMemoryFull 
  */
 export async function listEpisodicMemories(
   agentId: string,
-  opts?: { limit?: number; tag?: string }
+  opts?: { limit?: number; tag?: string; workspaceId?: string | null }
 ): Promise<EpisodicMemorySummary[]> {
   await ensureAgentFiles(agentId);
-  const dir = path.join(agentDir(agentId), "memory", "episodic");
+  const dir = episodicMemoryDir(agentId, opts?.workspaceId);
   let files: string[] = [];
   try {
     files = await fs.readdir(dir);
@@ -940,10 +1185,10 @@ function countHits(haystack: string, tokens: string[]): number {
 export async function recallMemories(
   agentId: string,
   query: string,
-  opts?: { tags?: string[]; limit?: number }
+  opts?: { tags?: string[]; limit?: number; workspaceId?: string | null }
 ): Promise<RecallHit[]> {
   await ensureAgentFiles(agentId);
-  const dir = path.join(agentDir(agentId), "memory", "episodic");
+  const dir = episodicMemoryDir(agentId, opts?.workspaceId);
   let files: string[] = [];
   try {
     files = await fs.readdir(dir);
@@ -1017,7 +1262,8 @@ export async function recallMemories(
 /** Load one episodic memory file by filename. Returns null if not found. */
 export async function readEpisodicMemory(
   agentId: string,
-  filename: string
+  filename: string,
+  opts?: { workspaceId?: string | null },
 ): Promise<EpisodicMemoryFull | null> {
   // Guard against path traversal.
   if (!filename || filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
@@ -1027,7 +1273,7 @@ export async function readEpisodicMemory(
     throw new Error(`expected .md filename: ${filename}`);
   }
   await ensureAgentFiles(agentId);
-  const full = path.join(agentDir(agentId), "memory", "episodic", filename);
+  const full = path.join(episodicMemoryDir(agentId, opts?.workspaceId), filename);
   try {
     const raw = await fs.readFile(full, "utf8");
     return parseEpisodicMemory(filename, raw);

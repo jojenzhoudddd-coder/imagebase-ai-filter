@@ -27,6 +27,7 @@ import {
   recordUserSkillInvocation,
   type UserSkillRow,
 } from "./userSkillStore.js";
+import { getUserSkillEnabledOverride } from "../agentService.js";
 import type { SkillDefinition } from "../../../mcp-server/src/skills/types.js";
 import type { ToolDefinition, ToolContext } from "../../../mcp-server/src/tools/tableTools.js";
 import type { WorkflowDoc } from "../workflow/types.js";
@@ -125,14 +126,23 @@ export function toSkillDefinition(row: UserSkillRow): SkillDefinition {
  *
  * V1: only `ownerType="agent"`. V2 will additionally pull `workspace` / `global`.
  */
-export async function loadUserSkills(agentId: string): Promise<SkillDefinition[]> {
+export async function loadUserSkills(
+  agentId: string,
+  workspaceId?: string | null,
+): Promise<SkillDefinition[]> {
   if (!agentId) return [];
   const rows = await listUserSkills({
     ownerType: "agent",
     ownerId: agentId,
-    onlyEnabled: true,
   });
-  return rows.map(toSkillDefinition);
+  const enabledRows: UserSkillRow[] = [];
+  for (const row of rows) {
+    const override = workspaceId
+      ? await getUserSkillEnabledOverride(agentId, workspaceId, row.id)
+      : undefined;
+    if (override ?? row.enabled) enabledRows.push(row);
+  }
+  return enabledRows.map(toSkillDefinition);
 }
 
 /**
