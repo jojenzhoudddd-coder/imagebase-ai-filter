@@ -313,6 +313,7 @@ async function consumeOne(
           conversationId: conv.id,
           workspaceId,
           agentId,
+          habitId: jobId,
         };
 
         // 3. Run agent — drain the async generator (no SSE consumer)

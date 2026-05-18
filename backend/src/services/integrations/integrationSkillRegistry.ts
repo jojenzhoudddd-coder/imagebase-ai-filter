@@ -26,6 +26,7 @@ export function toIntegrationSkillDefinition(integration: AgentIntegrationRow): 
   );
   return {
     name: integrationSkillName(integration.id),
+    sourceRef: { type: "integration", id: integration.id },
     displayName: `[integration] ${integration.displayName}`,
     description:
       `External integration for ${integration.displayName} via ${integration.transport}. ` +

@@ -186,7 +186,11 @@ export default function ModelsTab({ blockId }: { blockId?: string }) {
               <div className="ab-card-controls">
                 {blockId && (
                   <CardMoreMenu
-                    onViewActivities={() => patchBlockState(blockId, { activeTab: "activities", activitiesSearch: m.id } as SystemBlockState)}
+                    onViewActivities={() => patchBlockState(blockId, {
+                      activeTab: "activities",
+                      activitiesSearch: undefined,
+                      activitiesFilter: { type: "model", id: m.id, label: m.displayName },
+                    } as SystemBlockState)}
                     label={t("agent.activities.viewActivities")}
                     onDelete={m.type === "custom" && m.dbId ? () => handleDeleteModel(m.id, m.dbId!) : undefined}
                   />

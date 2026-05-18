@@ -178,7 +178,11 @@ export default function SkillsTab({ agentId, blockId }: Props) {
                 <span className="ab-switch-knob" />
               </button>
               <CardMoreMenu
-                onViewActivities={() => patchBlockState(blockId, { activeTab: "activities", activitiesSearch: s.id } as SystemBlockState)}
+                onViewActivities={() => patchBlockState(blockId, {
+                  activeTab: "activities",
+                  activitiesSearch: undefined,
+                  activitiesFilter: { type: "skill", id: s.id, label: localName(s) },
+                } as SystemBlockState)}
                 label={t("agent.activities.viewActivities")}
                 onDelete={s.type === "user" ? () => handleDeleteSkill(s.id) : undefined}
               />

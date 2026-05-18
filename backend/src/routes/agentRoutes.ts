@@ -73,7 +73,8 @@ import {
   removeCronJob,
   listCronJobs,
 } from "../services/cronScheduler.js";
-import { listActivities } from "../services/conversationStore.js";
+import { listActivities, parseActivitySource } from "../services/conversationStore.js";
+import type { ActivityFilterType } from "../services/conversationStore.js";
 import { listEpisodicMemories, readWorkingMemoryForWorkspace } from "../services/agentService.js";
 import pg from "pg";
 import { allSkills } from "../../mcp-server/src/skills/index.js";
@@ -749,9 +750,15 @@ router.get("/:agentId/activities", async (req: Request, res: Response) => {
     const search = (req.query.search as string) || undefined;
     const dateFrom = (req.query.dateFrom as string) || undefined;
     const dateTo = (req.query.dateTo as string) || undefined;
+    const filterType = req.query.filterType as ActivityFilterType | undefined;
+    const filterId = typeof req.query.filterId === "string" ? req.query.filterId.trim() : "";
     const workspaceId = requireWorkspaceId(req, res);
     if (!workspaceId) return;
-    const result = await listActivities(agentId, { limit, offset, search, dateFrom, dateTo, workspaceId });
+    const validFilterTypes = new Set<ActivityFilterType>(["skill", "habit", "integration", "model", "conversation"]);
+    const filter = filterType && filterId && validFilterTypes.has(filterType)
+      ? { type: filterType, id: filterId }
+      : undefined;
+    const result = await listActivities(agentId, { limit, offset, search, dateFrom, dateTo, workspaceId, filter });
     res.json(result);
   } catch (err: any) {
     console.error("[agents] activities error:", err);
@@ -783,7 +790,7 @@ router.get("/:agentId/skills", async (req: Request, res: Response) => {
       `;
       const { rows: sourceRows } = await _agentPool.query(sourceSql, workspaceId ? [agentId, workspaceId] : [agentId]);
       for (const row of sourceRows) {
-        const skills = (row.source as string).replace("skill:", "").split(",");
+        const skills = parseActivitySource(row.source as string).skills;
         const ts = row.last_ts instanceof Date ? row.last_ts.toISOString() : String(row.last_ts);
         for (const s of skills) {
           const prev = skillLastUsedMap.get(s);

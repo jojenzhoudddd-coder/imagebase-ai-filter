@@ -27,6 +27,13 @@ export interface SkillDefinition {
   /** Stable identifier, e.g. "table-skill". Used in activate_skill / find_skill. */
   name: string;
 
+  /**
+   * Stable activity reference used when persisting turn source ids. Builtin
+   * skills omit this and use `name`; user skills and integration-backed skills
+   * set it to their DB row id.
+   */
+  sourceRef?: { type: "skill" | "integration"; id: string };
+
   /** Human-readable name surfaced in find_skill output, e.g. "数据表操作". */
   displayName: string;
 

@@ -110,6 +110,7 @@ export function toSkillDefinition(row: UserSkillRow): SkillDefinition {
 
   return {
     name: row.name,
+    sourceRef: { type: "skill", id: row.id },
     displayName: `${USER_SKILL_TAG} ${row.name}`,
     description: row.description || `用户自定义 skill: ${row.name}`,
     artifacts: [],

@@ -36,12 +36,22 @@ export interface ChatBlockState {
 
 export type AgentTabKey = "nature" | "models" | "activities" | "skills" | "acknowledge" | "habits" | "integrations";
 
+export type ActivitiesFilterType = "skill" | "habit" | "integration" | "model" | "conversation";
+
+export interface ActivitiesFilter {
+  type: ActivitiesFilterType;
+  id: string;
+  label?: string;
+}
+
 export interface SystemBlockState {
   view?: string;
   /** Agent block 当前选中的 tab；默认 "nature" */
   activeTab?: AgentTabKey;
-  /** Pre-fill search in activities tab (e.g. from skill/habit "View activities") */
+  /** Legacy pre-fill search in activities tab. New "View activities" uses activitiesFilter. */
   activitiesSearch?: string;
+  /** Structured id filter for "View activities" from skill/habit/model/integration cards. */
+  activitiesFilter?: ActivitiesFilter;
 }
 
 export interface AgencyBlockState {

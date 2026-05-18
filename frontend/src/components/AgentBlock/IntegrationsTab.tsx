@@ -316,7 +316,11 @@ export default function IntegrationsTab({ agentId, blockId }: Props) {
                         onSelect: () => openChat(configurePrompt(integration)),
                       },
                     ]}
-                    onViewActivities={() => patchBlockState(blockId, { activeTab: "activities", activitiesSearch: integration.id } as SystemBlockState)}
+                    onViewActivities={() => patchBlockState(blockId, {
+                      activeTab: "activities",
+                      activitiesSearch: undefined,
+                      activitiesFilter: { type: "integration", id: integration.id, label: integration.displayName },
+                    } as SystemBlockState)}
                     label={t("agent.activities.viewActivities")}
                     onDelete={integration.providerKey === "custom-cli" ? () => handleDelete(integration.id) : undefined}
                   />

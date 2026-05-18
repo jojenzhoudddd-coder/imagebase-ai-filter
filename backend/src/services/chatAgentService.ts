@@ -178,10 +178,29 @@ export function pruneUnavailableActiveSkills(
   return removed;
 }
 
-function buildActivitySource(activeSkills: Set<string>, toolCalls: Array<Pick<ToolCall, "tool">>): string | null {
+function buildActivitySource(
+  activeSkills: Set<string>,
+  toolCalls: Array<Pick<ToolCall, "tool">>,
+  availableSkillsByName: Record<string, SkillDefinition> = skillsByName,
+  opts?: { habitId?: string | null },
+): string | null {
   const parts: string[] = [];
-  const skills = [...activeSkills].filter((name) => Boolean(name) && !name.startsWith("integration-"));
-  if (skills.length > 0) parts.push(`skill:${skills.join(",")}`);
+  const skillIds: string[] = [];
+  const seenSkillIds = new Set<string>();
+  for (const name of activeSkills) {
+    if (!name || name.startsWith("integration-")) continue;
+    const skill = availableSkillsByName[name];
+    if (skill?.sourceRef?.type === "integration") continue;
+    const id = skill?.sourceRef?.type === "skill" ? skill.sourceRef.id : name;
+    if (!id || seenSkillIds.has(id)) continue;
+    seenSkillIds.add(id);
+    skillIds.push(id);
+  }
+  if (skillIds.length > 0) parts.push(`skill:${skillIds.join(",")}`);
+
+  if (opts?.habitId) {
+    parts.push(`habit:${opts.habitId}`);
+  }
 
   const integrationIds = new Set<string>();
   for (const call of toolCalls) {
@@ -1943,6 +1962,8 @@ export interface AgentContext {
   authToken?: string;
   /** PR2: structured @ mentions extracted from the user's raw message. */
   userMentions?: UserMention[];
+  /** Headless habit source anchor. Persisted into Message.source as habit:<id>. */
+  habitId?: string;
   /** Current user's persisted UI preferences. Chat routes pass this directly;
    * headless jobs fall back to the owning agent user's preferences. */
   userPreferences?: Pick<UserPreferences, "timezone" | "locale">;
@@ -4000,7 +4021,12 @@ async function* runAgentImpl(
           content: accumulatedText,
           thinking: accumulatedThinking || undefined,
           toolCalls: accumulatedToolCalls,
-          source: buildActivitySource(skillState.active, accumulatedToolCalls),
+          source: buildActivitySource(
+            skillState.active,
+            accumulatedToolCalls,
+            availableSkillsByNameForTurn,
+            { habitId: ctx.habitId },
+          ),
         });
       } catch (err) {
         logAgent({
@@ -4038,6 +4064,8 @@ async function* runAgentImpl(
   const sourceStr = buildActivitySource(
     getOrInitSkillState(conversationId).active,
     accumulatedToolCalls,
+    availableSkillsByNameForTurn,
+    { habitId: ctx.habitId },
   );
 
   const persistedAssistantMsg = await convStore.appendMessage(conversationId, {
@@ -4401,7 +4429,12 @@ async function* resumeAfterConfirmImpl(
         },
       ],
       durationMs: Date.now() - resumeStartedAt,
-      source: buildActivitySource(resumeSkillState.active, [{ tool: pending.tool }]),
+      source: buildActivitySource(
+        resumeSkillState.active,
+        [{ tool: pending.tool }],
+        resumeAvailableSkillsByName,
+        { habitId: ctx.habitId },
+      ),
     });
   } catch (err) {
     logAgent({

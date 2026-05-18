@@ -1921,14 +1921,34 @@ export interface AgentActivity {
   messageId: string;
   conversationId: string;
   conversationTitle: string;
+  conversation?: { id: string; title: string };
   userInput: string;
   output: string;
   timestamp: string;
   durationMs: number | null;
   promptTokens: number | null;
   completionTokens: number | null;
-  source: string; // skill id / habit id / "-"
+  source: string;
+  sources?: {
+    skills: ActivityRef[];
+    habits: ActivityRef[];
+    integrations: ActivityRef[];
+  };
   modelId: string | null;
+  model?: ActivityRef | null;
+}
+
+export type ActivityFilterType = "skill" | "habit" | "integration" | "model" | "conversation";
+
+export interface ActivityFilter {
+  type: ActivityFilterType;
+  id: string;
+  label?: string;
+}
+
+export interface ActivityRef {
+  id: string;
+  displayName: string;
 }
 
 export async function listAgentActivities(
@@ -1940,6 +1960,7 @@ export async function listAgentActivities(
     dateFrom?: string;
     dateTo?: string;
     workspaceId?: string | null;
+    filter?: ActivityFilter | null;
   },
 ): Promise<{ activities: AgentActivity[]; total: number; hasMore: boolean }> {
   const params = new URLSearchParams();
@@ -1949,6 +1970,10 @@ export async function listAgentActivities(
   if (opts?.dateFrom) params.set("dateFrom", opts.dateFrom);
   if (opts?.dateTo) params.set("dateTo", opts.dateTo);
   if (opts?.workspaceId) params.set("workspaceId", opts.workspaceId);
+  if (opts?.filter?.type && opts.filter.id) {
+    params.set("filterType", opts.filter.type);
+    params.set("filterId", opts.filter.id);
+  }
   const qs = params.toString();
   const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/activities${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("Failed to list activities");

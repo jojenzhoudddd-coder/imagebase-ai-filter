@@ -242,7 +242,11 @@ export default function HabitsTab({ agentId, blockId }: Props) {
                     <span className="ab-switch-knob" />
                   </button>
                   <CardMoreMenu
-                    onViewActivities={() => patchBlockState(blockId, { activeTab: "activities", activitiesSearch: h.id } as SystemBlockState)}
+                    onViewActivities={() => patchBlockState(blockId, {
+                      activeTab: "activities",
+                      activitiesSearch: undefined,
+                      activitiesFilter: { type: "habit", id: h.id, label: localName(h) },
+                    } as SystemBlockState)}
                     label={t("agent.activities.viewActivities")}
                     onDelete={h.type !== "system" ? () => handleDeleteHabit(h.id) : undefined}
                   />

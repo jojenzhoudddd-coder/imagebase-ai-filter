@@ -14,6 +14,12 @@ import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { generateId } from "./idGenerator.js";
+import { allSkills } from "../../mcp-server/src/skills/index.js";
+import { listUserSkills } from "./userSkill/userSkillStore.js";
+import { listAgentIntegrations } from "./integrations/integrationStore.js";
+import { listCronJobs } from "./cronScheduler.js";
+import { getModel, resolveCustomModel } from "./modelRegistry.js";
+import { getAgent } from "./agentService.js";
 
 export interface ToolCall {
   callId: string;
@@ -482,14 +488,142 @@ export interface ActivityTurn {
   messageId: string;
   conversationId: string;
   conversationTitle: string;
+  conversation: { id: string; title: string };
   userInput: string;
   output: string;
   timestamp: string;
   durationMs: number | null;
   promptTokens: number | null;
   completionTokens: number | null;
-  source: string; // skill id / habit id / "-"
+  source: string; // token string: skill:<id,...> habit:<id> integration:<id,...> or "-"
+  sources: {
+    skills: ActivityRef[];
+    habits: ActivityRef[];
+    integrations: ActivityRef[];
+  };
   modelId: string | null;
+  model: ActivityRef | null;
+}
+
+export type ActivityFilterType = "skill" | "habit" | "integration" | "model" | "conversation";
+
+export interface ActivityFilter {
+  type: ActivityFilterType;
+  id: string;
+}
+
+export interface ActivityRef {
+  id: string;
+  displayName: string;
+}
+
+export interface ParsedActivitySource {
+  skills: string[];
+  habits: string[];
+  integrations: string[];
+}
+
+const SOURCE_TYPES = new Set(["skill", "habit", "integration"]);
+
+export function parseActivitySource(source?: string | null): ParsedActivitySource {
+  const refs: ParsedActivitySource = { skills: [], habits: [], integrations: [] };
+  if (!source) return refs;
+  for (const part of source.split(/\s+/)) {
+    const idx = part.indexOf(":");
+    if (idx <= 0) continue;
+    const type = part.slice(0, idx);
+    if (!SOURCE_TYPES.has(type)) continue;
+    const ids = part
+      .slice(idx + 1)
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    if (type === "skill") refs.skills.push(...ids);
+    if (type === "habit") refs.habits.push(...ids);
+    if (type === "integration") refs.integrations.push(...ids);
+  }
+  return {
+    skills: [...new Set(refs.skills)],
+    habits: [...new Set(refs.habits)],
+    integrations: [...new Set(refs.integrations)],
+  };
+}
+
+function hasSourceId(source: ParsedActivitySource, type: ActivityFilterType, id: string): boolean {
+  if (type === "skill") return source.skills.includes(id);
+  if (type === "habit") return source.habits.includes(id);
+  if (type === "integration") return source.integrations.includes(id);
+  return false;
+}
+
+async function buildActivityResolver(agentId: string, workspaceId?: string) {
+  const skillNamesById = new Map<string, string>();
+  const legacySkillNameById = new Map<string, string>();
+  for (const skill of allSkills) {
+    skillNamesById.set(skill.name, skill.displayName || skill.name);
+  }
+
+  await listUserSkills({ ownerType: "agent", ownerId: agentId })
+    .then((rows) => {
+      for (const row of rows) {
+        skillNamesById.set(row.id, row.name || row.id);
+        legacySkillNameById.set(row.id, row.name);
+      }
+    })
+    .catch(() => undefined);
+
+  const habitNamesById = new Map<string, string>();
+  await listCronJobs(agentId, workspaceId ? { workspaceId } : undefined)
+    .then((jobs) => {
+      for (const job of jobs as Array<{ id: string; displayName?: string; prompt?: string }>) {
+        habitNamesById.set(job.id, job.displayName || job.id);
+      }
+    })
+    .catch(() => undefined);
+
+  const integrationNamesById = new Map<string, string>();
+  await listAgentIntegrations(agentId, workspaceId ? { workspaceId } : undefined)
+    .then((items) => {
+      for (const item of items) {
+        integrationNamesById.set(item.id, item.displayName || item.id);
+      }
+    })
+    .catch(() => undefined);
+
+  const modelNamesById = new Map<string, string>();
+  const agent = await getAgent(agentId).catch(() => null);
+
+  const resolveModelName = async (modelId: string | null): Promise<string | null> => {
+    if (!modelId) return null;
+    const cached = modelNamesById.get(modelId);
+    if (cached) return cached;
+    const builtin = getModel(modelId);
+    if (builtin) {
+      modelNamesById.set(modelId, builtin.displayName || modelId);
+      return modelNamesById.get(modelId) ?? modelId;
+    }
+    if (agent?.userId) {
+      const custom = await resolveCustomModel(modelId, agent.userId).catch(() => undefined);
+      if (custom) {
+        modelNamesById.set(modelId, custom.displayName || modelId);
+        return modelNamesById.get(modelId) ?? modelId;
+      }
+    }
+    return modelId;
+  };
+
+  const toRefs = (ids: string[], names: Map<string, string>): ActivityRef[] =>
+    ids.map((id) => ({ id, displayName: names.get(id) ?? id }));
+
+  return {
+    legacySkillNameById,
+    resolveModelName,
+    resolveSourceRefs: (source: ParsedActivitySource) => ({
+      skills: toRefs(source.skills, skillNamesById),
+      habits: toRefs(source.habits, habitNamesById),
+      integrations: toRefs(source.integrations, integrationNamesById),
+    }),
+  };
 }
 
 /**
@@ -505,19 +639,46 @@ export async function listActivities(
     dateFrom?: string;
     dateTo?: string;
     workspaceId?: string;
+    filter?: ActivityFilter;
   },
 ): Promise<{ activities: ActivityTurn[]; total: number; hasMore: boolean }> {
   const limit = Math.max(1, Math.min(opts?.limit ?? 20, 100));
   const offset = Math.max(0, opts?.offset ?? 0);
+  const filter = opts?.filter && opts.filter.id ? opts.filter : undefined;
+  const resolver = await buildActivityResolver(agentId, opts?.workspaceId);
+  const legacySkillName = filter?.type === "skill"
+    ? resolver.legacySkillNameById.get(filter.id)
+    : undefined;
 
+  const conversationWhere: any = {
+    agentId,
+    ...(opts?.workspaceId ? { workspaceId: opts.workspaceId } : {}),
+  };
   const where: any = {
-    conversation: {
-      agentId,
-      ...(opts?.workspaceId ? { workspaceId: opts.workspaceId } : {}),
-    },
+    conversation: conversationWhere,
     role: "assistant",
     durationMs: { not: null },
   };
+
+  if (filter) {
+    if (filter.type === "model") {
+      where.modelId = filter.id;
+    } else if (filter.type === "conversation") {
+      where.conversationId = filter.id;
+    } else if (filter.type === "habit") {
+      where.OR = [
+        { source: { contains: filter.id } },
+        { conversation: { ...conversationWhere, attachedToType: "habit", attachedToId: filter.id } },
+      ];
+    } else if (filter.type === "skill") {
+      where.OR = [
+        { source: { contains: filter.id } },
+        ...(legacySkillName ? [{ source: { contains: legacySkillName } }] : []),
+      ];
+    } else if (filter.type === "integration") {
+      where.source = { contains: filter.id };
+    }
+  }
 
   // Date range filter
   if (opts?.dateFrom || opts?.dateTo) {
@@ -532,8 +693,9 @@ export async function listActivities(
   // When searching, we need app-layer filter across userInput + output + source + modelId.
   // Over-fetch to compensate for app-layer filtering, then paginate in memory.
   const searchLower = opts?.search?.toLowerCase() ?? "";
-  const fetchLimit = searchLower ? 200 : limit; // over-fetch when searching
-  const fetchOffset = searchLower ? 0 : offset;
+  const appFiltered = Boolean(searchLower || filter);
+  const fetchLimit = appFiltered ? Math.min(1000, Math.max(200, offset + limit)) : limit;
+  const fetchOffset = appFiltered ? 0 : offset;
 
   const assistantRows = await prisma.message.findMany({
     where,
@@ -570,10 +732,36 @@ export async function listActivities(
         : habitSource;
     }
     if (!source) source = "-";
+    const parsedSource = parseActivitySource(source);
+    const sourceRefs = resolver.resolveSourceRefs(parsedSource);
+
+    if (filter) {
+      const matches =
+        filter.type === "model" ? modelId === filter.id :
+        filter.type === "conversation" ? row.conversationId === filter.id :
+        filter.type === "habit" ? (
+          hasSourceId(parsedSource, "habit", filter.id) ||
+          (conv?.attachedToType === "habit" && conv.attachedToId === filter.id)
+        ) :
+        filter.type === "skill" ? (
+          hasSourceId(parsedSource, "skill", filter.id) ||
+          (legacySkillName ? String(messageSource ?? "").toLowerCase().includes(legacySkillName.toLowerCase()) : false)
+        ) :
+        filter.type === "integration" ? hasSourceId(parsedSource, "integration", filter.id) :
+        true;
+      if (!matches) continue;
+    }
+
+    const modelDisplayName = await resolver.resolveModelName(modelId);
 
     // App-layer full-text search: match across all fields
     if (searchLower) {
-      const haystack = `${userInput} ${row.content} ${source} ${modelId ?? ""}`.toLowerCase();
+      const sourceNames = [
+        ...sourceRefs.skills.map((s) => s.displayName),
+        ...sourceRefs.habits.map((s) => s.displayName),
+        ...sourceRefs.integrations.map((s) => s.displayName),
+      ].join(" ");
+      const haystack = `${userInput} ${row.content} ${source} ${sourceNames} ${modelId ?? ""} ${modelDisplayName ?? ""}`.toLowerCase();
       if (!haystack.includes(searchLower)) continue;
     }
 
@@ -581,6 +769,7 @@ export async function listActivities(
       messageId: row.id,
       conversationId: row.conversationId,
       conversationTitle: conv?.title ?? "对话",
+      conversation: { id: row.conversationId, title: conv?.title ?? "对话" },
       userInput,
       output: row.content.slice(0, 300),
       timestamp: row.timestamp.toISOString(),
@@ -588,13 +777,15 @@ export async function listActivities(
       promptTokens: row.promptTokens ?? null,
       completionTokens: row.completionTokens ?? null,
       source,
+      sources: sourceRefs,
       modelId,
+      model: modelId ? { id: modelId, displayName: modelDisplayName ?? modelId } : null,
     });
   }
 
   // Paginate filtered results
-  const total = searchLower ? allActivities.length : await prisma.message.count({ where });
-  const activities = searchLower ? allActivities.slice(offset, offset + limit) : allActivities;
+  const total = appFiltered ? allActivities.length : await prisma.message.count({ where });
+  const activities = appFiltered ? allActivities.slice(offset, offset + limit) : allActivities;
 
   return { activities, total, hasMore: offset + limit < total };
 }

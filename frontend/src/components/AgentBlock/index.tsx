@@ -110,7 +110,7 @@ export default function AgentBlock({ blockId }: Props) {
   }, [agentId]);
 
   const handleTabChange = (tab: AgentTabKey) => {
-    patchBlockState(blockId, { activeTab: tab, activitiesSearch: undefined } as SystemBlockState);
+    patchBlockState(blockId, { activeTab: tab, activitiesSearch: undefined, activitiesFilter: undefined } as SystemBlockState);
   };
 
   const handleNameSave = useCallback(async (next: string) => {
@@ -139,7 +139,13 @@ export default function AgentBlock({ blockId }: Props) {
       case "models":
         return <ModelsTab blockId={blockId} />;
       case "activities":
-        return <ActivitiesTab agentId={resolvedAgentId} initialSearch={blockState.activitiesSearch} />;
+        return (
+          <ActivitiesTab
+            agentId={resolvedAgentId}
+            initialSearch={blockState.activitiesSearch}
+            initialFilter={blockState.activitiesFilter}
+          />
+        );
       case "skills":
         return <SkillsTab agentId={resolvedAgentId} blockId={blockId} />;
       case "habits":

@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type AgentActivity, listAgentActivities } from "../../api";
+import { type ActivityFilter, type AgentActivity, listAgentActivities } from "../../api";
 import { useWorkspace } from "../../contexts/workspaceContext";
 import { useTranslation } from "../../i18n";
 import Tooltip from "../Tooltip";
@@ -16,6 +16,7 @@ const PAGE_SIZE = 20;
 interface Props {
   agentId: string;
   initialSearch?: string;
+  initialFilter?: ActivityFilter;
 }
 
 function formatTimestamp(ts: string): string {
@@ -39,20 +40,22 @@ function formatTokens(prompt: number | null, completion: number | null): string 
   return `${prompt ?? 0} / ${completion ?? 0}`;
 }
 
-export default function ActivitiesTab({ agentId, initialSearch }: Props) {
+export default function ActivitiesTab({ agentId, initialSearch, initialFilter }: Props) {
   const { t } = useTranslation();
   const { workspaceId } = useWorkspace();
   const [activities, setActivities] = useState<AgentActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
+  const hasInitialConstraint = Boolean(initialSearch || initialFilter);
 
   const [search, setSearch] = useState(initialSearch ?? "");
-  const [quickRange, setQuickRange] = useState<string | null>(initialSearch ? null : "24h");
+  const [quickRange, setQuickRange] = useState<string | null>(hasInitialConstraint ? null : "24h");
   const [committed, setCommitted] = useState({
     search: initialSearch ?? "",
-    dateFrom: initialSearch ? "" : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    dateTo: initialSearch ? "" : new Date().toISOString().slice(0, 10),
+    dateFrom: hasInitialConstraint ? "" : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    dateTo: hasInitialConstraint ? "" : new Date().toISOString().slice(0, 10),
+    filter: initialFilter ?? null,
   });
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -65,6 +68,7 @@ export default function ActivitiesTab({ agentId, initialSearch }: Props) {
       dateFrom: filters.dateFrom || undefined,
       dateTo: filters.dateTo || undefined,
       workspaceId,
+      filter: filters.filter,
     })
       .then((data) => {
         setActivities(data.activities);
@@ -75,7 +79,7 @@ export default function ActivitiesTab({ agentId, initialSearch }: Props) {
   }, [agentId, workspaceId]);
 
   // Load on mount and when committed filters change
-  const committedKey = `${committed.search}|${committed.dateFrom}|${committed.dateTo}`;
+  const committedKey = `${committed.search}|${committed.dateFrom}|${committed.dateTo}|${committed.filter?.type ?? ""}|${committed.filter?.id ?? ""}`;
   useEffect(() => {
     setPage(0);
     load(0, committed);
@@ -115,6 +119,23 @@ export default function ActivitiesTab({ agentId, initialSearch }: Props) {
   };
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
+  const clearFilter = () => {
+    setCommitted((prev) => ({ ...prev, filter: null }));
+  };
+
+  const filterTypeLabel = committed.filter
+    ? t(`agent.activities.filter.${committed.filter.type}` as any)
+    : "";
+
+  const formatSources = (activity: AgentActivity): string => {
+    const refs = [
+      ...(activity.sources?.skills ?? []),
+      ...(activity.sources?.habits ?? []),
+      ...(activity.sources?.integrations ?? []),
+    ];
+    if (refs.length === 0) return activity.source === "-" ? "-" : activity.source;
+    return refs.map((ref) => ref.displayName || ref.id).join(", ");
+  };
 
   return (
     <div>
@@ -150,6 +171,11 @@ export default function ActivitiesTab({ agentId, initialSearch }: Props) {
             placeholder={t("agent.activities.searchPlaceholder")}
           />
         </div>
+        {committed.filter && (
+          <button className="ab-toolbar-btn ab-toolbar-btn-active" onClick={clearFilter} title={t("agent.activities.clearFilter")}>
+            {filterTypeLabel}: {committed.filter.label || committed.filter.id} ×
+          </button>
+        )}
         {/* Pagination */}
         <div className="ab-pagination">
           <span className="ab-pagination-info">{total} {t("agent.activities.total")}</span>
@@ -182,11 +208,11 @@ export default function ActivitiesTab({ agentId, initialSearch }: Props) {
                 <dl className="ab-card-kv">
                   <div className="ab-card-kv-row">
                     <dt>{t("agent.activities.model")}</dt>
-                    <dd>{a.modelId || "—"}</dd>
+                    <dd>{a.model?.displayName || a.modelId || "—"}</dd>
                   </div>
                   <div className="ab-card-kv-row">
                     <dt>{t("agent.activities.source")}</dt>
-                    <dd>{a.source === "-" ? "-" : a.source}</dd>
+                    <dd>{formatSources(a)}</dd>
                   </div>
                   <div className="ab-card-kv-row">
                     <dt>{t("agent.activities.conversation")}</dt>
