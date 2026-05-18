@@ -80,7 +80,7 @@ const OPTION_PALETTE_LM: Record<string, { bg: string; text: string; dot: string 
   "#9E339E": { bg: "#FAE0FA", text: "#9E339E", dot: "#D946D9" },   // Pink
 };
 
-// DM 调色板：bg 用 dot 色 22% alpha（在 #1C1C1E 底上呈现染色色块），
+// DM 调色板：bg 用 dot 色 22% alpha（在 #1C1C1C 底上呈现染色色块），
 // text 用提亮的纯色（hsl 高 lightness）—— 既保持识别度又对比足够。
 const OPTION_PALETTE_DM: Record<string, { bg: string; text: string; dot: string }> = {
   "#D83931": { bg: "rgba(245, 74, 69, 0.22)",  text: "#FF8B86", dot: "#FF6B66" },   // Red

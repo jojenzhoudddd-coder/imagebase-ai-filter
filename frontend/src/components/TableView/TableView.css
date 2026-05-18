@@ -515,7 +515,7 @@
   user-select: none;
 }
 [data-theme="dark"] .de-zone:hover {
-  background: var(--surface-3, #38383A);
+  background: var(--surface-3, #383838);
 }
 [data-theme="dark"] .de-zone-active {
   background: rgba(74, 130, 255, 0.12);
@@ -743,7 +743,7 @@
 
 /* ─── DM overrides ─── */
 [data-theme="dark"] .tp-input-wrap {
-  background: var(--surface-2, #2C2C2E);
+  background: var(--surface-2, #2C2C2C);
 }
 [data-theme="dark"] .tp-input {
   color: var(--text-primary, #E8E8E8);
@@ -752,14 +752,14 @@
   color: var(--text-primary, #E8E8E8);
 }
 [data-theme="dark"] .tp-dropdown {
-  background: var(--surface-2, #2C2C2E);
-  border-color: var(--border-default, #3A3A3C);
+  background: var(--surface-2, #2C2C2C);
+  border-color: var(--border-default, #3A3A3A);
 }
 [data-theme="dark"] .tp-cell {
   color: var(--text-primary, #E8E8E8);
 }
 [data-theme="dark"] .tp-cell:hover {
-  background: var(--color-bg-hover, #3A3A3C);
+  background: var(--color-bg-hover, #3A3A3A);
 }
 [data-theme="dark"] .tp-cell-active {
   color: var(--color-primary, #4080FF);

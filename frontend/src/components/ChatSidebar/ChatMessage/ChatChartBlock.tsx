@@ -105,7 +105,7 @@ function ChatChartBlockInner({ spec, height = 280, caption }: ChatChartBlockProp
         // 透明让图表吃宿主卡片的 surface 颜色。
         const isDark = resolvedTheme === "dark";
         // DM 调色盘
-        const DM_SURFACE = "#2C2C2E";   // 卡片背景色 / 数据缺失格的填充
+        const DM_SURFACE = "#2C2C2C";   // 卡片背景色 / 数据缺失格的填充
         const DM_BORDER  = "#646A73";   // 轴线 / tick
         const DM_LABEL   = "#C7C9CC";   // 文字
         const DM_TITLE   = "#E5E6EB";

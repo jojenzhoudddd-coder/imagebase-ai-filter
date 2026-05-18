@@ -352,7 +352,7 @@
   color: var(--primary);
 }
 /* DM 表格 —— 跟 LM 同结构,只换 surface 配色:外层 surface-2 → DM 自动跟
- * tokens.css(DM 下 surface-2=#2C2C2E)。td bottom-divider 用 surface-3 即可。 */
+ * tokens.css(DM 下 surface-2=#2C2C2C)。td bottom-divider 用 surface-3 即可。 */
 [data-theme="dark"] .idea-preview-body th {
   background: var(--surface-3);
   color: var(--text-primary);

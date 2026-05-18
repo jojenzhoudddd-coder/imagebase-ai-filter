@@ -79,15 +79,15 @@
 /* ── Dark mode — lighter gray bg for contrast ──────────────────── */
 [data-theme="dark"] .tooltip-content,
 .dark .tooltip-content {
-  background: #3A3A3C;
+  background: #3A3A3A;
   color: #F5F5F7;
 }
 
-[data-theme="dark"] .tooltip-top .tooltip-arrow { border-top-color: #3A3A3C; }
-[data-theme="dark"] .tooltip-bottom .tooltip-arrow { border-bottom-color: #3A3A3C; }
-[data-theme="dark"] .tooltip-left .tooltip-arrow { border-left-color: #3A3A3C; }
-[data-theme="dark"] .tooltip-right .tooltip-arrow { border-right-color: #3A3A3C; }
-.dark .tooltip-top .tooltip-arrow { border-top-color: #3A3A3C; }
-.dark .tooltip-bottom .tooltip-arrow { border-bottom-color: #3A3A3C; }
-.dark .tooltip-left .tooltip-arrow { border-left-color: #3A3A3C; }
-.dark .tooltip-right .tooltip-arrow { border-right-color: #3A3A3C; }
+[data-theme="dark"] .tooltip-top .tooltip-arrow { border-top-color: #3A3A3A; }
+[data-theme="dark"] .tooltip-bottom .tooltip-arrow { border-bottom-color: #3A3A3A; }
+[data-theme="dark"] .tooltip-left .tooltip-arrow { border-left-color: #3A3A3A; }
+[data-theme="dark"] .tooltip-right .tooltip-arrow { border-right-color: #3A3A3A; }
+.dark .tooltip-top .tooltip-arrow { border-top-color: #3A3A3A; }
+.dark .tooltip-bottom .tooltip-arrow { border-bottom-color: #3A3A3A; }
+.dark .tooltip-left .tooltip-arrow { border-left-color: #3A3A3A; }
+.dark .tooltip-right .tooltip-arrow { border-right-color: #3A3A3A; }

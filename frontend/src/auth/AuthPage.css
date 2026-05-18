@@ -385,7 +385,7 @@
  * ────────────────────────────────────────────────────────────────────── */
 [data-theme="dark"] .auth-shell {
   /* DM 专用底图 —— public/auth-bg-dm.png + 20% 暗色 veil。
-   * background-color 走 --surface-base token = #1C1C1E，加载途中
+   * background-color 走 --surface-base token = #1C1C1C，加载途中
    * 颜色与最终图色一致，无闪烁。 */
   background:
     linear-gradient(rgba(28, 28, 30, 0.2), rgba(28, 28, 30, 0.2)),

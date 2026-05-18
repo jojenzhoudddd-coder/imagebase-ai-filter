@@ -15,7 +15,7 @@
 }
 
 [data-theme="dark"] {
-  --space-bg: var(--surface-base, #1C1C1E);
+  --space-bg: var(--surface-base, #1C1C1C);
   --space-star-color: var(--text-on-primary, #FFFFFF);
   --space-glow-color: var(--primary, #4A82FF);
   --space-canvas-opacity: 0.98;

@@ -17,7 +17,7 @@
 /* Global resets scoped via .ha-block — do not leak to other blocks */
 
 /* ── Block shell ──────────────────────────────────────────────── */
-/* The shell is the project's normal card surface (LM = white, DM = #2C2C2E),
+/* The shell is the project's normal card surface (LM = white, DM = #2C2C2C),
  * but with a thin scatter of 4-point sparkle stars echoing the agent's
  * star4 logo. LM stars are the agent's accent blue; DM stars are white.
  * Stars are pure CSS — an SVG data-URL background, twinkled with a

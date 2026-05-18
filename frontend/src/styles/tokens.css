@@ -118,19 +118,18 @@
    * accent-color 仍走我们的 --primary 染色。 */
   color-scheme: dark;
 
-  /* ── Surface ─── macOS DM 标准取色：windowBg #1C1C1E / sidebar #2C2C2E
-   * / card #3A3A3C / hover #48484A —— 全中性灰，无蓝调。
+  /* ── Surface ─── DM 使用等 RGB 中性灰，避免 macOS 灰蓝底色带来的蓝调。
    * 我们 5 层映射：
-   *   base    = #1C1C1E   macOS window bg
-   *   1       = #232325   过渡灰
-   *   2       = #2C2C2E   macOS sidebar / card
-   *   3       = #38383A   macOS popover / hover
-   *   inset   = #161618   更深凹陷（input 等） */
-  --surface-base:        #1C1C1E;
-  --surface-1:           #232325;
-  --surface-2:           #2C2C2E;
-  --surface-3:           #38383A;
-  --surface-inset:       #161618;
+   *   base    = #1C1C1C   window bg
+   *   1       = #232323   过渡灰
+   *   2       = #2C2C2C   sidebar / card
+   *   3       = #383838   popover / hover
+   *   inset   = #161616   更深凹陷（input 等） */
+  --surface-base:        #1C1C1C;
+  --surface-1:           #232323;
+  --surface-2:           #2C2C2C;
+  --surface-3:           #383838;
+  --surface-inset:       #161616;
   --surface-modal-scrim: rgba(0, 0, 0, 0.55);
 
   /* ── Text ─── macOS labelColor 系列：纯中性，无蓝调 */
@@ -142,11 +141,11 @@
   --text-disabled:       #545458;
   --text-link:           #6B9AFF;
 
-  /* ── Border ─── 三档：light < default < strong；DM 下都对中性灰 #1C1C1E
+  /* ── Border ─── 三档：light < default < strong；DM 下都对中性灰 #1C1C1C
    * 底可见，但 light 比 default 略弱用于单元格 / 内部分隔。 */
-  --border-default:      #3A3A3C;
-  --border-light:        #323234;
-  --border-strong:       #48484A;
+  --border-default:      #3A3A3A;
+  --border-light:        #323232;
+  --border-strong:       #484848;
   --border-focus:        #6B9AFF;
 
   /* ── Brand（降饱和 + 提亮） ─── */
