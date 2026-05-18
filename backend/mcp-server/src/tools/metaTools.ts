@@ -173,6 +173,9 @@ export const metaTools: ToolDefinition[] = [
       const agentId = resolveAgentId(args, ctx);
       const denied = await assertOwnedAgent(agentId, ctx);
       if (denied) return JSON.stringify({ ok: false, error: denied });
+      if (!ctx?.workspaceId) {
+        return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "create_memory 必须在当前 workspace 上下文内调用" });
+      }
       const title = typeof args.title === "string" ? args.title.trim() : "";
       const body = typeof args.body === "string" ? args.body : "";
       const tags = Array.isArray(args.tags) ? args.tags.filter((t: unknown) => typeof t === "string") : undefined;
@@ -180,9 +183,9 @@ export const metaTools: ToolDefinition[] = [
         return JSON.stringify({ ok: false, error: "title 和 body 都不能为空" });
       }
       const { filename } = await appendEpisodicMemory(agentId, { title, body, tags }, {
-        workspaceId: ctx?.workspaceId ?? null,
+        workspaceId: ctx.workspaceId,
       });
-      return JSON.stringify({ ok: true, agentId, workspaceId: ctx?.workspaceId ?? null, filename });
+      return JSON.stringify({ ok: true, agentId, workspaceId: ctx.workspaceId, filename });
     },
   },
 ];

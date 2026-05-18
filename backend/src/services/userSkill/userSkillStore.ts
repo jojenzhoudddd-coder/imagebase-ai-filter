@@ -79,6 +79,7 @@ export interface UserSkillCreateInput {
   promptFragment?: string | null;
   workflowDocs?: unknown[] | null;
   toolWhitelist?: string[] | null;
+  enabled?: boolean;
   sourceConversationId?: string | null;
   sourceWorkflowRunId?: string | null;
 }
@@ -386,6 +387,7 @@ export async function createUserSkill(
         ownerId,
         name,
         dirPath: "pending",
+        enabled: input.enabled ?? true,
       },
     });
   });

@@ -180,13 +180,13 @@ export default function HabitsTab({ agentId, blockId }: Props) {
     const prev = habits;
     setHabits((h) => h.filter((x) => x.id !== jobId));
     try {
-      await deleteHabit(agentId, jobId);
+      await deleteHabit(agentId, jobId, workspaceId);
       toast.success(t("agent.toast.habitDeleted"));
     } catch {
       setHabits(prev);
       toast.error(t("agent.toast.deleteFailed"));
     }
-  }, [agentId, habits, toast, t]);
+  }, [agentId, habits, workspaceId, toast, t]);
 
   const handleAddHabit = async () => {
     if (!workspaceId) return;

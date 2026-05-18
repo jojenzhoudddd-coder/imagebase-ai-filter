@@ -29,6 +29,12 @@ function resolveAgentId(args: Record<string, any>, ctx?: ToolContext): string {
   return DEFAULT_AGENT_ID;
 }
 
+function requireWorkspace(ctx?: ToolContext): string | null {
+  return typeof ctx?.workspaceId === "string" && ctx.workspaceId.trim()
+    ? ctx.workspaceId.trim()
+    : null;
+}
+
 export const memoryTools: ToolDefinition[] = [
   {
     name: "read_memory",
@@ -59,16 +65,20 @@ export const memoryTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const agentId = resolveAgentId(args, ctx);
+      const workspaceId = requireWorkspace(ctx);
+      if (!workspaceId) {
+        return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "read_memory 必须在当前 workspace 上下文内调用" });
+      }
       await ensureAgentFiles(agentId);
 
       const filename = typeof args.filename === "string" ? args.filename.trim() : "";
       if (filename) {
         try {
-          const mem = await readEpisodicMemory(agentId, filename, { workspaceId: ctx?.workspaceId ?? null });
+          const mem = await readEpisodicMemory(agentId, filename, { workspaceId });
           if (!mem) {
             return JSON.stringify({ ok: false, error: `memory not found: ${filename}` });
           }
-          return JSON.stringify({ ok: true, agentId, workspaceId: ctx?.workspaceId ?? null, memory: mem });
+          return JSON.stringify({ ok: true, agentId, workspaceId, memory: mem });
         } catch (err: any) {
           return JSON.stringify({ ok: false, error: err?.message || String(err) });
         }
@@ -76,11 +86,11 @@ export const memoryTools: ToolDefinition[] = [
 
       const limit = typeof args.limit === "number" ? args.limit : undefined;
       const tag = typeof args.tag === "string" && args.tag.trim() ? args.tag.trim().toLowerCase() : undefined;
-      const summaries = await listEpisodicMemories(agentId, { limit, tag, workspaceId: ctx?.workspaceId ?? null });
+      const summaries = await listEpisodicMemories(agentId, { limit, tag, workspaceId });
       return JSON.stringify({
         ok: true,
         agentId,
-        workspaceId: ctx?.workspaceId ?? null,
+        workspaceId,
         count: summaries.length,
         memories: summaries,
       });
@@ -115,17 +125,21 @@ export const memoryTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const agentId = resolveAgentId(args, ctx);
+      const workspaceId = requireWorkspace(ctx);
+      if (!workspaceId) {
+        return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "recall_memory 必须在当前 workspace 上下文内调用" });
+      }
       await ensureAgentFiles(agentId);
       const query = typeof args.query === "string" ? args.query : "";
       const tags = Array.isArray(args.tags)
         ? args.tags.filter((t: unknown): t is string => typeof t === "string")
         : undefined;
       const limit = typeof args.limit === "number" ? args.limit : undefined;
-      const hits = await recallMemories(agentId, query, { tags, limit, workspaceId: ctx?.workspaceId ?? null });
+      const hits = await recallMemories(agentId, query, { tags, limit, workspaceId });
       return JSON.stringify({
         ok: true,
         agentId,
-        workspaceId: ctx?.workspaceId ?? null,
+        workspaceId,
         count: hits.length,
         query,
         tags: tags || [],

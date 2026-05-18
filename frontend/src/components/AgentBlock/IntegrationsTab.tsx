@@ -205,13 +205,13 @@ export default function IntegrationsTab({ agentId, blockId }: Props) {
     const prev = integrations;
     setIntegrations((items) => items.filter((integration) => integration.id !== integrationId));
     try {
-      await deleteIntegration(agentId, integrationId);
+      await deleteIntegration(agentId, integrationId, workspaceId);
       toast.success(t("agent.toast.integrationDeleted"));
     } catch {
       setIntegrations(prev);
       toast.error(t("agent.toast.deleteFailed"));
     }
-  }, [agentId, integrations, toast, t]);
+  }, [agentId, integrations, workspaceId, toast, t]);
 
   const handleTest = useCallback(async (integration: AgentIntegrationSummary) => {
     setTestingId(integration.id);

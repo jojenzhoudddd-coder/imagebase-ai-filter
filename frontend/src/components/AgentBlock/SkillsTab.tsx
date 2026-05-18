@@ -123,13 +123,13 @@ export default function SkillsTab({ agentId, blockId }: Props) {
     const prev = skills;
     setSkills((s) => s.filter((x) => x.id !== skillId));
     try {
-      await deleteUserSkill(agentId, skillId);
+      await deleteUserSkill(agentId, skillId, workspaceId);
       toast.success(t("agent.toast.skillDeleted"));
     } catch {
       setSkills(prev);
       toast.error(t("agent.toast.deleteFailed"));
     }
-  }, [agentId, skills, toast, t]);
+  }, [agentId, skills, workspaceId, toast, t]);
 
   const handleAddSkill = async () => {
     if (!workspaceId) return;

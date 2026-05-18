@@ -2074,9 +2074,16 @@ export async function deleteCustomModel(id: string): Promise<void> {
 }
 
 /** DELETE a habit (cron job) */
-export async function deleteHabit(agentId: string, jobId: string): Promise<void> {
+export async function deleteHabit(
+  agentId: string,
+  jobId: string,
+  workspaceId?: string | null,
+): Promise<void> {
+  const params = new URLSearchParams();
+  if (workspaceId) params.set("workspaceId", workspaceId);
+  const qs = params.toString();
   const res = await mutationFetch(
-    `${BASE}/agents/${encodeURIComponent(agentId)}/cron/${encodeURIComponent(jobId)}`,
+    `${BASE}/agents/${encodeURIComponent(agentId)}/cron/${encodeURIComponent(jobId)}${qs ? `?${qs}` : ""}`,
     { method: "DELETE" },
   );
   if (!res.ok && res.status !== 204) {
@@ -2086,9 +2093,16 @@ export async function deleteHabit(agentId: string, jobId: string): Promise<void>
 }
 
 /** DELETE a user skill */
-export async function deleteUserSkill(agentId: string, skillId: string): Promise<void> {
+export async function deleteUserSkill(
+  agentId: string,
+  skillId: string,
+  workspaceId?: string | null,
+): Promise<void> {
+  const params = new URLSearchParams();
+  if (workspaceId) params.set("workspaceId", workspaceId);
+  const qs = params.toString();
   const res = await mutationFetch(
-    `${BASE}/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(skillId)}`,
+    `${BASE}/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(skillId)}${qs ? `?${qs}` : ""}`,
     { method: "DELETE" },
   );
   if (!res.ok && res.status !== 204) {
@@ -2211,9 +2225,16 @@ export async function toggleIntegration(
   return res.json();
 }
 
-export async function deleteIntegration(agentId: string, integrationId: string): Promise<void> {
+export async function deleteIntegration(
+  agentId: string,
+  integrationId: string,
+  workspaceId?: string | null,
+): Promise<void> {
+  const params = new URLSearchParams();
+  if (workspaceId) params.set("workspaceId", workspaceId);
+  const qs = params.toString();
   const res = await mutationFetch(
-    `${BASE}/agents/${encodeURIComponent(agentId)}/integrations/${encodeURIComponent(integrationId)}`,
+    `${BASE}/agents/${encodeURIComponent(agentId)}/integrations/${encodeURIComponent(integrationId)}${qs ? `?${qs}` : ""}`,
     { method: "DELETE" },
   );
   if (!res.ok && res.status !== 204) {

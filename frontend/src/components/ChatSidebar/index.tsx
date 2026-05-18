@@ -2051,8 +2051,8 @@ export default function ChatSidebar({
             { key: "models", label: t("chat.agent.menu.models"), icon: <ModelsIcon size={16} /> },
             { key: "habits", label: t("chat.agent.menu.habits"), icon: <HabitsIcon size={16} /> },
             { key: "skills", label: t("chat.agent.menu.skills"), icon: <SkillsIcon size={16} /> },
-            { key: "acknowledge", label: t("chat.agent.menu.acknowledge"), icon: <AcknowledgeIcon size={16} /> },
             { key: "integrations", label: t("chat.agent.menu.integrations"), icon: <IntegrationsIcon size={16} /> },
+            { key: "acknowledge", label: t("chat.agent.menu.acknowledge"), icon: <AcknowledgeIcon size={16} /> },
             { key: "activities", label: t("chat.agent.menu.activities"), icon: <ActivitiesIcon size={16} /> },
           ]}
           onSelect={(key) => {

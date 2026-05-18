@@ -80,9 +80,12 @@ export const integrationTools: ToolDefinition[] = [
     handler: async (args, ctx) => {
       try {
         const agentId = resolveAgentId(args, ctx);
+        if (!ctx?.workspaceId) {
+          return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "list_integrations 必须在当前 workspace 上下文内调用" });
+        }
         await ensureSystemIntegrations(agentId);
-        const integrations = await listAgentIntegrations(agentId, { workspaceId: ctx?.workspaceId ?? null });
-        return JSON.stringify({ ok: true, workspaceId: ctx?.workspaceId ?? null, integrations });
+        const integrations = await listAgentIntegrations(agentId, { workspaceId: ctx.workspaceId });
+        return JSON.stringify({ ok: true, workspaceId: ctx.workspaceId, integrations });
       } catch (err) {
         return errJson(err);
       }
@@ -110,10 +113,10 @@ export const integrationTools: ToolDefinition[] = [
     handler: async (args, ctx) => {
       try {
         const agentId = resolveAgentId(args, ctx);
-        const requestedEnabled = typeof args.enabled === "boolean" ? args.enabled : undefined;
-        if (requestedEnabled !== undefined && !ctx?.workspaceId) {
-          return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "enabled 开关必须在当前 workspace 上下文内修改" });
+        if (!ctx?.workspaceId) {
+          return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "create_integration 必须在当前 workspace 上下文内调用" });
         }
+        const requestedEnabled = typeof args.enabled === "boolean" ? args.enabled : undefined;
         const integration = await createAgentIntegration({
           agentId,
           providerKey: String(args.providerKey ?? ""),
@@ -125,16 +128,12 @@ export const integrationTools: ToolDefinition[] = [
           scopes: args.scopes as any,
           credentials: args.credentials as any,
         });
-        if (ctx?.workspaceId && requestedEnabled !== undefined) {
-          await setIntegrationEnabledForWorkspace(agentId, ctx.workspaceId, integration.id, requestedEnabled);
-        }
+        await setIntegrationEnabledForWorkspace(agentId, ctx.workspaceId, integration.id, requestedEnabled ?? true);
         return JSON.stringify({
           ok: true,
-          workspaceId: ctx?.workspaceId ?? null,
-          integration: ctx?.workspaceId
-            ? (await listAgentIntegrations(agentId, { workspaceId: ctx.workspaceId }))
-              .find((item) => item.id === integration.id) ?? integration
-            : integration,
+          workspaceId: ctx.workspaceId,
+          integration: (await listAgentIntegrations(agentId, { workspaceId: ctx.workspaceId }))
+            .find((item) => item.id === integration.id) ?? integration,
           note: `已安装。可 activate_skill("${`integration-${integration.id}`}") 立即调用该集成工具。`,
         });
       } catch (err) {
@@ -165,24 +164,24 @@ export const integrationTools: ToolDefinition[] = [
       try {
         const integrationId = String(args.integrationId ?? "");
         const agentId = resolveAgentId(args, ctx);
+        if (!ctx?.workspaceId) {
+          return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "update_integration 必须在当前 workspace 上下文内调用" });
+        }
         const patch: Record<string, unknown> = {};
         for (const key of ["displayName", "transport", "enabled", "config", "toolManifest", "scopes", "credentials"]) {
           if (key in args) patch[key] = args[key];
         }
-        if ("enabled" in patch && typeof patch.enabled === "boolean" && !ctx?.workspaceId) {
-          return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "enabled 开关必须在当前 workspace 上下文内修改" });
-        }
         const workspaceEnabled =
-          ctx?.workspaceId && typeof patch.enabled === "boolean"
+          typeof patch.enabled === "boolean"
             ? patch.enabled
             : undefined;
         if (workspaceEnabled !== undefined) {
-          const existing = (await listAgentIntegrations(agentId, { workspaceId: ctx!.workspaceId! }))
+          const existing = (await listAgentIntegrations(agentId, { workspaceId: ctx.workspaceId }))
             .find((item) => item.id === integrationId);
           if (!existing) {
             return JSON.stringify({ ok: false, code: "NOT_FOUND", error: `integration not found: ${integrationId}` });
           }
-          await setIntegrationEnabledForWorkspace(agentId, ctx!.workspaceId!, integrationId, workspaceEnabled);
+          await setIntegrationEnabledForWorkspace(agentId, ctx.workspaceId, integrationId, workspaceEnabled);
           delete patch.enabled;
         }
         let integration = null;
@@ -191,11 +190,9 @@ export const integrationTools: ToolDefinition[] = [
             requireAgentId: agentId,
           });
         }
-        if (ctx?.workspaceId) {
-          integration = (await listAgentIntegrations(agentId, { workspaceId: ctx.workspaceId }))
-            .find((item) => item.id === integrationId) ?? integration;
-        }
-        return JSON.stringify({ ok: true, workspaceId: ctx?.workspaceId ?? null, integration });
+        integration = (await listAgentIntegrations(agentId, { workspaceId: ctx.workspaceId }))
+          .find((item) => item.id === integrationId) ?? integration;
+        return JSON.stringify({ ok: true, workspaceId: ctx.workspaceId, integration });
       } catch (err) {
         return errJson(err);
       }
@@ -217,10 +214,13 @@ export const integrationTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const integrationId = String(args.integrationId ?? "");
+      if (!ctx?.workspaceId) {
+        return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "delete_integration 必须在当前 workspace 上下文内调用" });
+      }
       if (!args.confirmed) {
         return confirmationRequired(
           "delete_integration",
-          { integrationId, agentId: args.agentId },
+          { integrationId, agentId: args.agentId, workspaceId: ctx.workspaceId },
           `即将处理集成 ${integrationId}：官方集成会清空配置并保留卡片，自定义集成会删除卡片及其加密凭据。`,
         );
       }
@@ -294,6 +294,9 @@ export const integrationTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       try {
+        if (!ctx?.workspaceId) {
+          return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "start_integration_auth 必须在当前 workspace 上下文内调用" });
+        }
         const result = await startIntegrationAuth(String(args.integrationId ?? ""), startAuthOptions(args, ctx));
         return JSON.stringify(result);
       } catch (err) {
@@ -316,6 +319,9 @@ export const integrationTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       try {
+        if (!ctx?.workspaceId) {
+          return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "poll_integration_auth 必须在当前 workspace 上下文内调用" });
+        }
         const result = await pollIntegrationAuth(String(args.authSessionId ?? ""), {
           requireAgentId: resolveAgentId(args, ctx),
           integrationId: typeof args.integrationId === "string" && args.integrationId.trim() ? args.integrationId.trim() : undefined,

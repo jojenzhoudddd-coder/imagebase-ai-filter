@@ -4,8 +4,14 @@
  * search_knowledge / list_knowledge are Tier 1 (always-on retrieval).
  */
 
-import type { ToolDefinition } from "./tableTools.js";
+import type { ToolDefinition, ToolContext } from "./tableTools.js";
 import { apiRequest } from "../dataStoreClient.js";
+
+function requireWorkspace(ctx?: ToolContext): string | null {
+  return typeof ctx?.workspaceId === "string" && ctx.workspaceId.trim()
+    ? ctx.workspaceId.trim()
+    : null;
+}
 
 export const knowledgeTools: ToolDefinition[] = [
   {
@@ -24,6 +30,8 @@ export const knowledgeTools: ToolDefinition[] = [
     },
     handler: async (args: Record<string, unknown>, ctx?: any) => {
       try {
+        const workspaceId = requireWorkspace(ctx);
+        if (!workspaceId) return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "knowledge 写入必须在当前 workspace 上下文内调用" });
         const data = await apiRequest("/api/knowledge", {
           method: "POST",
           body: {
@@ -33,7 +41,7 @@ export const knowledgeTools: ToolDefinition[] = [
             sourceUrl: args.url,
             sourceType: "web",
             tags: args.tags ?? [],
-            workspaceId: ctx?.workspaceId ?? null,
+            workspaceId,
           },
         });
         return JSON.stringify({ ok: true, ...data as object });
@@ -57,6 +65,8 @@ export const knowledgeTools: ToolDefinition[] = [
     },
     handler: async (args: Record<string, unknown>, ctx?: any) => {
       try {
+        const workspaceId = requireWorkspace(ctx);
+        if (!workspaceId) return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "knowledge 写入必须在当前 workspace 上下文内调用" });
         const data = await apiRequest("/api/knowledge", {
           method: "POST",
           body: {
@@ -65,7 +75,7 @@ export const knowledgeTools: ToolDefinition[] = [
             content: args.content,
             sourceType: "chat",
             tags: args.tags ?? [],
-            workspaceId: ctx?.workspaceId ?? null,
+            workspaceId,
           },
         });
         return JSON.stringify({ ok: true, ...data as object });
@@ -89,12 +99,14 @@ export const knowledgeTools: ToolDefinition[] = [
     handler: async (args: Record<string, unknown>, ctx?: any) => {
       const agentId = ctx?.agentId ?? "agent_default";
       try {
+        const workspaceId = requireWorkspace(ctx);
+        if (!workspaceId) return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "knowledge 搜索必须在当前 workspace 上下文内调用" });
         const params = new URLSearchParams({
           agentId,
           query: String(args.query ?? ""),
           limit: String(args.limit ?? 5),
         });
-        if (ctx?.workspaceId) params.set("workspaceId", ctx.workspaceId);
+        params.set("workspaceId", workspaceId);
         const data = await apiRequest<{ results: unknown[] }>(
           `/api/knowledge/search?${params}`,
         );
@@ -117,11 +129,13 @@ export const knowledgeTools: ToolDefinition[] = [
     },
     handler: async (args: Record<string, unknown>, ctx?: any) => {
       const agentId = ctx?.agentId ?? "agent_default";
+      const workspaceId = requireWorkspace(ctx);
+      if (!workspaceId) return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "knowledge 列表必须在当前 workspace 上下文内调用" });
       const params = new URLSearchParams({ agentId });
       if (args.limit) params.set("limit", String(args.limit));
       if (args.offset) params.set("offset", String(args.offset));
       if (args.tag) params.set("tag", args.tag as string);
-      if (ctx?.workspaceId) params.set("workspaceId", ctx.workspaceId);
+      params.set("workspaceId", workspaceId);
       try {
         const data = await apiRequest(`/api/knowledge?${params}`);
         return JSON.stringify({ ok: true, ...data as object });
@@ -148,7 +162,9 @@ export const knowledgeTools: ToolDefinition[] = [
     },
     handler: async (args: Record<string, unknown>, ctx?: any) => {
       const agentId = ctx?.agentId ?? "agent_default";
-      const body: Record<string, unknown> = { agentId, workspaceId: ctx?.workspaceId ?? null };
+      const workspaceId = requireWorkspace(ctx);
+      if (!workspaceId) return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "knowledge 更新必须在当前 workspace 上下文内调用" });
+      const body: Record<string, unknown> = { agentId, workspaceId };
       if (args.title !== undefined) body.title = args.title;
       if (args.content !== undefined) body.content = args.content;
       if (args.sourceUrl !== undefined) body.sourceUrl = args.sourceUrl;
@@ -178,8 +194,10 @@ export const knowledgeTools: ToolDefinition[] = [
     handler: async (args: Record<string, unknown>, ctx?: any) => {
       const agentId = ctx?.agentId ?? "agent_default";
       try {
+        const workspaceId = requireWorkspace(ctx);
+        if (!workspaceId) return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "knowledge 删除必须在当前 workspace 上下文内调用" });
         const params = new URLSearchParams({ agentId });
-        if (ctx?.workspaceId) params.set("workspaceId", ctx.workspaceId);
+        params.set("workspaceId", workspaceId);
         await apiRequest(`/api/knowledge/${args.id}?${params}`, {
           method: "DELETE",
         });

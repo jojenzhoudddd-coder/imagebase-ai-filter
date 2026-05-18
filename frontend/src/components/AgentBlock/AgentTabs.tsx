@@ -12,8 +12,8 @@ const TABS: ReadonlyArray<{ key: AgentTabKey; i18nKey: string }> = [
   { key: "models", i18nKey: "chat.agent.menu.models" },
   { key: "habits", i18nKey: "chat.agent.menu.habits" },
   { key: "skills", i18nKey: "chat.agent.menu.skills" },
-  { key: "acknowledge", i18nKey: "chat.agent.menu.acknowledge" },
   { key: "integrations", i18nKey: "chat.agent.menu.integrations" },
+  { key: "acknowledge", i18nKey: "chat.agent.menu.acknowledge" },
   { key: "activities", i18nKey: "chat.agent.menu.activities" },
 ];
 

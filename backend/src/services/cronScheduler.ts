@@ -204,22 +204,32 @@ function effectiveCronJob(
   override: Awaited<ReturnType<typeof getHabitOverride>> | null,
   workspaceId?: string,
 ): CronJob {
+  const isUserHabit = job.type !== "system";
+  const workspaceScopedDefaultOff =
+    isUserHabit && workspaceId && job.workspaceId && job.workspaceId !== workspaceId;
+  const defaultEnabled = workspaceScopedDefaultOff ? false : (job.enabled ?? true);
+  const defaultLastFiredAt = workspaceScopedDefaultOff ? null : job.lastFiredAt;
   return {
     ...job,
     workspaceId: workspaceId ?? job.workspaceId,
     schedule: override?.schedule ?? job.schedule,
-    enabled: override?.enabled ?? job.enabled,
-    lastFiredAt: override?.lastFiredAt !== undefined ? override.lastFiredAt : job.lastFiredAt,
+    enabled: override?.enabled ?? defaultEnabled,
+    lastFiredAt: override?.lastFiredAt !== undefined ? override.lastFiredAt : defaultLastFiredAt,
   };
 }
 
-async function resolveJobWorkspaceIds(agentId: string, job: CronJob): Promise<Array<string | undefined>> {
-  if (job.workspaceId) return [job.workspaceId];
-  if (job.type !== "system") return [undefined];
+async function listAgentWorkspaceIds(agentId: string): Promise<string[]> {
   const agent = await getAgent(agentId);
   if (!agent?.userId) return [];
   const workspaces = await listUserWorkspaces(agent.userId);
   return workspaces.map((ws) => ws.id).filter(Boolean);
+}
+
+async function resolveJobWorkspaceIds(agentId: string, job: CronJob): Promise<string[]> {
+  const workspaceIds = await listAgentWorkspaceIds(agentId);
+  if (workspaceIds.length > 0) return workspaceIds;
+  if (job.workspaceId) return [job.workspaceId];
+  return [];
 }
 
 // ─── Evaluation (reads cron.json, fires due jobs) ───────────────────────
@@ -383,7 +393,6 @@ export async function listCronJobs(
   if (workspaceId) {
     const jobs: CronJob[] = [];
     for (const job of cron.jobs) {
-      if (job.workspaceId && job.workspaceId !== workspaceId) continue;
       const override = await getHabitOverride(agentId, workspaceId, job.id);
       jobs.push(effectiveCronJob(job, override, workspaceId));
     }

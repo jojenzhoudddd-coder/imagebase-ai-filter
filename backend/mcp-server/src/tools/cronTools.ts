@@ -103,17 +103,19 @@ export const cronTools: ToolDefinition[] = [
         description: typeof args.description === "string" && args.description.trim()
           ? args.description.trim() : undefined,
         type: "user",
-        enabled: true,
-        workspaceId: ctx.workspaceId,
+        enabled: false,
         skills: Array.isArray(args.skills)
           ? args.skills.filter((s: unknown) => typeof s === "string")
           : undefined,
       });
+      await setHabitOverride(agentId, ctx.workspaceId, job.id, { enabled: true });
       const next = nextFireAfter(parsed, new Date());
       return JSON.stringify({
         ok: true,
+        workspaceId: ctx.workspaceId,
         jobId: job.id,
         schedule: job.schedule,
+        enabled: true,
         nextFireAt: next ? next.toISOString() : null,
       });
     },
@@ -131,11 +133,14 @@ export const cronTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const agentId = resolveAgentId(args, ctx);
-      const jobs = await listCronJobs(agentId, { workspaceId: ctx?.workspaceId ?? null });
+      if (!ctx?.workspaceId) {
+        return JSON.stringify({ ok: false, error: "list_scheduled_tasks 必须在当前 workspace 上下文内调用" });
+      }
+      const jobs = await listCronJobs(agentId, { workspaceId: ctx.workspaceId });
       const now = new Date();
       return JSON.stringify({
         ok: true,
-        workspaceId: ctx?.workspaceId ?? null,
+        workspaceId: ctx.workspaceId,
         count: jobs.length,
         jobs: jobs.map((j) => {
           const parsed = parseCron(j.schedule);
@@ -169,11 +174,15 @@ export const cronTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const agentId = resolveAgentId(args, ctx);
+      if (!ctx?.workspaceId) {
+        return JSON.stringify({ ok: false, error: "cancel_task 必须在当前 workspace 上下文内调用" });
+      }
       const jobId = typeof args.jobId === "string" ? args.jobId.trim() : "";
       if (!jobId) return JSON.stringify({ ok: false, error: "jobId 不能为空" });
       const removed = await removeCronJob(agentId, jobId);
       return JSON.stringify({
         ok: removed,
+        workspaceId: ctx.workspaceId,
         jobId,
         error: removed ? null : "找不到这个 jobId",
       });
@@ -201,6 +210,9 @@ export const cronTools: ToolDefinition[] = [
       const agentId = resolveAgentId(args, ctx);
       const jobId = typeof args.jobId === "string" ? args.jobId.trim() : "";
       if (!jobId) return JSON.stringify({ ok: false, error: "jobId 不能为空" });
+      if (!ctx?.workspaceId) {
+        return JSON.stringify({ ok: false, error: "update_scheduled_task 必须在当前 workspace 上下文内调用" });
+      }
 
       await ensureAgentFiles(agentId);
       const cronFile = await readCron(agentId);
@@ -211,9 +223,6 @@ export const cronTools: ToolDefinition[] = [
       const updates: string[] = [];
 
       if (typeof args.schedule === "string" && args.schedule.trim()) {
-        if (!ctx?.workspaceId) {
-          return JSON.stringify({ ok: false, error: "habit schedule 必须在当前 workspace 上下文内修改" });
-        }
         const parsed = parseCron(args.schedule.trim());
         if (!parsed) return JSON.stringify({ ok: false, error: `无效的 cron 表达式: ${args.schedule}` });
         await setHabitOverride(agentId, ctx.workspaceId, jobId, { schedule: args.schedule.trim() });
@@ -241,9 +250,6 @@ export const cronTools: ToolDefinition[] = [
         updates.push("description updated");
       }
       if (typeof args.enabled === "boolean") {
-        if (!ctx?.workspaceId) {
-          return JSON.stringify({ ok: false, error: "habit enabled 开关必须在当前 workspace 上下文内修改" });
-        }
         await setHabitOverride(agentId, ctx.workspaceId, jobId, { enabled: args.enabled });
         updates.push(`enabled → ${args.enabled}`);
       }
@@ -257,7 +263,7 @@ export const cronTools: ToolDefinition[] = [
       const nextFire = p ? nextFireAfter(p, new Date()) : null;
       return JSON.stringify({
         ok: true,
-        workspaceId: ctx?.workspaceId ?? null,
+        workspaceId: ctx.workspaceId,
         jobId,
         updates,
         schedule: effectiveSchedule,

@@ -119,6 +119,17 @@ function requireWorkspaceId(req: Request, res: Response): string | null {
   return workspaceId;
 }
 
+const WORKSPACE_SCOPED_CONFIG_KEYS = new Set([
+  "model",
+  "enabledSkills",
+  "disabledBuiltinSkills",
+  "workspaceSettings",
+]);
+
+function findWorkspaceScopedConfigKeys(patch: Partial<AgentConfig>): string[] {
+  return Object.keys(patch).filter((key) => WORKSPACE_SCOPED_CONFIG_KEYS.has(key));
+}
+
 // ─── Metadata ───
 
 router.get("/", requireAuth, async (req: Request, res: Response) => {
@@ -359,6 +370,14 @@ router.put("/:agentId/identity/config", async (req: Request, res: Response) => {
     const patch = (req.body ?? {}) as Partial<AgentConfig>;
     if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
       res.status(400).json({ error: "body 必须是 JSON 对象" });
+      return;
+    }
+    const blockedKeys = findWorkspaceScopedConfigKeys(patch);
+    if (blockedKeys.length > 0) {
+      res.status(400).json({
+        error: "workspace-scoped config keys must use dedicated workspace-aware endpoints",
+        blockedKeys,
+      });
       return;
     }
     const agent = await getAgent(req.params.agentId);
@@ -607,7 +626,7 @@ router.post("/:agentId/cron", async (req: Request, res: Response) => {
     }
     const workspaceId = requireWorkspaceId(req, res);
     if (!workspaceId) return;
-    const { schedule, prompt, skills, meta } = req.body ?? {};
+    const { schedule, prompt, skills, meta, displayName, description } = req.body ?? {};
     if (typeof schedule !== "string" || !schedule.trim()) {
       res.status(400).json({ error: "schedule 必须是非空字符串 (cron expression)" });
       return;
@@ -623,11 +642,15 @@ router.post("/:agentId/cron", async (req: Request, res: Response) => {
     const job = await addCronJob(agent.id, {
       schedule: schedule.trim(),
       prompt: prompt.trim(),
-      workspaceId,
       skills: Array.isArray(skills) ? skills.filter((s) => typeof s === "string") : undefined,
+      type: "user",
+      enabled: false,
+      displayName: typeof displayName === "string" && displayName.trim() ? displayName.trim() : undefined,
+      description: typeof description === "string" && description.trim() ? description.trim() : undefined,
       meta: typeof meta === "object" && meta !== null && !Array.isArray(meta) ? meta : undefined,
     });
-    res.status(201).json(job);
+    await setHabitOverride(agent.id, workspaceId, job.id, { enabled: true });
+    res.status(201).json({ ...job, workspaceId, enabled: true });
   } catch (err: any) {
     console.error("[agents] cron add error:", err);
     const status = /invalid cron schedule/.test(err?.message ?? "") ? 400 : 500;
@@ -642,6 +665,8 @@ router.delete("/:agentId/cron/:jobId", async (req: Request, res: Response) => {
       res.status(404).json({ error: "agent not found" });
       return;
     }
+    const workspaceId = requireWorkspaceId(req, res);
+    if (!workspaceId) return;
     const ok = await removeCronJob(agent.id, req.params.jobId);
     if (!ok) {
       res.status(404).json({ error: "job not found" });
@@ -831,6 +856,8 @@ router.put("/:agentId/skills/:skillId/toggle", async (req: Request, res: Respons
 router.delete("/:agentId/skills/:skillId", async (req: Request, res: Response) => {
   try {
     const { agentId, skillId } = req.params;
+    const workspaceId = requireWorkspaceId(req, res);
+    if (!workspaceId) return;
     await deleteUserSkill(skillId, { requireOwnerId: agentId });
     res.status(204).end();
   } catch (err: any) {
@@ -895,14 +922,10 @@ router.post("/:agentId/integrations", async (req: Request, res: Response) => {
       scopes: req.body?.scopes,
       credentials: req.body?.credentials,
     });
-    if (typeof requestedEnabled === "boolean") {
-      await setIntegrationEnabledForWorkspace(agent.id, workspaceId, integration.id, requestedEnabled);
-      const effective = (await listAgentIntegrations(agent.id, { workspaceId }))
-        .find((item) => item.id === integration.id) ?? integration;
-      res.status(201).json(effective);
-      return;
-    }
-    res.status(201).json(integration);
+    await setIntegrationEnabledForWorkspace(agent.id, workspaceId, integration.id, requestedEnabled ?? true);
+    const effective = (await listAgentIntegrations(agent.id, { workspaceId }))
+      .find((item) => item.id === integration.id) ?? integration;
+    res.status(201).json(effective);
   } catch (err: any) {
     console.error("[agents] integration create error:", err);
     const status = err?.name === "IntegrationValidationError" ? 400 : 500;
@@ -963,6 +986,8 @@ router.post("/:agentId/integrations/:integrationId/test", async (req: Request, r
 router.delete("/:agentId/integrations/:integrationId", async (req: Request, res: Response) => {
   try {
     const { agentId, integrationId } = req.params;
+    const workspaceId = requireWorkspaceId(req, res);
+    if (!workspaceId) return;
     const result = await deleteAgentIntegration(integrationId, { requireAgentId: agentId });
     if (!result.ok) {
       res.status(404).json({ error: "integration not found" });

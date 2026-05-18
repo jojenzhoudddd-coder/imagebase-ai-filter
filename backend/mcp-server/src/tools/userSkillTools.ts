@@ -153,6 +153,9 @@ export const userSkillTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const ownerId = resolveAgentId(args, ctx);
+      if (!ctx?.workspaceId) {
+        return JSON.stringify({ ok: false, error: "create_skill 必须在当前 workspace 上下文内调用", code: "WORKSPACE_REQUIRED" });
+      }
       try {
         const row = await createUserSkill({
           ownerType: "agent",
@@ -168,11 +171,14 @@ export const userSkillTools: ToolDefinition[] = [
           toolWhitelist: Array.isArray(args.toolWhitelist)
             ? (args.toolWhitelist as unknown[]).map(String)
             : null,
+          enabled: false,
           sourceConversationId: ctx?.conversationId ?? null,
         });
+        await setUserSkillEnabledForWorkspace(ownerId, ctx.workspaceId, row.id, true);
         return JSON.stringify({
           ok: true,
-          skill: rowToDetailDto(row),
+          workspaceId: ctx.workspaceId,
+          skill: rowToDetailDto(row, true),
           note:
             "已保存。下次对话只要消息含 triggers 之一就会自动激活;" +
             "现在对话也可以直接调 activate_skill('" +
@@ -204,6 +210,9 @@ export const userSkillTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const ownerId = resolveAgentId(args, ctx);
+      if (!ctx?.workspaceId) {
+        return JSON.stringify({ ok: false, error: "list_my_skills 必须在当前 workspace 上下文内调用", code: "WORKSPACE_REQUIRED" });
+      }
       try {
         const rows = await listUserSkills({
           ownerType: "agent",
@@ -211,16 +220,14 @@ export const userSkillTools: ToolDefinition[] = [
         });
         const skills = [];
         for (const row of rows) {
-          const override = ctx?.workspaceId
-            ? await getUserSkillEnabledOverride(ownerId, ctx.workspaceId, row.id)
-            : undefined;
+          const override = await getUserSkillEnabledOverride(ownerId, ctx.workspaceId, row.id);
           const enabled = override ?? row.enabled;
           if (args.onlyEnabled && !enabled) continue;
           skills.push(rowToListDto(row, enabled));
         }
         return JSON.stringify({
           ok: true,
-          workspaceId: ctx?.workspaceId ?? null,
+          workspaceId: ctx.workspaceId,
           total: skills.length,
           skills,
         });
@@ -298,6 +305,9 @@ export const userSkillTools: ToolDefinition[] = [
       const requireOwnerId = resolveAgentId(args, ctx);
       const id = String(args.id ?? "").trim();
       if (!id) return JSON.stringify({ ok: false, error: "id 必填", code: "VALIDATION" });
+      if (!ctx?.workspaceId) {
+        return JSON.stringify({ ok: false, error: "update_skill 必须在当前 workspace 上下文内调用", code: "WORKSPACE_REQUIRED" });
+      }
       const patch: Record<string, unknown> = {};
       if ("name" in args) patch.name = args.name;
       if ("description" in args) patch.description = args.description;
@@ -305,11 +315,8 @@ export const userSkillTools: ToolDefinition[] = [
       if ("promptFragment" in args) patch.promptFragment = args.promptFragment;
       if ("workflowDocs" in args) patch.workflowDocs = args.workflowDocs;
       if ("toolWhitelist" in args) patch.toolWhitelist = args.toolWhitelist;
-      if ("enabled" in args && typeof args.enabled === "boolean" && !ctx?.workspaceId) {
-        return JSON.stringify({ ok: false, error: "enabled 开关必须在当前 workspace 上下文内修改", code: "WORKSPACE_REQUIRED" });
-      }
       const workspaceEnabled =
-        ctx?.workspaceId && "enabled" in args && typeof args.enabled === "boolean"
+        "enabled" in args && typeof args.enabled === "boolean"
           ? args.enabled
           : undefined;
       try {
@@ -323,10 +330,12 @@ export const userSkillTools: ToolDefinition[] = [
         if (Object.keys(patch).length > 0) {
           row = await updateUserSkill(id, patch as any, { requireOwnerId });
         }
-        if (ctx?.workspaceId && workspaceEnabled !== undefined) {
+        if (workspaceEnabled !== undefined) {
           await setUserSkillEnabledForWorkspace(requireOwnerId, ctx.workspaceId, id, workspaceEnabled);
         }
-        return JSON.stringify({ ok: true, workspaceId: ctx?.workspaceId ?? null, skill: rowToDetailDto(row, workspaceEnabled) });
+        const effectiveEnabled =
+          workspaceEnabled ?? await getUserSkillEnabledOverride(requireOwnerId, ctx.workspaceId, id);
+        return JSON.stringify({ ok: true, workspaceId: ctx.workspaceId, skill: rowToDetailDto(row, effectiveEnabled) });
       } catch (err) {
         return errToToolJson(err);
       }
@@ -470,6 +479,9 @@ export const userSkillTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const ownerId = resolveAgentId(args, ctx);
+      if (!ctx?.workspaceId) {
+        return JSON.stringify({ ok: false, error: "save_workflow_run_as_skill 必须在当前 workspace 上下文内调用", code: "WORKSPACE_REQUIRED" });
+      }
       const runId = String(args.runId ?? "").trim();
       if (!runId) {
         return JSON.stringify({ ok: false, error: "runId 必填", code: "VALIDATION" });
@@ -519,12 +531,15 @@ export const userSkillTools: ToolDefinition[] = [
             : [],
           promptFragment,
           workflowDocs: [run.docJson as any],
+          enabled: false,
           sourceConversationId: run.parentConversationId,
           sourceWorkflowRunId: runId,
         });
+        await setUserSkillEnabledForWorkspace(ownerId, ctx.workspaceId, row.id, true);
         return JSON.stringify({
           ok: true,
-          skill: rowToDetailDto(row),
+          workspaceId: ctx.workspaceId,
+          skill: rowToDetailDto(row, true),
           note:
             `已从 WorkflowRun ${runId} (templateId: ${run.templateId}) 转存为 skill「${row.name}」。` +
             `下次对话只要消息含 triggers 之一,你可以直接 invoke_skill_workflow_${row.id}_0 复跑。`,
