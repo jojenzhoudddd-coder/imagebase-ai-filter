@@ -375,7 +375,7 @@ function DockTip({ label, children }: { label: string; children: ReactNode }) {
   const hide = useCallback(() => setRect(null), []);
 
   return (
-    <div ref={ref} onMouseEnter={show} onMouseLeave={hide}>
+    <div ref={ref} onMouseEnter={show} onMouseLeave={hide} onContextMenuCapture={hide}>
       {children}
       {rect && createPortal(
         <div
