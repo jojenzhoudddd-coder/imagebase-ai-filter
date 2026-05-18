@@ -33,6 +33,7 @@ import { folderSkill } from "./folderSkill.js";
 import { scheduleSkill } from "./scheduleSkill.js";
 import { modelManagementSkill } from "./modelManagementSkill.js";
 import { knowledgeSkill } from "./knowledgeSkill.js";
+import { mediaGenerationSkill } from "./mediaGenerationSkill.js";
 import type { SkillDefinition } from "./types.js";
 
 export const allSkills: SkillDefinition[] = [
@@ -54,6 +55,7 @@ export const allSkills: SkillDefinition[] = [
   scheduleSkill,
   modelManagementSkill,
   knowledgeSkill,
+  mediaGenerationSkill,
   systemThemeSkill,
   integrationSkill,
 ];

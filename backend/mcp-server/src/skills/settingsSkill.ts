@@ -31,6 +31,8 @@ export const settingsSkill: SkillDefinition = {
     "时区",
     "workspace 名称",
     "工作区名称",
+    "workspace 头像",
+    "工作区头像",
     "agent 名称",
     "agent 头像",
     /修改.*(workspace|工作区|agent|头像|名字|名称)/i,

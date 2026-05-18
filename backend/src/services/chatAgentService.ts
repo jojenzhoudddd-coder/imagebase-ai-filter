@@ -2130,6 +2130,7 @@ export async function* spawnSubagent(
     "get_agent_identity",
     "get_workspace",
     "update_workspace_name",
+    "update_workspace_avatar",
     "schedule_task",
     "list_scheduled_tasks",
     "cancel_task",

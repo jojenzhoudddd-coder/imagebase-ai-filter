@@ -49,7 +49,9 @@ export const subagentTools: ToolDefinition[] = [
             "要使用的模型 id,如 'claude-opus-4.7' / 'gpt-5.5' / 'doubao-2.0' / 'gpt-5.4-mini'。" +
             "可参考 model registry 的 specialty:code → claude-opus-4.7 或 gpt-5.5;" +
             "reasoning → claude-opus-4.6 或 gpt-5.5;general → doubao-2.0;" +
-            "fast-cheap → gpt-5.4-mini。模型不可用时会自动 fallback 到同 group 的可用模型。",
+            "fast-cheap → gpt-5.4-mini。图像/视频生成优先用 generate_image / generate_video 工具;" +
+            "媒体模型 seedream-5.0-lite / seedance-2.0 不支持工具调用,只适合作为纯生成模型直接产出 URL。" +
+            "模型不可用时会自动 fallback 到同 group 的可用模型。",
         },
         userPrompt: {
           type: "string",

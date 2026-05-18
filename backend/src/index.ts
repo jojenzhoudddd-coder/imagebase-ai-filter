@@ -302,8 +302,13 @@ app.delete("/api/workspaces/:workspaceId", async (req, res) => {
 
 // PATCH /api/workspaces/:workspaceId/avatar — update workspace avatar
 app.patch("/api/workspaces/:workspaceId/avatar", async (req, res) => {
+  const user = (req as any).user;
+  if (!user) { res.status(401).json({ error: "Not authenticated" }); return; }
   const { avatarUrl } = req.body;
   if (typeof avatarUrl !== "string") { res.status(400).json({ error: "avatarUrl required" }); return; }
+  const existing = await prismaForStats.workspace.findUnique({ where: { id: req.params.workspaceId } });
+  if (!existing) { res.status(404).json({ error: "Workspace not found" }); return; }
+  if (existing.createdById !== user.id) { res.status(403).json({ error: "Not the workspace owner" }); return; }
   const ws = await prismaForStats.workspace.update({
     where: { id: req.params.workspaceId },
     data: { avatarUrl },
