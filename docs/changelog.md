@@ -7,6 +7,24 @@
 
 ---
 
+## 2026-05-18 (Fix · Workspace-scoped Agent Controls)
+
+### fix(agent): Agent Home 使用当前 workspace 读写状态
+
+Commit: pending deployment commit.
+
+- Agent Home 的 Nature / Models / Skills / Habits / Integrations / Acknowledge tab 改为读取当前 canvas workspace，而不是用户主 workspace。
+- High Agency 里的模型选择器也改为绑定当前 workspace，避免切换 workspace 后仍读写主 workspace 的模型设置。
+- 后端 model / memory / skill / habit / integration 状态接口缺少 `workspaceId` 时直接拒绝，避免漏传请求继续写共享配置。
+- MCP 管理工具中 skill / habit / integration 的 enabled/schedule 修改必须落在当前 workspace 上下文。
+
+本地验收：
+- `npm run build` 通过。
+- 本次涉及后端文件 targeted `tsc --noEmit` 过滤检查无新增错误。
+- `git diff --check` 通过。
+
+---
+
 ## 2026-05-18 (Feature · Workspace-scoped Agent State)
 
 ### feat(agent): habits / memory / knowledge / settings 按 workspace 隔离

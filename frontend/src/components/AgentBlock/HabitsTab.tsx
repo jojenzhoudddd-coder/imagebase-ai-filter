@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
+import { useWorkspace } from "../../contexts/workspaceContext";
 import type { SystemBlockState } from "../../canvas/types";
 import { createConversation, listHabits, toggleHabit, deleteHabit, type HabitSummary } from "../../api";
 import { useTranslation } from "../../i18n";
@@ -130,7 +131,8 @@ function useHabitI18n() {
 export default function HabitsTab({ agentId, blockId }: Props) {
   const { t } = useTranslation();
   const { name: localName, desc: localDesc } = useHabitI18n();
-  const { workspaceId, preferences } = useAuth();
+  const { preferences } = useAuth();
+  const { workspaceId } = useWorkspace();
   const timezone = preferences.timezone ?? "Asia/Shanghai";
   const { addBlock, patchBlockState } = useCanvas();
   const toast = useToast();

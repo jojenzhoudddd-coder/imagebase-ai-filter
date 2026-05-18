@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useCanvas } from "../../contexts/canvasContext";
 import { useAuth } from "../../auth/AuthContext";
+import { useWorkspace } from "../../contexts/workspaceContext";
 import { useBlockShell } from "../../contexts/blockShellContext";
 import {
   type AgentMeta,
@@ -38,7 +39,8 @@ interface Props {
 
 export default function AgentBlock({ blockId }: Props) {
   const { state, patchBlockState } = useCanvas();
-  const { agentId, workspaceId } = useAuth();
+  const { agentId } = useAuth();
+  const { workspaceId } = useWorkspace();
   const shell = useBlockShell();
   const { t } = useTranslation();
 

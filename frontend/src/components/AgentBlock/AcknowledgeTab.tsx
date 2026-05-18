@@ -4,8 +4,8 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
+import { useWorkspace } from "../../contexts/workspaceContext";
 import { createConversation, listKnowledgeEntries, getKnowledgeEntry, type KnowledgeEntrySummary } from "../../api";
 import { useTranslation } from "../../i18n";
 import { useAgentHomeRefresh } from "./agentHomeEvents";
@@ -32,7 +32,7 @@ function formatCardDate(iso: string): string {
 
 export default function AcknowledgeTab({ agentId }: Props) {
   const { t } = useTranslation();
-  const { workspaceId } = useAuth();
+  const { workspaceId } = useWorkspace();
   const { addBlock } = useCanvas();
   const [entries, setEntries] = useState<KnowledgeEntrySummary[]>([]);
   const [loading, setLoading] = useState(true);

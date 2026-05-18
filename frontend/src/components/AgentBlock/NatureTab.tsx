@@ -12,8 +12,8 @@ import {
   listAgentMemories,
   createConversation,
 } from "../../api";
-import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
+import { useWorkspace } from "../../contexts/workspaceContext";
 import { useTranslation } from "../../i18n";
 import { useAgentHomeRefresh } from "./agentHomeEvents";
 
@@ -40,7 +40,7 @@ const EDIT_PROMPTS: Record<SubTab, string> = {
 
 export default function NatureTab({ agentId }: Props) {
   const { t } = useTranslation();
-  const { workspaceId } = useAuth();
+  const { workspaceId } = useWorkspace();
   const { addBlock } = useCanvas();
   const [identity, setIdentity] = useState<AgentIdentity | null>(null);
   const [episodic, setEpisodic] = useState<AgentEpisodicMemory[]>([]);

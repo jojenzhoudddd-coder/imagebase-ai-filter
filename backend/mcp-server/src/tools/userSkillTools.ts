@@ -22,7 +22,6 @@ import {
   getUserSkill,
   updateUserSkill,
   deleteUserSkill,
-  toggleUserSkillEnabled,
   UserSkillValidationError,
   UserSkillNotFoundError,
   UserSkillNameConflictError,
@@ -306,11 +305,13 @@ export const userSkillTools: ToolDefinition[] = [
       if ("promptFragment" in args) patch.promptFragment = args.promptFragment;
       if ("workflowDocs" in args) patch.workflowDocs = args.workflowDocs;
       if ("toolWhitelist" in args) patch.toolWhitelist = args.toolWhitelist;
+      if ("enabled" in args && typeof args.enabled === "boolean" && !ctx?.workspaceId) {
+        return JSON.stringify({ ok: false, error: "enabled 开关必须在当前 workspace 上下文内修改", code: "WORKSPACE_REQUIRED" });
+      }
       const workspaceEnabled =
         ctx?.workspaceId && "enabled" in args && typeof args.enabled === "boolean"
           ? args.enabled
           : undefined;
-      if ("enabled" in args && workspaceEnabled === undefined) patch.enabled = args.enabled;
       try {
         let row = await getUserSkill(id);
         if (!row) {
@@ -431,8 +432,7 @@ export const userSkillTools: ToolDefinition[] = [
             skill: rowToListDto(row, args.enabled),
           });
         }
-        const row = await toggleUserSkillEnabled(id, args.enabled, { requireOwnerId });
-        return JSON.stringify({ ok: true, workspaceId: null, skill: rowToListDto(row) });
+        return JSON.stringify({ ok: false, error: "enabled 开关必须在当前 workspace 上下文内修改", code: "WORKSPACE_REQUIRED" });
       } catch (err) {
         return errToToolJson(err);
       }

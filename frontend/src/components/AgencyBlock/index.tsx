@@ -624,7 +624,7 @@ const FALLBACK_AVATAR = "/avatars/avatar_1.png";
 export default function AgencyBlock({ blockId }: Props) {
   const { state, patchBlockState, scheduleSave } = useCanvas();
   const shellCtx = useBlockShell();
-  const { agentId, workspaceId } = useAuth();
+  const { agentId } = useAuth();
   const { t } = useTranslation();
   const blockState = (state.blockStates[blockId] ?? {}) as AgencyBlockState;
 
@@ -1423,7 +1423,7 @@ export default function AgencyBlock({ blockId }: Props) {
                 </span>
               </div>
               <div className="ab-hero-chips">
-                <ChatModelPicker agentId={resolvedAgentId} workspaceId={workspaceId} open={true} />
+                <ChatModelPicker agentId={resolvedAgentId} workspaceId={workspace.workspaceId} open={true} />
               </div>
             </div>
           </div>

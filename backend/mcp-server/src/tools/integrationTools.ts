@@ -111,12 +111,15 @@ export const integrationTools: ToolDefinition[] = [
       try {
         const agentId = resolveAgentId(args, ctx);
         const requestedEnabled = typeof args.enabled === "boolean" ? args.enabled : undefined;
+        if (requestedEnabled !== undefined && !ctx?.workspaceId) {
+          return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "enabled 开关必须在当前 workspace 上下文内修改" });
+        }
         const integration = await createAgentIntegration({
           agentId,
           providerKey: String(args.providerKey ?? ""),
           displayName: typeof args.displayName === "string" ? args.displayName : undefined,
           transport: args.transport as any,
-          enabled: ctx?.workspaceId ? false : requestedEnabled,
+          enabled: false,
           config: args.config as any,
           toolManifest: args.toolManifest as any,
           scopes: args.scopes as any,
@@ -165,6 +168,9 @@ export const integrationTools: ToolDefinition[] = [
         const patch: Record<string, unknown> = {};
         for (const key of ["displayName", "transport", "enabled", "config", "toolManifest", "scopes", "credentials"]) {
           if (key in args) patch[key] = args[key];
+        }
+        if ("enabled" in patch && typeof patch.enabled === "boolean" && !ctx?.workspaceId) {
+          return JSON.stringify({ ok: false, code: "WORKSPACE_REQUIRED", error: "enabled 开关必须在当前 workspace 上下文内修改" });
         }
         const workspaceEnabled =
           ctx?.workspaceId && typeof patch.enabled === "boolean"

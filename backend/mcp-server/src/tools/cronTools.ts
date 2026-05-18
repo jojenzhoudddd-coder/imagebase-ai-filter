@@ -63,10 +63,6 @@ export const cronTools: ToolDefinition[] = [
           type: "string",
           description: "Habits tab 卡片标题下的小字说明，≤30 字概述这条 habit 在做什么。例如：'每周五下午 17:00 — 总结这周表结构变化'。强烈建议填写。",
         },
-        workspaceId: {
-          type: "string",
-          description: "可选；这条任务默认绑定哪个 workspace 上下文。",
-        },
         skills: {
           type: "array",
           items: { type: "string" },
@@ -81,6 +77,9 @@ export const cronTools: ToolDefinition[] = [
     },
     handler: async (args, ctx) => {
       const agentId = resolveAgentId(args, ctx);
+      if (!ctx?.workspaceId) {
+        return JSON.stringify({ ok: false, error: "schedule_task 必须在当前 workspace 上下文内调用" });
+      }
       const schedule = typeof args.schedule === "string" ? args.schedule.trim() : "";
       const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
       if (!schedule || !prompt) {
@@ -105,9 +104,7 @@ export const cronTools: ToolDefinition[] = [
           ? args.description.trim() : undefined,
         type: "user",
         enabled: true,
-        workspaceId: typeof args.workspaceId === "string" && args.workspaceId.trim()
-          ? args.workspaceId.trim()
-          : ctx?.workspaceId,
+        workspaceId: ctx.workspaceId,
         skills: Array.isArray(args.skills)
           ? args.skills.filter((s: unknown) => typeof s === "string")
           : undefined,
@@ -214,13 +211,12 @@ export const cronTools: ToolDefinition[] = [
       const updates: string[] = [];
 
       if (typeof args.schedule === "string" && args.schedule.trim()) {
+        if (!ctx?.workspaceId) {
+          return JSON.stringify({ ok: false, error: "habit schedule 必须在当前 workspace 上下文内修改" });
+        }
         const parsed = parseCron(args.schedule.trim());
         if (!parsed) return JSON.stringify({ ok: false, error: `无效的 cron 表达式: ${args.schedule}` });
-        if (ctx?.workspaceId) {
-          await setHabitOverride(agentId, ctx.workspaceId, jobId, { schedule: args.schedule.trim() });
-        } else {
-          job.schedule = args.schedule.trim();
-        }
+        await setHabitOverride(agentId, ctx.workspaceId, jobId, { schedule: args.schedule.trim() });
         updates.push(`schedule → ${args.schedule.trim()}`);
       }
       if (typeof args.prompt === "string" && args.prompt.trim()) {
@@ -245,11 +241,10 @@ export const cronTools: ToolDefinition[] = [
         updates.push("description updated");
       }
       if (typeof args.enabled === "boolean") {
-        if (ctx?.workspaceId) {
-          await setHabitOverride(agentId, ctx.workspaceId, jobId, { enabled: args.enabled });
-        } else {
-          job.enabled = args.enabled;
+        if (!ctx?.workspaceId) {
+          return JSON.stringify({ ok: false, error: "habit enabled 开关必须在当前 workspace 上下文内修改" });
         }
+        await setHabitOverride(agentId, ctx.workspaceId, jobId, { enabled: args.enabled });
         updates.push(`enabled → ${args.enabled}`);
       }
 

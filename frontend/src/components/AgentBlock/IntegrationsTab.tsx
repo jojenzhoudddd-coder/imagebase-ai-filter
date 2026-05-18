@@ -17,6 +17,7 @@ import {
 } from "../../api";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
+import { useWorkspace } from "../../contexts/workspaceContext";
 import type { SystemBlockState } from "../../canvas/types";
 import { useTranslation } from "../../i18n";
 import { useToast } from "../Toast/index";
@@ -115,7 +116,8 @@ function ConfigureIntegrationIcon() {
 
 export default function IntegrationsTab({ agentId, blockId }: Props) {
   const { t } = useTranslation();
-  const { workspaceId, preferences } = useAuth();
+  const { preferences } = useAuth();
+  const { workspaceId } = useWorkspace();
   const timezone = preferences.timezone ?? "Asia/Shanghai";
   const { addBlock, patchBlockState } = useCanvas();
   const toast = useToast();

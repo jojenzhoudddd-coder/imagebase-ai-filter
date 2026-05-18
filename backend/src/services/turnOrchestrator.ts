@@ -48,7 +48,7 @@ export async function* dispatchMessage(
   const mentionedModelId = extractModelMention(userMessage);
   const effectiveModelId = mentionedModelId
     || modelOverride
-    || (await agentSvc.getSelectedModel(agentId));
+    || (await agentSvc.getSelectedModel(agentId, ctx.workspaceId));
   const userMessageId = await generateId("message");
 
   const inflight = getTurn(convId);

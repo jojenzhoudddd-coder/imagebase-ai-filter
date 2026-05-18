@@ -7,6 +7,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
+import { useWorkspace } from "../../contexts/workspaceContext";
 import type { SystemBlockState } from "../../canvas/types";
 import Tooltip from "../Tooltip";
 import CardMoreMenu from "./CardMoreMenu";
@@ -64,7 +65,8 @@ const ADD_MODEL_PROMPT = `我想添加一个新的 AI 模型到我的模型列�
 
 export default function ModelsTab({ blockId }: { blockId?: string }) {
   const { t } = useTranslation();
-  const { workspaceId, agentId } = useAuth();
+  const { agentId } = useAuth();
+  const { workspaceId } = useWorkspace();
   const { addBlock, patchBlockState } = useCanvas();
   const toast = useToast();
   const [models, setModels] = useState<ModelSummary[]>([]);

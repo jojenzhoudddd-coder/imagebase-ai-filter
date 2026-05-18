@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { type AgentSkillSummary, listAgentSkills, toggleAgentSkill, deleteUserSkill, createConversation } from "../../api";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanvas } from "../../contexts/canvasContext";
+import { useWorkspace } from "../../contexts/workspaceContext";
 import type { SystemBlockState } from "../../canvas/types";
 import { useTranslation } from "../../i18n";
 import { useToast } from "../Toast/index";
@@ -73,7 +74,8 @@ function useSkillI18n() {
 export default function SkillsTab({ agentId, blockId }: Props) {
   const { t } = useTranslation();
   const { name: localName, desc: localDesc, triggers: localTriggers, triggerTitle: localTriggerTitle } = useSkillI18n();
-  const { workspaceId, preferences } = useAuth();
+  const { preferences } = useAuth();
+  const { workspaceId } = useWorkspace();
   const timezone = preferences.timezone ?? "Asia/Shanghai";
   const { addBlock, patchBlockState } = useCanvas();
   const toast = useToast();
