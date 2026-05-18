@@ -201,7 +201,7 @@ export async function updateViewFilter(
 
 export async function fetchWorkspace(
   workspaceId: string
-): Promise<{ id: string; name: string }> {
+): Promise<{ id: string; name: string; avatarUrl?: string | null }> {
   const res = await fetch(`${BASE}/workspaces/${workspaceId}`);
   if (!res.ok) throw new Error("Failed to fetch workspace");
   return res.json();
@@ -210,7 +210,7 @@ export async function fetchWorkspace(
 export async function renameWorkspace(
   workspaceId: string,
   name: string
-): Promise<{ id: string; name: string }> {
+): Promise<{ id: string; name: string; avatarUrl?: string | null }> {
   const res = await mutationFetch(`${BASE}/workspaces/${workspaceId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

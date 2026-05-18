@@ -63,6 +63,7 @@ import {
   setIntegrationEnabledForWorkspace,
   setHabitOverride,
   type AgentConfig,
+  type AgentMeta,
 } from "../services/agentService.js";
 
 // ESM shim — same pattern as authRoutes for resolving the avatars upload dir.
@@ -98,9 +99,24 @@ import {
   DEFAULT_MODEL_ID,
   FALLBACK_MODEL_ID,
 } from "../services/modelRegistry.js";
-import { currentUser, requireAuth } from "../services/authService.js";
+import { currentUser, listUserWorkspaces, requireAuth } from "../services/authService.js";
+import { eventBus } from "../services/eventBus.js";
 
 const router = express.Router();
+
+async function broadcastAgentUpdate(req: Request, agent: AgentMeta) {
+  const clientId = (req.headers["x-client-id"] as string) || "unknown";
+  const workspaces = await listUserWorkspaces(agent.userId).catch(() => []);
+  for (const ws of workspaces) {
+    eventBus.emitWorkspaceChange({
+      type: "agent:update",
+      workspaceId: ws.id,
+      clientId,
+      timestamp: Date.now(),
+      payload: { agent },
+    });
+  }
+}
 
 function readWorkspaceId(req: Request): string | undefined {
   const queryValue = req.query.workspaceId;
@@ -254,6 +270,7 @@ router.put("/:agentId", async (req: Request, res: Response) => {
     res.status(404).json({ error: "agent not found" });
     return;
   }
+  await broadcastAgentUpdate(req, agent);
   res.json(agent);
 });
 
@@ -292,6 +309,7 @@ router.post("/:agentId/avatar", async (req: Request, res: Response) => {
   await fsp.writeFile(abs, bytes);
   const avatarUrl = `/uploads/avatars/${fileName}`;
   const updated = await updateAgent(agentId, { avatarUrl });
+  if (updated) await broadcastAgentUpdate(req, updated);
   res.json({ agent: updated });
 });
 

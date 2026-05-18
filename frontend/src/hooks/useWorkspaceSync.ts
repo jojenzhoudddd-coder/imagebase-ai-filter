@@ -1,10 +1,33 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 
+export interface WorkspaceMetadataUpdate {
+  id: string;
+  name?: string;
+  avatarUrl?: string | null;
+}
+
+export interface UserMetadataUpdate {
+  id: string;
+  email?: string;
+  username?: string | null;
+  name?: string;
+  avatarUrl?: string | null;
+}
+
+export interface AgentMetadataUpdate {
+  id: string;
+  name?: string;
+  avatarUrl?: string | null;
+}
+
 export interface WorkspaceSyncHandlers {
   onTableCreate: (table: { id: string; name: string; order: number }) => void;
   onTableDelete: (tableId: string) => void;
   onTableReorder: (updates: Array<{ id: string; order: number }>) => void;
   onTableRename: (tableId: string, name: string) => void;
+  onWorkspaceUpdate?: (workspace: WorkspaceMetadataUpdate) => void;
+  onUserUpdate?: (user: UserMetadataUpdate) => void;
+  onAgentUpdate?: (agent: AgentMetadataUpdate) => void;
   onIdeaCreate?: (idea: { id: string; name: string; parentId: string | null; order: number }) => void;
   onIdeaDelete?: (ideaId: string) => void;
   onIdeaRename?: (ideaId: string, name: string) => void;
@@ -63,12 +86,33 @@ export function useWorkspaceSync(
         // refetch 是幂等的（仅拉一个数字),不会因 self-echo 重复更新出错。
         try { window.dispatchEvent(new CustomEvent("workspace-stats-changed")); } catch { /* noop */ }
 
+        const h = handlersRef.current;
+        const p = event.payload ?? {};
+
+        // Metadata updates are authoritative server state and idempotent, so
+        // apply them even for the originating client. This keeps toolbar/dock
+        // identity UI in sync after agent-initiated profile changes.
+        if (event.type === "workspace:update") {
+          const workspace = p.workspace ?? {
+            id: p.workspaceId ?? event.workspaceId,
+            name: p.name,
+            avatarUrl: p.avatarUrl,
+          };
+          if (workspace?.id) h.onWorkspaceUpdate?.(workspace);
+          return;
+        }
+        if (event.type === "user:update") {
+          if (p.user?.id) h.onUserUpdate?.(p.user);
+          return;
+        }
+        if (event.type === "agent:update") {
+          if (p.agent?.id) h.onAgentUpdate?.(p.agent);
+          return;
+        }
+
         // clientId 过滤只针对下面的"业务侧 handler"（onTableCreate 等)，
         // 防止本地状态被自己的 SSE 回声重复更新。
         if (event.clientId === clientId) return;
-
-        const h = handlersRef.current;
-        const p = event.payload;
 
         switch (event.type) {
           case "table:create":

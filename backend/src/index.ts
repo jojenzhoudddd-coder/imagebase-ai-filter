@@ -213,6 +213,13 @@ app.put("/api/workspaces/:workspaceId", async (req, res) => {
   const ws = await updateWorkspace(req.params.workspaceId, { name: name.trim() });
   if (!ws) { res.status(404).json({ error: "Workspace not found" }); return; }
   const clientId = (req.headers["x-client-id"] as string) || "unknown";
+  eventBus.emitWorkspaceChange({
+    type: "workspace:update",
+    workspaceId: ws.id,
+    clientId,
+    timestamp: Date.now(),
+    payload: { workspace: ws, workspaceId: ws.id, name: ws.name, avatarUrl: ws.avatarUrl },
+  });
   // Broadcast to all tables under this workspace
   eventBus.emitChange({
     type: "workspace:update",
@@ -312,6 +319,19 @@ app.patch("/api/workspaces/:workspaceId/avatar", async (req, res) => {
   const ws = await prismaForStats.workspace.update({
     where: { id: req.params.workspaceId },
     data: { avatarUrl },
+  });
+  const clientId = (req.headers["x-client-id"] as string) || "unknown";
+  eventBus.emitWorkspaceChange({
+    type: "workspace:update",
+    workspaceId: ws.id,
+    clientId,
+    timestamp: Date.now(),
+    payload: {
+      workspace: { id: ws.id, name: ws.name, avatarUrl: ws.avatarUrl },
+      workspaceId: ws.id,
+      name: ws.name,
+      avatarUrl: ws.avatarUrl,
+    },
   });
   res.json({ id: ws.id, name: ws.name, avatarUrl: ws.avatarUrl });
 });

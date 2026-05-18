@@ -93,6 +93,8 @@ interface AuthContextValue {
   refresh: () => Promise<void>;
   /** Merge partial updates (e.g. after PATCH /profile) without a round-trip. */
   patchUser: (patch: Partial<AuthUser>) => void;
+  /** Merge partial workspace metadata updates without a full /me refresh. */
+  patchWorkspace: (workspaceId: string, patch: Partial<AuthWorkspace>) => void;
   /** 写 preferences 到后端 + 本地 state。失败回滚到原值并 throw。 */
   patchPreferences: (patch: Partial<UserPreferences>) => Promise<void>;
 }
@@ -247,9 +249,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((prev) => (prev ? { ...prev, ...patch } : prev));
   }, []);
 
+  const patchWorkspace = useCallback((id: string, patch: Partial<AuthWorkspace>) => {
+    setWorkspaces((prev) => prev.map((ws) => (ws.id === id ? { ...ws, ...patch } : ws)));
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ user, workspaces, workspaceId, agentId, preferences, loading, login, register, logout, refresh, patchUser, patchPreferences }),
-    [user, workspaces, workspaceId, agentId, preferences, loading, login, register, logout, refresh, patchUser, patchPreferences],
+    () => ({ user, workspaces, workspaceId, agentId, preferences, loading, login, register, logout, refresh, patchUser, patchWorkspace, patchPreferences }),
+    [user, workspaces, workspaceId, agentId, preferences, loading, login, register, logout, refresh, patchUser, patchWorkspace, patchPreferences],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

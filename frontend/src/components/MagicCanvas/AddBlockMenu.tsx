@@ -6,12 +6,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useCanvas, MAX_BLOCKS } from "../../contexts/canvasContext";
 import { useAuth } from "../../auth/AuthContext";
+import { useWorkspace } from "../../contexts/workspaceContext";
 import { createConversation } from "../../api";
 import { useTranslation } from "../../i18n";
 
 export default function AddBlockMenu({ anchorRef }: { anchorRef: React.RefObject<HTMLElement | null> }) {
   const { addBlock, visibleBlockIds } = useCanvas();
-  const { workspaceId, agentId, user } = useAuth();
+  const { workspaceId } = useWorkspace();
+  const { agentId, user } = useAuth();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const popRef = useRef<HTMLDivElement>(null);

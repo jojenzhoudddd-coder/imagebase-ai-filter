@@ -27,10 +27,26 @@ import {
   ensureAgentFiles,
   getAgent,
   updateAgent,
+  type AgentMeta,
 } from "../../../src/services/agentService.js";
+import { listUserWorkspaces } from "../../../src/services/authService.js";
+import { eventBus } from "../../../src/services/eventBus.js";
 import type { ToolDefinition, ToolContext } from "./tableTools.js";
 
 const DEFAULT_AGENT_ID = "agent_default";
+
+async function broadcastAgentUpdate(agent: AgentMeta) {
+  const workspaces = await listUserWorkspaces(agent.userId).catch(() => []);
+  for (const ws of workspaces) {
+    eventBus.emitWorkspaceChange({
+      type: "agent:update",
+      workspaceId: ws.id,
+      clientId: "agent-tool",
+      timestamp: Date.now(),
+      payload: { agent },
+    });
+  }
+}
 
 function resolveAgentId(args: Record<string, any>, ctx?: ToolContext): string {
   if (typeof args.agentId === "string" && args.agentId.trim()) return args.agentId.trim();
@@ -144,6 +160,7 @@ export const metaTools: ToolDefinition[] = [
       if (!agent) {
         return JSON.stringify({ ok: false, error: `agent ${agentId} 不存在` });
       }
+      await broadcastAgentUpdate(agent);
       return JSON.stringify({ ok: true, agentId: agent.id, name: agent.name });
     },
   },

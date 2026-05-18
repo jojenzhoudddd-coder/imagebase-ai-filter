@@ -123,13 +123,13 @@ function toTable(row: { id: string; name: string; fields: unknown; views: unknow
 
 // ─── Workspace ───
 
-export async function getWorkspace(id: string): Promise<{ id: string; name: string } | null> {
+export async function getWorkspace(id: string): Promise<{ id: string; name: string; avatarUrl: string | null } | null> {
   const row = await prisma.workspace.findUnique({ where: { id } });
   if (!row) return null;
-  return { id: row.id, name: row.name };
+  return { id: row.id, name: row.name, avatarUrl: row.avatarUrl };
 }
 
-export async function updateWorkspace(id: string, dto: { name?: string }): Promise<{ id: string; name: string } | null> {
+export async function updateWorkspace(id: string, dto: { name?: string }): Promise<{ id: string; name: string; avatarUrl: string | null } | null> {
   const row = await prisma.workspace.findUnique({ where: { id } });
   if (!row) return null;
 
@@ -142,7 +142,7 @@ export async function updateWorkspace(id: string, dto: { name?: string }): Promi
   if (Object.keys(data).length === 0) return null;
 
   const updated = await prisma.workspace.update({ where: { id }, data });
-  return { id: updated.id, name: updated.name };
+  return { id: updated.id, name: updated.name, avatarUrl: updated.avatarUrl };
 }
 
 // ─── Table ───

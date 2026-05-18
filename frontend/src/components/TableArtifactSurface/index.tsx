@@ -109,12 +109,12 @@ function readDeleteProtection(): boolean {
   return false;
 }
 
-export default function TableArtifactSurface({ tableId, workspaceId: _workspaceId, onRename }: Props) {
+export default function TableArtifactSurface({ tableId, workspaceId, onRename }: Props) {
   const { t } = useTranslation();
   const toast = useToast();
   const ws = useWorkspace();
   const { addBlock } = useCanvas();
-  const { workspaceId: authWorkspaceId, agentId } = useAuth();
+  const { agentId } = useAuth();
 
   // 每个实例独立的 clientId —— 用于 SSE echo 过滤 + mutation 头。
   // 同 table 双开时:A 编辑发 X-Client-Id=instanceA,B 订阅 ?clientId=instanceB,
@@ -372,14 +372,14 @@ export default function TableArtifactSurface({ tableId, workspaceId: _workspaceI
       mentionLink +
       t("toolbar.addByChatPrompt.after");
     let conv: { id: string } | null = null;
-    if (authWorkspaceId) {
-      try { conv = await createConversation(authWorkspaceId, agentId || undefined); } catch {}
+    if (workspaceId) {
+      try { conv = await createConversation(workspaceId, agentId || undefined); } catch {}
     }
     addBlock("chat", conv
       ? { conversationId: conv.id, prefillMessage } as any
       : { prefillMessage } as any
     );
-  }, [tableName, tableId, authWorkspaceId, agentId, addBlock, t]);
+  }, [tableName, tableId, workspaceId, agentId, addBlock, t]);
 
   const handleSaveView = useCallback(async () => {
     try {

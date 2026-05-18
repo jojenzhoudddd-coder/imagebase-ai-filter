@@ -1837,6 +1837,71 @@ export interface SseEvent {
   data: Record<string, unknown>;
 }
 
+type SkillActivationReason = "trigger_match" | "suggest_activate";
+
+interface SkillActivationCard {
+  callId: string;
+  skill: SkillDefinition;
+  reason: SkillActivationReason;
+}
+
+function sanitizeSkillCallIdPart(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64) || "skill";
+}
+
+function makeSkillActivationCard(
+  skill: SkillDefinition,
+  reason: SkillActivationReason,
+): SkillActivationCard {
+  return {
+    callId: `skill_${reason}_${sanitizeSkillCallIdPart(skill.name)}_${uuidv4().slice(0, 8)}`,
+    skill,
+    reason,
+  };
+}
+
+function skillActivationResult(card: SkillActivationCard): Record<string, unknown> {
+  return {
+    ok: true,
+    activated: card.skill.name,
+    displayName: card.skill.displayName,
+    reason: card.reason,
+    newlyAvailableTools: card.skill.tools.map((t) => t.name),
+  };
+}
+
+function skillActivationToolCall(card: SkillActivationCard): ToolCall {
+  return {
+    callId: card.callId,
+    tool: "activate_skill",
+    args: { name: card.skill.name, reason: card.reason },
+    status: "success",
+    result: skillActivationResult(card),
+  };
+}
+
+function skillActivationSseEvents(card: SkillActivationCard): SseEvent[] {
+  return [
+    {
+      event: "tool_start",
+      data: {
+        callId: card.callId,
+        tool: "activate_skill",
+        args: { name: card.skill.name, reason: card.reason },
+      },
+    },
+    {
+      event: "tool_result",
+      data: {
+        callId: card.callId,
+        tool: "activate_skill",
+        success: true,
+        result: skillActivationResult(card),
+      },
+    },
+  ];
+}
+
 /**
  * PR2: structured @ mentions extracted FE-side. Used by the host agent loop
  * to apply strong-typed routing:
@@ -2733,6 +2798,10 @@ async function* runAgentImpl(
       reason: "trigger_match",
     });
   }
+  const pendingSkillActivationCards = autoActivated
+    .map((name) => availableSkillsByNameForTurn[name])
+    .filter((skill): skill is SkillDefinition => Boolean(skill))
+    .map((skill) => makeSkillActivationCard(skill, "trigger_match"));
 
   // Long-task tracker: one per turn. Buffers progress/heartbeat events to a
   // shared queue *and* signals a waiter-promise so the runAgent generator can
@@ -3208,6 +3277,12 @@ async function* runAgentImpl(
   let accumulatedText = "";
   let accumulatedThinking = "";
   const accumulatedToolCalls: ToolCall[] = [];
+  for (const card of pendingSkillActivationCards) {
+    for (const event of skillActivationSseEvents(card)) {
+      yield event;
+    }
+    accumulatedToolCalls.push(skillActivationToolCall(card));
+  }
   // V3.0 UX: track per-turn duration + token tally so the FE can render
   // a "Generating · Xs · Y tokens" meta strip during the turn and freeze
   // the final values into "Generated · Xs · Y tokens" at the end. Tokens
@@ -3772,18 +3847,23 @@ async function* runAgentImpl(
       // knows when to redirect into the idea session. We look at the tool
       // result's `_stream` marker rather than hard-coding the tool name so
       // this stays schema-driven.
+      let suggestedSkillActivationCards: SkillActivationCard[] = [];
       if (success) {
         try {
           const parsed = JSON.parse(toolOutput);
           // Cooperative skill activation — tools can suggest follow-up
           // skills via `_suggestActivate: [{skill, reason}]`. Activate
           // immediately so the next round's tool list includes them.
-          processSuggestActivate(
+          const suggestedSkills = processSuggestActivate(
             parsed,
             skillState,
             (entry) => logAgent({ ...entry, conversationId }),
             availableSkillsByNameForTurn,
           );
+          suggestedSkillActivationCards = suggestedSkills
+            .map((name) => availableSkillsByNameForTurn[name])
+            .filter((skill): skill is SkillDefinition => Boolean(skill))
+            .map((skill) => makeSkillActivationCard(skill, "suggest_activate"));
           const marker = parsed?._stream;
           if (marker && typeof marker === "object") {
             if (marker.mode === "begin" && typeof marker.sessionId === "string") {
@@ -3849,6 +3929,12 @@ async function* runAgentImpl(
         result: toolOutput,
         error: success ? undefined : toolOutput,
       });
+      for (const card of suggestedSkillActivationCards) {
+        for (const event of skillActivationSseEvents(card)) {
+          yield event;
+        }
+        accumulatedToolCalls.push(skillActivationToolCall(card));
+      }
 
       // Feed back to model — truncate oversized tool outputs so one giant
       // result doesn't blow the context window when replayed across rounds.

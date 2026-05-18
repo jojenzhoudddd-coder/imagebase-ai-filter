@@ -83,8 +83,11 @@ export default function AgentAvatarMenu({ agentId, open, refreshToken }: Props) 
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.agentId === agentId && detail?.avatarUrl) {
-        setAgent((prev) => prev ? { ...prev, avatarUrl: detail.avatarUrl } : prev);
+      if (
+        detail?.agentId === agentId &&
+        Object.prototype.hasOwnProperty.call(detail, "avatarUrl")
+      ) {
+        setAgent((prev) => prev ? { ...prev, avatarUrl: detail.avatarUrl ?? null } : prev);
       }
     };
     window.addEventListener("agent-avatar-changed", handler);

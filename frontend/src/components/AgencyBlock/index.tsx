@@ -652,7 +652,10 @@ export default function AgencyBlock({ blockId }: Props) {
   useEffect(() => {
     const onAvatar = (e: Event) => {
       const d = (e as CustomEvent).detail;
-      if (d?.agentId === resolvedAgentId && d?.avatarUrl) setAgent((p) => p ? { ...p, avatarUrl: d.avatarUrl } : p);
+      if (
+        d?.agentId === resolvedAgentId &&
+        Object.prototype.hasOwnProperty.call(d, "avatarUrl")
+      ) setAgent((p) => p ? { ...p, avatarUrl: d.avatarUrl ?? null } : p);
     };
     const onName = (e: Event) => {
       const d = (e as CustomEvent).detail;

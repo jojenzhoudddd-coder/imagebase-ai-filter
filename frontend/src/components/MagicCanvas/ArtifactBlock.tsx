@@ -51,7 +51,7 @@ function toArtifactKind(t: TreeItemType | undefined): ArtifactKind | null {
 export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlobalTable }: Props) {
   const ws = useWorkspace();
   const { state, patchBlockState, hydrated, addBlock } = useCanvas();
-  const { workspaceId, agentId } = useAuth();
+  const { agentId } = useAuth();
   const { t } = useTranslation();
 
   const blockState = (state.blockStates[blockId] ?? {}) as ArtifactBlockState;
@@ -158,16 +158,16 @@ export default function ArtifactBlock({ blockId, globalActiveTableId, onPickGlob
   const handleCreateByAI = useCallback(async () => {
     const prefillMessage = t("createMenu.aiCreatePrompt");
     let conv: { id: string } | null = null;
-    if (workspaceId) {
+    if (ws.workspaceId) {
       try {
-        conv = await createConversation(workspaceId, agentId || undefined);
+        conv = await createConversation(ws.workspaceId, agentId || undefined);
       } catch { /* ignore */ }
     }
     addBlock("chat", conv
       ? { conversationId: conv.id, prefillMessage } as any
       : { prefillMessage } as any
     );
-  }, [workspaceId, agentId, addBlock, t]);
+  }, [ws.workspaceId, agentId, addBlock, t]);
 
   const handleSelectItem = useCallback(
     (id: string, type?: TreeItemType) => {

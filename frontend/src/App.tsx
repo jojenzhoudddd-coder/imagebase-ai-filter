@@ -28,7 +28,12 @@ import { useTranslation } from "./i18n/index";
 import ConfirmDialog, { ConfirmReference } from "./components/ConfirmDialog/index";
 import { filterRecords } from "./services/filterEngine";
 import { useTableSync } from "./hooks/useTableSync";
-import { useWorkspaceSync } from "./hooks/useWorkspaceSync";
+import {
+  useWorkspaceSync,
+  type AgentMetadataUpdate,
+  type UserMetadataUpdate,
+  type WorkspaceMetadataUpdate,
+} from "./hooks/useWorkspaceSync";
 import { useSplitResize } from "./hooks/useSplitResize";
 import ChatSidebar from "./components/ChatSidebar/index";
 import { useAuth } from "./auth/AuthContext";
@@ -131,7 +136,15 @@ export default function App() {
   const navigate = useNavigate();
   const urlParams = useParams<{ workspaceId?: string }>();
 
-  const { workspaces: userWorkspaces, workspaceId: authWorkspaceId, agentId: authAgentId, preferences: authPreferences } = useAuth();
+  const {
+    user: authUser,
+    workspaces: userWorkspaces,
+    workspaceId: authWorkspaceId,
+    agentId: authAgentId,
+    preferences: authPreferences,
+    patchUser,
+    patchWorkspace,
+  } = useAuth();
   const WORKSPACE_ID = urlParams.workspaceId || authWorkspaceId || "";
   const AGENT_ID = authAgentId || "";
   const userOwnsThisWorkspace = useMemo(
@@ -1884,6 +1897,30 @@ export default function App() {
 
   // ── Workspace-level SSE for sidebar sync ──
   useWorkspaceSync(WORKSPACE_ID, CLIENT_ID, {
+    onWorkspaceUpdate: useCallback((workspace: WorkspaceMetadataUpdate) => {
+      if (!workspace?.id) return;
+      patchWorkspace(workspace.id, workspace);
+      if (workspace.id === WORKSPACE_ID && workspace.name) {
+        setDocumentName(workspace.name);
+      }
+    }, [WORKSPACE_ID, patchWorkspace]),
+    onUserUpdate: useCallback((user: UserMetadataUpdate) => {
+      if (!user?.id || user.id !== authUser?.id) return;
+      patchUser(user);
+    }, [authUser?.id, patchUser]),
+    onAgentUpdate: useCallback((agent: AgentMetadataUpdate) => {
+      if (!agent?.id || agent.id !== AGENT_ID) return;
+      if (typeof agent.name === "string") {
+        window.dispatchEvent(new CustomEvent("agent-name-changed", {
+          detail: { agentId: agent.id, name: agent.name },
+        }));
+      }
+      if (Object.prototype.hasOwnProperty.call(agent, "avatarUrl")) {
+        window.dispatchEvent(new CustomEvent("agent-avatar-changed", {
+          detail: { agentId: agent.id, avatarUrl: agent.avatarUrl ?? null },
+        }));
+      }
+    }, [AGENT_ID]),
     onTableCreate: useCallback((table: { id: string; name: string; order: number }) => {
       setDocumentTables(prev =>
         prev.some(t => t.id === table.id) ? prev : [...prev, { ...table, parentId: null }].sort((a, b) => a.order - b.order)

@@ -26,6 +26,9 @@ export interface TableChangeEvent {
 
 export interface WorkspaceChangeEvent {
   type: "table:create" | "table:delete" | "table:reorder" | "table:rename"
+    | "workspace:update"
+    | "user:update"
+    | "agent:update"
     | "folder:create" | "folder:rename" | "folder:delete" | "folder:reorder"
     | "item:move"
     | "design:create" | "design:rename" | "design:delete" | "design:reorder" | "design:auto-layout"
