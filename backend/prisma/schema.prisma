@@ -820,8 +820,9 @@ model Demo {
 model KnowledgeEntry {
   id         String   @id @default(cuid())
   agentId    String
-  /// Workspace-scoped Acknowledge knowledge. null rows are legacy/global and
-  /// are intentionally not returned when a workspaceId is supplied.
+  /// Workspace-scoped Acknowledge knowledge. null is reserved for legacy rows
+  /// before the workspace backfill migration or non-chat tooling without a
+  /// workspace context.
   workspaceId String?
   title      String
   content    String   // Markdown 正文（已分块）

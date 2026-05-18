@@ -706,7 +706,9 @@ router.get("/:agentId/activities", async (req: Request, res: Response) => {
     const search = (req.query.search as string) || undefined;
     const dateFrom = (req.query.dateFrom as string) || undefined;
     const dateTo = (req.query.dateTo as string) || undefined;
-    const result = await listActivities(agentId, { limit, offset, search, dateFrom, dateTo });
+    const workspaceId = requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+    const result = await listActivities(agentId, { limit, offset, search, dateFrom, dateTo, workspaceId });
     res.json(result);
   } catch (err: any) {
     console.error("[agents] activities error:", err);

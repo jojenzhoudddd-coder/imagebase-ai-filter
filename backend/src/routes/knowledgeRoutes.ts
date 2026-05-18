@@ -7,15 +7,37 @@ import { addKnowledge, listKnowledge, getKnowledgeScoped, searchKnowledge, delet
 
 const router = express.Router();
 
+function requireBodyWorkspaceId(req: Request, res: Response): string | null {
+  const raw = (req.body as any)?.workspaceId;
+  const workspaceId = typeof raw === "string" ? raw.trim() : "";
+  if (!workspaceId) {
+    res.status(400).json({ error: "workspaceId required" });
+    return null;
+  }
+  return workspaceId;
+}
+
+function requireQueryWorkspaceId(req: Request, res: Response): string | null {
+  const raw = req.query.workspaceId;
+  const workspaceId = typeof raw === "string" ? raw.trim() : "";
+  if (!workspaceId) {
+    res.status(400).json({ error: "workspaceId required" });
+    return null;
+  }
+  return workspaceId;
+}
+
 /** POST /api/knowledge — add knowledge entry */
 router.post("/", async (req: Request, res: Response) => {
   try {
-    const { agentId, workspaceId, title, content, sourceUrl, sourceType, tags } = req.body ?? {};
+    const { agentId, title, content, sourceUrl, sourceType, tags } = req.body ?? {};
     if (!agentId || !title || !content) {
       res.status(400).json({ error: "agentId, title, content required" });
       return;
     }
-    const result = await addKnowledge({ agentId, workspaceId, title, content, sourceUrl, sourceType, tags });
+    const requiredWorkspaceId = requireBodyWorkspaceId(req, res);
+    if (!requiredWorkspaceId) return;
+    const result = await addKnowledge({ agentId, workspaceId: requiredWorkspaceId, title, content, sourceUrl, sourceType, tags });
     res.status(201).json(result);
   } catch (err: any) {
     console.error("[knowledge] add error:", err);
@@ -31,7 +53,8 @@ router.get("/", async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = parseInt(req.query.offset as string) || 0;
     const tag = (req.query.tag as string) || undefined;
-    const workspaceId = (req.query.workspaceId as string) || undefined;
+    const workspaceId = requireQueryWorkspaceId(req, res);
+    if (!workspaceId) return;
     const result = await listKnowledge(agentId, { limit, offset, tag, workspaceId });
     res.json(result);
   } catch (err: any) {
@@ -47,7 +70,8 @@ router.get("/search", async (req: Request, res: Response) => {
     const query = req.query.query as string;
     if (!agentId || !query) { res.status(400).json({ error: "agentId and query required" }); return; }
     const limit = parseInt(req.query.limit as string) || 5;
-    const workspaceId = (req.query.workspaceId as string) || undefined;
+    const workspaceId = requireQueryWorkspaceId(req, res);
+    if (!workspaceId) return;
     const results = await searchKnowledge(agentId, query, limit, { workspaceId });
     res.json({ results });
   } catch (err: any) {
@@ -61,7 +85,8 @@ router.get("/:id", async (req: Request, res: Response) => {
   try {
     const agentId = req.query.agentId as string;
     if (!agentId) { res.status(400).json({ error: "agentId required" }); return; }
-    const workspaceId = (req.query.workspaceId as string) || undefined;
+    const workspaceId = requireQueryWorkspaceId(req, res);
+    if (!workspaceId) return;
     const entry = await getKnowledgeScoped(agentId, req.params.id, workspaceId);
     if (!entry) { res.status(404).json({ error: "not found" }); return; }
     res.json(entry);
@@ -78,15 +103,17 @@ router.get("/:id", async (req: Request, res: Response) => {
  *  "原地修订",外部引用不变。 */
 router.put("/:id", async (req: Request, res: Response) => {
   try {
-    const { agentId, workspaceId, title, content, sourceUrl, tags, mode } = req.body ?? {};
+    const { agentId, title, content, sourceUrl, tags, mode } = req.body ?? {};
     if (!agentId) { res.status(400).json({ error: "agentId required" }); return; }
+    const requiredWorkspaceId = requireBodyWorkspaceId(req, res);
+    if (!requiredWorkspaceId) return;
     if (mode && mode !== "replace" && mode !== "append") {
       res.status(400).json({ error: "mode must be 'replace' or 'append'" });
       return;
     }
     const result = await updateKnowledge({
       agentId,
-      workspaceId,
+      workspaceId: requiredWorkspaceId,
       id: req.params.id,
       title,
       content,
@@ -110,7 +137,8 @@ router.delete("/:id", async (req: Request, res: Response) => {
   try {
     const agentId = req.query.agentId as string;
     if (!agentId) { res.status(400).json({ error: "agentId required" }); return; }
-    const workspaceId = (req.query.workspaceId as string) || undefined;
+    const workspaceId = requireQueryWorkspaceId(req, res);
+    if (!workspaceId) return;
     const ok = await deleteKnowledgeScoped(agentId, req.params.id, workspaceId);
     if (!ok) { res.status(404).json({ error: "not found" }); return; }
     res.status(204).end();

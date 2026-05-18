@@ -7,6 +7,24 @@
 
 ---
 
+## 2026-05-18 (Fix · Workspace-scoped Acknowledge And Activities)
+
+### fix(agent): 恢复旧 acknowledge 并按 workspace 过滤 activities
+
+Commit: pending deployment commit.
+
+- 新增迁移，将历史 `workspaceId = null` 的 Acknowledge/KnowledgeEntry 归属到该 Agent 用户的第一个 workspace，避免升级后旧内容从 Acknowledge tab 消失。
+- Knowledge API 强制要求 `workspaceId`，不再允许无 workspace 请求列出或修改跨 workspace 知识。
+- Activities API / Agent Home Activities tab 新增当前 workspace 过滤，只展示当前 workspace 的对话活动。
+
+本地验收：
+- `cd backend && npx prisma migrate deploy && npx prisma generate` 通过。
+- `npm run build` 通过。
+- 本次涉及后端文件 targeted `tsc --noEmit` 过滤检查无新增错误。
+- `git diff --check` 通过。
+
+---
+
 ## 2026-05-18 (Fix · Workspace-scoped Agent Controls)
 
 ### fix(agent): Agent Home 使用当前 workspace 读写状态

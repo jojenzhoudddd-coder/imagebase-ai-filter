@@ -498,13 +498,23 @@ export interface ActivityTurn {
  */
 export async function listActivities(
   agentId: string,
-  opts?: { limit?: number; offset?: number; search?: string; dateFrom?: string; dateTo?: string },
+  opts?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    workspaceId?: string;
+  },
 ): Promise<{ activities: ActivityTurn[]; total: number; hasMore: boolean }> {
   const limit = Math.max(1, Math.min(opts?.limit ?? 20, 100));
   const offset = Math.max(0, opts?.offset ?? 0);
 
   const where: any = {
-    conversation: { agentId },
+    conversation: {
+      agentId,
+      ...(opts?.workspaceId ? { workspaceId: opts.workspaceId } : {}),
+    },
     role: "assistant",
     durationMs: { not: null },
   };

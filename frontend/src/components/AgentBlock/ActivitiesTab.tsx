@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type AgentActivity, listAgentActivities } from "../../api";
+import { useWorkspace } from "../../contexts/workspaceContext";
 import { useTranslation } from "../../i18n";
 import Tooltip from "../Tooltip";
 import CardGrid from "./CardGrid";
@@ -40,6 +41,7 @@ function formatTokens(prompt: number | null, completion: number | null): string 
 
 export default function ActivitiesTab({ agentId, initialSearch }: Props) {
   const { t } = useTranslation();
+  const { workspaceId } = useWorkspace();
   const [activities, setActivities] = useState<AgentActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -62,6 +64,7 @@ export default function ActivitiesTab({ agentId, initialSearch }: Props) {
       search: filters.search || undefined,
       dateFrom: filters.dateFrom || undefined,
       dateTo: filters.dateTo || undefined,
+      workspaceId,
     })
       .then((data) => {
         setActivities(data.activities);
@@ -69,7 +72,7 @@ export default function ActivitiesTab({ agentId, initialSearch }: Props) {
       })
       .catch(() => { setActivities([]); setTotal(0); })
       .finally(() => setLoading(false));
-  }, [agentId]);
+  }, [agentId, workspaceId]);
 
   // Load on mount and when committed filters change
   const committedKey = `${committed.search}|${committed.dateFrom}|${committed.dateTo}`;

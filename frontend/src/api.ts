@@ -1933,7 +1933,14 @@ export interface AgentActivity {
 
 export async function listAgentActivities(
   agentId: string,
-  opts?: { limit?: number; offset?: number; search?: string; dateFrom?: string; dateTo?: string },
+  opts?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    workspaceId?: string | null;
+  },
 ): Promise<{ activities: AgentActivity[]; total: number; hasMore: boolean }> {
   const params = new URLSearchParams();
   if (opts?.limit) params.set("limit", String(opts.limit));
@@ -1941,6 +1948,7 @@ export async function listAgentActivities(
   if (opts?.search) params.set("search", opts.search);
   if (opts?.dateFrom) params.set("dateFrom", opts.dateFrom);
   if (opts?.dateTo) params.set("dateTo", opts.dateTo);
+  if (opts?.workspaceId) params.set("workspaceId", opts.workspaceId);
   const qs = params.toString();
   const res = await fetch(`${BASE}/agents/${encodeURIComponent(agentId)}/activities${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("Failed to list activities");
