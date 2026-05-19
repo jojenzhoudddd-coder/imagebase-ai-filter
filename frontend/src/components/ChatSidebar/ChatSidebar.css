@@ -2093,6 +2093,7 @@
    full width so toolbar wraps below as its own row. */
 .chat-input-compact .chat-input-content.multiline {
   flex-basis: 100%;
+  padding-right: 14px;
 }
 .chat-input-compact .chat-input-toolbar {
   height: auto;
@@ -2103,7 +2104,7 @@
 /* When multiline wraps toolbar to its own row, it needs full width */
 .chat-input-compact .chat-input-content.multiline ~ .chat-input-toolbar {
   width: 100%;
-  padding: 4px 12px 12px;
+  padding: 0 12px 12px;
 }
 .chat-input-compact .chat-input-tools-left {
   display: none;
