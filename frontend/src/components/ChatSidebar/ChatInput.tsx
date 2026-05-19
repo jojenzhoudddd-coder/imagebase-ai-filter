@@ -199,13 +199,6 @@ export default function ChatInput({
 }: Props) {
   const { t } = useTranslation();
   const editorRef = useRef<HTMLDivElement>(null);
-  // Track whether editor content exceeds single-line height (22px) for compact mode layout
-  const [multiline, setMultiline] = useState(false);
-  const checkMultiline = useCallback(() => {
-    const el = editorRef.current;
-    if (!el) return;
-    setMultiline(el.scrollHeight > 30); // 22px line + some tolerance
-  }, []);
   const [mentionState, setMentionState] = useState<MentionQueryState | null>(null);
   const [skillState, setSkillState] = useState<{ query: string; rect: { left: number; right: number; top: number; bottom: number } } | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -255,8 +248,7 @@ export default function ChatInput({
         sel.addRange(range);
       }
     }
-    checkMultiline();
-  }, [value, checkMultiline]);
+  }, [value]);
 
   // ── IME composition 跟踪:V2.9.12 修复 @ 后第一个拼音字母被吞 ──
   // 现象:用户按下 @ 后立刻打"wo",拼音只识别到 o,w 被当成普通字母直接写入。
@@ -297,8 +289,7 @@ export default function ChatInput({
     const md = htmlToMarkdown(el);
     onChange(md);
     detectMentionState(el);
-    checkMultiline();
-  }, [onChange, checkMultiline]);
+  }, [onChange]);
 
   const detectMentionState = useCallback((root: HTMLElement) => {
     const sel = window.getSelection();
@@ -554,7 +545,7 @@ export default function ChatInput({
           editorRef.current?.focus();
         }
       }}>
-        <div className={`chat-input-content${compact && multiline ? " multiline" : ""}`}>
+        <div className="chat-input-content">
           {/* Attachment thumbnails inside editor area, above text */}
           {attachments && attachments.length > 0 && (
             <div className="chat-attachments-inline">
