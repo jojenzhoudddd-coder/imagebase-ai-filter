@@ -199,6 +199,23 @@ export default function ChatInput({
 }: Props) {
   const { t } = useTranslation();
   const editorRef = useRef<HTMLDivElement>(null);
+  // Compact mode: detect when single-line text overflows available width.
+  // Switches layout so editor gets full width and toolbar drops to its own row.
+  const [multiline, setMultiline] = useState(false);
+  const checkMultiline = useCallback(() => {
+    if (!compact) return;
+    const el = editorRef.current;
+    if (!el) return;
+    // In nowrap mode, scrollWidth > clientWidth means text overflowed.
+    // Once in multiline mode, check scrollHeight for single-line content to revert.
+    if (!multiline) {
+      setMultiline(el.scrollWidth > el.clientWidth);
+    } else {
+      // Revert to single-line if content fits in one line at full width.
+      // scrollHeight <= line-height(22) + tolerance means single line.
+      setMultiline(el.scrollHeight > 30 || el.scrollWidth > el.clientWidth);
+    }
+  }, [compact, multiline]);
   const [mentionState, setMentionState] = useState<MentionQueryState | null>(null);
   const [skillState, setSkillState] = useState<{ query: string; rect: { left: number; right: number; top: number; bottom: number } } | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -248,7 +265,8 @@ export default function ChatInput({
         sel.addRange(range);
       }
     }
-  }, [value]);
+    checkMultiline();
+  }, [value, checkMultiline]);
 
   // ── IME composition 跟踪:V2.9.12 修复 @ 后第一个拼音字母被吞 ──
   // 现象:用户按下 @ 后立刻打"wo",拼音只识别到 o,w 被当成普通字母直接写入。
@@ -274,7 +292,8 @@ export default function ChatInput({
     const md = htmlToMarkdown(el);
     onChange(md);
     detectMentionState(el);
-  }, [onChange]);
+    checkMultiline();
+  }, [onChange, checkMultiline]);
 
   // ── 输入事件:重新抽取 markdown,通知父组件 ──
   const handleInput = useCallback(() => {
@@ -289,7 +308,8 @@ export default function ChatInput({
     const md = htmlToMarkdown(el);
     onChange(md);
     detectMentionState(el);
-  }, [onChange]);
+    checkMultiline();
+  }, [onChange, checkMultiline]);
 
   const detectMentionState = useCallback((root: HTMLElement) => {
     const sel = window.getSelection();
@@ -545,7 +565,7 @@ export default function ChatInput({
           editorRef.current?.focus();
         }
       }}>
-        <div className="chat-input-content">
+        <div className={`chat-input-content${compact && multiline ? " multiline" : ""}`}>
           {/* Attachment thumbnails inside editor area, above text */}
           {attachments && attachments.length > 0 && (
             <div className="chat-attachments-inline">

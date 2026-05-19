@@ -2064,31 +2064,49 @@
 .chat-input-send.mode-stop:hover      { background: var(--text-secondary); }
 
 /* ─── Compact mode (chat block height < 600px) ───────────────────────
- * Send button floats bottom-right via absolute positioning. Content
- * area has right padding to avoid overlap. No flex-wrap needed — text
- * always wraps at the same width, no layout shift.
+ * Single-line: editor left (nowrap, overflow hidden) + button right.
+ * When text overflows → JS adds .multiline → content takes full width,
+ * editor switches to pre-wrap, toolbar wraps to its own row below.
  */
 .chat-input-compact .chat-input-box {
   padding-top: 0;
-  position: relative;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
   min-height: 52px;
 }
 .chat-input-compact .chat-input-content {
-  /* 15px top/bottom → (15 + 22 + 15 = 52px) vertically centers one line.
-     Right padding 48px = 12px gap + 28px button + 8px breathing room. */
-  padding: 15px 48px 15px 14px;
+  flex: 1 1 0%;
+  min-width: 0;
+  padding: 15px 0 15px 14px;
 }
+/* Single-line: text never wraps — overflows hidden until JS detects it */
 .chat-input-compact .chat-input-editor {
   min-height: 22px;
   max-height: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Multiline: content takes full width, editor wraps normally */
+.chat-input-compact .chat-input-content.multiline {
+  flex-basis: 100%;
+  padding-right: 14px;
+}
+.chat-input-compact .chat-input-content.multiline .chat-input-editor {
+  white-space: pre-wrap;
+  overflow-y: auto;
+  overflow-x: hidden;
+  text-overflow: unset;
 }
 .chat-input-compact .chat-input-toolbar {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
   height: auto;
-  padding: 0;
+  padding: 0 12px 12px;
+  flex-shrink: 0;
   width: auto;
+}
+.chat-input-compact .chat-input-content.multiline ~ .chat-input-toolbar {
+  width: 100%;
 }
 .chat-input-compact .chat-input-tools-left {
   display: none;
