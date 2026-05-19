@@ -212,14 +212,20 @@ export default function ChatInput({
     const text = el.textContent || "";
     let next: boolean;
     if (text.length === 0) {
-      // Only revert to single-line when input is cleared (send / full delete)
       next = false;
     } else if (!multilineRef.current) {
-      // In single-line (nowrap): check if text overflows
+      // Single-line (nowrap): text overflows → switch to multiline
       next = el.scrollWidth > el.clientWidth;
     } else {
-      // Already multiline — stay until cleared to avoid oscillation
-      next = true;
+      // Multiline: measure true text width with nowrap, check if it fits
+      // back in the narrow single-line area (avoids oscillation because we
+      // compare against narrow width while layout is still wide).
+      el.style.whiteSpace = "nowrap";
+      const textWidth = el.scrollWidth;
+      el.style.whiteSpace = ""; // restore CSS class value (pre-wrap)
+      const boxWidth = el.closest(".chat-input-box")?.clientWidth ?? 0;
+      // narrow available = box - 14px left pad - ~52px toolbar
+      next = textWidth > boxWidth - 66;
     }
     if (next !== multilineRef.current) {
       multilineRef.current = next;
