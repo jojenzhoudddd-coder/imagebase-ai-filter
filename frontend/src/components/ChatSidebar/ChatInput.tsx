@@ -201,21 +201,31 @@ export default function ChatInput({
   const editorRef = useRef<HTMLDivElement>(null);
   // Compact mode: detect when single-line text overflows available width.
   // Switches layout so editor gets full width and toolbar drops to its own row.
+  // Uses a ref to avoid oscillation: text may fit at full width but overflow at
+  // narrow width — without the ref the state would flip every render.
   const [multiline, setMultiline] = useState(false);
+  const multilineRef = useRef(false);
   const checkMultiline = useCallback(() => {
     if (!compact) return;
     const el = editorRef.current;
     if (!el) return;
-    // In nowrap mode, scrollWidth > clientWidth means text overflowed.
-    // Once in multiline mode, check scrollHeight for single-line content to revert.
-    if (!multiline) {
-      setMultiline(el.scrollWidth > el.clientWidth);
+    const text = el.textContent || "";
+    let next: boolean;
+    if (text.length === 0) {
+      // Only revert to single-line when input is cleared (send / full delete)
+      next = false;
+    } else if (!multilineRef.current) {
+      // In single-line (nowrap): check if text overflows
+      next = el.scrollWidth > el.clientWidth;
     } else {
-      // Revert to single-line if content fits in one line at full width.
-      // scrollHeight <= line-height(22) + tolerance means single line.
-      setMultiline(el.scrollHeight > 30 || el.scrollWidth > el.clientWidth);
+      // Already multiline — stay until cleared to avoid oscillation
+      next = true;
     }
-  }, [compact, multiline]);
+    if (next !== multilineRef.current) {
+      multilineRef.current = next;
+      setMultiline(next);
+    }
+  }, [compact]);
   const [mentionState, setMentionState] = useState<MentionQueryState | null>(null);
   const [skillState, setSkillState] = useState<{ query: string; rect: { left: number; right: number; top: number; bottom: number } } | null>(null);
   const [dragging, setDragging] = useState(false);
