@@ -437,6 +437,19 @@ export default function ChatSidebar({
   }, []);
 
   const sidebarRef = useRef<HTMLElement>(null);
+  // Compact input mode: when chat block height < 600px, collapse to single-line input
+  const [compactInput, setCompactInput] = useState(false);
+  useEffect(() => {
+    const el = sidebarRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setCompactInput(entry.contentRect.height < 600);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [sidebarDragging, setSidebarDragging] = useState(false);
   const [streaming, setStreaming] = useState(() => Boolean(initialCache?.messages?.some((m) => m.streaming)));
   // Live ref to `streaming` so effects that run on prop-id changes (the
@@ -2230,6 +2243,7 @@ export default function ChatSidebar({
                   onAttachmentsChange={setAttachments}
                   onFileDrop={handleFileDrop}
                   externalDragging={sidebarDragging}
+                  compact={compactInput}
                 />
               </div>
             </div>
@@ -2283,6 +2297,7 @@ export default function ChatSidebar({
             onAttachmentsChange={setAttachments}
             onFileDrop={handleFileDrop}
             externalDragging={sidebarDragging}
+            compact={compactInput}
           />
         </>
       )}
@@ -2869,7 +2884,7 @@ function isStandaloneToolCall(call: ChatToolCall): boolean {
 /** Fallback preset keys — used when the backend suggestion service hasn't
  * populated yet (very first request before the 5 s warm-up delay) OR when
  * the fetch fails. Labels + prompts both live in the i18n table. */
-const FALLBACK_PRESET_KEYS = ["answer", "save", "report"] as const;
+const FALLBACK_PRESET_KEYS = ["intro", "mbti", "persona", "about"] as const;
 
 /** Render the welcome title so that if it needs to wrap, the break happens
  * right after the first comma (ASCII "," or full-width "，"). Both halves get

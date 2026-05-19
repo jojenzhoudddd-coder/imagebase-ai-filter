@@ -71,6 +71,8 @@ interface Props {
   onFileDrop?: (files: File[]) => void;
   /** External drag state (sidebar-level drag detected) */
   externalDragging?: boolean;
+  /** Compact single-line mode when chat block height < 600px */
+  compact?: boolean;
 }
 
 interface MentionQueryState {
@@ -193,6 +195,7 @@ export default function ChatInput({
   onAttachmentsChange,
   onFileDrop,
   externalDragging,
+  compact,
 }: Props) {
   const { t } = useTranslation();
   const editorRef = useRef<HTMLDivElement>(null);
@@ -535,7 +538,7 @@ export default function ChatInput({
   }, [onFileDrop]);
 
   return (
-    <div className="chat-input-wrap">
+    <div className={`chat-input-wrap${compact ? " chat-input-compact" : ""}`}>
       <div className="chat-input-box" onClick={(e) => {
         // Click anywhere in the box focuses the editor, except toolbar buttons
         if (!(e.target as HTMLElement).closest(".chat-input-tools-right")) {

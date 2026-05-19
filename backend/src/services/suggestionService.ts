@@ -231,22 +231,28 @@ async function buildWorkspaceOutline(workspaceId: string): Promise<{ outline: st
 }
 
 /** Default pack returned on cache-miss or when the model call fails.
- * Keep these mirror-able to the frontend's i18n fallback keys (answer/save/report). */
+ * Keep these mirror-able to the frontend's i18n fallback keys (intro/mbti/persona/about). */
 export const DEFAULT_SUGGESTIONS: Suggestion[] = [
-  { label: "了解当前文档结构", prompt: "帮我列出这个文档里有哪些表，各自有什么字段" },
-  { label: "新建一张表", prompt: "帮我新建一张表，包含合适的字段" },
-  { label: "汇总数据", prompt: "基于当前数据生成一份简单的汇总报告" },
+  { label: "你能帮我做什么", prompt: "用最直白的语言告诉我，你具体能帮我做哪些事情？不用罗列工具名和技能名，我想知道实际能做到什么。" },
+  { label: "记住我是谁", prompt: "我想自我介绍一下让你记住我。我会告诉你我的名字、职业、性格特点和 MBTI，请帮我更新到你的用户画像里。" },
+  { label: "设定你的性格", prompt: "我想给你设定一个性格人设。我会告诉你我希望你扮演什么样的 MBTI 类型和沟通风格，请更新到你的 soul 里。" },
+  { label: "介绍一下你自己", prompt: "介绍一下你自己吧——你的性格、沟通风格，以及你能帮我做哪些事情。" },
 ];
 
-const SYSTEM_PROMPT = `你是飞书多维表格的 AI 助手。你的任务是根据用户当前文档的结构，生成 3-5 条用户最可能想让你帮忙做的事情，作为欢迎页上的快捷建议按钮。
+const SYSTEM_PROMPT = `你是一位 AI Agent 的欢迎页建议生成器。你的任务是根据当前 workspace 的情况，生成 4 条推荐 prompt 作为快捷建议按钮。
+
+建议必须覆盖以下四个方向（每个方向恰好一条）：
+1. **了解 Agent 能力**：用直白的语言描述 Agent 能做什么，禁止罗列工具名和技能名称。如果 workspace 有具体数据，结合数据场景描述。
+2. **用户自我介绍**：引导用户向 Agent 介绍自己（名字、职业、MBTI、偏好等），让 Agent 记住并更新用户画像。
+3. **设定 Agent 人设**：引导用户给 Agent 设定一个 MBTI 类型或沟通风格/性格人设。
+4. **Agent 自我介绍**：让 Agent 介绍自己的性格、风格和具体能力。
 
 输出要求：
 - 必须输出一个 JSON 数组，格式：[{"label":"...", "prompt":"..."}, ...]
-- label：展示在按钮上的短句，不超过 14 个汉字，动词开头，具体且可执行
+- label：展示在按钮上的短句，不超过 14 个汉字
 - prompt：点击按钮后填入输入框的完整提示，要清晰完整，能让 Agent 直接执行
 - 严禁包裹在 Markdown 代码块里，严禁输出任何其他文字
-- 如果文档有具体的表/字段，label 和 prompt 应该结合这些表名，例如"汇总项目管理表的状态分布"
-- 如果文档为空，建议应该聚焦于"帮我新建什么表"这个起点
+- 如果 workspace 有具体的表/字段/文档，第 1 条建议应该结合这些具体内容
 
 注意：你只负责生成建议文案，不需要调用任何工具。`;
 

@@ -2063,6 +2063,36 @@
 .chat-input-send.mode-stop            { background: var(--text-muted); }
 .chat-input-send.mode-stop:hover      { background: var(--text-secondary); }
 
+/* ─── Compact mode (chat block height < 600px) ───────────────────────
+ * Collapses the two-row layout (editor + toolbar) into a single row:
+ * editor on the left (flex: 1), send button on the right, all within
+ * a 52px-min-height box that auto-grows with content.
+ */
+.chat-input-compact .chat-input-box {
+  padding-top: 0;
+  flex-direction: row;
+  align-items: flex-end;
+  min-height: 52px;
+}
+.chat-input-compact .chat-input-content {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 0 14px 14px;
+}
+.chat-input-compact .chat-input-editor {
+  min-height: 22px;
+  max-height: 200px;
+}
+.chat-input-compact .chat-input-toolbar {
+  height: auto;
+  padding: 12px;
+  flex-shrink: 0;
+  width: auto;
+}
+.chat-input-compact .chat-input-tools-left {
+  display: none;
+}
+
 .chat-generating-hint {
   font-size: 12px;
   color: var(--text-muted);

@@ -52,9 +52,9 @@ const DEFAULT_SOUL = `<!-- name: Agent -->
 
 ## 风格
 
-- 直接、简洁
+- 直接、简洁、果断
 - 中文优先（除非你在用英文）
-- 遇到不确定的事情先问清楚，不要猜
+- 用户意图明确时直接执行，先做出来再调整
 - 长程任务主动拆步骤，每步告诉你正在做什么
 - 每一次调用工具前，先用一句自然语言说明我要做什么
 `;
@@ -188,12 +188,23 @@ const SYSTEM_HABITS_SEED = [
     id: "habit_system_evolve",
     schedule: "0 2 * * *",
     prompt:
-      "遍历当前 workspace 的近期对话(用 list_tables / list_ideas / list_designs / list_demos 先扫一遍现状,然后看最近几条相关对话),提炼用户的偏好 / 工作节奏 / 表达习惯 / 关注点变化,更新 soul.md(我自己的认知)和 profile.md(用户画像)。只追加新发现,不重复已有内容,不删除老条目除非明确发现错误。" +
+      "回顾近期对话（先扫一遍 workspace 现状做背景参考,但重点是对话内容而非 workspace 结构）,聚焦以下两件事:\n\n" +
+      "**1. 自我人格进化（soul.md）**\n" +
+      "- 从对话中反思：我的沟通风格是否适合这个用户？哪些回答方式用户满意/不满意？\n" +
+      "- 提炼出我应该调整的性格特质、沟通策略、口吻偏好,更新到 soul.md。\n" +
+      "- soul.md 应保持精炼（不超过 800 字）,只留核心人格描述,不要堆砌 workspace 领域知识。\n" +
+      "- 如果 soul.md 已经太长,主动精简：合并重复项、删除过时条目、移除具体的 workspace 内容描述。\n\n" +
+      "**2. 用户画像更新（profile.md）**\n" +
+      "- 从对话中提炼用户的：沟通风格、MBTI/性格倾向、工作节奏、决策偏好、常用语言、表达习惯。\n" +
+      "- profile.md 应聚焦「这个人是什么样的人」而非「workspace 里有什么数据」。\n" +
+      "- 可以记录用户关注的 1-3 个领域关键词（如「电商运营」「产品设计」）,但不要逐一列举表名/字段名/文档标题。\n" +
+      "- profile.md 也应保持精炼（不超过 600 字）,太长时主动精简。\n\n" +
+      "**严禁行为**：不要把 workspace 的表结构、字段列表、文档目录、数据内容写进 soul.md 或 profile.md。这些是领域知识,应该留给 knowledge 技能处理,不属于人格进化的范畴。" +
       HABIT_COMMON_CONSTRAINTS,
     type: "system",
     enabled: false,
     displayName: "自我进化",
-    description: "每天 02:00 — 遍历 workspace 提炼新认知,更新 soul + user profile",
+    description: "每天 02:00 — 从对话反思自我人格 + 用户性格,精炼 soul + profile(不堆砌领域知识)",
   },
   {
     id: "habit_system_suggest",
