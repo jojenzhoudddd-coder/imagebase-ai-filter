@@ -2064,30 +2064,46 @@
 .chat-input-send.mode-stop:hover      { background: var(--text-secondary); }
 
 /* ─── Compact mode (chat block height < 600px) ───────────────────────
- * Collapses the two-row layout (editor + toolbar) into a single row:
- * editor on the left (flex: 1), send button on the right, all within
- * a 52px-min-height box that auto-grows with content.
+ * Single-line: editor left + send button right in one 52px row.
+ * Multi-line: editor fills full width, toolbar wraps to its own row
+ * below (flex-wrap kicks in once content exceeds one line height).
  */
 .chat-input-compact .chat-input-box {
   padding-top: 0;
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: flex-end;
   min-height: 52px;
 }
 .chat-input-compact .chat-input-content {
-  flex: 1;
+  /* Single-line: shrink to fit, leaving room for the 52px toolbar.
+     Multi-line: once content > 22px tall, `flex-basis: 100%` kicks in
+     via the min-height growth and wrap pushes toolbar to next row. */
+  flex: 1 1 0%;
   min-width: 0;
-  padding: 14px 0 14px 14px;
+  /* 15px top/bottom → (15 + 22 + 15 = 52px) vertically centers one line
+     inside the 52px min-height box. */
+  padding: 15px 0 15px 14px;
 }
 .chat-input-compact .chat-input-editor {
   min-height: 22px;
   max-height: 200px;
 }
+/* When editor content exceeds single-line height, content stretches to
+   full width so toolbar wraps below as its own row. */
+.chat-input-compact .chat-input-content.multiline {
+  flex-basis: 100%;
+}
 .chat-input-compact .chat-input-toolbar {
   height: auto;
-  padding: 12px;
+  padding: 0 12px 12px;
   flex-shrink: 0;
   width: auto;
+}
+/* When multiline wraps toolbar to its own row, it needs full width */
+.chat-input-compact .chat-input-content.multiline ~ .chat-input-toolbar {
+  width: 100%;
+  padding: 4px 12px 12px;
 }
 .chat-input-compact .chat-input-tools-left {
   display: none;
