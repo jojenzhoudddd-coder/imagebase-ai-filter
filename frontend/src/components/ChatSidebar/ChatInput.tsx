@@ -217,12 +217,17 @@ export default function ChatInput({
       // Single-line (nowrap): text overflows → switch to multiline
       next = el.scrollWidth > el.clientWidth;
     } else {
-      // Multiline: measure true text width with nowrap, check if it fits
-      // back in the narrow single-line area (avoids oscillation because we
-      // compare against narrow width while layout is still wide).
-      el.style.whiteSpace = "nowrap";
-      const textWidth = el.scrollWidth;
-      el.style.whiteSpace = ""; // restore CSS class value (pre-wrap)
+      // Multiline: measure true content width via off-screen clone.
+      // Can't use el.scrollWidth — it's clamped to >= clientWidth, so at
+      // full width it always reports "fits" or "overflows" incorrectly.
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.style.cssText =
+        "position:fixed;left:-9999px;top:-9999px;white-space:nowrap;" +
+        "visibility:hidden;display:inline-block;max-width:none;max-height:none;" +
+        "width:auto;height:auto;overflow:visible";
+      document.body.appendChild(clone);
+      const textWidth = clone.scrollWidth;
+      document.body.removeChild(clone);
       const boxWidth = el.closest(".chat-input-box")?.clientWidth ?? 0;
       // narrow available = box - 14px left pad - ~52px toolbar
       next = textWidth > boxWidth - 66;
